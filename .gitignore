@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.local
+data/
+*.sqlite
+*.sqlite-journal
+*.db
+coverage/
+.DS_Store
+
+# Bases de dados do cliente (dados reais: pessoas, salários, contratos) — nunca versionar
+dados-origem/
