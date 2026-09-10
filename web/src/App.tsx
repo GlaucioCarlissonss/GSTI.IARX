@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ProvedorSessao, useSessao } from './lib/sessao';
 import { Layout } from './components/layout';
-import { Login } from './pages/Login';
+import { Login, PrimeiraEmpresa } from './pages/Login';
 import { PaginaPainelExecutivo } from './pages/PainelExecutivo';
 import { PaginaFinanceiro } from './pages/Financeiro';
 import { PaginaLancamentos } from './pages/Lancamentos';
@@ -17,18 +17,7 @@ function Rotas() {
 
   if (carregando) return <Carregando>Carregando sessão…</Carregando>;
   if (!usuario) return <Login />;
-  if (!empresa) {
-    return (
-      <div className="login">
-        <div className="cartao">
-          <h1>Nenhuma empresa vinculada</h1>
-          <p style={{ color: 'var(--tinta-2)' }}>
-            Sua conta ainda não tem acesso a nenhuma empresa. Peça a um gestor para conceder acesso.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (!empresa) return <PrimeiraEmpresa />;
 
   return (
     <Routes>

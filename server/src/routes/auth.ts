@@ -1,14 +1,20 @@
 import { Router } from 'express';
-import { autenticar, registrar } from '../domain/auth.js';
+import { autenticar, registrar, registroAberto } from '../domain/auth.js';
 import { criarEmpresa, listarEmpresasDoUsuario } from '../domain/empresas.js';
 import { autenticado } from '../middleware/index.js';
 
 export const rotasAuth = Router();
 
+/** Estado da instalação — a tela de entrada usa para oferecer (ou não) o cadastro. */
+rotasAuth.get('/estado', (_req, res) => {
+  const { aberto, primeiroAcesso } = registroAberto();
+  res.json({ registro_aberto: aberto, primeiro_acesso: primeiroAcesso });
+});
+
 rotasAuth.post('/registrar', (req, res) => {
   const usuario = registrar(req.body ?? {});
   const { token } = autenticar(usuario.email, req.body.senha);
-  res.status(201).json({ usuario, token });
+  res.status(201).json({ usuario, token, empresas: [] });
 });
 
 rotasAuth.post('/login', (req, res) => {

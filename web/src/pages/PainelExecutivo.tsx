@@ -40,6 +40,37 @@ export function PaginaPainelExecutivo() {
   if (!visao.dados) return <Carregando />;
   const v = visao.dados;
 
+  // Ambiente recém-criado: em vez de painéis zerados, um caminho para começar.
+  const vazio =
+    v.financeiro.total_mes === 0 &&
+    v.financeiro.compromisso_proximos_12_meses === 0 &&
+    v.projetos.total === 0 &&
+    v.sla.total_atendidos === 0;
+
+  if (vazio) {
+    return (
+      <Cartao titulo={`${empresa?.nome} está pronta para receber dados`}>
+        <p style={{ color: 'var(--tinta-2)', marginTop: 0 }}>
+          A empresa já nasceu com os nove tipos de despesa padrão e com você como gestor. Há dois caminhos para
+          começar:
+        </p>
+        <ol style={{ color: 'var(--tinta-2)', lineHeight: 1.8, paddingLeft: 20 }}>
+          <li>
+            <strong>Importar uma planilha</strong> — baixe o template em <Link to="/planilhas">Importar / Exportar</Link>,
+            preencha e envie. Linhas inválidas voltam em relatório, sem travar o lote.
+          </li>
+          <li>
+            <strong>Lançar direto na tela</strong> — comece por <Link to="/lancamentos">Lançamentos</Link>, ou cadastre
+            filiais e tipos próprios em <Link to="/cadastros">Cadastros</Link>.
+          </li>
+        </ol>
+        <p style={{ color: 'var(--tinta-fraca)', fontSize: 13, marginBottom: 0 }}>
+          Os painéis se preenchem sozinhos conforme os dados entram.
+        </p>
+      </Cartao>
+    );
+  }
+
   return (
     <>
       <Aviso>

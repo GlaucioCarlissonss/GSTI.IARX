@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { db } from '../db/index.js';
-import { erroConflito, erroNaoAutenticado, erroValidacao } from '../lib/erros.js';
+import { erroConflito, erroNaoAutenticado, erroSemPermissao, erroValidacao } from '../lib/erros.js';
 
 const EXPIRACAO = '12h';
 
@@ -16,6 +16,18 @@ export function segredoJwt(): string {
   return segredo;
 }
 
+/**
+ * O cadastro aberto é liberado apenas enquanto não existe nenhuma conta — é o
+ * que permite criar o primeiro gestor pela tela, sem script. Depois disso, só
+ * fica aberto se a instalação declarar `REGISTRO_ABERTO=true`; caso contrário,
+ * novos usuários entram por convite de um gestor (concessão de acesso).
+ */
+export function registroAberto(): { aberto: boolean; primeiroAcesso: boolean } {
+  const total = (db().prepare('SELECT COUNT(*) AS n FROM usuarios').get() as { n: number }).n;
+  const primeiroAcesso = total === 0;
+  return { aberto: primeiroAcesso || process.env.REGISTRO_ABERTO === 'true', primeiroAcesso };
+}
+
 export interface Sessao {
   usuarioId: number;
   email: string;
@@ -23,6 +35,11 @@ export interface Sessao {
 }
 
 export function registrar(dados: { nome: string; email: string; senha: string }) {
+  if (!registroAberto().aberto) {
+    throw erroSemPermissao(
+      'O cadastro aberto está desativado nesta instalação. Peça a um gestor para conceder acesso ao seu e-mail.',
+    );
+  }
   const email = dados.email?.trim().toLowerCase();
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw erroValidacao('E-mail inválido.');
   if (!dados.nome?.trim()) throw erroValidacao('O nome é obrigatório.');

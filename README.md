@@ -12,23 +12,48 @@ gestor de TI precisa acompanhar por empresa e por filial:
 Todo registro pertence a uma **empresa** e, opcionalmente, a uma **filial**.
 Nenhuma consulta ou escrita ocorre fora desse contexto organizacional.
 
-## Como rodar
+## Começando a usar
+
+A aplicação inteira — API e interface — sobe em um processo só:
 
 ```bash
-npm install                 # instala servidor e front-end (workspaces)
 cp .env.example .env        # defina ao menos JWT_SECRET
-npm run seed -- --recriar   # carga inicial a partir de dados-origem/ (opcional)
-npm run dev                 # API em :3333 e front-end em :5173
+npm ci
+npm run build
+npm start                   # http://localhost:3333
 ```
 
-Em produção o front-end compilado é servido pelo próprio processo da API:
+Abra o endereço e a tela pedirá para **criar a conta do gestor**: é a primeira
+do ambiente e, assim que existe, o auto-cadastro se fecha sozinho (novos
+usuários passam a entrar por convite de um gestor, ou mantenha
+`REGISTRO_ABERTO=true` se preferir o contrário). Em seguida você cadastra a
+primeira empresa, que já nasce com os nove tipos de despesa padrão.
+
+A partir daí há dois caminhos para popular o ambiente:
+
+1. **Planilha** — em *Importar / Exportar*, baixe o template do módulo, preencha
+   e envie. `Validar sem gravar` mostra o relatório antes de qualquer escrita.
+2. **Tela** — lance direto em *Lançamentos*, *Projetos e tarefas* ou
+   *Registros de tickets*.
+
+### Com Docker
 
 ```bash
-npm run build && npm start  # aplicação completa em http://localhost:3333
+cp .env.example .env        # JWT_SECRET é obrigatório
+docker compose up -d        # http://localhost:3333
 ```
 
+O banco fica em um volume (`gsti-dados`), então o contêiner é descartável e os
+dados não. O caminho sem Docker foi verificado ponta a ponta; a imagem segue o
+padrão de build em dois estágios, mas não foi construída no ambiente em que o
+projeto foi desenvolvido (sem daemon Docker disponível).
+
+### Durante o desenvolvimento
+
 ```bash
-npm test                    # regras de negócio (34 testes)
+npm run dev                 # API em :3333, front-end com recarga em :5173
+npm test                    # regras de negócio (40 testes)
+npm run seed -- --recriar   # carga inicial a partir de dados-origem/
 ```
 
 ## Arquitetura
@@ -92,6 +117,19 @@ aceita apelidos de cabeçalho, de modo que planilhas antigas continuam válidas.
 - Linhas inválidas entram em um relatório de erros **sem abortar o lote**.
 - `Validar sem gravar` roda a importação inteira em transação desfeita.
 - Tipos de despesa, tópicos e filiais ausentes podem ser criados na importação.
+
+## Levando a base para outra instância
+
+A exportação usa o mesmo layout da importação, então mover ou restaurar um
+ambiente é uma operação de duas etapas:
+
+1. Em *Importar / Exportar*, baixe **Base — Base completa** de cada empresa.
+2. Na instância de destino, crie a empresa e importe o arquivo pelo módulo
+   `completo`.
+
+A reimportação é idempotente e reconstrói filiais, tipos de despesa, cenários,
+lançamentos (com as séries de parcelas religadas), projetos, tarefas,
+envolvidos, tópicos e registros de SLA. Repetir a importação não duplica nada.
 
 ## Segurança e privacidade
 

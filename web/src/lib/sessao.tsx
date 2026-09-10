@@ -27,6 +27,11 @@ export interface Usuario {
  * Escopo organizacional da sessão. Nenhuma tela consulta dados sem uma empresa
  * definida; a filial é opcional e `undefined` significa "consolidado".
  */
+export interface EstadoInstalacao {
+  registro_aberto: boolean;
+  primeiro_acesso: boolean;
+}
+
 interface EstadoSessao {
   usuario: Usuario | null;
   empresas: Empresa[];
@@ -35,6 +40,9 @@ interface EstadoSessao {
   carregando: boolean;
   filiais: Filial[];
   entrar: (email: string, senha: string) => Promise<void>;
+  criarConta: (dados: { nome: string; email: string; senha: string }) => Promise<void>;
+  criarEmpresa: (dados: { nome: string; cnpj?: string }) => Promise<void>;
+  instalacao: EstadoInstalacao | null;
   sair: () => void;
   trocarEmpresa: (id: number) => void;
   definirFilial: (valor: number | 'todas' | 'nenhuma') => void;
@@ -53,6 +61,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   const [filialId, setFilialId] = useState<number | 'todas' | 'nenhuma'>('todas');
   const [filiais, setFiliais] = useState<Filial[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [instalacao, setInstalacao] = useState<EstadoInstalacao | null>(null);
 
   const aplicarEmpresa = useCallback((id: number | null) => {
     setEmpresaId(id);
@@ -84,6 +93,14 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
     void carregarSessao();
   }, [carregarSessao]);
 
+  // O estado da instalação decide se a tela de entrada oferece cadastro.
+  useEffect(() => {
+    api
+      .get<EstadoInstalacao>('/api/auth/estado')
+      .then(setInstalacao)
+      .catch(() => setInstalacao({ registro_aberto: false, primeiro_acesso: false }));
+  }, [usuario]);
+
   const recarregarFiliais = useCallback(async () => {
     if (!empresaId) return setFiliais([]);
     setFiliais(await api.get<Filial[]>('/api/filiais'));
@@ -107,6 +124,29 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
     [aplicarEmpresa],
   );
 
+  const criarConta = useCallback(
+    async (dados: { nome: string; email: string; senha: string }) => {
+      const resposta = await api.post<{ token: string; usuario: { id: number; nome: string; email: string } }>(
+        '/api/auth/registrar',
+        dados,
+      );
+      sessaoLocal.definirToken(resposta.token);
+      setUsuario({ usuarioId: resposta.usuario.id, nome: resposta.usuario.nome, email: resposta.usuario.email });
+      setEmpresas([]);
+      aplicarEmpresa(null);
+    },
+    [aplicarEmpresa],
+  );
+
+  const criarEmpresa = useCallback(
+    async (dados: { nome: string; cnpj?: string }) => {
+      const nova = await api.post<Empresa>('/api/auth/empresas', dados);
+      setEmpresas((atuais) => [...atuais, nova]);
+      aplicarEmpresa(nova.id);
+    },
+    [aplicarEmpresa],
+  );
+
   const sair = useCallback(() => {
     sessaoLocal.definirToken(null);
     sessaoLocal.definirEmpresa(null);
@@ -125,7 +165,10 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       filialId,
       filiais,
       carregando,
+      instalacao,
       entrar,
+      criarConta,
+      criarEmpresa,
       sair,
       trocarEmpresa: aplicarEmpresa,
       definirFilial: setFilialId,
@@ -133,7 +176,21 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       paramFilial: () => (filialId === 'todas' ? undefined : filialId === 'nenhuma' ? 'nenhuma' : String(filialId)),
       ehGestor: empresa?.papel === 'gestor',
     }),
-    [usuario, empresas, empresa, filialId, filiais, carregando, entrar, sair, aplicarEmpresa, recarregarFiliais],
+    [
+      usuario,
+      empresas,
+      empresa,
+      filialId,
+      filiais,
+      carregando,
+      instalacao,
+      entrar,
+      criarConta,
+      criarEmpresa,
+      sair,
+      aplicarEmpresa,
+      recarregarFiliais,
+    ],
   );
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;

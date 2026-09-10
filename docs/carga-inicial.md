@@ -101,6 +101,16 @@ informado no documento; divergência acima de um centavo vira aviso.
 SpinCare* nas quatro empresas envolvidas, com fim planejado em 02/2027 — o prazo
 que condiciona o desconto.
 
+## Levando esta carga para outra instância
+
+O script de carga só é necessário na primeira montagem, porque depende dos
+arquivos originais. Para replicar o ambiente em outra máquina, use a
+exportação: em *Importar / Exportar*, baixe **Base — Base completa** de cada
+empresa e importe os arquivos no destino pelo módulo `completo`. A ida e volta
+foi conferida contra esta carga — 1.898 lançamentos e R$ 2.409.474,43 são
+reproduzidos sem divergência, e uma segunda importação do mesmo arquivo é
+integralmente reconhecida como duplicada.
+
 ## Premissas assumidas e pendências
 
 1. **Início das mensalidades.** O documento diz "mensalidades vincendas — até
