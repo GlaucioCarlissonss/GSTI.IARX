@@ -18,6 +18,7 @@ const ABAS = [
   { id:'projetos',    rotulo:'Projetos',    view: viewProjetos },
   { id:'sla',         rotulo:'SLA',         view: viewSla },
   { id:'conferencia', rotulo:'Conferência', view: viewConferencia },
+  { id:'dados',       rotulo:'Dados',       view: viewDados },
   { id:'cadastros',   rotulo:'Cadastros',   view: viewCadastros },
   { id:'auditoria',   rotulo:'Auditoria',   view: viewAuditoria },
 ];
