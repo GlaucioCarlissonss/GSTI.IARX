@@ -2,6 +2,7 @@
 // reclamou, então vira verificação: para cada empresa e cada recorte de base,
 // o KPI, os rankings, a conferência e o rodapé da tabela precisam somar igual.
 const { chromium } = require('playwright');
+const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs');
 
 const centavos = (txt) => {
   const m = /-?[\d.]+,\d{2}/.exec(String(txt || ''));
@@ -24,15 +25,21 @@ const centavos = (txt) => {
   };
 
   const empresas = await pag.$$eval('#f-empresa option', (os) => os.map((o) => ({ id: o.value, nome: o.textContent })));
-  const bases = await pag.$$eval('#f-base option', (os) => os.map((o) => ({ v: o.value, nome: o.textContent })));
+  // os antigos presets viraram conjuntos de procedência
+  const bases = [
+    { nome:'Completa', origens: [] },
+    { nome:'Realizado (sem projeção)', origens: ['planilha', 'folha_ti', 'manual'] },
+    { nome:'Só planilhas enviadas', origens: ['planilha'] },
+    { nome:'Só projeções', origens: ['projecao_spincare'] },
+  ];
 
   for (const emp of empresas) {
-    await pag.selectOption('#f-empresa', emp.id);
+    await usarEmpresas(pag, emp.id);
     await pag.waitForTimeout(600);
     console.log(`\n== ${emp.nome} ==`);
 
     for (const base of bases) {
-      await pag.selectOption('#f-base', base.v);
+      await usarBase(pag, base.origens);
       await ir('Painel');
 
       const kpis = await pag.$$eval('.kpi', (ks) => ks.map((k) => k.querySelector('.n').textContent));
@@ -58,7 +65,7 @@ const centavos = (txt) => {
     // Conferência: o total tem de ser a soma das origens e a soma dos meses.
     // Cada bloco é localizado pelo próprio título, senão o seletor varre as
     // tabelas vizinhas e soma o que não deve.
-    await pag.selectOption('#f-base', '0');
+    await usarBase(pag, []);
     await ir('Conferência');
     const c = await pag.evaluate(() => {
       const bloco = (titulo) => [...document.querySelectorAll('.bloco')]

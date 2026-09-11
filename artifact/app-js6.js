@@ -2,11 +2,16 @@
 // SLA — registro mensal por fila e tópico, com indicadores derivados
 // ===========================================================================
 async function viewSla() {
-  const emp = E.empresa;
-  const regs = (await Loja.slaDa(emp)).filter((r) => !E.filial || r.filial === E.filial);
+  const carregados = [];
+  for (const e of escopoEmpresas()) for (const r of await Loja.slaDa(e)) carregados.push({ ...r, empresa: e });
+  const regs = carregados.filter((r) => passaNoFiltro(E.filiaisSel, r.filial || '(empresa)'));
   const comps = [...new Set(regs.map((r)=>r.competencia))].sort();
-  const comp = comps.includes(E.competencia) ? E.competencia : comps[comps.length-1];
-  const doMes = regs.filter((r)=>r.competencia===comp);
+  // O SLA acompanha a competência escolhida no topo, limitada ao que existe aqui.
+  const escolhidas = [...E.competencias].filter((c) => comps.includes(c));
+  const foco = new Set(escolhidas.length ? escolhidas : comps.slice(-1));
+  const comp = ordenado(foco).pop() || mesHoje();
+  const doMes = regs.filter((r) => foco.has(r.competencia));
+  const periodo = foco.size <= 1 ? mesExib(comp) : `${mesExib(ordenado(foco)[0])} a ${mesExib(comp)}`;
   const T = doMes.reduce((s,r)=>s+(r.total||0),0), D = doMes.reduce((s,r)=>s+(r.dentro||0),0);
 
   const agrupar = (chave) => {
@@ -23,11 +28,11 @@ async function viewSla() {
 
   el('#pagina').innerHTML = `
     <div class="filtros">
-      <div class="campo" style="width:140px"><label for="s-comp">Competência</label><select id="s-comp">
-        ${comps.length?comps.map((c)=>`<option value="${c}"${c===comp?' selected':''}>${mesExib(c)}</option>`).join(''):'<option>—</option>'}</select></div>
-      <div style="margin-left:auto"></div>
-      <button class="bt pri" id="s-novo">Registrar tickets do mês</button>
+      <div class="campo" style="width:190px"><label for="s-comp">Competência</label><div data-sel="scomp"></div></div>
+      <div style="margin-left:auto;font-size:12px;color:var(--tinta3)">${esc(rotuloEscopo())} · ${esc(periodo)}</div>
+      <button class="bt pri" id="s-novo"${empresaAtiva() ? '' : ' disabled title="Deixe uma só empresa marcada para registrar"'}>Registrar tickets do mês</button>
     </div>
+    <div class="fichas" id="s-fichas" hidden></div>
     ${regs.length === 0 ? `<section class="bloco"><p class="vazio">
         Nenhum ticket registrado nesta empresa. Use <strong>Registrar tickets do mês</strong> para lançar
         o total atendido, quantos ficaram dentro do SLA, por fila e por tópico de ajuda.</p></section>` : `
@@ -64,7 +69,18 @@ async function viewSla() {
         <td class="n">${pctTxt(pct(r.dentro,r.total))}</td>
         <td><button class="bt fant peq" data-sdel>Excluir</button></td></tr>`).join('')}</tbody></table></div></section>`}`;
 
-  if (comps.length) el('#s-comp').onchange = () => { E.competencia = el('#s-comp').value; render(); };
+  const itensSComp = comps.map((c) => ({ valor: c, rotulo: mesExib(c) }));
+  if (comps.length) {
+    seletorMulti(el('[data-sel="scomp"]'), {
+      id: 's-comp', rotulo: 'Competência', itens: itensSComp, selecionados: foco, minimo: 1,
+      aoMudar: (novo) => { E.competencias = novo; render(); },
+    });
+    pintarFichas(el('#s-fichas'), [{ chave:'scomp', rotulo:'Competência', itens:itensSComp,
+      selecionados:foco, minimo:1, ocultarSeTudo:false, total:itensSComp.length,
+      aoMudar:(n) => { E.competencias = n; render(); } }]);
+  } else {
+    el('[data-sel="scomp"]').innerHTML = '<span class="nota">sem registros</span>';
+  }
   el('#s-novo').onclick = () => formSla(comp || mesHoje());
   if (regs.length) {
     barras(el('#s-g1'), porFila.map((f)=>({ rot:f.nome, v:{ d:f.dentro, f:f.fora } })),
@@ -88,7 +104,8 @@ async function viewSla() {
 }
 
 function formSla(comp) {
-  const fils = filiaisDa(E.empresa), filas = filasDa(E.empresa);
+  const dono = exigirEmpresaUnica();
+  const fils = filiaisDa(dono), filas = filasDa(dono);
   abrirModal({
     titulo: 'Registrar tickets do mês',
     corpo: `
@@ -125,13 +142,13 @@ function formSla(comp) {
           if (!Number.isInteger(total) || total < 0) throw new Error('Total atendidos inválido.');
           if (!Number.isInteger(dentro) || dentro < 0) throw new Error('Dentro do SLA inválido.');
           if (dentro > total) throw new Error('Dentro do SLA não pode superar o total atendido.');
-          checarCompetencia(c, 'registro de SLA');
-          const atuais = (await Loja.slaDa(E.empresa)).filter((r)=>r.competencia===c).map(({competencia, ...r})=>r);
+          checarCompetencia(c, 'registro de SLA', dono);
+          const atuais = (await Loja.slaDa(dono)).filter((r)=>r.competencia===c).map(({competencia, empresa, ...r})=>r);
           atuais.push({ id: novoId(), filial: campo('filial').value || null, fila: campo('fila').value,
             topico: campo('topico').value.trim() || null, total, dentro });
-          await Loja.gravarSlaMes(E.empresa, c, atuais);
+          await Loja.gravarSlaMes(dono, c, atuais);
           await Loja.auditar({ acao:'criar', entidade:'ticket_sla', depois:{ competencia:mesExib(c), total, dentro } });
-          E.competencia = c; fechar(); render();
+          E.competencias = new Set([c]); fechar(); render();
         } catch (e) { erro(e.message); ev.target.disabled = false; }
       };
     },
@@ -142,7 +159,13 @@ function formSla(comp) {
 // Cadastros, fechamento e auditoria
 // ===========================================================================
 async function viewCadastros() {
-  const emp = E.empresa;
+  const emp = empresaAtiva();
+  if (!emp) {
+    el('#pagina').innerHTML = `<div class="msg alerta"><strong>Cadastros são de uma empresa por vez.</strong>
+      Há ${inteiro(E.empresasSel.size)} empresas selecionadas — filiais, tipos, filas e cenários pertencem a
+      cada uma, e o fechamento de competência também. Deixe uma só marcada no seletor <strong>Empresa</strong>.</div>`;
+    return;
+  }
   const fechadas = await Loja.fechamentosDa(emp);
   const lista = (titulo, itens, acaoNovo, extra) => `
     <section class="bloco"><header><h2>${titulo}</h2><span class="nota">${inteiro(itens.length)}</span></header>
@@ -167,7 +190,7 @@ async function viewCadastros() {
         e tudo fica na trilha de auditoria.</div>
       <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
         <div class="campo" style="width:120px"><label for="fc-comp">Competência</label>
-          <input id="fc-comp" value="${mesExib(E.competencia||mesHoje())}"></div>
+          <input id="fc-comp" value="${mesExib(ordenado(E.competencias).pop() || mesHoje())}"></div>
         <button class="bt pri" id="fc-fechar">Fechar competência</button>
       </div>
       <div class="msg erro" id="fc-erro" hidden style="margin-top:10px"></div>
@@ -222,7 +245,7 @@ function formCadastro(tipo) {
         try {
           const nome = campo('nome').value.trim();
           if (!nome) throw new Error('Informe o nome.');
-          const emp = E.empresa;
+          const emp = exigirEmpresaUnica();
           if (tipo === 'filial') {
             if (filiaisDa(emp).some((f)=>f.nome.toLowerCase()===nome.toLowerCase())) throw new Error('Já existe filial com este nome.');
             await Loja.gravarCatalogo('filiais', [...E.filiais, { empresa:emp, nome, uf: campo('uf').value.trim().toUpperCase() || null }]);
@@ -235,7 +258,7 @@ function formCadastro(tipo) {
           } else {
             const chave = nome.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'_').toLowerCase();
             if (chave === 'oficial') throw new Error('O cenário "oficial" já existe.');
-            await Loja.gravarCatalogo('cenarios', [...E.cenarios, { empresa:emp, chave, nome, descricao: campo('desc').value.trim() || null }]);
+            await Loja.gravarCatalogo('cenarios', [...E.cenariosSel, { empresa:emp, chave, nome, descricao: campo('desc').value.trim() || null }]);
           }
           await Loja.auditar({ acao:'criar', entidade:tipo, depois:{ nome } });
           fechar(); render();
@@ -246,15 +269,20 @@ function formCadastro(tipo) {
 }
 
 async function viewAuditoria() {
-  const s = await E.db.doc('auditoria/' + E.empresa).get();
-  const itens = s.exists ? (s.data().itens || []) : [];
+  const itens = [];
+  for (const e of escopoEmpresas()) {
+    const s = await E.db.doc('auditoria/' + e).get();
+    for (const a of (s.exists ? (s.data().itens || []) : [])) itens.push({ ...a, empresa: e });
+  }
+  itens.sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
   el('#pagina').innerHTML = `
     <div class="msg">Nenhuma alteração relevante ocorre sem trilha: quem, quando e o quê. Registros mais recentes primeiro.</div>
     <section class="bloco"><header><h2>Trilha de auditoria</h2><span class="nota">${inteiro(itens.length)} eventos</span></header>
       ${itens.length===0 ? '<p class="vazio">Nenhum evento registrado nesta empresa ainda.</p>' : `
-      <div class="rol"><table><thead><tr><th>Quando</th><th>Entidade</th><th>Ação</th><th>Justificativa</th><th>Alteração</th></tr></thead>
+      <div class="rol"><table><thead><tr><th>Quando</th>${E.empresasSel.size>1?'<th>Empresa</th>':''}<th>Entidade</th><th>Ação</th><th>Justificativa</th><th>Alteração</th></tr></thead>
       <tbody>${itens.slice(0,250).map((a)=>`<tr>
         <td style="white-space:nowrap">${new Date(a.quando).toLocaleString('pt-BR')}</td>
+        ${E.empresasSel.size>1?`<td>${esc(nomeEmpresa(a.empresa))}</td>`:''}
         <td>${esc(a.entidade||'')}</td>
         <td><span class="tag ${a.acao==='excluir'?'crit':a.acao==='criar'?'bom':''}">${esc(a.acao)}</span></td>
         <td style="max-width:220px">${esc(a.justificativa||'—')}</td>

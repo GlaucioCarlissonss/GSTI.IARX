@@ -1,6 +1,7 @@
 // Varredura de ponta a ponta: cada empresa, cada aba, sob volume real.
 // Mede tempo de render e falha se qualquer tela produzir erro de console.
 const { chromium } = require('playwright');
+const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs');
 
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
@@ -19,9 +20,9 @@ const { chromium } = require('playwright');
 
   const lentas = [];
   for (const emp of empresas) {
-    await pag.selectOption('#f-empresa', emp.id);
+    await usarEmpresas(pag, emp.id);
     await pag.waitForTimeout(600);
-    const n = await pag.evaluate(() => Loja.todos(E.empresa).length);
+    const n = await pag.evaluate(() => Loja.todos(empresaAtiva()).length);
     const linha = [`\n== ${emp.nome} (${n} lançamentos) ==`];
 
     for (const aba of abas) {
@@ -54,7 +55,7 @@ const { chromium } = require('playwright');
 
   // Largura de telefone, na empresa mais pesada.
   await pag.setViewportSize({ width: 400, height: 800 });
-  await pag.selectOption('#f-empresa', 'residencial');
+  await usarEmpresas(pag, 'residencial');
   await pag.waitForTimeout(600);
   console.log('\n== 400 px (RESIDENCIAL) ==');
   for (const aba of abas) {

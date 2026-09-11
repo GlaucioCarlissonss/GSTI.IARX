@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs');
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
   const pag = await nav.newPage();
@@ -36,15 +37,19 @@ const { chromium } = require('playwright');
 
   // 2. Painel com cada recorte de base
   await clicar('Painel');
-  for (let i = 0; i < 4; i++) {
-    await pag.selectOption('#f-base', String(i));
-    await pag.waitForTimeout(350);
+  const RECORTES = [
+    ['Completa', []],
+    ['Realizado (sem projeção)', ['planilha', 'folha_ti', 'manual']],
+    ['Só planilhas enviadas', ['planilha']],
+    ['Só projeções', ['projecao_spincare']],
+  ];
+  for (const [rot, origens] of RECORTES) {
+    await usarBase(pag, origens);
     const t = await pag.$eval('.kpi .n', (n) => n.textContent);
-    const rot = await pag.$eval('#f-base option:checked', (o) => o.textContent);
-    const comp = await pag.$eval('#p-comp option:checked', (o) => o.textContent).catch(() => '?');
+    const comp = await pag.$eval('#p-comp', (b) => b.textContent.trim()).catch(() => '?');
     console.log(`\n  base "${rot}" · ${comp} · total do mês = ${t}`);
   }
-  await pag.selectOption('#f-base', '0'); await pag.waitForTimeout(300);
+  await usarBase(pag, []); await pag.waitForTimeout(300);
 
   // 3. Lançamentos: coluna Origem
   await clicar('Lançamentos');

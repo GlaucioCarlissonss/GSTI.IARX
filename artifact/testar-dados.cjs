@@ -29,7 +29,7 @@ const fs = require('fs');
   const ir = async (r) => { await pag.click(`#abas button:text-is("${r}")`); await pag.waitForTimeout(400); };
 
   const totalDe = async () => { await ir('Conferência'); return pag.$eval('.kpi:nth-child(3) .n', (n) => n.textContent); };
-  const contar = () => pag.evaluate(() => Loja.todos(E.empresa).length);
+  const contar = () => pag.evaluate(() => Loja.todos(empresaAtiva()).length);
 
   console.log('== ALIANÇA ==');
   console.log('lançamentos antes:', await contar(), '| total:', await totalDe());

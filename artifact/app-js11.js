@@ -2,8 +2,14 @@
 // Aba Dados — a ponte com o Excel, que é onde o gestor já trabalha.
 // ===========================================================================
 function viewDados() {
-  const emp = E.empresa;
-  const nomeEmp = (E.empresas.find((e) => e.id === emp) || {}).nome || emp;
+  const emp = empresaAtiva();
+  if (!emp) {
+    el('#pagina').innerHTML = '<div class="msg alerta"><strong>Importar e exportar é de uma empresa por vez.</strong> '
+      + 'Há ' + inteiro(E.empresasSel.size) + ' empresas selecionadas, e o arquivo precisa ter dono — filiais, '
+      + 'tipos e cenários pertencem a cada empresa. Deixe uma só marcada no seletor <strong>Empresa</strong>.</div>';
+    return;
+  }
+  const nomeEmp = nomeEmpresa(emp);
   const total = Loja.todos(emp).length;
 
   el('#pagina').innerHTML = `

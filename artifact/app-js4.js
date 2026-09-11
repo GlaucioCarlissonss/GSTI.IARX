@@ -3,12 +3,12 @@
 // ===========================================================================
 function lancFiltrados() {
   const f = E.filtros;
-  return Loja.todos(E.empresa).filter((l) => {
-    if (E.cenario !== 'todos' && l.cenario !== E.cenario) return false;
+  return Loja.todosDoEscopo().filter((l) => {
+    if (!noCenario(l)) return false;
     if (!noEscopo(l)) return false;
-    if (f.tipo && l.tipo !== f.tipo) return false;
-    if (f.natureza && l.natureza !== f.natureza) return false;
-    if (f.classificacao && l.classificacao !== f.classificacao) return false;
+    if (!passaNoFiltro(f.tipos, l.tipo)) return false;
+    if (!passaNoFiltro(f.naturezas, l.natureza)) return false;
+    if (!passaNoFiltro(f.classificacoes, l.classificacao)) return false;
     if (f.de && l.competencia < f.de) return false;
     if (f.ate && l.competencia > f.ate) return false;
     if (f.busca) {
@@ -23,27 +23,25 @@ function viewLancamentos() {
   const lista = lancFiltrados();
   const mostrados = lista.slice(0, 400);
   const total = reais(somaC(lista.map((l)=>l.valor)));
-  const tipos = tiposDa(E.empresa);
+  const tipos = tiposDoEscopo();
   const f = E.filtros;
+  const itensTipo = tipos.map((t) => ({ valor: t.nome, rotulo: t.nome }));
+  const itensNat = Object.entries(NATUREZAS).map(([k, v]) => ({ valor: k, rotulo: v }));
+  const itensCls = [{ valor:'despesa', rotulo:'Despesa' }, { valor:'investimento', rotulo:'Investimento' }];
+  const itensCen = cenariosDoEscopo().map((c) => ({ valor: c.chave, rotulo: c.nome }));
 
   el('#pagina').innerHTML = `
     <div class="filtros">
       <div class="campo" style="width:108px"><label for="l-de">De (MM/AAAA)</label><input id="l-de" placeholder="01/2026" value="${f.de?mesExib(f.de):''}"></div>
       <div class="campo" style="width:108px"><label for="l-ate">Até (MM/AAAA)</label><input id="l-ate" placeholder="12/2027" value="${f.ate?mesExib(f.ate):''}"></div>
-      <div class="campo" style="width:180px"><label for="l-tipo">Tipo de despesa</label><select id="l-tipo">
-        <option value="">Todos</option>${tipos.map((t)=>`<option${t.nome===f.tipo?' selected':''}>${esc(t.nome)}</option>`).join('')}</select></div>
-      <div class="campo" style="width:150px"><label for="l-nat">Natureza</label><select id="l-nat">
-        <option value="">Todas</option>${Object.entries(NATUREZAS).map(([k,v])=>`<option value="${k}"${k===f.natureza?' selected':''}>${v}</option>`).join('')}</select></div>
-      <div class="campo" style="width:140px"><label for="l-cls">Classificação</label><select id="l-cls">
-        <option value="">Todas</option>
-        <option value="despesa"${f.classificacao==='despesa'?' selected':''}>Despesa</option>
-        <option value="investimento"${f.classificacao==='investimento'?' selected':''}>Investimento</option></select></div>
-      <div class="campo" style="width:150px"><label for="l-cen">Cenário</label><select id="l-cen">
-        ${cenariosDa(E.empresa).map((c)=>`<option value="${esc(c.chave)}"${c.chave===E.cenario?' selected':''}>${esc(c.nome)}</option>`).join('')}
-        <option value="todos"${E.cenario==='todos'?' selected':''}>Todos os cenários</option></select></div>
+      <div class="campo" style="width:180px"><label for="l-tipo">Tipo de despesa</label><div data-sel="tipo"></div></div>
+      <div class="campo" style="width:160px"><label for="l-nat">Natureza</label><div data-sel="nat"></div></div>
+      <div class="campo" style="width:150px"><label for="l-cls">Classificação</label><div data-sel="cls"></div></div>
+      <div class="campo" style="width:160px"><label for="l-cen">Cenário</label><div data-sel="cen"></div></div>
       <div class="campo" style="flex:1 1 160px"><label for="l-busca">Buscar</label><input id="l-busca" placeholder="fornecedor, motivo…" value="${esc(f.busca)}"></div>
-      <button class="bt pri" id="l-novo">Novo lançamento</button>
+      <button class="bt pri" id="l-novo"${empresaAtiva() ? '' : ' disabled title="Deixe uma só empresa marcada para lançar"'}>Novo lançamento</button>
     </div>
+    <div class="fichas" id="l-fichas" hidden></div>
 
     <section class="bloco">
       <header><h2>Lançamentos</h2>
@@ -52,7 +50,7 @@ function viewLancamentos() {
       <div class="rol"><table>
         <thead><tr><th>Competência</th><th>Filial</th><th>Tipo</th><th>Descrição</th>
           <th>Origem</th><th>Natureza</th><th>Classificação</th><th class="n">Valor</th><th></th></tr></thead>
-        <tbody>${mostrados.map((l) => `<tr data-id="${esc(l.id)}" data-comp="${l.competencia}">
+        <tbody>${mostrados.map((l) => `<tr data-id="${esc(l.id)}" data-comp="${l.competencia}" data-emp="${esc(l.empresa)}">
           <td>${mesExib(l.competencia)}</td>
           <td>${l.filial ? esc(l.filial) : '<em style="color:var(--tinta3)">empresa</em>'}</td>
           <td>${esc(l.tipo)}</td>
@@ -74,32 +72,49 @@ function viewLancamentos() {
       </table></div>`}
     </section>`;
 
-  const aplica = (id, chave, conv = (v)=>v) => {
-    const c = el(id);
-    const ev = c.tagName === 'SELECT' ? 'change' : 'change';
-    c.addEventListener(ev, () => { E.filtros[chave] = conv(c.value); render(); });
-  };
-  aplica('#l-tipo','tipo'); aplica('#l-nat','natureza'); aplica('#l-cls','classificacao');
-  aplica('#l-busca','busca');
+  const grupos = [
+    { chave:'tipo', id:'l-tipo', rotulo:'Tipo de despesa', itens:itensTipo, get sel() { return E.filtros.tipos; },
+      aplicar:(n) => { E.filtros.tipos = n; } },
+    { chave:'nat', id:'l-nat', rotulo:'Natureza', itens:itensNat, get sel() { return E.filtros.naturezas; },
+      aplicar:(n) => { E.filtros.naturezas = n; } },
+    { chave:'cls', id:'l-cls', rotulo:'Classificação', itens:itensCls, get sel() { return E.filtros.classificacoes; },
+      aplicar:(n) => { E.filtros.classificacoes = n; } },
+    { chave:'cen', id:'l-cen', rotulo:'Cenário', itens:itensCen, get sel() { return E.cenariosSel; }, minimo:1,
+      aplicar:(n) => { E.cenariosSel = n; ajustarCompetencias(); } },
+  ];
+  for (const g of grupos) {
+    seletorMulti(el(`[data-sel="${g.chave}"]`), {
+      id: g.id, rotulo: g.rotulo, itens: g.itens, selecionados: g.sel, minimo: g.minimo || 0,
+      aoMudar: (novo) => { g.aplicar(novo); render(); },
+    });
+  }
+  pintarFichas(el('#l-fichas'), grupos.map((g) => ({
+    chave: g.chave, rotulo: g.rotulo, itens: g.itens, selecionados: g.sel, minimo: g.minimo || 0,
+    ocultarSeTudo: !g.minimo, total: g.itens.length,
+    aoMudar: (n) => { g.aplicar(n); render(); },
+  })));
+
+  el('#l-busca').addEventListener('change', () => { E.filtros.busca = el('#l-busca').value; render(); });
   el('#l-de').addEventListener('change', () => { E.filtros.de = mesInterno(el('#l-de').value) || ''; render(); });
   el('#l-ate').addEventListener('change', () => { E.filtros.ate = mesInterno(el('#l-ate').value) || ''; render(); });
-  el('#l-cen').addEventListener('change', () => { E.cenario = el('#l-cen').value; render(); });
   el('#l-novo').addEventListener('click', () => formLancamento(null));
 
   el('#pagina').querySelectorAll('tbody tr').forEach((tr) => {
-    const id = tr.dataset.id, comp = tr.dataset.comp;
-    const achar = () => Loja.itens(E.empresa, comp).find((x) => x.id === id);
-    tr.querySelector('[data-ed]').onclick = () => formLancamento({ ...achar(), competencia: comp });
-    tr.querySelector('[data-rc]').onclick = () => reclassificar({ ...achar(), competencia: comp });
-    tr.querySelector('[data-ex]').onclick = () => excluirLancamento({ ...achar(), competencia: comp });
+    const id = tr.dataset.id, comp = tr.dataset.comp, emp = tr.dataset.emp;
+    const achar = () => ({ ...Loja.itens(emp, comp).find((x) => x.id === id), competencia: comp, empresa: emp });
+    tr.querySelector('[data-ed]').onclick = () => formLancamento(achar());
+    tr.querySelector('[data-rc]').onclick = () => reclassificar(achar());
+    tr.querySelector('[data-ex]').onclick = () => excluirLancamento(achar());
   });
 }
 
 // --------------------------------------------------------------- formulário
 function formLancamento(existente) {
-  const emp = E.empresa, ed = !!existente;
+  const ed = !!existente;
+  // Editar segue a empresa do próprio registro; criar exige uma só selecionada.
+  const emp = existente ? existente.empresa : exigirEmpresaUnica();
   const tipos = tiposDa(emp), fils = filiaisDa(emp), cens = cenariosDa(emp);
-  const v = existente || { filial:null, tipo: tipos[0]?.nome || '', competencia: E.competencia || mesHoje(),
+  const v = existente || { filial:null, tipo: tipos[0]?.nome || '', competencia: ordenado(E.competencias).pop() || mesHoje(),
     valor:'', natureza:'pontual_unica', classificacao:'despesa', cenario:'oficial', descricao:'', obs:'' };
 
   abrirModal({
@@ -155,7 +170,7 @@ function formLancamento(existente) {
       raiz.querySelector('[data-s]').addEventListener('click', async (ev) => {
         ev.target.disabled = true; erro('');
         try {
-          await salvarLancamento(existente, campo);
+          await salvarLancamento(existente, campo, emp);
           fechar(); render();
         } catch (e) { erro(e.message || 'Não foi possível salvar.'); ev.target.disabled = false; }
       });
@@ -173,8 +188,8 @@ function lerValor(t) {
   return Number(s);
 }
 
-async function salvarLancamento(existente, campo) {
-  const emp = E.empresa;
+async function salvarLancamento(existente, campo, empresa) {
+  const emp = empresa || exigirEmpresaUnica();
   const comp = mesInterno(campo('competencia').value);
   if (!comp) throw new Error('Competência inválida: use MM/AAAA.');
   const valor = lerValor(campo('valor').value);
@@ -188,10 +203,10 @@ async function salvarLancamento(existente, campo) {
   };
 
   if (existente) {
-    checarCompetencia(existente.competencia, just);
+    checarCompetencia(existente.competencia, just, emp);
     if (comp !== existente.competencia) {
       if (existente.parcela) throw new Error('Não é possível mover a competência de uma parcela projetada.');
-      checarCompetencia(comp, just);
+      checarCompetencia(comp, just, emp);
     }
     const antigos = Loja.itens(emp, existente.competencia).filter((x) => x.id !== existente.id);
     await Loja.gravarMes(emp, existente.competencia, antigos);
@@ -201,7 +216,7 @@ async function salvarLancamento(existente, campo) {
     await Loja.gravarMes(emp, comp, destino);
     await Loja.auditar({ acao:'atualizar', entidade:'lancamento', id: existente.id, justificativa: just || null,
       antes: { valor: existente.valor, classificacao: existente.classificacao, competencia: mesExib(existente.competencia) },
-      depois: { valor, classificacao: base.classificacao, competencia: mesExib(comp) } });
+      depois: { valor, classificacao: base.classificacao, competencia: mesExib(comp) } }, emp);
     return;
   }
 
@@ -225,7 +240,7 @@ async function salvarLancamento(existente, campo) {
     ocorrencias.push({ comp, valor, parcela: null, qtdParcelas: null });
   }
 
-  for (const o of ocorrencias) checarCompetencia(o.comp, just);
+  for (const o of ocorrencias) checarCompetencia(o.comp, just, emp);
   const grupo = novoId();
   const porMes = new Map();
   for (const o of ocorrencias) {
@@ -236,7 +251,7 @@ async function salvarLancamento(existente, campo) {
   for (const [m, itens] of porMes) await Loja.gravarMes(emp, m, itens);
   await Loja.auditar({ acao:'criar', entidade:'lancamento', id: grupo, justificativa: just || null,
     depois: { tipo: base.tipo, natureza, classificacao: base.classificacao,
-      competencia: mesExib(comp), ocorrencias: ocorrencias.length, valor_total: reais(somaC(ocorrencias.map((o)=>o.valor))) } });
+      competencia: mesExib(comp), ocorrencias: ocorrencias.length, valor_total: reais(somaC(ocorrencias.map((o)=>o.valor))) } }, emp);
 }
 
 // ------------------------------------------------------- reclassificar/excluir
@@ -251,7 +266,7 @@ function reclassificar(l) {
     rotulo: 'Reclassificar',
     exigeJustificativa: !futura,
     async aoConfirmar(just) {
-      const emp = E.empresa, alvos = [];
+      const emp = l.empresa || exigirEmpresaUnica(), alvos = [];
       const grupo = l.grupo;
       for (const [k, doc] of E.lanc) {
         if (!k.startsWith(emp + '__')) continue;
@@ -263,7 +278,7 @@ function reclassificar(l) {
         }
       }
       for (const a of alvos) {
-        if (a.comp > mesHoje()) checarCompetencia(a.comp, 'reclassificação futura'); else checarCompetencia(a.comp, just);
+        if (a.comp > mesHoje()) checarCompetencia(a.comp, 'reclassificação futura', emp); else checarCompetencia(a.comp, just, emp);
       }
       const porMes = new Map();
       for (const a of alvos) {
@@ -273,7 +288,7 @@ function reclassificar(l) {
       }
       for (const [m, itens] of porMes) await Loja.gravarMes(emp, m, itens);
       await Loja.auditar({ acao:'reclassificar', entidade:'lancamento', id: l.id, justificativa: just || 'competência futura',
-        antes: { classificacao: l.classificacao }, depois: { classificacao: destino, alcancados: alvos.length } });
+        antes: { classificacao: l.classificacao }, depois: { classificacao: destino, alcancados: alvos.length } }, emp);
       render();
     },
   });
@@ -287,7 +302,7 @@ function excluirLancamento(l) {
     rotulo: 'Excluir',
     exigeJustificativa: true,
     async aoConfirmar(just) {
-      const emp = E.empresa, remover = [];
+      const emp = l.empresa || exigirEmpresaUnica(), remover = [];
       for (const [k, doc] of E.lanc) {
         if (!k.startsWith(emp + '__')) continue;
         for (const it of (doc.itens||[])) {
@@ -295,7 +310,7 @@ function excluirLancamento(l) {
           if (it.id === l.id || serieFutura) remover.push({ comp: doc.competencia, id: it.id });
         }
       }
-      for (const r of remover) checarCompetencia(r.comp, just);
+      for (const r of remover) checarCompetencia(r.comp, just, emp);
       const porMes = new Map();
       for (const r of remover) {
         if (!porMes.has(r.comp)) porMes.set(r.comp, Loja.itens(emp, r.comp).map((x)=>({...x})));
@@ -303,7 +318,7 @@ function excluirLancamento(l) {
       }
       for (const [m, itens] of porMes) await Loja.gravarMes(emp, m, itens);
       await Loja.auditar({ acao:'excluir', entidade:'lancamento', id: l.id, justificativa: just,
-        antes: { tipo: l.tipo, valor: l.valor, competencia: mesExib(l.competencia) }, depois: { removidos: remover.length } });
+        antes: { tipo: l.tipo, valor: l.valor, competencia: mesExib(l.competencia) }, depois: { removidos: remover.length } }, emp);
       render();
     },
   });

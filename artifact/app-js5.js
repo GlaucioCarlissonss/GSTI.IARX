@@ -10,8 +10,13 @@ function atrasoDe(fimPlan, fimReal, status) {
 }
 
 async function viewProjetos() {
-  const emp = E.empresa;
-  const projetos = (await Loja.projetosDa(emp)).filter((p) => !E.filial || p.filial === E.filial);
+  const emp = empresaAtiva();
+  // Com várias empresas o quadro consolida; cada projeto carrega a sua.
+  const carregados = [];
+  for (const e of escopoEmpresas()) {
+    for (const p of await Loja.projetosDa(e)) carregados.push({ ...p, empresa: e });
+  }
+  const projetos = carregados.filter((p) => passaNoFiltro(E.filiaisSel, p.filial || '(empresa)'));
   const comAtraso = projetos.map((p) => ({ ...p, ...atrasoDe(p.fimPlanejado, p.fimReal, p.status) }));
   const tarefas = projetos.flatMap((p) => (p.tarefas||[]).map((t)=>({ ...t, projeto:p.nome })));
   const carga = {};
@@ -99,8 +104,9 @@ async function viewProjetos() {
       titulo:'Excluir projeto', mensagem:`O projeto "${esc(p.nome)}" e suas tarefas serão removidos.`,
       rotulo:'Excluir', exigeJustificativa:true,
       async aoConfirmar(just) {
-        const itens = (await Loja.projetosDa(E.empresa)).filter((x)=>x.id!==p.id);
-        await Loja.gravarProjetos(E.empresa, itens);
+        const dono = p.empresa || exigirEmpresaUnica();
+        const itens = (await Loja.projetosDa(dono)).filter((x)=>x.id!==p.id);
+        await Loja.gravarProjetos(dono, itens);
         await Loja.auditar({ acao:'excluir', entidade:'projeto', id:p.id, justificativa:just, antes:{ nome:p.nome } });
         render();
       } });
@@ -108,7 +114,8 @@ async function viewProjetos() {
 }
 
 function formProjeto(existente) {
-  const fils = filiaisDa(E.empresa), ed = !!existente;
+  const dono = (existente && existente.empresa) || exigirEmpresaUnica();
+  const fils = filiaisDa(dono), ed = !!existente;
   const v = existente || { nome:'', descricao:'', filial:null, inicio:mesHoje(), fimPlanejado:'', fimReal:null, status:'planejado' };
   abrirModal({
     titulo: ed ? 'Editar projeto' : 'Novo projeto',
@@ -144,12 +151,12 @@ function formProjeto(existente) {
           let status = campo('status').value;
           if (fimReal && status !== 'cancelado') status = 'concluido';
           if (status === 'concluido' && !fimReal) throw new Error('Um projeto concluído exige o mês de fim real.');
-          const itens = [...(await Loja.projetosDa(E.empresa))];
+          const itens = [...(await Loja.projetosDa(dono))];
           const corpo = { nome, descricao: campo('descricao').value.trim() || null,
             filial: campo('filial').value || null, inicio, fimPlanejado: fimP, fimReal, status };
           if (ed) { const i = itens.findIndex((x)=>x.id===existente.id); itens[i] = { ...itens[i], ...corpo }; }
           else itens.push({ id: novoId(), ...corpo, tarefas: [], envolvidos: [] });
-          await Loja.gravarProjetos(E.empresa, itens);
+          await Loja.gravarProjetos(dono, itens);
           await Loja.auditar({ acao: ed?'atualizar':'criar', entidade:'projeto', id: ed?existente.id:corpo.nome, depois: corpo });
           fechar(); render();
         } catch (e) { erro(e.message); ev.target.disabled = false; }
@@ -217,8 +224,9 @@ function abrirProjeto(p) {
         }));
       };
       const persistir = async () => {
-        const itens = (await Loja.projetosDa(E.empresa)).map((x)=> x.id===p.id ? { ...x, tarefas, envolvidos } : x);
-        await Loja.gravarProjetos(E.empresa, itens);
+        const dono = p.empresa || exigirEmpresaUnica();
+        const itens = (await Loja.projetosDa(dono)).map((x)=> x.id===p.id ? { ...x, tarefas, envolvidos } : x);
+        await Loja.gravarProjetos(dono, itens);
       };
       raiz.querySelector('[data-c]').onclick = () => { fechar(); render(); };
       raiz.querySelector('[data-edp]').onclick = () => { fechar(); formProjeto(p); };

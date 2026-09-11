@@ -1,17 +1,8 @@
 // ===========================================================================
 // Navegação e inicialização
 // ===========================================================================
-/** Recortes da base. Sempre incluem 'manual' para que o que o gestor lança aqui não suma. */
-const BASES = [
-  { rotulo:'Completa',                 origens:null,
-    nota:'Tudo: planilhas enviadas, folha de TI rateada e projeções.' },
-  { rotulo:'Realizado (sem projeção)', origens:['planilha','folha_ti','manual'],
-    nota:'Exclui as mensalidades projetadas do SpinCare, que ainda não ocorreram.' },
-  { rotulo:'Só planilhas enviadas',    origens:['planilha','manual'],
-    nota:'Apenas as linhas importadas das suas bases, sem o rateio de folha de TI.' },
-  { rotulo:'Só projeções',             origens:['projecao_spincare'],
-    nota:'Apenas o que foi projetado e ainda não aconteceu.' },
-];
+const ORDEM_BASE = ['planilha', 'folha_ti', 'projecao_spincare', 'manual'];
+
 const ABAS = [
   { id:'painel',      rotulo:'Painel',      view: viewPainel },
   { id:'lancamentos', rotulo:'Lançamentos', view: viewLancamentos },
@@ -30,30 +21,59 @@ function pintarAbas() {
 }
 
 function pintarSeletores() {
-  const se = el('#f-empresa');
-  se.innerHTML = E.empresas.map((e)=>`<option value="${esc(e.id)}"${e.id===E.empresa?' selected':''}>${esc(e.nome)}</option>`).join('');
-  se.onchange = async () => {
-    E.empresa = se.value; E.filial = ''; E.cenario = 'oficial';
-    await garantirDados(E.empresa);
-    E.competencia = competenciaPadrao(E.empresa);
-    pintarSeletores(); render();
-  };
-  const sf = el('#f-filial');
-  sf.innerHTML = '<option value="">Todas (consolidado)</option>' +
-    filiaisDa(E.empresa).map((f)=>`<option${f.nome===E.filial?' selected':''}>${esc(f.nome)}</option>`).join('');
-  sf.onchange = () => { E.filial = sf.value; render(); };
+  const itensEmpresa = E.empresas.map((e) => ({ valor: e.id, rotulo: e.nome }));
+  const itensFilial = [
+    { valor: '(empresa)', rotulo: 'Sem filial (nível empresa)' },
+    ...filiaisDoEscopo().map((f) => ({ valor: f.nome, rotulo: f.nome })),
+  ];
+  const itensBase = ORDEM_BASE.map((o) => ({ valor: o, rotulo: ORIGENS[o].rotulo }));
 
-  const sb = el('#f-base');
-  sb.innerHTML = BASES.map((b, i) =>
-    `<option value="${i}"${i === E.baseIdx ? ' selected' : ''}>${esc(b.rotulo)}</option>`).join('');
-  sb.title = BASES[E.baseIdx].nota;
-  sb.onchange = () => {
-    E.baseIdx = +sb.value;
-    E.origens = BASES[E.baseIdx].origens ? new Set(BASES[E.baseIdx].origens) : null;
-    sb.title = BASES[E.baseIdx].nota;
-    render();
-  };
+  seletorMulti(el('[data-sel="empresa"]'), {
+    id: 'f-empresa', rotulo: 'Empresa', itens: itensEmpresa, selecionados: E.empresasSel, minimo: 1,
+    aviso: 'Com mais de uma empresa o sistema consolida. Para lançar, deixe só uma.',
+    aoMudar: async (novo) => {
+      E.empresasSel = novo;
+      // filial e cenário pertencem a uma empresa: ao trocar o conjunto, o que
+      // não existe mais no escopo precisa cair, senão o filtro esconde tudo
+      for (const e of novo) await garantirDados(e);
+      const filiaisValidas = new Set(itensFilialAtuais().map((f) => f.valor));
+      E.filiaisSel = new Set([...E.filiaisSel].filter((f) => filiaisValidas.has(f)));
+      const cenariosValidos = new Set(cenariosDoEscopo().map((c) => c.chave));
+      const cen = [...E.cenariosSel].filter((c) => cenariosValidos.has(c));
+      E.cenariosSel = new Set(cen.length ? cen : ['oficial']);
+      ajustarCompetencias();
+      pintarSeletores(); render();
+    },
+  });
+
+  seletorMulti(el('[data-sel="filial"]'), {
+    id: 'f-filial', rotulo: 'Filial', itens: itensFilial, selecionados: E.filiaisSel,
+    aoMudar: (novo) => { E.filiaisSel = novo; pintarSeletores(); render(); },
+  });
+
+  seletorMulti(el('[data-sel="base"]'), {
+    id: 'f-base', rotulo: 'Base considerada', itens: itensBase, selecionados: E.origens,
+    aviso: 'Nada marcado = tudo. Marque só "Planilhas do cliente" para comparar com a sua planilha.',
+    aoMudar: (novo) => { E.origens = novo; pintarSeletores(); render(); },
+  });
+
+  pintarFichas(el('#f-fichas'), [
+    { chave:'empresa', rotulo:'Empresa', itens:itensEmpresa, selecionados:E.empresasSel, minimo:1,
+      ocultarSeTudo:false, total:itensEmpresa.length,
+      aoMudar:(n) => { E.empresasSel = n; ajustarCompetencias(); pintarSeletores(); render(); } },
+    { chave:'filial', rotulo:'Filial', itens:itensFilial, selecionados:E.filiaisSel,
+      ocultarSeTudo:true, total:itensFilial.length,
+      aoMudar:(n) => { E.filiaisSel = n; pintarSeletores(); render(); } },
+    { chave:'base', rotulo:'Base', itens:itensBase, selecionados:E.origens,
+      ocultarSeTudo:true, total:itensBase.length,
+      aoMudar:(n) => { E.origens = n; pintarSeletores(); render(); } },
+  ]);
 }
+
+const itensFilialAtuais = () => [
+  { valor: '(empresa)', rotulo: 'Sem filial (nível empresa)' },
+  ...filiaisDoEscopo().map((f) => ({ valor: f.nome, rotulo: f.nome })),
+];
 
 let renderizando = false;
 async function render() {
@@ -72,6 +92,10 @@ async function render() {
 async function garantirDados(empresa) {
   if (!E.mesesCarregados.has(empresa)) await Loja.lancDaEmpresa(empresa);
   await Loja.fechamentosDa(empresa);
+}
+
+async function garantirEscopo() {
+  for (const e of E.empresasSel) await garantirDados(e);
 }
 
 function semBanco(motivo) {
@@ -95,10 +119,10 @@ function semBanco(motivo) {
         <p style="color:var(--tinta2)">Nenhuma empresa cadastrada ainda nesta base.</p></section>`;
       return;
     }
-    E.baseIdx = 0; E.origens = null;
-    E.empresa = E.empresas[0].id;
-    await garantirDados(E.empresa);
-    E.competencia = competenciaPadrao(E.empresa);
+    E.empresasSel = new Set([E.empresas[0].id]);
+    await garantirEscopo();
+    E.cenariosSel = new Set(['oficial']);
+    E.competencias = new Set([competenciaPadrao()]);
     pintarSeletores();
     await render();
   } catch (e) {

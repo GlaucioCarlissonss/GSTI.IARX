@@ -4,6 +4,7 @@
 // justamente no estado mais arriscado — com TODAS as empresas carregadas na
 // memória ao mesmo tempo, que é o que a aba Conferência provoca.
 const { chromium } = require('playwright');
+const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs');
 
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
@@ -25,9 +26,9 @@ const { chromium } = require('playwright');
   console.log('ISOLAMENTO — totais com uma empresa por vez');
   const sozinhas = {};
   for (const id of ['alianca', 'milagres', 'moove', 'residencial', 'union']) {
-    await pag.selectOption('#f-empresa', id);
+    await usarEmpresas(pag, id);
     await pag.waitForTimeout(600);
-    sozinhas[id] = await pag.evaluate(() => Loja.todos(E.empresa)
+    sozinhas[id] = await pag.evaluate(() => Loja.todos(empresaAtiva())
       .filter((l) => l.cenario === 'oficial').reduce((s, l) => s + Math.round(l.valor * 100), 0));
     console.log(`    ${id.padEnd(12)} ${String(sozinhas[id]).padStart(10)}`);
   }
@@ -42,9 +43,9 @@ const { chromium } = require('playwright');
 
   console.log('\n  totais com todas carregadas');
   for (const id of Object.keys(sozinhas)) {
-    await pag.selectOption('#f-empresa', id);
+    await usarEmpresas(pag, id);
     await pag.waitForTimeout(500);
-    const agora = await pag.evaluate(() => Loja.todos(E.empresa)
+    const agora = await pag.evaluate(() => Loja.todos(empresaAtiva())
       .filter((l) => l.cenario === 'oficial').reduce((s, l) => s + Math.round(l.valor * 100), 0));
     confere(`${id} não mudou`, agora, sozinhas[id]);
   }
@@ -65,7 +66,7 @@ const { chromium } = require('playwright');
 
   // escrita numa empresa não toca a outra
   console.log('\n  escrita isolada');
-  await pag.selectOption('#f-empresa', 'moove');
+  await usarEmpresas(pag, 'moove');
   await pag.waitForTimeout(500);
   const antesUnion = sozinhas.union;
   await pag.evaluate(async () => {
@@ -75,17 +76,17 @@ const { chromium } = require('playwright');
       descricao:'só da MOOVE', obs:null, parcela:null, qtdParcelas:null });
     await Loja.gravarMes('moove', '2026-06', itens);
   });
-  await pag.selectOption('#f-empresa', 'union');
+  await usarEmpresas(pag, 'union');
   await pag.waitForTimeout(600);
-  const depoisUnion = await pag.evaluate(() => Loja.todos(E.empresa)
+  const depoisUnion = await pag.evaluate(() => Loja.todos(empresaAtiva())
     .filter((l) => l.cenario === 'oficial').reduce((s, l) => s + Math.round(l.valor * 100), 0));
   confere('UNION intacta após escrita na MOOVE', depoisUnion, antesUnion);
   confere('lançamento da MOOVE não aparece na UNION',
-    await pag.evaluate(() => Loja.todos(E.empresa).some((l) => l.descricao === 'só da MOOVE')), false);
-  await pag.selectOption('#f-empresa', 'moove');
+    await pag.evaluate(() => Loja.todos(empresaAtiva()).some((l) => l.descricao === 'só da MOOVE')), false);
+  await usarEmpresas(pag, 'moove');
   await pag.waitForTimeout(500);
   confere('lançamento aparece na MOOVE',
-    await pag.evaluate(() => Loja.todos(E.empresa).some((l) => l.descricao === 'só da MOOVE')), true);
+    await pag.evaluate(() => Loja.todos(empresaAtiva()).some((l) => l.descricao === 'só da MOOVE')), true);
 
   // ------------------------------------------------------------- Cadastros
   console.log('\nCADASTROS');

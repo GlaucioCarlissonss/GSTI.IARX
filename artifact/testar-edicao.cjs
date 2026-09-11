@@ -2,6 +2,7 @@
 // reclassificar, excluir, fechar competência — e confere que cada um deixa
 // rastro na auditoria e move os totais como esperado.
 const { chromium } = require('playwright');
+const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs');
 
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
@@ -14,16 +15,16 @@ const { chromium } = require('playwright');
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#abas button', { timeout: 15000 });
   const ir = async (r) => { await pag.click(`#abas button:text-is("${r}")`); await pag.waitForTimeout(450); };
-  const conta = () => pag.evaluate(() => Loja.todos(E.empresa).length);
-  const soma = () => pag.evaluate(() => Loja.todos(E.empresa).reduce((s, l) => s + Math.round(l.valor * 100), 0));
-  const auditoria = () => pag.evaluate(async () => (await E.db.doc('auditoria/' + E.empresa).get()).data()?.itens?.length ?? 0);
+  const conta = () => pag.evaluate(() => Loja.todos(empresaAtiva()).length);
+  const soma = () => pag.evaluate(() => Loja.todos(empresaAtiva()).reduce((s, l) => s + Math.round(l.valor * 100), 0));
+  const auditoria = () => pag.evaluate(async () => (await E.db.doc('auditoria/' + empresaAtiva()).get()).data()?.itens?.length ?? 0);
   const confere = (nome, obtido, esperado) => {
     const ok = obtido === esperado;
     console.log(`  ${ok ? '✓' : '✗'} ${nome}: ${obtido}${ok ? '' : ' (esperado ' + esperado + ')'}`);
     if (!ok) falhas.push(nome);
   };
 
-  await pag.selectOption('#f-empresa', 'moove');
+  await usarEmpresas(pag, 'moove');
   await pag.waitForTimeout(600);
   const n0 = await conta(), s0 = await soma(), a0 = await auditoria();
   let deltaEdicao = 0;   // acumula o que a edição do passo 4b mexeu na soma
@@ -67,17 +68,17 @@ const { chromium } = require('playwright');
   await salvar();
   confere('lançamentos (4 parcelas)', await conta(), n0 + 5);
   confere('soma (centavos)', await soma(), s0 + 150000 + 400000);
-  const parcelas = await pag.evaluate(() => Loja.todos(E.empresa)
+  const parcelas = await pag.evaluate(() => Loja.todos(empresaAtiva())
     .filter((l) => l.descricao === 'Teste — parcelado')
     .sort((a, b) => a.competencia.localeCompare(b.competencia))
     .map((l) => `${l.competencia} ${l.valor} p${l.parcela}/${l.qtdParcelas}`));
   console.log('    ' + parcelas.join(' | '));
-  const mesmoGrupo = await pag.evaluate(() => new Set(Loja.todos(E.empresa)
+  const mesmoGrupo = await pag.evaluate(() => new Set(Loja.todos(empresaAtiva())
     .filter((l) => l.descricao === 'Teste — parcelado').map((l) => l.grupo)).size);
   confere('série num único grupo', mesmoGrupo, 1);
 
   // 3. origem dos lançamentos criados aqui
-  const origens = await pag.evaluate(() => [...new Set(Loja.todos(E.empresa)
+  const origens = await pag.evaluate(() => [...new Set(Loja.todos(empresaAtiva())
     .filter((l) => String(l.descricao || '').startsWith('Teste —')).map((l) => l.origem))]);
   console.log('\n3. origem dos criados na tela');
   confere('origem', origens.join(','), 'manual');
@@ -85,7 +86,7 @@ const { chromium } = require('playwright');
   // 4. reclassificar a série
   console.log('\n4. reclassificar a série (investimento → despesa)');
   await ir('Lançamentos');
-  const idSerie = await pag.evaluate(() => Loja.todos(E.empresa)
+  const idSerie = await pag.evaluate(() => Loja.todos(empresaAtiva())
     .find((l) => l.descricao === 'Teste — parcelado' && l.parcela === 1)?.id);
   const btRc = await pag.$(`tbody tr[data-id="${idSerie}"] [data-rc]`);
   if (btRc) {
@@ -94,7 +95,7 @@ const { chromium } = require('playwright');
     await pag.fill('.modal [name="just"]', 'verificação');
     await pag.click('.modal [data-sim]');
     await pag.waitForTimeout(900);
-    const despesas = await pag.evaluate(() => Loja.todos(E.empresa)
+    const despesas = await pag.evaluate(() => Loja.todos(empresaAtiva())
       .filter((l) => l.descricao === 'Teste — parcelado' && l.classificacao === 'despesa').length);
     confere('parcelas reclassificadas', despesas, 4);
   } else { console.log('    linha da série não encontrada'); falhas.push('linha da série'); }
@@ -103,7 +104,7 @@ const { chromium } = require('playwright');
   console.log('\n4b. editar um lançamento das planilhas');
   await ir('Lançamentos');
   const alvo = await pag.evaluate(() => {
-    const l = Loja.todos(E.empresa).find((x) => x.origem === 'planilha' && x.competencia < mesHoje());
+    const l = Loja.todos(empresaAtiva()).find((x) => x.origem === 'planilha' && x.competencia < mesHoje());
     return l ? { id: l.id, comp: l.competencia, valor: l.valor, origem: l.origem, tipo: l.tipo } : null;
   });
   if (!alvo) { console.log('    nenhum lançamento de planilha para editar'); falhas.push('alvo de edição'); }
@@ -132,7 +133,7 @@ const { chromium } = require('playwright');
       await pag.click('.modal .acoes .bt.pri');
       await pag.waitForTimeout(900);
       const depois = await pag.evaluate((id) => {
-        const l = Loja.todos(E.empresa).find((x) => x.id === id);
+        const l = Loja.todos(empresaAtiva()).find((x) => x.id === id);
         return l ? { valor: l.valor, origem: l.origem, comp: l.competencia } : null;
       }, alvo.id);
       console.log('    depois:', JSON.stringify(depois));
@@ -147,7 +148,7 @@ const { chromium } = require('playwright');
 
   // 5. excluir o pontual único
   console.log('\n5. excluir o lançamento pontual único');
-  const idUnico = await pag.evaluate(() => Loja.todos(E.empresa)
+  const idUnico = await pag.evaluate(() => Loja.todos(empresaAtiva())
     .find((l) => l.descricao === 'Teste — pontual única')?.id);
   const btEx = await pag.$(`tbody tr[data-id="${idUnico}"] [data-ex]`);
   if (btEx) {
@@ -176,7 +177,7 @@ const { chromium } = require('playwright');
   await pag.fill('#fc-comp', '05/2026');
   await pag.click('#fc-fechar');
   await pag.waitForTimeout(900);
-  const fechadas = await pag.evaluate(() => (E.fechamentos.get(E.empresa) || []).map((f) => f.comp || f));
+  const fechadas = await pag.evaluate(() => (E.fechamentos.get(empresaAtiva()) || []).map((f) => f.comp || f));
   confere('competências fechadas', fechadas.join(','), '2026-05');
 
   const bloqueio = await pag.evaluate(() => {
@@ -185,9 +186,9 @@ const { chromium } = require('playwright');
   });
   confere('escrita em competência fechada', bloqueio, 'bloqueou');
   confere('importação enxerga o fechamento',
-    await pag.evaluate(() => competenciaFechada(E.empresa, '2026-05')), true);
+    await pag.evaluate(() => competenciaFechada(empresaAtiva(), '2026-05')), true);
   confere('competência aberta continua livre',
-    await pag.evaluate(() => competenciaFechada(E.empresa, '2026-06')), false);
+    await pag.evaluate(() => competenciaFechada(empresaAtiva(), '2026-06')), false);
 
   // reabrir devolve a competência
   const btReabrir = await pag.$('tr[data-fc="2026-05"] [data-reabrir]');
@@ -198,7 +199,7 @@ const { chromium } = require('playwright');
     await pag.click('.modal [data-sim]');
     await pag.waitForTimeout(900);
     confere('após reabrir, escrita liberada',
-      await pag.evaluate(() => competenciaFechada(E.empresa, '2026-05')), false);
+      await pag.evaluate(() => competenciaFechada(empresaAtiva(), '2026-05')), false);
   } else { console.log('    botão Reabrir não encontrado'); falhas.push('botão Reabrir'); }
 
   // 7. trilha de auditoria

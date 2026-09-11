@@ -2,6 +2,7 @@
 // O atraso e os percentuais são derivados, então o teste confere a derivação,
 // não só se a tela monta.
 const { chromium } = require('playwright');
+const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs');
 
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
@@ -46,13 +47,13 @@ const { chromium } = require('playwright');
     if (e) { console.log('    erro do formulário: ' + e); falhas.push('form: ' + e); await pag.keyboard.press('Escape'); }
   };
 
-  await pag.selectOption('#f-empresa', 'moove');
+  await usarEmpresas(pag, 'moove');
   await pag.waitForTimeout(600);
 
   // ---------------------------------------------------------------- Projetos
   console.log('PROJETOS');
   await ir('Projetos');
-  const antes = await pag.evaluate(() => (E.projetos.get(E.empresa) || []).length);
+  const antes = await pag.evaluate(() => (E.projetos.get(empresaAtiva()) || []).length);
 
   await pag.click('#pagina button:text-matches("Novo projeto|Adicionar|Novo", "i")');
   await pag.waitForSelector('.modal', { timeout: 6000 });
@@ -70,11 +71,11 @@ const { chromium } = require('playwright');
     fimReal: '06/2026', status: 'concluido' });
   await salvar();
 
-  confere('projetos criados', await pag.evaluate(() => (E.projetos.get(E.empresa) || []).length), antes + 3);
+  confere('projetos criados', await pag.evaluate(() => (E.projetos.get(empresaAtiva()) || []).length), antes + 3);
 
   // o atraso é derivado, nunca digitado
   const atrasos = await pag.evaluate(() => {
-    const ps = E.projetos.get(E.empresa) || [];
+    const ps = E.projetos.get(empresaAtiva()) || [];
     const de = (n) => { const p = ps.find((x) => x.nome === n); return p ? atrasoDe(p.fimPlanejado, p.fimReal, p.status) : null; };
     return { atrasado: de('Projeto atrasado'), noPrazo: de('Projeto no prazo'), tarde: de('Projeto concluído tarde') };
   });
@@ -95,7 +96,7 @@ const { chromium } = require('playwright');
   // --------------------------------------------------------------------- SLA
   console.log('\nSLA');
   await ir('SLA');
-  const slaAntes = await pag.evaluate(async () => (await Loja.slaDa(E.empresa)).length);
+  const slaAntes = await pag.evaluate(async () => (await Loja.slaDa(empresaAtiva())).length);
 
   const registrar = async (campos) => {
     await pag.click('#pagina button:text-matches("Registrar|Novo|Adicionar", "i")');
@@ -107,8 +108,8 @@ const { chromium } = require('playwright');
   await registrar({ comp: '08/2026', fila: 'Sistema', topico: 'ERP', total: '50', dentro: '20' });
 
   const sla = await pag.evaluate(async () => {
-    E.sla.delete(E.empresa);
-    const its = await Loja.slaDa(E.empresa);
+    E.sla.delete(empresaAtiva());
+    const its = await Loja.slaDa(empresaAtiva());
     return its.map((s) => ({ comp: s.competencia, fila: s.fila, total: s.total, dentro: s.dentro,
       guardaFora: Object.prototype.hasOwnProperty.call(s, 'fora') }));
   });
@@ -159,7 +160,7 @@ const { chromium } = require('playwright');
   await pag.waitForSelector('#d-saida-imp .msg', { timeout: 20000 });
   await pag.waitForTimeout(500);
   console.log('   ', (await pag.$eval('#d-saida-imp .msg', (e) => e.textContent)).trim().replace(/\s+/g, ' '));
-  const depois = await pag.evaluate(async () => { E.sla.delete(E.empresa); return (await Loja.slaDa(E.empresa)).length; });
+  const depois = await pag.evaluate(async () => { E.sla.delete(empresaAtiva()); return (await Loja.slaDa(empresaAtiva())).length; });
   confere('reimportar SLA não duplica', depois, slaAntes + 2);
 
   console.log('\n=== falhas: ' + (falhas.length ? falhas.join('; ') : 'nenhuma') + ' ===');

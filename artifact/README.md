@@ -30,6 +30,7 @@ seguintes ficam em TDZ quando ele executa.
 | `app-js5.js` | projetos: Gantt mensal, tarefas, envolvidos |
 | `app-js6.js` | SLA, cadastros e trilha de auditoria |
 | `app-js8.js` | conferência: de onde vem cada real |
+| `app-js12.js` | seletor de múltipla escolha e as fichas do que está selecionado |
 | `app-js7.js` | abas, seletores globais e inicialização |
 
 ## Testar
@@ -45,6 +46,31 @@ node testar.cjs
 
 `dados/` fica fora do git: são os documentos reais do cliente (nomes de
 colaboradores nas descrições de folha, valores contratuais).
+
+## Filtros
+
+Todo filtro é seleção múltipla com caixas, e o que está escolhido aparece em
+fichas removíveis logo abaixo — a escolha fica na tela sem precisar reabrir o
+seletor.
+
+| filtro | vazio significa | observação |
+|---|---|---|
+| Empresa | — (mínimo 1) | com mais de uma o sistema consolida; para escrever, deixe uma só |
+| Filial | todas | `(empresa)` é o nível sem filial |
+| Base considerada | todas as procedências | substituiu os quatro recortes fixos |
+| Competência | — (mínimo 1) | vários meses somam; o painel passa a falar em período |
+| Cenário | — (mínimo 1) | vários **comparam**, não somam |
+| Tipo, Natureza, Classificação | todos | em Lançamentos |
+
+**Cenário é a exceção que precisa de cuidado.** Cenários são alternativas: o
+`spincare_desconto_12` contém as mesmas mensalidades do oficial, com desconto.
+Somá-los contaria a mesma despesa duas vezes. Com mais de um marcado o painel
+entra em modo de comparação — um indicador por cenário, uma série por cenário
+no gráfico, e os rankings saem de cena até sobrar um só.
+
+**Escrita exige empresa única.** Criar, editar e excluir precisam saber a quem
+o registro pertence. Com várias empresas marcadas, o botão de lançar fica
+desabilitado e as abas Cadastros e Dados explicam o motivo em vez de falhar.
 
 ## Origem do lançamento
 
@@ -98,6 +124,7 @@ Quatro suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-coerencia.cjs` | os números de cada tela fecham entre si: KPI × rankings, conferência por origem × mês a mês, rodapé × linhas |
 | `testar-projetos-sla.cjs` | projetos (atraso e desvio derivados), SLA (percentual, recusa de `dentro > total`) e o ciclo de planilha do SLA |
 | `testar-isolamento.cjs` | nada atravessa a empresa, inclusive com as cinco carregadas em memória; cadastros não vazam |
+| `testar-multi.cjs` | filtros de múltipla escolha: somar meses, consolidar empresas, recortar por procedência, comparar cenários, fichas e mínimos |
 | `testar-dados.cjs` | exportar, reimportar sem duplicar, importar planilha quebrada sem derrubar o lote |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais

@@ -20,9 +20,9 @@ function resumoPorOrigem(lancamentos) {
 }
 
 function viewConferencia() {
-  const emp = E.empresa;
-  const nomeEmp = (E.empresas.find((e) => e.id === emp) || {}).nome || emp;
-  const todos = Loja.todos(emp).filter((l) => l.cenario === E.cenario);
+  const cenarios = ordenado(E.cenariosSel);
+  const nomeEmp = E.empresasSel.size === 1 ? nomeEmpresa([...E.empresasSel][0]) : `${E.empresasSel.size} empresas`;
+  const todos = Loja.todosDoEscopo().filter(noCenario);
   const res = resumoPorOrigem(todos);
   const totalC = ORDEM_ORIGEM.reduce((s, o) => s + res[o].c, 0);
   const baseC = res.planilha.c;
@@ -43,7 +43,7 @@ function viewConferencia() {
 
   // Conferência cruzada: todas as empresas, para bater com o total geral do grupo.
   const porEmpresa = E.empresas.map((e) => {
-    const ls = Loja.todos(e.id).filter((l) => l.cenario === E.cenario);
+    const ls = Loja.todos(e.id).filter(noCenario);
     return { id:e.id, nome:e.nome, carregada: E.mesesCarregados.has(e.id), r: resumoPorOrigem(ls) };
   });
   const faltam = porEmpresa.filter((x) => !x.carregada).length;
@@ -56,7 +56,7 @@ function viewConferencia() {
       linha a linha e decidir o que entra no número oficial.</div>
 
     <div class="filtros">
-      <div class="campo"><label for="c-cen">Cenário de projeção</label><select id="c-cen"></select></div>
+      <div class="campo"><label for="c-cen">Cenário de projeção</label><div data-sel="ccen"></div></div>
       <div style="margin-left:auto;font-size:12px;color:var(--tinta3);max-width:460px">
         <strong>${esc(nomeEmp)}</strong> · consolidado, todas as filiais ·
         ${inteiro(todos.length)} lançamentos · ${meses.length ? mesExib(meses[0]) + ' a ' + mesExib(meses[meses.length-1]) : 'sem competências'}
@@ -75,7 +75,7 @@ function viewConferencia() {
     </div>
 
     <section class="bloco">
-      <header><h2>Composição por origem</h2><span class="nota">cenário ${esc(E.cenario)}</span></header>
+      <header><h2>Composição por origem</h2><span class="nota">${esc(cenarios.map((c) => (cenariosDoEscopo().find((x) => x.chave === c) || {}).nome || c).join(' + '))}</span></header>
       <div class="rol"><table>
         <thead><tr><th>Origem</th><th>O que é</th><th class="n">Lançamentos</th><th class="n">Valor</th>
           <th class="n">% do total</th><th>Período</th></tr></thead>
@@ -137,10 +137,12 @@ function viewConferencia() {
       para tirá-la de todos os números, ou vá em <strong>Lançamentos</strong> e edite linha a linha —
       toda alteração fica na trilha de auditoria.</div>`;
 
-  const sc = el('#c-cen');
-  sc.innerHTML = cenariosDa(emp).map((c) =>
-    `<option value="${esc(c.chave)}"${c.chave===E.cenario?' selected':''}>${esc(c.nome)}</option>`).join('');
-  sc.onchange = () => { E.cenario = sc.value; render(); };
+  const itensCCen = cenariosDoEscopo().map((c) => ({ valor: c.chave, rotulo: c.nome }));
+  seletorMulti(el('[data-sel="ccen"]'), {
+    id: 'c-cen', rotulo: 'Cenário de projeção', itens: itensCCen, selecionados: E.cenariosSel, minimo: 1,
+    aviso: 'Cenários são alternativas: marcar vários soma linhas que representam a mesma despesa.',
+    aoMudar: (novo) => { E.cenariosSel = novo; ajustarCompetencias(); render(); },
+  });
 
   barras(el('#gc'), serie, usadas.map((o) => ({ k:o, nome:ORIGENS[o].curto, cor:COR_ORIGEM[o] })), 'empilhado');
 

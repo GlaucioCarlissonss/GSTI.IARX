@@ -49,18 +49,40 @@ function ratear(totalCent, n) {
 const E = {
   db: null, pronto: false, erro: null,
   empresas: [], filiais: [], tipos: [], filas: [], cenarios: [],
-  empresa: null, filial: '', aba: 'painel',
+  aba: 'painel',
   lanc: new Map(),          // 'empresa__comp' -> {itens:[...]}
   mesesCarregados: new Set(),
   projetos: new Map(),      // empresa -> {itens:[...]}
   sla: new Map(),           // 'empresa__comp' -> {itens:[...]}
   fechamentos: new Map(),   // empresa -> [comp]
-  competencia: null,
-  cenario: 'oficial',
-  baseIdx: 0,
-  origens: null,            // null = todas; Set de chaves quando o gestor restringe a base
-  filtros: { tipo:'', natureza:'', classificacao:'', busca:'', de:'', ate:'' },
+
+  // Todo filtro é um conjunto. Vazio quer dizer "todos" onde isso faz sentido;
+  // onde não faz (empresa, competência, cenário) o seletor impede esvaziar.
+  empresasSel: new Set(),
+  filiaisSel: new Set(),    // vazio = todas; '(empresa)' é o nível sem filial
+  origens: new Set(),       // vazio = todas as procedências
+  competencias: new Set(),
+  cenarios: new Set(['oficial']),
+  filtros: { tipos: new Set(), naturezas: new Set(), classificacoes: new Set(), busca:'', de:'', ate:'' },
 };
+
+/**
+ * Empresa em que se escreve. Criar, editar e excluir precisam de uma só — com
+ * várias selecionadas o sistema não teria como saber a quem o registro pertence.
+ */
+const empresaAtiva = () => (E.empresasSel.size === 1 ? [...E.empresasSel][0] : null);
+
+/** Escrita exige uma empresa só; sem isso o registro não teria dono. */
+function exigirEmpresaUnica() {
+  const e = empresaAtiva();
+  if (!e) {
+    throw new Error('Há ' + E.empresasSel.size + ' empresas selecionadas. ' +
+      'Para criar ou alterar registros, deixe apenas uma marcada no seletor Empresa.');
+  }
+  return e;
+}
+const nomeEmpresa = (id) => (E.empresas.find((e) => e.id === id) || {}).nome || id;
+const escopoEmpresas = () => [...E.empresasSel];
 
 const Loja = {
   async catalogos() {
@@ -76,14 +98,18 @@ const Loja = {
   },
   chave: (empresa, comp) => empresa + '__' + comp,
   itens(empresa, comp) { return (E.lanc.get(Loja.chave(empresa, comp)) || {}).itens || []; },
-  /** Todos os lançamentos da empresa, achatados com a competência. */
+  /** Todos os lançamentos da empresa, achatados com a competência e a empresa. */
   todos(empresa) {
     const saida = [];
     for (const [k, v] of E.lanc) {
       if (!k.startsWith(empresa + '__')) continue;
-      for (const it of (v.itens || [])) saida.push({ ...it, competencia: v.competencia });
+      for (const it of (v.itens || [])) saida.push({ ...it, competencia: v.competencia, empresa });
     }
     return saida;
+  },
+  /** Lançamentos de todas as empresas selecionadas. */
+  todosDoEscopo() {
+    return escopoEmpresas().flatMap((e) => Loja.todos(e));
   },
   async gravarMes(empresa, comp, itens) {
     const k = Loja.chave(empresa, comp);
@@ -91,9 +117,10 @@ const Loja = {
     await E.db.doc('lanc/' + k).set(corpo);
     E.lanc.set(k, corpo);
   },
-  async auditar(entrada) {
+  async auditar(entrada, empresa = empresaAtiva()) {
     try {
-      const ref = E.db.doc('auditoria/' + E.empresa);
+      if (!empresa) return;
+      const ref = E.db.doc('auditoria/' + empresa);
       const s = await ref.get();
       const itens = s.exists ? (s.data().itens || []) : [];
       itens.unshift({ ...entrada, quando: new Date().toISOString() });
@@ -152,8 +179,8 @@ function competenciaFechada(empresa, comp) {
 }
 
 /** Competência fechada bloqueia escrita; passada exige justificativa. */
-function checarCompetencia(comp, justificativa) {
-  if (competenciaFechada(E.empresa, comp)) {
+function checarCompetencia(comp, justificativa, empresa = empresaAtiva()) {
+  if (competenciaFechada(empresa, comp)) {
     throw new Error('A competência ' + mesExib(comp) + ' está fechada. Reabra-a para alterar.');
   }
   if (comp < mesHoje() && !String(justificativa || '').trim()) {
@@ -165,3 +192,14 @@ const filiaisDa = (e) => E.filiais.filter((f) => f.empresa === e);
 const tiposDa = (e) => E.tipos.filter((t) => t.empresa === e);
 const filasDa = (e) => E.filas.filter((f) => f.empresa === e);
 const cenariosDa = (e) => [{ chave:'oficial', nome:'Oficial' }, ...E.cenarios.filter((c) => c.empresa === e)];
+
+/** União dos catálogos das empresas selecionadas, sem repetir nome. */
+function unicoPorNome(lista, chave = 'nome') {
+  const vistos = new Map();
+  for (const item of lista) if (!vistos.has(item[chave])) vistos.set(item[chave], item);
+  return [...vistos.values()].sort((a, b) => String(a[chave]).localeCompare(String(b[chave]), 'pt-BR'));
+}
+const filiaisDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(filiaisDa));
+const tiposDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(tiposDa));
+const filasDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(filasDa));
+const cenariosDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(cenariosDa), 'chave');
