@@ -5,32 +5,32 @@ import {
   criarLancamento,
   excluirLancamento,
   listarCenarios,
+  listarCompetencias,
   listarLancamentos,
   listarSerie,
   obterLancamento,
   reclassificarLancamento,
 } from '../domain/financeiro.js';
 import { ctx, somenteGestor } from '../middleware/index.js';
+import { filiaisDaQuery, listaDaQuery, numerosDaQuery } from '../lib/consulta.js';
 
 export const rotasFinanceiro = Router();
 
+/**
+ * Cada filtro aceita lista: `natureza=fixa,pontual_unica`, o parâmetro
+ * repetido, ou o valor único de sempre.
+ */
 function filtrosDaQuery(query: Record<string, unknown>) {
-  const filialBruta = query.filial_id;
   return {
-    filialId:
-      filialBruta === undefined || filialBruta === ''
-        ? undefined
-        : filialBruta === 'nenhuma' || filialBruta === 'null'
-          ? null
-          : Number(filialBruta),
-    tipoDespesaId: query.tipo_despesa_id ? Number(query.tipo_despesa_id) : undefined,
-    natureza: query.natureza ? (String(query.natureza) as never) : undefined,
-    classificacao: query.classificacao ? (String(query.classificacao) as never) : undefined,
-    competencia: query.competencia ? String(query.competencia) : undefined,
+    filiais: filiaisDaQuery(query.filial_id),
+    tiposDespesaId: numerosDaQuery(query.tipo_despesa_id),
+    naturezas: listaDaQuery(query.natureza) as never,
+    classificacoes: listaDaQuery(query.classificacao) as never,
+    competencias: listaDaQuery(query.competencia),
     competenciaInicio: query.competencia_inicio ? String(query.competencia_inicio) : undefined,
     competenciaFim: query.competencia_fim ? String(query.competencia_fim) : undefined,
     busca: query.busca ? String(query.busca) : undefined,
-    cenario: query.cenario ? String(query.cenario) : undefined,
+    cenarios: listaDaQuery(query.cenario),
     limite: query.limite ? Number(query.limite) : undefined,
     offset: query.offset ? Number(query.offset) : undefined,
   };
@@ -70,6 +70,10 @@ rotasFinanceiro.post('/', somenteGestor, (req, res) => {
 });
 
 rotasFinanceiro.get('/cenarios/lista', (req, res) => res.json(listarCenarios(ctx(req))));
+
+rotasFinanceiro.get('/competencias/lista', (req, res) => {
+  res.json(listarCompetencias(ctx(req), listaDaQuery((req.query as Record<string, unknown>).cenario)));
+});
 
 rotasFinanceiro.post('/cenarios', somenteGestor, (req, res) => {
   res.status(201).json(criarCenario(ctx(req), req.body ?? {}));

@@ -13,7 +13,7 @@ import {
 import { fecharCompetencia } from '../src/domain/fechamento.js';
 import { criarFilial } from '../src/domain/cadastros.js';
 import { listarAuditoria } from '../src/domain/auditoria.js';
-import { conferenciaOrigem } from '../src/domain/dashboards.js';
+import { conferenciaOrigem, dashboardFinanceiro } from '../src/domain/dashboards.js';
 
 test('despesa parcelada projeta uma parcela por mês subsequente', () => {
   const { ctx } = ambienteLimpo();
@@ -284,4 +284,54 @@ test('a conferência separa o que veio da planilha do que o sistema acrescentou'
 
   // As linhas mensais têm de fechar com o total.
   assert.equal(c.por_competencia.reduce((s, m) => s + m.total, 0), c.total);
+});
+
+test('filtros aceitam vários valores por dimensão', () => {
+  const { ctx } = ambienteLimpo();
+  const tipo = idTipoDespesa(ctx);
+  const norte = criarFilial(ctx, { nome: 'Norte' });
+  const sul = criarFilial(ctx, { nome: 'Sul' });
+  const comum = { tipoDespesaId: tipo, justificativa: 'carga do teste' };
+
+  criarLancamento(ctx, { ...comum, filialId: norte.id, competencia: mesRelativo(-2), valor: 100,
+    natureza: 'fixa', classificacao: 'despesa' });
+  criarLancamento(ctx, { ...comum, filialId: sul.id, competencia: mesRelativo(-1), valor: 200,
+    natureza: 'pontual_unica', classificacao: 'investimento' });
+  criarLancamento(ctx, { ...comum, filialId: null, competencia: mesRelativo(0), valor: 400,
+    natureza: 'fixa', classificacao: 'despesa' });
+
+  const soma = (f: Parameters<typeof listarLancamentos>[1]) => listarLancamentos(ctx, f).total_valor;
+
+  assert.equal(soma({}), 700, 'sem filtro, tudo');
+  assert.equal(soma({ filiais: [norte.id] }), 100);
+  assert.equal(soma({ filiais: [norte.id, sul.id] }), 300, 'duas filiais somam as duas');
+  // `null` na lista é o nível empresa, que em SQL é IS NULL e não entra num IN
+  assert.equal(soma({ filiais: [norte.id, null] }), 500, 'filial mais o nível empresa');
+  assert.equal(soma({ naturezas: ['fixa', 'pontual_unica'] }), 700);
+  assert.equal(soma({ naturezas: ['pontual_unica'] }), 200);
+  assert.equal(soma({ classificacoes: ['despesa', 'investimento'] }), 700);
+  assert.equal(soma({ competencias: [mesRelativo(-2), mesRelativo(0)] }), 500, 'meses não contíguos');
+
+  // o contrato antigo, de valor único, continua valendo
+  assert.equal(soma({ filialId: norte.id }), 100);
+  assert.equal(soma({ natureza: 'fixa' }), 500);
+});
+
+test('o painel financeiro soma o período escolhido', () => {
+  const { ctx } = ambienteLimpo();
+  const tipo = idTipoDespesa(ctx);
+  const comum = { tipoDespesaId: tipo, natureza: 'fixa' as const, classificacao: 'despesa' as const,
+    justificativa: 'carga do teste' };
+  criarLancamento(ctx, { ...comum, competencia: mesRelativo(-2), valor: 100 });
+  criarLancamento(ctx, { ...comum, competencia: mesRelativo(-1), valor: 200 });
+
+  const um = dashboardFinanceiro(ctx, { competencias: [mesRelativo(-1)] });
+  assert.equal(um.totais_mes.total, 200);
+  assert.deepEqual(um.escopo.competencias, [mesRelativo(-1)]);
+
+  const dois = dashboardFinanceiro(ctx, { competencias: [mesRelativo(-2), mesRelativo(-1)] });
+  assert.equal(dois.totais_mes.total, 300, 'os dois meses somam');
+  assert.equal(dois.escopo.competencias.length, 2);
+  // a distribuição por tipo tem de fechar com o total do período
+  assert.equal(dois.por_tipo_despesa.reduce((s, t) => s + t.total, 0), 300);
 });

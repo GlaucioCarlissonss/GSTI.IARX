@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal } from '../components/base';
+import { FichasSelecao, SeletorMulti } from '../components/seletor-multi';
 import { competenciaAtual, competenciaValida, inteiro, moeda, ROTULO_NATUREZA } from '../lib/formato';
 
 interface Lancamento {
@@ -28,6 +29,11 @@ interface Pagina {
   total: number;
   total_valor: number;
   itens: Lancamento[];
+}
+
+interface Cenario {
+  chave: string;
+  nome: string;
 }
 
 interface TipoDespesa {
@@ -57,14 +63,23 @@ const ORIGEM_CURTA: Record<string, string> = {
 
 export function PaginaLancamentos() {
   const { empresa, filialId, paramFilial, filiais, ehGestor } = useSessao();
-  const [filtros, setFiltros] = useState({
+  // Cada dimensão guarda uma lista: a API aceita valores separados por vírgula.
+  const [filtros, setFiltros] = useState<{
+    competencia_inicio: string;
+    competencia_fim: string;
+    naturezas: string[];
+    classificacoes: string[];
+    tipos: string[];
+    cenarios: string[];
+    busca: string;
+  }>({
     competencia_inicio: '',
     competencia_fim: '',
-    natureza: '',
-    classificacao: '',
-    tipo_despesa_id: '',
+    naturezas: [],
+    classificacoes: [],
+    tipos: [],
+    cenarios: ['oficial'],
     busca: '',
-    cenario: 'oficial',
   });
   const [novoAberto, setNovoAberto] = useState(false);
   const [reclassificar, setReclassificar] = useState<Lancamento | null>(null);
@@ -72,17 +87,37 @@ export function PaginaLancamentos() {
   const [serie, setSerie] = useState<Lancamento[] | null>(null);
 
   const tipos = useDados<TipoDespesa[]>(() => api.get('/api/tipos-despesa'), [empresa?.id]);
+  const cenarios = useDados<Cenario[]>(() => api.get('/api/lancamentos/cenarios/lista'), [empresa?.id]);
   const consulta = useDados<Pagina>(
     () =>
       api.get('/api/lancamentos', {
         filial_id: paramFilial(),
         limite: 300,
-        ...Object.fromEntries(Object.entries(filtros).filter(([, v]) => v !== '')),
+        competencia_inicio: filtros.competencia_inicio || undefined,
+        competencia_fim: filtros.competencia_fim || undefined,
+        busca: filtros.busca || undefined,
+        natureza: filtros.naturezas.join(',') || undefined,
+        classificacao: filtros.classificacoes.join(',') || undefined,
+        tipo_despesa_id: filtros.tipos.join(',') || undefined,
+        cenario: filtros.cenarios.join(',') || undefined,
       }),
     [empresa?.id, filialId, JSON.stringify(filtros)],
   );
 
   const atualizar = (chave: string, valor: string) => setFiltros((f) => ({ ...f, [chave]: valor }));
+  const definirLista = (chave: 'naturezas' | 'classificacoes' | 'tipos' | 'cenarios') => (valores: string[]) =>
+    setFiltros((f) => ({ ...f, [chave]: valores }));
+
+  const itensTipo = (tipos.dados ?? []).map((t) => ({ valor: String(t.id), rotulo: t.nome }));
+  const itensNatureza = NATUREZAS.map((n) => ({ valor: n, rotulo: ROTULO_NATUREZA[n] ?? n }));
+  const itensClassificacao = [
+    { valor: 'despesa', rotulo: 'Despesa' },
+    { valor: 'investimento', rotulo: 'Investimento' },
+  ];
+  const itensCenario = [
+    { valor: 'oficial', rotulo: 'Oficial' },
+    ...(cenarios.dados ?? []).filter((c) => c.chave !== 'oficial').map((c) => ({ valor: c.chave, rotulo: c.nome })),
+  ];
 
   return (
     <>
@@ -104,37 +139,21 @@ export function PaginaLancamentos() {
           />
         </Campo>
         <Campo rotulo="Tipo de despesa">
-          <select value={filtros.tipo_despesa_id} onChange={(e) => atualizar('tipo_despesa_id', e.target.value)}>
-            <option value="">Todos</option>
-            {(tipos.dados ?? []).map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.nome}
-              </option>
-            ))}
-          </select>
+          <SeletorMulti rotulo="Tipo de despesa" itens={itensTipo} selecionados={filtros.tipos}
+            aoMudar={definirLista('tipos')} largura={180} />
         </Campo>
         <Campo rotulo="Natureza">
-          <select value={filtros.natureza} onChange={(e) => atualizar('natureza', e.target.value)}>
-            <option value="">Todas</option>
-            {NATUREZAS.map((n) => (
-              <option key={n} value={n}>
-                {ROTULO_NATUREZA[n]}
-              </option>
-            ))}
-          </select>
+          <SeletorMulti rotulo="Natureza" itens={itensNatureza} selecionados={filtros.naturezas}
+            aoMudar={definirLista('naturezas')} largura={160} />
         </Campo>
         <Campo rotulo="Classificação">
-          <select value={filtros.classificacao} onChange={(e) => atualizar('classificacao', e.target.value)}>
-            <option value="">Todas</option>
-            <option value="despesa">Despesa</option>
-            <option value="investimento">Investimento</option>
-          </select>
+          <SeletorMulti rotulo="Classificação" itens={itensClassificacao} selecionados={filtros.classificacoes}
+            aoMudar={definirLista('classificacoes')} largura={150} />
         </Campo>
         <Campo rotulo="Cenário">
-          <select value={filtros.cenario} onChange={(e) => atualizar('cenario', e.target.value)}>
-            <option value="oficial">Oficial</option>
-            <option value="todos">Todos os cenários</option>
-          </select>
+          <SeletorMulti rotulo="Cenário" itens={itensCenario} selecionados={filtros.cenarios}
+            aoMudar={definirLista('cenarios')} minimo={1} largura={170}
+            aviso="Cenários são alternativas: marcar vários soma linhas que representam a mesma despesa." />
         </Campo>
         <Campo rotulo="Buscar">
           <input value={filtros.busca} onChange={(e) => atualizar('busca', e.target.value)} placeholder="fornecedor, motivo…" />
@@ -145,6 +164,15 @@ export function PaginaLancamentos() {
           </button>
         )}
       </div>
+
+      <FichasSelecao
+        grupos={[
+          { chave:'tipos', rotulo:'Tipo', itens:itensTipo, selecionados:filtros.tipos, aoMudar:definirLista('tipos') },
+          { chave:'nat', rotulo:'Natureza', itens:itensNatureza, selecionados:filtros.naturezas, aoMudar:definirLista('naturezas') },
+          { chave:'cls', rotulo:'Classificação', itens:itensClassificacao, selecionados:filtros.classificacoes, aoMudar:definirLista('classificacoes') },
+          { chave:'cen', rotulo:'Cenário', itens:itensCenario, selecionados:filtros.cenarios, minimo:1, aoMudar:definirLista('cenarios') },
+        ]}
+      />
 
       {consulta.erro && <Aviso tipo="erro">{consulta.erro}</Aviso>}
 

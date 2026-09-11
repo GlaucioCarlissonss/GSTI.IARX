@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { FichasSelecao, SeletorMulti } from './seletor-multi';
 import { useSessao } from '../lib/sessao';
 
 const NAVEGACAO = [
@@ -40,7 +41,13 @@ const NAVEGACAO = [
 ];
 
 export function Layout() {
-  const { usuario, empresas, empresa, trocarEmpresa, filialId, definirFilial, filiais, sair, ehGestor } = useSessao();
+  const { usuario, empresas, empresa, trocarEmpresa, filiaisSel, definirFiliais, filiais, sair, ehGestor } =
+    useSessao();
+
+  const itensFilial = [
+    { valor: 'nenhuma', rotulo: 'Sem filial (empresa)' },
+    ...filiais.map((f) => ({ valor: String(f.id), rotulo: f.uf ? `${f.nome} — ${f.uf}` : f.nome })),
+  ];
 
   return (
     <div className="app">
@@ -83,11 +90,11 @@ export function Layout() {
           <div className="titulo">
             <h1>{empresa?.nome ?? 'Sem empresa'}</h1>
             <small>
-              {filialId === 'todas'
+              {filiaisSel.length === 0
                 ? 'Consolidado da empresa'
-                : filialId === 'nenhuma'
-                  ? 'Somente nível empresa (sem filial)'
-                  : (filiais.find((f) => f.id === filialId)?.nome ?? 'Filial')}
+                : filiaisSel.length === 1
+                  ? (itensFilial.find((i) => i.valor === String(filiaisSel[0]))?.rotulo ?? 'Filial')
+                  : `${filiaisSel.length} filiais`}
               {!ehGestor && ' · acesso somente leitura'}
             </small>
           </div>
@@ -108,26 +115,30 @@ export function Layout() {
           </div>
 
           <div className="campo">
-            <label htmlFor="sel-filial">Filial</label>
-            <select
-              id="sel-filial"
-              value={String(filialId)}
-              onChange={(e) => {
-                const v = e.target.value;
-                definirFilial(v === 'todas' || v === 'nenhuma' ? v : Number(v));
-              }}
-            >
-              <option value="todas">Todas (consolidado)</option>
-              <option value="nenhuma">Sem filial (empresa)</option>
-              {filiais.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.nome}
-                  {f.uf ? ` — ${f.uf}` : ''}
-                </option>
-              ))}
-            </select>
+            <label>Filial</label>
+            <SeletorMulti
+              rotulo="Filial"
+              largura={200}
+              itens={itensFilial}
+              selecionados={filiaisSel.map(String)}
+              aoMudar={(v) => definirFiliais(v.map((x) => (x === 'nenhuma' ? 'nenhuma' : Number(x))))}
+            />
           </div>
         </header>
+
+        {filiaisSel.length > 1 && (
+          <div style={{ padding: '0 24px 12px' }}>
+            <FichasSelecao
+              grupos={[{
+                chave: 'filial',
+                rotulo: 'Filial',
+                itens: itensFilial,
+                selecionados: filiaisSel.map(String),
+                aoMudar: (v) => definirFiliais(v.map((x) => (x === 'nenhuma' ? 'nenhuma' : Number(x)))),
+              }]}
+            />
+          </div>
+        )}
 
         <main className="pagina">
           <Outlet />

@@ -13,6 +13,7 @@ import type { Contexto } from './contexto.js';
 import { validarFilial } from './cadastros.js';
 import { garantirCompetenciaEditavel } from './fechamento.js';
 import { paraCentavos, paraReais, ratear } from './dinheiro.js';
+import { clausulaEm, clausulaEmComNulo } from '../lib/consulta.js';
 
 export type Natureza = 'fixa' | 'pontual_unica' | 'pontual_parcelada';
 export type Classificacao = 'despesa' | 'investimento';
@@ -275,52 +276,60 @@ export function obterLancamento(ctx: Contexto, id: number) {
   return apresentar(linha);
 }
 
+/**
+ * Filtro de lançamentos.
+ *
+ * Cada dimensão aceita uma lista, porque a tela deixa marcar vários valores.
+ * Os campos no singular continuam válidos — é o contrato antigo, e uma lista
+ * de um item é o mesmo filtro.
+ */
 export interface FiltroLancamentos {
   filialId?: number | null;
+  filiais?: Array<number | null>;
   incluirFiliais?: boolean;
   tipoDespesaId?: number;
+  tiposDespesaId?: number[];
   natureza?: Natureza;
+  naturezas?: Natureza[];
   classificacao?: Classificacao;
+  classificacoes?: Classificacao[];
   competenciaInicio?: string;
   competenciaFim?: string;
   competencia?: string;
+  competencias?: string[];
   busca?: string;
   /** Padrão: apenas o cenário oficial. 'todos' traz as projeções alternativas junto. */
   cenario?: string;
+  cenarios?: string[];
   limite?: number;
   offset?: number;
+}
+
+/** Junta o campo singular e o plural numa lista só. */
+function comoLista<T>(unico: T | undefined, varios: T[] | undefined): T[] | undefined {
+  const itens = [...(varios ?? []), ...(unico === undefined ? [] : [unico])];
+  return itens.length ? itens : undefined;
 }
 
 function montarFiltro(ctx: Contexto, filtro: FiltroLancamentos) {
   const condicoes = ['l.empresa_id = ?', 'l.excluido_em IS NULL'];
   const params: unknown[] = [ctx.empresaId];
+  const aplicar = (c: { sql: string; params: unknown[] } | null) => {
+    if (!c) return;
+    condicoes.push(c.sql);
+    params.push(...c.params);
+  };
 
-  if (filtro.cenario !== 'todos') {
-    condicoes.push('l.cenario = ?');
-    params.push(filtro.cenario ?? CENARIO_OFICIAL);
+  const cenarios = comoLista(filtro.cenario, filtro.cenarios);
+  if (!cenarios?.includes('todos')) {
+    aplicar(clausulaEm('l.cenario', cenarios ?? [CENARIO_OFICIAL]));
   }
-  if (filtro.filialId === null) {
-    condicoes.push('l.filial_id IS NULL');
-  } else if (filtro.filialId !== undefined) {
-    condicoes.push('l.filial_id = ?');
-    params.push(filtro.filialId);
-  }
-  if (filtro.tipoDespesaId !== undefined) {
-    condicoes.push('l.tipo_despesa_id = ?');
-    params.push(filtro.tipoDespesaId);
-  }
-  if (filtro.natureza) {
-    condicoes.push('l.natureza = ?');
-    params.push(filtro.natureza);
-  }
-  if (filtro.classificacao) {
-    condicoes.push('l.classificacao = ?');
-    params.push(filtro.classificacao);
-  }
-  if (filtro.competencia) {
-    condicoes.push('l.competencia = ?');
-    params.push(paraInterno(filtro.competencia));
-  }
+  aplicar(clausulaEmComNulo('l.filial_id', comoLista(filtro.filialId, filtro.filiais)));
+  aplicar(clausulaEm('l.tipo_despesa_id', comoLista(filtro.tipoDespesaId, filtro.tiposDespesaId)));
+  aplicar(clausulaEm('l.natureza', comoLista(filtro.natureza, filtro.naturezas)));
+  aplicar(clausulaEm('l.classificacao', comoLista(filtro.classificacao, filtro.classificacoes)));
+  const competencias = comoLista(filtro.competencia, filtro.competencias);
+  aplicar(clausulaEm('l.competencia', competencias?.map(paraInterno)));
   if (filtro.competenciaInicio) {
     condicoes.push('l.competencia >= ?');
     params.push(paraInterno(filtro.competenciaInicio));
@@ -371,6 +380,28 @@ export function listarLancamentos(ctx: Contexto, filtro: FiltroLancamentos = {})
     offset,
     itens: itens.map(apresentar),
   };
+}
+
+/**
+ * Competências com movimento, para alimentar o seletor de múltipla escolha.
+ * Sem lista, a tela só poderia oferecer um campo de texto livre.
+ */
+export function listarCompetencias(ctx: Contexto, cenarios?: string[]) {
+  const alvo = cenarios?.length ? cenarios : [CENARIO_OFICIAL];
+  const linhas = db()
+    .prepare(
+      `SELECT competencia, COUNT(*) AS lancamentos, COALESCE(SUM(valor_centavos), 0) AS total
+         FROM lancamentos
+        WHERE empresa_id = ? AND excluido_em IS NULL
+          AND cenario IN (${alvo.map(() => '?').join(', ')})
+        GROUP BY competencia ORDER BY competencia`,
+    )
+    .all(ctx.empresaId, ...alvo) as Array<{ competencia: string; lancamentos: number; total: number }>;
+  return linhas.map((l) => ({
+    competencia: paraExibicao(l.competencia),
+    lancamentos: l.lancamentos,
+    total: paraReais(l.total),
+  }));
 }
 
 export interface AtualizacaoLancamento {

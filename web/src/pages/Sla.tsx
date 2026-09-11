@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal } from '../components/base';
+import { SeletorMulti } from '../components/seletor-multi';
 import { GraficoBarras, GraficoLinhas, GraficoRanking, Indicador } from '../components/graficos';
 import { competenciaAtual, competenciaValida, inteiro, mesCurto, percentual } from '../lib/formato';
 
@@ -29,20 +30,25 @@ const SERIES_SLA = [
 
 export function PaginaSla() {
   const { empresa, filialId, paramFilial } = useSessao();
-  const [competencia, setCompetencia] = useState('');
+  const [competencias, setCompetencias] = useState<string[]>([]);
 
   const consulta = useDados<DashboardSla>(
     () =>
       api.get('/api/dashboards/sla', {
         filial_id: paramFilial(),
-        competencia: competenciaValida(competencia) ? competencia : undefined,
+        competencia: competencias.join(',') || undefined,
       }),
-    [empresa?.id, filialId, competencia],
+    [empresa?.id, filialId, competencias.join(',')],
   );
 
   if (consulta.erro) return <Aviso tipo="erro">{consulta.erro}</Aviso>;
   if (!consulta.dados) return <Carregando />;
   const d = consulta.dados;
+
+  // Os meses com registro vêm da própria tendência, que já é a série do SLA.
+  const itensMes = d.tendencia_mensal
+    .filter((m) => m.total_atendidos > 0)
+    .map((m) => ({ valor: m.competencia, rotulo: m.competencia, apoio: inteiro(m.total_atendidos) }));
 
   if (d.totais_mes.total_atendidos === 0 && d.tendencia_mensal.every((m) => m.total_atendidos === 0)) {
     return (
@@ -58,13 +64,9 @@ export function PaginaSla() {
   return (
     <>
       <div className="barra-filtros">
-        <Campo rotulo="Competência" dica="Vazio = último mês com registro">
-          <input
-            value={competencia}
-            onChange={(e) => setCompetencia(e.target.value)}
-            placeholder={d.escopo.competencia}
-            style={{ width: 110 }}
-          />
+        <Campo rotulo="Competência" dica="Nenhuma = último mês com registro">
+          <SeletorMulti rotulo="Competência" largura={180} itens={itensMes}
+            selecionados={competencias} aoMudar={setCompetencias} />
         </Campo>
         <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--tinta-fraca)' }}>
           {d.escopo.consolidado ? 'Consolidado da empresa' : 'Filial selecionada'} · competência{' '}

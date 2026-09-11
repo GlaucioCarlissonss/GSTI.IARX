@@ -37,6 +37,8 @@ interface EstadoSessao {
   empresas: Empresa[];
   empresa: Empresa | null;
   filialId: number | 'todas' | 'nenhuma';
+  /** Filiais em foco. Lista vazia = todas (consolidado). `'nenhuma'` é o nível empresa. */
+  filiaisSel: Array<number | 'nenhuma'>;
   carregando: boolean;
   filiais: Filial[];
   entrar: (email: string, senha: string) => Promise<void>;
@@ -46,6 +48,7 @@ interface EstadoSessao {
   sair: () => void;
   trocarEmpresa: (id: number) => void;
   definirFilial: (valor: number | 'todas' | 'nenhuma') => void;
+  definirFiliais: (valores: Array<number | 'nenhuma'>) => void;
   recarregarFiliais: () => Promise<void>;
   /** Parâmetro de filial pronto para a query da API. */
   paramFilial: () => string | undefined;
@@ -58,7 +61,11 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [empresaId, setEmpresaId] = useState<number | null>(sessaoLocal.empresa());
-  const [filialId, setFilialId] = useState<number | 'todas' | 'nenhuma'>('todas');
+  const [filiaisSel, setFiliaisSel] = useState<Array<number | 'nenhuma'>>([]);
+  // `filialId` continua existindo para o código que só lida com uma: é a única
+  // selecionada, ou 'todas' quando o recorte é consolidado ou múltiplo.
+  const filialId: number | 'todas' | 'nenhuma' = filiaisSel.length === 1 ? filiaisSel[0]! : 'todas';
+  const setFilialId = (v: number | 'todas' | 'nenhuma') => setFiliaisSel(v === 'todas' ? [] : [v]);
   const [filiais, setFiliais] = useState<Filial[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [instalacao, setInstalacao] = useState<EstadoInstalacao | null>(null);
@@ -66,7 +73,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   const aplicarEmpresa = useCallback((id: number | null) => {
     setEmpresaId(id);
     sessaoLocal.definirEmpresa(id);
-    setFilialId('todas');
+    setFiliaisSel([]);
   }, []);
 
   const carregarSessao = useCallback(async () => {
@@ -163,6 +170,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       empresas,
       empresa,
       filialId,
+      filiaisSel,
       filiais,
       carregando,
       instalacao,
@@ -172,8 +180,10 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       sair,
       trocarEmpresa: aplicarEmpresa,
       definirFilial: setFilialId,
+      definirFiliais: setFiliaisSel,
       recarregarFiliais,
-      paramFilial: () => (filialId === 'todas' ? undefined : filialId === 'nenhuma' ? 'nenhuma' : String(filialId)),
+      // A API aceita lista separada por vírgula; vazio significa consolidado.
+      paramFilial: () => (filiaisSel.length ? filiaisSel.map(String).join(',') : undefined),
       ehGestor: empresa?.papel === 'gestor',
     }),
     [
@@ -181,6 +191,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       empresas,
       empresa,
       filialId,
+      filiaisSel,
       filiais,
       carregando,
       instalacao,

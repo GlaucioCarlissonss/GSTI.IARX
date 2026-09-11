@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { Aviso, Campo, Carregando, Cartao } from '../components/base';
+import { FichasSelecao, SeletorMulti } from '../components/seletor-multi';
 import { GraficoBarras, GraficoLinhas, GraficoRanking, Indicador } from '../components/graficos';
 import { competenciaValida, inteiro, mesCurto, moeda, moedaCurta, percentual, ROTULO_NATUREZA } from '../lib/formato';
 
@@ -42,58 +43,89 @@ const SERIES_PROJECAO = [
 
 export function PaginaFinanceiro() {
   const { empresa, paramFilial, filialId } = useSessao();
-  const [competencia, setCompetencia] = useState('');
-  const [cenario, setCenario] = useState('oficial');
+  const [competencias, setCompetencias] = useState<string[]>([]);
+  const [cenariosSel, setCenariosSel] = useState<string[]>(['oficial']);
 
   const cenarios = useDados<Cenario[]>(() => api.get('/api/lancamentos/cenarios/lista'), [empresa?.id]);
+  const meses = useDados<Array<{ competencia: string; lancamentos: number }>>(
+    () => api.get('/api/lancamentos/competencias/lista', { cenario: cenariosSel.join(',') }),
+    [empresa?.id, cenariosSel.join(',')],
+  );
   const consulta = useDados<DashboardFinanceiro>(
     () =>
       api.get('/api/dashboards/financeiro', {
         filial_id: paramFilial(),
-        competencia: competenciaValida(competencia) ? competencia : undefined,
-        cenario,
+        competencia: competencias.join(',') || undefined,
+        cenario: cenariosSel.join(','),
       }),
-    [empresa?.id, filialId, competencia, cenario],
+    [empresa?.id, filialId, competencias.join(','), cenariosSel.join(',')],
   );
+
+  // Trocar de cenário muda quais meses existem: manter uma competência que o
+  // novo cenário não tem deixaria o painel zerado num mês que o seletor sequer
+  // oferece.
+  useEffect(() => {
+    if (!meses.dados) return;
+    const validos = new Set(meses.dados.map((m) => m.competencia));
+    setCompetencias((atual) => atual.filter((c) => validos.has(c)));
+  }, [meses.dados]);
 
   if (consulta.erro) return <Aviso tipo="erro">{consulta.erro}</Aviso>;
   if (!consulta.dados) return <Carregando />;
   const d = consulta.dados;
+
+  const itensCenario = (cenarios.dados ?? [{ chave: 'oficial', nome: 'Oficial', descricao: null, lancamentos: 0 }])
+    .map((c) => ({ valor: c.chave, rotulo: c.nome, apoio: inteiro(c.lancamentos) }));
 
   const compromisso = d.projecao_12_meses.reduce((s, m) => s + m.total, 0);
 
   return (
     <>
       <div className="barra-filtros">
-        <Campo rotulo="Competência" dica="Vazio = último mês com movimento">
-          <input
-            value={competencia}
-            onChange={(e) => setCompetencia(e.target.value)}
-            placeholder={d.escopo.competencia}
-            inputMode="numeric"
-            style={{ width: 110 }}
+        <Campo rotulo="Competência" dica="Nenhuma = último mês com movimento">
+          <SeletorMulti
+            rotulo="Competência"
+            largura={180}
+            itens={(meses.dados ?? []).map((m) => ({
+              valor: m.competencia,
+              rotulo: m.competencia,
+              apoio: inteiro(m.lancamentos),
+            }))}
+            selecionados={competencias}
+            aoMudar={setCompetencias}
           />
         </Campo>
         <Campo rotulo="Cenário de projeção">
-          <select value={cenario} onChange={(e) => setCenario(e.target.value)}>
-            {(cenarios.dados ?? [{ chave: 'oficial', nome: 'Oficial', descricao: null, lancamentos: 0 }]).map((c) => (
-              <option key={c.chave} value={c.chave}>
-                {c.nome} ({inteiro(c.lancamentos)})
-              </option>
-            ))}
-          </select>
+          <SeletorMulti
+            rotulo="Cenário de projeção"
+            largura={200}
+            minimo={1}
+            aviso="Cenários são alternativas: marcar vários soma linhas que representam a mesma despesa."
+            itens={itensCenario}
+            selecionados={cenariosSel}
+            aoMudar={setCenariosSel}
+          />
         </Campo>
         <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--tinta-fraca)', maxWidth: 420 }}>
-          {d.escopo.consolidado ? 'Consolidado da empresa' : 'Filial selecionada'} · competência{' '}
-          <strong style={{ color: 'var(--tinta-2)' }}>{d.escopo.competencia}</strong>
-          {cenario !== 'oficial' && (
-            <>
-              {' · '}
-              {cenarios.dados?.find((c) => c.chave === cenario)?.descricao}
-            </>
-          )}
+          {d.escopo.consolidado ? 'Consolidado da empresa' : 'Filial selecionada'} ·{' '}
+          {competencias.length > 1 ? 'período' : 'competência'}{' '}
+          <strong style={{ color: 'var(--tinta-2)' }}>
+            {competencias.length > 1
+              ? `${competencias[0]} a ${competencias[competencias.length - 1]} · ${competencias.length} competências`
+              : d.escopo.competencia}
+          </strong>
         </div>
       </div>
+
+      <FichasSelecao
+        grupos={[
+          { chave:'comp', rotulo:'Competência',
+            itens:(meses.dados ?? []).map((m) => ({ valor:m.competencia, rotulo:m.competencia })),
+            selecionados:competencias, aoMudar:setCompetencias },
+          { chave:'cen', rotulo:'Cenário', itens:itensCenario, selecionados:cenariosSel, minimo:1,
+            aoMudar:setCenariosSel },
+        ]}
+      />
 
       <div className="grade c4">
         <Indicador

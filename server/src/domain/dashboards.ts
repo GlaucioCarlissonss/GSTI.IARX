@@ -1,5 +1,6 @@
 import { db } from '../db/index.js';
 import { CENARIO_OFICIAL, ROTULO_ORIGEM, type Origem } from './financeiro.js';
+import { clausulaEm, clausulaEmComNulo } from '../lib/consulta.js';
 import {
   competenciaAtual,
   diferencaEmMeses,
@@ -13,15 +14,33 @@ import { paraReais } from './dinheiro.js';
 import { calcularAtraso } from './projetos.js';
 import { montarFiltroSla, percentual, type FiltroSla } from './sla.js';
 
+/**
+ * Recorte de um painel.
+ *
+ * Cada dimensão aceita lista, porque os filtros da tela são de múltipla
+ * escolha. Os campos no singular seguem válidos: uma lista de um item é o
+ * mesmo recorte, e o contrato antigo continua de pé.
+ */
 export interface EscopoDashboard {
   /** `undefined` = consolidado da empresa; `null` = apenas nível empresa (sem filial); número = filial específica. */
   filialId?: number | null;
+  filiais?: Array<number | null>;
   competencia?: string;
+  competencias?: string[];
   competenciaInicio?: string;
   competenciaFim?: string;
   /** Cenário de projeção financeira. Padrão: 'oficial'. */
   cenario?: string;
+  cenarios?: string[];
 }
+
+function lista<T>(unico: T | undefined, varios: T[] | undefined): T[] | undefined {
+  const itens = [...(varios ?? []), ...(unico === undefined ? [] : [unico])];
+  return itens.length ? itens : undefined;
+}
+
+/** Cenários em foco; sem escolha, só o oficial. */
+const cenariosDoEscopo = (e: EscopoDashboard) => lista(e.cenario, e.cenarios) ?? [CENARIO_OFICIAL];
 
 /**
  * Sem competência informada, o painel abre no último mês **encerrado** com
@@ -46,8 +65,9 @@ function ultimaCompetenciaComDados(
   return linha.m;
 }
 
-function competenciaReferencia(ctx: Contexto, escopo: EscopoDashboard, cenario: string): string {
+function competenciaReferencia(ctx: Contexto, escopo: EscopoDashboard, cenarios: string[]): string {
   if (escopo.competencia) return paraInterno(escopo.competencia);
+  const cenario = cenarios[0]!;
   const atual = competenciaAtual();
   const fechada = ultimaCompetenciaComDados('lancamentos', ctx.empresaId, { coluna: 'cenario', valor: cenario }, atual);
   if (fechada) return fechada;
@@ -61,14 +81,16 @@ function competenciaReferencia(ctx: Contexto, escopo: EscopoDashboard, cenario: 
   return qualquer.m ?? atual;
 }
 
-function filtroFinanceiro(ctx: Contexto, escopo: EscopoDashboard, cenario: string) {
-  const condicoes = ['l.empresa_id = ?', 'l.excluido_em IS NULL', 'l.cenario = ?'];
-  const params: unknown[] = [ctx.empresaId, cenario];
-  if (escopo.filialId === null) condicoes.push('l.filial_id IS NULL');
-  else if (escopo.filialId !== undefined) {
-    condicoes.push('l.filial_id = ?');
-    params.push(escopo.filialId);
-  }
+function filtroFinanceiro(ctx: Contexto, escopo: EscopoDashboard, cenarios: string[]) {
+  const condicoes = ['l.empresa_id = ?', 'l.excluido_em IS NULL'];
+  const params: unknown[] = [ctx.empresaId];
+  const aplicar = (c: { sql: string; params: unknown[] } | null) => {
+    if (!c) return;
+    condicoes.push(c.sql);
+    params.push(...c.params);
+  };
+  aplicar(clausulaEm('l.cenario', cenarios));
+  aplicar(clausulaEmComNulo('l.filial_id', lista(escopo.filialId, escopo.filiais)));
   return { condicoes, params };
 }
 
@@ -77,13 +99,21 @@ function filtroFinanceiro(ctx: Contexto, escopo: EscopoDashboard, cenario: strin
 // ==========================================================================
 
 export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {}) {
-  const cenario = escopo.cenario?.trim() || CENARIO_OFICIAL;
-  const mesRef = competenciaReferencia(ctx, escopo, cenario);
-  const inicioSerie = escopo.competenciaInicio ? paraInterno(escopo.competenciaInicio) : somarMeses(mesRef, -11);
+  const cenarios = cenariosDoEscopo(escopo);
+  // Os meses escolhidos formam o período; sem escolha, o último mês encerrado
+  // com movimento. O mais recente deles ancora a série e a projeção.
+  const escolhidos = lista(escopo.competencia, escopo.competencias)?.map(paraInterno).sort();
+  const meses = escolhidos?.length ? escolhidos : [competenciaReferencia(ctx, escopo, cenarios)];
+  const mesRef = meses[meses.length - 1]!;
+  const emFoco = clausulaEm('l.competencia', meses)!;
+  const inicioSerie = escopo.competenciaInicio ? paraInterno(escopo.competenciaInicio)
+    : meses.length > 1 ? meses[0]! : somarMeses(mesRef, -11);
   const fimSerie = escopo.competenciaFim ? paraInterno(escopo.competenciaFim) : mesRef;
 
-  const { condicoes, params } = filtroFinanceiro(ctx, escopo, cenario);
+  const { condicoes, params } = filtroFinanceiro(ctx, escopo, cenarios);
   const where = condicoes.join(' AND ');
+  const nosMeses = `${where} AND ${emFoco.sql}`;
+  const paramsMeses = [...params, ...emFoco.params];
 
   // --- Totais do mês de referência
   const totaisMes = db()
@@ -92,17 +122,21 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
          COALESCE(SUM(CASE WHEN l.classificacao = 'despesa' THEN l.valor_centavos ELSE 0 END), 0) AS despesa,
          COALESCE(SUM(CASE WHEN l.classificacao = 'investimento' THEN l.valor_centavos ELSE 0 END), 0) AS investimento,
          COUNT(*) AS lancamentos
-       FROM lancamentos l WHERE ${where} AND l.competencia = ?`,
+       FROM lancamentos l WHERE ${nosMeses}`,
     )
-    .get(...params, mesRef) as { despesa: number; investimento: number; lancamentos: number };
+    .get(...paramsMeses) as { despesa: number; investimento: number; lancamentos: number };
 
-  const mesAnterior = somarMeses(mesRef, -1);
-  const totaisAnterior = db()
-    .prepare(
-      `SELECT COALESCE(SUM(l.valor_centavos), 0) AS total
-         FROM lancamentos l WHERE ${where} AND l.competencia = ?`,
-    )
-    .get(...params, mesAnterior) as { total: number };
+  // Com vários meses em foco não há "mês anterior" comparável: comparar um
+  // período de N meses com um único mês mediria coisas de tamanhos diferentes.
+  const mesAnterior = somarMeses(meses[0]!, -1);
+  const totaisAnterior = meses.length === 1
+    ? (db()
+        .prepare(
+          `SELECT COALESCE(SUM(l.valor_centavos), 0) AS total
+             FROM lancamentos l WHERE ${where} AND l.competencia = ?`,
+        )
+        .get(...params, mesAnterior) as { total: number })
+    : { total: 0 };
 
   const totalMes = totaisMes.despesa + totaisMes.investimento;
 
@@ -115,10 +149,10 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
                 COALESCE(SUM(CASE WHEN l.classificacao = 'despesa' THEN l.valor_centavos ELSE 0 END), 0) AS despesa,
                 COALESCE(SUM(CASE WHEN l.classificacao = 'investimento' THEN l.valor_centavos ELSE 0 END), 0) AS investimento
            FROM lancamentos l JOIN tipos_despesa t ON t.id = l.tipo_despesa_id
-          WHERE ${where} AND l.competencia = ?
+          WHERE ${nosMeses}
           GROUP BY t.id ORDER BY total DESC`,
       )
-      .all(...params, mesRef) as Array<{ tipo: string; total: number; despesa: number; investimento: number }>
+      .all(...paramsMeses) as Array<{ tipo: string; total: number; despesa: number; investimento: number }>
   ).map((l) => ({
     tipo: l.tipo,
     total: paraReais(l.total),
@@ -132,10 +166,10 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
     db()
       .prepare(
         `SELECT l.natureza, COALESCE(SUM(l.valor_centavos), 0) AS total, COUNT(*) AS qtd
-           FROM lancamentos l WHERE ${where} AND l.competencia = ?
+           FROM lancamentos l WHERE ${nosMeses}
           GROUP BY l.natureza`,
       )
-      .all(...params, mesRef) as Array<{ natureza: string; total: number; qtd: number }>
+      .all(...paramsMeses) as Array<{ natureza: string; total: number; qtd: number }>
   ).map((l) => ({
     natureza: l.natureza,
     total: paraReais(l.total),
@@ -205,10 +239,11 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
                 COALESCE(SUM(CASE WHEN l.classificacao = 'investimento' THEN l.valor_centavos ELSE 0 END), 0) AS investimento,
                 COALESCE(SUM(l.valor_centavos), 0) AS total
            FROM lancamentos l LEFT JOIN filiais f ON f.id = l.filial_id
-          WHERE l.empresa_id = ? AND l.excluido_em IS NULL AND l.cenario = ? AND l.competencia = ?
+          WHERE l.empresa_id = ? AND l.excluido_em IS NULL
+            AND ${clausulaEm('l.cenario', cenarios)!.sql} AND ${emFoco.sql}
           GROUP BY l.filial_id ORDER BY total DESC`,
       )
-      .all(ctx.empresaId, cenario, mesRef) as Array<{
+      .all(ctx.empresaId, ...cenarios, ...emFoco.params) as Array<{
       filial: string;
       filial_id: number | null;
       despesa: number;
@@ -226,9 +261,12 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
   return {
     escopo: {
       competencia: paraExibicao(mesRef),
+      competencias: meses.map(paraExibicao),
       filial_id: escopo.filialId ?? null,
-      consolidado: escopo.filialId === undefined,
-      cenario,
+      filiais: lista(escopo.filialId, escopo.filiais) ?? null,
+      consolidado: escopo.filialId === undefined && !escopo.filiais?.length,
+      cenario: cenarios[0]!,
+      cenarios,
       periodo_serie: { inicio: paraExibicao(inicioSerie), fim: paraExibicao(fimSerie) },
     },
     totais_mes: {

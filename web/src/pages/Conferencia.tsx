@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
-import { Aviso, Carregando, Cartao, Etiqueta } from '../components/base';
+import { useState } from 'react';
+import { Aviso, Campo, Carregando, Cartao, Etiqueta } from '../components/base';
+import { SeletorMulti } from '../components/seletor-multi';
 import { GraficoBarras, Indicador } from '../components/graficos';
 import { inteiro, mesCurto, moeda, moedaCurta, percentual } from '../lib/formato';
 
@@ -52,7 +54,13 @@ const CURTO_ORIGEM: Record<string, string> = {
 
 export function PaginaConferencia() {
   const { empresa } = useSessao();
-  const consulta = useDados<Conferencia>(() => api.get('/api/dashboards/conferencia'), [empresa?.id]);
+  const [cenariosSel, setCenariosSel] = useState<string[]>(['oficial']);
+  const cenarios = useDados<Array<{ chave: string; nome: string }>>(
+    () => api.get('/api/lancamentos/cenarios/lista'), [empresa?.id]);
+  const consulta = useDados<Conferencia>(
+    () => api.get('/api/dashboards/conferencia', { cenario: cenariosSel.join(',') }),
+    [empresa?.id, cenariosSel.join(',')],
+  );
 
   if (consulta.erro) return <Aviso tipo="erro">{consulta.erro}</Aviso>;
   if (!consulta.dados) return <Carregando />;
@@ -73,6 +81,21 @@ export function PaginaConferencia() {
         o <strong>rateio da folha de TI</strong> e a <strong>projeção do novo ERP</strong>. Aqui cada parcela
         aparece separada, para conferir e decidir o que entra no número oficial.
       </Aviso>
+
+      <div className="barra-filtros">
+        <Campo rotulo="Cenário de projeção">
+          <SeletorMulti
+            rotulo="Cenário de projeção"
+            largura={200}
+            minimo={1}
+            aviso="Cenários são alternativas: marcar vários soma linhas que representam a mesma despesa."
+            itens={(cenarios.dados ?? [{ chave: 'oficial', nome: 'Oficial' }])
+              .map((c) => ({ valor: c.chave, rotulo: c.nome }))}
+            selecionados={cenariosSel}
+            aoMudar={setCenariosSel}
+          />
+        </Campo>
+      </div>
 
       <div className="grade c4">
         <Indicador

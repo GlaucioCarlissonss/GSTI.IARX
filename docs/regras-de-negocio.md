@@ -123,6 +123,30 @@ Os indicadores derivados (% dentro, % fora, por fila, por tópico, por filial e
 tendência mensal) são calculados na consulta, nunca armazenados — não há como
 divergirem dos registros.
 
+## Filtros
+
+Todo filtro aceita **mais de um valor**. Na tela isso são caixas de seleção,
+com o que está marcado aparecendo em fichas removíveis; na API, listas
+separadas por vírgula (`natureza=fixa,pontual_unica`), o parâmetro repetido, ou
+o valor único de sempre — o contrato antigo continua válido, porque uma lista
+de um item é o mesmo filtro.
+
+Conjunto vazio significa "todos" onde isso faz sentido. Competência e cenário
+têm mínimo de um: um painel sem competência nenhuma não mostraria número algum.
+
+**Vários meses somam** e o painel passa a falar em período. A variação
+percentual só aparece com um mês em foco — comparar um período de N meses com
+o mês anterior mediria coisas de tamanhos diferentes.
+
+**Cenário é a exceção que exige cuidado.** Cenários são alternativas: o
+`spincare_desconto_12` contém as mesmas mensalidades do oficial, com desconto.
+Marcar vários soma linhas que representam a mesma despesa, e por isso o seletor
+avisa. Na versão hospedada o painel troca para comparação em vez de somar.
+
+O nível empresa (lançamento sem filial) entra na lista de filiais como
+`nenhuma` — em SQL é `IS NULL`, que não casa com `IN`, e por isso a cláusula é
+montada em separado (`lib/consulta.ts`).
+
 ## Dashboards
 
 Os três dashboards, mais uma visão executiva consolidada, sempre devolvem o

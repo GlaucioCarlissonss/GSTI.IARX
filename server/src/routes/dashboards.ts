@@ -7,23 +7,19 @@ import {
   visaoExecutiva,
 } from '../domain/dashboards.js';
 import { ctx } from '../middleware/index.js';
+import { filiaisDaQuery, listaDaQuery } from '../lib/consulta.js';
 import type { EscopoDashboard } from '../domain/dashboards.js';
 
 export const rotasDashboards = Router();
 
+/** Filial, competência e cenário aceitam lista; ver `lib/consulta.ts`. */
 function escopoDaQuery(query: Record<string, unknown>): EscopoDashboard {
-  const filial = query.filial_id;
   return {
-    filialId:
-      filial === undefined || filial === ''
-        ? undefined
-        : filial === 'nenhuma' || filial === 'null'
-          ? null
-          : Number(filial),
-    competencia: query.competencia ? String(query.competencia) : undefined,
+    filiais: filiaisDaQuery(query.filial_id),
+    competencias: listaDaQuery(query.competencia),
     competenciaInicio: query.competencia_inicio ? String(query.competencia_inicio) : undefined,
     competenciaFim: query.competencia_fim ? String(query.competencia_fim) : undefined,
-    cenario: query.cenario ? String(query.cenario) : undefined,
+    cenarios: listaDaQuery(query.cenario),
   };
 }
 
