@@ -194,6 +194,21 @@ CREATE TABLE IF NOT EXISTS tickets_sla (
   dentro_sla      INTEGER NOT NULL CHECK (dentro_sla >= 0),
   fora_sla        INTEGER NOT NULL CHECK (fora_sla >= 0),
   observacoes     TEXT,
+  -- Detalhe do chamado. Preenchido quando o registro representa UM chamado
+  -- (total_atendidos = 1), vindo do helpdesk; nulo no registro agregado mensal.
+  -- ticket_id é o id no sistema de origem, que compõe a URL do chamado lá.
+  ticket_id       INTEGER,
+  numero          TEXT,
+  assunto         TEXT,
+  solicitante     TEXT,
+  responsavel     TEXT,
+  nivel           TEXT,
+  status          TEXT,
+  origem_chamado  TEXT,
+  aberto_em       TEXT,
+  fechado_em      TEXT,
+  prazo_em        TEXT,
+  horas           REAL,
   dedup_hash      TEXT,
   excluido_em     TEXT,
   criado_em       TEXT NOT NULL DEFAULT (datetime('now')),
@@ -202,10 +217,22 @@ CREATE TABLE IF NOT EXISTS tickets_sla (
 );
 CREATE INDEX IF NOT EXISTS ix_sla_escopo ON tickets_sla(empresa_id, competencia, excluido_em);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_sla_dedup ON tickets_sla(dedup_hash) WHERE dedup_hash IS NOT NULL;
+-- O índice único de chamado (ux_sla_ticket) é criado em db/index.ts, depois das
+-- migrações: um banco anterior a estas colunas ainda não tem `ticket_id` quando
+-- este arquivo roda, e o CREATE INDEX falharia antes de a coluna existir.
 
 -- ============================================================
 -- Auditoria e importações
 -- ============================================================
+-- Configuração por empresa (chave/valor). Hoje guarda o endereço base do
+-- helpdesk, que monta o link de volta para o chamado.
+CREATE TABLE IF NOT EXISTS configuracoes (
+  empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  chave      TEXT NOT NULL,
+  valor      TEXT,
+  PRIMARY KEY (empresa_id, chave)
+);
+
 CREATE TABLE IF NOT EXISTS auditoria (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   empresa_id    INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,

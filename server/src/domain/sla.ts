@@ -16,7 +16,25 @@ interface LinhaTicket {
   dentro_sla: number;
   fora_sla: number;
   observacoes: string | null;
+  ticket_id: number | null;
+  numero: string | null;
+  assunto: string | null;
+  solicitante: string | null;
+  responsavel: string | null;
+  nivel: string | null;
+  status: string | null;
+  origem_chamado: string | null;
+  aberto_em: string | null;
+  fechado_em: string | null;
+  prazo_em: string | null;
+  horas: number | null;
 }
+
+/** Campos que só existem quando o registro é um chamado, não um agregado. */
+const CAMPOS_CHAMADO = [
+  'ticket_id', 'numero', 'assunto', 'solicitante', 'responsavel',
+  'nivel', 'status', 'origem_chamado', 'aberto_em', 'fechado_em', 'prazo_em', 'horas',
+] as const;
 
 export function percentual(parte: number, total: number): number {
   if (total <= 0) return 0;
@@ -39,6 +57,18 @@ function apresentar(linha: LinhaTicket & Record<string, unknown>) {
     pct_dentro_sla: percentual(linha.dentro_sla, linha.total_atendidos),
     pct_fora_sla: percentual(linha.fora_sla, linha.total_atendidos),
     observacoes: linha.observacoes,
+    ticket_id: linha.ticket_id,
+    numero: linha.numero,
+    assunto: linha.assunto,
+    solicitante: linha.solicitante,
+    responsavel: linha.responsavel,
+    nivel: linha.nivel,
+    status: linha.status,
+    origem_chamado: linha.origem_chamado,
+    aberto_em: linha.aberto_em,
+    fechado_em: linha.fechado_em,
+    prazo_em: linha.prazo_em,
+    horas: linha.horas,
   };
 }
 
@@ -59,6 +89,29 @@ export interface EntradaTicketSla {
   foraSla?: number | null;
   observacoes?: string | null;
   dedupHash?: string | null;
+  // Detalhe do chamado: presente quando o registro veio do helpdesk.
+  ticketId?: number | null;
+  numero?: string | null;
+  assunto?: string | null;
+  solicitante?: string | null;
+  responsavel?: string | null;
+  nivel?: string | null;
+  status?: string | null;
+  origemChamado?: string | null;
+  abertoEm?: string | null;
+  fechadoEm?: string | null;
+  prazoEm?: string | null;
+  horas?: number | null;
+}
+
+/** Valores do detalhe do chamado, na ordem de CAMPOS_CHAMADO. */
+function valoresDoChamado(e: Partial<EntradaTicketSla>): unknown[] {
+  return [
+    e.ticketId ?? null, e.numero ?? null, e.assunto ?? null, e.solicitante ?? null,
+    e.responsavel ?? null, e.nivel ?? null, e.status ?? null, e.origemChamado ?? null,
+    e.abertoEm ?? null, e.fechadoEm ?? null, e.prazoEm ?? null,
+    e.horas === null || e.horas === undefined ? null : Number(e.horas),
+  ];
 }
 
 function validarNumeros(entrada: EntradaTicketSla) {
@@ -97,11 +150,20 @@ export function registrarTicketSla(ctx: Contexto, entrada: EntradaTicketSla) {
   const topicoId = garantirTopico(ctx.empresaId, entrada.topicoAjudaId);
   const { total, dentro, fora } = validarNumeros(entrada);
 
+  // O chamado é único por empresa. O banco já garante isso com um índice; aqui
+  // a recusa vem com o motivo, em vez de um erro de restrição.
+  if (entrada.ticketId !== null && entrada.ticketId !== undefined) {
+    if (buscarPorTicketId(ctx, Number(entrada.ticketId))) {
+      throw erroValidacao(`O chamado ${entrada.ticketId} já está registrado nesta empresa.`);
+    }
+  }
+
   const info = db()
     .prepare(
       `INSERT INTO tickets_sla
-         (empresa_id, filial_id, competencia, fila_id, topico_ajuda_id, total_atendidos, dentro_sla, fora_sla, observacoes, dedup_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (empresa_id, filial_id, competencia, fila_id, topico_ajuda_id, total_atendidos, dentro_sla, fora_sla, observacoes, dedup_hash,
+          ${CAMPOS_CHAMADO.join(', ')})
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${CAMPOS_CHAMADO.map(() => '?').join(', ')})`,
     )
     .run(
       ctx.empresaId,
@@ -114,6 +176,7 @@ export function registrarTicketSla(ctx: Contexto, entrada: EntradaTicketSla) {
       fora,
       entrada.observacoes ?? null,
       entrada.dedupHash ?? null,
+      ...valoresDoChamado(entrada),
     );
   const id = Number(info.lastInsertRowid);
   auditar(ctx, {
@@ -131,6 +194,16 @@ export function obterTicketSla(ctx: Contexto, id: number) {
     .get(id, ctx.empresaId) as (LinhaTicket & Record<string, unknown>) | undefined;
   if (!linha) throw erroNaoEncontrado(`Registro de SLA ${id} não encontrado nesta empresa.`);
   return apresentar(linha);
+}
+
+/**
+ * Registro do chamado `ticketId` nesta empresa, se existir. É o que permite
+ * recarregar a mesma extração do helpdesk atualizando em vez de duplicar.
+ */
+export function buscarPorTicketId(ctx: Contexto, ticketId: number) {
+  return db()
+    .prepare('SELECT id FROM tickets_sla WHERE empresa_id = ? AND ticket_id = ? AND excluido_em IS NULL')
+    .get(ctx.empresaId, ticketId) as { id: number } | undefined;
 }
 
 export interface FiltroSla {
@@ -218,10 +291,29 @@ export function atualizarTicketSla(
     foraSla: dados.foraSla !== undefined ? dados.foraSla : dados.totalAtendidos !== undefined || dados.dentroSla !== undefined ? null : antes.fora_sla,
   });
 
+  // Campo do detalhe não enviado permanece como está: editar o total de um
+  // chamado não pode apagar o assunto nem o link de volta ao helpdesk.
+  const chamado: Partial<EntradaTicketSla> = {
+    ticketId: dados.ticketId !== undefined ? dados.ticketId : antes.ticket_id,
+    numero: dados.numero !== undefined ? dados.numero : antes.numero,
+    assunto: dados.assunto !== undefined ? dados.assunto : antes.assunto,
+    solicitante: dados.solicitante !== undefined ? dados.solicitante : antes.solicitante,
+    responsavel: dados.responsavel !== undefined ? dados.responsavel : antes.responsavel,
+    nivel: dados.nivel !== undefined ? dados.nivel : antes.nivel,
+    status: dados.status !== undefined ? dados.status : antes.status,
+    origemChamado: dados.origemChamado !== undefined ? dados.origemChamado : antes.origem_chamado,
+    abertoEm: dados.abertoEm !== undefined ? dados.abertoEm : antes.aberto_em,
+    fechadoEm: dados.fechadoEm !== undefined ? dados.fechadoEm : antes.fechado_em,
+    prazoEm: dados.prazoEm !== undefined ? dados.prazoEm : antes.prazo_em,
+    horas: dados.horas !== undefined ? dados.horas : antes.horas,
+  };
+
   db()
     .prepare(
       `UPDATE tickets_sla SET filial_id = ?, competencia = ?, fila_id = ?, topico_ajuda_id = ?,
-              total_atendidos = ?, dentro_sla = ?, fora_sla = ?, observacoes = ?, atualizado_em = datetime('now')
+              total_atendidos = ?, dentro_sla = ?, fora_sla = ?, observacoes = ?,
+              ${CAMPOS_CHAMADO.map((c) => `${c} = ?`).join(', ')},
+              atualizado_em = datetime('now')
         WHERE id = ? AND empresa_id = ?`,
     )
     .run(
@@ -233,6 +325,7 @@ export function atualizarTicketSla(
       dentro,
       fora,
       dados.observacoes !== undefined ? dados.observacoes : antes.observacoes,
+      ...valoresDoChamado(chamado),
       id,
       ctx.empresaId,
     );
@@ -256,4 +349,37 @@ export function excluirTicketSla(ctx: Contexto, id: number, justificativa?: stri
   db().prepare(`UPDATE tickets_sla SET excluido_em = datetime('now'), dedup_hash = NULL WHERE id = ?`).run(id);
   auditar(ctx, { entidade: 'ticket_sla', entidadeId: id, acao: 'excluir', justificativa: justificativa ?? null, antes });
   return { excluido: true };
+}
+
+
+/** Endereço base do helpdesk de origem: o id do chamado completa a URL. */
+export const URL_HELPDESK_PADRAO = 'https://www.suportehr.com.br/scp/tickets.php?id=';
+
+const CHAVE_URL = 'url_helpdesk';
+
+export function lerConfiguracao(ctx: Contexto) {
+  const linha = db()
+    .prepare('SELECT valor FROM configuracoes WHERE empresa_id = ? AND chave = ?')
+    .get(ctx.empresaId, CHAVE_URL) as { valor: string | null } | undefined;
+  return { url_helpdesk: linha?.valor || URL_HELPDESK_PADRAO };
+}
+
+export function gravarUrlHelpdesk(ctx: Contexto, url: string | null) {
+  const valor = (url ?? '').trim();
+  if (valor && !/^https?:\/\//i.test(valor)) {
+    throw erroValidacao('O endereço do helpdesk precisa começar com http:// ou https://.');
+  }
+  db()
+    .prepare(
+      `INSERT INTO configuracoes (empresa_id, chave, valor) VALUES (?, ?, ?)
+         ON CONFLICT(empresa_id, chave) DO UPDATE SET valor = excluded.valor`,
+    )
+    .run(ctx.empresaId, CHAVE_URL, valor || null);
+  auditar(ctx, {
+    entidade: 'configuracao',
+    entidadeId: 0,
+    acao: 'atualizar',
+    depois: { chave: CHAVE_URL, valor: valor || null },
+  });
+  return lerConfiguracao(ctx);
 }

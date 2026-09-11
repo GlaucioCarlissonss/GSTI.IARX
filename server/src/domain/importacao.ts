@@ -90,6 +90,35 @@ function interpretarBooleano(bruto: string | undefined, padrao = true): boolean 
   return ['1', 'sim', 's', 'true', 'verdadeiro', 'ativo', 'x'].includes(normalizarCabecalho(String(bruto)));
 }
 
+/**
+ * Data/hora do chamado. Aceita ISO (`2026-09-10T20:31Z`), `dd/mm/aaaa hh:mm` e
+ * `dd/mm/aaaa`, que é o que sai tanto do helpdesk quanto do Excel. Guarda em
+ * ISO, para comparar e ordenar com operador de string.
+ */
+function interpretarDataHora(bruto: unknown): string | null {
+  const texto = String(bruto ?? '').trim();
+  if (!texto) return null;
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})(?:[ T](\d{2}):(\d{2}))?/.exec(texto);
+  if (br) {
+    const [, d, m, a, hh, mm] = br;
+    return `${a}-${m}-${d}T${hh ?? '00'}:${mm ?? '00'}Z`;
+  }
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(texto);
+  if (iso) {
+    const [, a, m, d, hh, mm] = iso;
+    return `${a}-${m}-${d}T${hh ?? '00'}:${mm ?? '00'}Z`;
+  }
+  throw new Error(`Data "${texto}" inválida. Use dd/mm/aaaa hh:mm ou AAAA-MM-DDThh:mm.`);
+}
+
+function interpretarDecimal(bruto: unknown): number | null {
+  const texto = String(bruto ?? '').trim().replace(',', '.');
+  if (!texto) return null;
+  const n = Number(texto);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`"Horas" com valor "${bruto}" inválido.`);
+  return n;
+}
+
 function interpretarInteiro(bruto: unknown): number | null {
   if (bruto === null || bruto === undefined || String(bruto).trim() === '') return null;
   const texto = String(bruto).trim().replace(/\.0+$/, '');
@@ -773,11 +802,88 @@ function importarSla(
   }
 
   const filialId = resolverFilialPorNome(ctx, ler(linha, 'Filial'), criar, resultado);
+  const observacoes = ler(linha, 'Observações') || null;
+
+  // Linha com `Ticket` é UM chamado do helpdesk, e a identidade dele é o id de
+  // lá — não o conteúdo. É o que torna a recarga da mesma extração idempotente
+  // e ainda assim capaz de trazer o que mudou (fechamento, status, horas).
+  const ticketId = interpretarInteiro(ler(linha, 'Ticket'));
+  if (ticketId !== null) {
+    const chamado = {
+      ticket_id: ticketId,
+      numero: ler(linha, 'Número') || null,
+      assunto: ler(linha, 'Assunto') || null,
+      solicitante: ler(linha, 'Solicitante') || null,
+      responsavel: ler(linha, 'Responsável') || null,
+      nivel: ler(linha, 'Nível') || null,
+      status: ler(linha, 'Status') || null,
+      origem_chamado: ler(linha, 'Origem') || null,
+      aberto_em: interpretarDataHora(ler(linha, 'Aberto em')),
+      fechado_em: interpretarDataHora(ler(linha, 'Fechado em')),
+      prazo_em: interpretarDataHora(ler(linha, 'Prazo')),
+      horas: interpretarDecimal(ler(linha, 'Horas')),
+    };
+    const anterior = db()
+      .prepare('SELECT * FROM tickets_sla WHERE empresa_id = ? AND ticket_id = ? AND excluido_em IS NULL')
+      .get(ctx.empresaId, ticketId) as Record<string, unknown> | undefined;
+
+    if (anterior) {
+      const igual =
+        anterior.filial_id === filialId &&
+        anterior.competencia === competencia &&
+        anterior.fila_id === filaId &&
+        (anterior.topico_ajuda_id ?? null) === topicoId &&
+        anterior.total_atendidos === total &&
+        anterior.dentro_sla === dentro &&
+        (anterior.observacoes ?? null) === observacoes &&
+        Object.entries(chamado).every(([k, v]) => (anterior[k] ?? null) === v);
+      if (igual) {
+        resultado.duplicadas += 1;
+        return;
+      }
+      db()
+        .prepare(
+          `UPDATE tickets_sla SET filial_id = ?, competencia = ?, fila_id = ?, topico_ajuda_id = ?,
+                  total_atendidos = ?, dentro_sla = ?, fora_sla = ?, observacoes = ?,
+                  numero = ?, assunto = ?, solicitante = ?, responsavel = ?, nivel = ?, status = ?,
+                  origem_chamado = ?, aberto_em = ?, fechado_em = ?, prazo_em = ?, horas = ?,
+                  atualizado_em = datetime('now')
+            WHERE id = ?`,
+        )
+        .run(
+          filialId, competencia, filaId, topicoId, total, dentro, fora, observacoes,
+          chamado.numero, chamado.assunto, chamado.solicitante, chamado.responsavel,
+          chamado.nivel, chamado.status, chamado.origem_chamado,
+          chamado.aberto_em, chamado.fechado_em, chamado.prazo_em, chamado.horas,
+          anterior.id,
+        );
+      resultado.importadas += 1;
+      return;
+    }
+
+    db()
+      .prepare(
+        `INSERT INTO tickets_sla
+           (empresa_id, filial_id, competencia, fila_id, topico_ajuda_id, total_atendidos, dentro_sla, fora_sla, observacoes,
+            ticket_id, numero, assunto, solicitante, responsavel, nivel, status, origem_chamado, aberto_em, fechado_em, prazo_em, horas)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        ctx.empresaId, filialId, competencia, filaId, topicoId, total, dentro, fora, observacoes,
+        ticketId, chamado.numero, chamado.assunto, chamado.solicitante, chamado.responsavel,
+        chamado.nivel, chamado.status, chamado.origem_chamado,
+        chamado.aberto_em, chamado.fechado_em, chamado.prazo_em, chamado.horas,
+      );
+    resultado.importadas += 1;
+    return;
+  }
+
+  // Registro agregado mensal: a identidade é o próprio conteúdo.
   const dedup = chaveDedup(['sla', ctx.empresaId, filialId ?? '', competencia, filaId, topicoId ?? '']);
   const jaExiste = db()
     .prepare(
       `SELECT id FROM tickets_sla
-        WHERE empresa_id = ? AND excluido_em IS NULL AND filial_id IS ? AND competencia = ?
+        WHERE empresa_id = ? AND excluido_em IS NULL AND ticket_id IS NULL AND filial_id IS ? AND competencia = ?
           AND fila_id = ? AND topico_ajuda_id IS ?`,
     )
     .get(ctx.empresaId, filialId, competencia, filaId, topicoId);
@@ -791,7 +897,7 @@ function importarSla(
          (empresa_id, filial_id, competencia, fila_id, topico_ajuda_id, total_atendidos, dentro_sla, fora_sla, observacoes, dedup_hash)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(ctx.empresaId, filialId, competencia, filaId, topicoId, total, dentro, fora, ler(linha, 'Observações') || null, dedup);
+    .run(ctx.empresaId, filialId, competencia, filaId, topicoId, total, dentro, fora, observacoes, dedup);
   resultado.importadas += 1;
 }
 

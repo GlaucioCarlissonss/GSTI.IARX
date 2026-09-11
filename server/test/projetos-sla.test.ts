@@ -9,7 +9,15 @@ import {
   criarTarefa,
   listarProjetos,
 } from '../src/domain/projetos.js';
-import { registrarTicketSla, listarTicketsSla, percentual } from '../src/domain/sla.js';
+import {
+  atualizarTicketSla,
+  buscarPorTicketId,
+  listarTicketsSla,
+  percentual,
+  registrarTicketSla,
+} from '../src/domain/sla.js';
+import { exportarXlsx } from '../src/domain/exportacao.js';
+import { importarPlanilha } from '../src/domain/importacao.js';
 import { listarFilas, criarTopicoAjuda, criarFilial } from '../src/domain/cadastros.js';
 import { criarEmpresa } from '../src/domain/empresas.js';
 import { dashboardFinanceiro, dashboardProjetos, dashboardSla } from '../src/domain/dashboards.js';
@@ -223,4 +231,48 @@ test('o escopo de um tenant nunca vaza para outro', () => {
   assert.equal(listarProjetos(ctxOutra).length, 0);
   assert.equal(listarTicketsSla(ctxOutra).itens.length, 0);
   assert.equal(dashboardFinanceiro(primeiro.ctx, { competencia: mesRelativo(0) }).totais_mes.total, 5000);
+});
+
+test('chamado é registro de SLA com detalhe e volta pela planilha sem duplicar', async () => {
+  const { ctx } = ambienteLimpo();
+  const fila = filasDe(ctx)[0]!;
+
+  const chamado = registrarTicketSla(ctx, {
+    competencia: mesRelativo(-1),
+    filaId: fila.id,
+    totalAtendidos: 1,
+    dentroSla: 0,
+    ticketId: 21734,
+    numero: '966375',
+    assunto: 'Impressora sem rede',
+    solicitante: 'Maria',
+    responsavel: 'João',
+    status: 'Aberto',
+    abertoEm: '2026-08-01T09:00Z',
+    prazoEm: '2026-08-03T09:00Z',
+    horas: null,
+  });
+  assert.equal(chamado.ticket_id, 21734);
+  assert.equal(chamado.fora_sla, 1);
+  assert.equal(chamado.assunto, 'Impressora sem rede');
+
+  // Agregação não distingue chamado de registro mensal: o percentual é o mesmo.
+  assert.equal(listarTicketsSla(ctx).resumo.pct_dentro_sla, 0);
+
+  // Editar o total não pode apagar o detalhe do chamado.
+  const editado = atualizarTicketSla(ctx, chamado.id, { dentroSla: 1, justificativa: 'fechou no prazo' });
+  assert.equal(editado.dentro_sla, 1);
+  assert.equal(editado.numero, '966375');
+  assert.equal(editado.ticket_id, 21734);
+
+  // Ida e volta pela planilha: a identidade é o ticket, então nada duplica.
+  const arquivo = await exportarXlsx(ctx, 'sla');
+  const antes = listarTicketsSla(ctx).itens.length;
+  const relatorio = await importarPlanilha(ctx, arquivo, { modulo: 'sla', arquivoNome: 'sla.xlsx' });
+  assert.equal(relatorio.duplicadas, antes);
+  assert.equal(relatorio.importadas, 0);
+  assert.equal(listarTicketsSla(ctx).itens.length, antes);
+
+  // O mesmo chamado com o fechamento preenchido atualiza, não cria um segundo.
+  assert.equal(buscarPorTicketId(ctx, 21734)!.id, chamado.id);
 });

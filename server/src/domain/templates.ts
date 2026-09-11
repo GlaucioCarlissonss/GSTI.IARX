@@ -7,7 +7,9 @@
  * quando o template evoluir.
  */
 
-export const TEMPLATE_VERSAO_ATUAL = '1.1';   // 1.1 acrescentou a coluna Origem
+// 1.1 acrescentou a coluna Origem ao Financeiro;
+// 1.2 acrescentou à aba SLA o detalhe do chamado (Ticket, Número, Assunto…).
+export const TEMPLATE_VERSAO_ATUAL = '1.2';
 
 export type NomeAba =
   | 'Filiais'
@@ -122,6 +124,20 @@ export const ABAS: Record<NomeAba, DefinicaoAba> = {
       'Total Atendidos',
       'Dentro SLA',
       'Fora SLA',
+      // Detalhe do chamado: preenchido quando a linha é UM chamado do helpdesk,
+      // vazio quando é o agregado mensal. `Ticket` é o id no sistema de origem.
+      'Ticket',
+      'Número',
+      'Assunto',
+      'Solicitante',
+      'Responsável',
+      'Nível',
+      'Status',
+      'Origem',
+      'Aberto em',
+      'Fechado em',
+      'Prazo',
+      'Horas',
       'Observações',
     ],
     apelidos: {
@@ -131,6 +147,18 @@ export const ABAS: Record<NomeAba, DefinicaoAba> = {
       'Total Atendidos': ['totalatendidos', 'total', 'atendidos'],
       'Dentro SLA': ['dentrosla', 'dentrodosla'],
       'Fora SLA': ['forasla', 'foradosla'],
+      Ticket: ['ticket', 'ticketid', 'idticket', 'chamado', 'idchamado'],
+      'Número': ['numero', 'numerodochamado', 'numerochamado'],
+      Assunto: ['assunto', 'titulo'],
+      Solicitante: ['solicitante', 'usuario', 'requerente'],
+      'Responsável': ['responsavel', 'atendente', 'tecnico'],
+      'Nível': ['nivel', 'departamento', 'equipe'],
+      Status: ['status', 'situacao'],
+      Origem: ['origem', 'origemchamado', 'canal', 'source'],
+      'Aberto em': ['abertoem', 'aberturaem', 'abertura', 'criadoem', 'datadeabertura'],
+      'Fechado em': ['fechadoem', 'fechamentoem', 'fechamento', 'datadefechamento'],
+      Prazo: ['prazo', 'prazoem', 'vencimento', 'datadevencimento'],
+      Horas: ['horas', 'tempoatendimento', 'horasatendimento'],
       Observações: ['observacoes', 'obs'],
     },
     obrigatorias: ['Competência', 'Fila', 'Total Atendidos', 'Dentro SLA'],

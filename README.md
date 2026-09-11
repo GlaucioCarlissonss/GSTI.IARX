@@ -7,7 +7,7 @@ gestor de TI precisa acompanhar por empresa e por filial:
 | --- | --- |
 | **Financeiro** | Lançamentos por tipo, natureza e classificação contábil, com projeção automática de parcelas, recorrências, cenários de projeção e fechamento mensal. |
 | **Projetos** | Projetos, tarefas e envolvidos com cronograma Gantt mensal, cálculo automático de atraso e desvio entre planejado e real. |
-| **SLA** | Tickets atendidos por fila (Infraestrutura, Sistema, Dados) e por tópico de ajuda, com indicadores de conformidade. |
+| **SLA** | Chamados por fila (Infraestrutura, Sistema, Dados) e por tópico de ajuda, com indicadores de conformidade. Um registro pode ser o agregado do mês ou **um chamado** do helpdesk, com link de volta para o sistema de origem. |
 
 Todo registro pertence a uma **empresa** e, opcionalmente, a uma **filial**.
 Nenhuma consulta ou escrita ocorre fora desse contexto organizacional.
@@ -156,7 +156,10 @@ ambiente é uma operação de duas etapas:
 
 A reimportação é idempotente e reconstrói filiais, tipos de despesa, cenários,
 lançamentos (com as séries de parcelas religadas), projetos, tarefas,
-envolvidos, tópicos e registros de SLA. Repetir a importação não duplica nada.
+envolvidos, tópicos e registros de SLA. Repetir a importação não duplica nada:
+a identidade do registro é o conteúdo — ou, na linha de chamado, o próprio
+número do chamado, o que faz recarregar a extração do helpdesk atualizar
+status, fechamento e horas em vez de criar uma segunda linha.
 
 ## Segurança e privacidade
 

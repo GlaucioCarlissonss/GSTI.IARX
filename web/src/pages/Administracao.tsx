@@ -235,7 +235,61 @@ export function PaginaCadastros() {
           )}
         </Cartao>
       </div>
+
+      <EnderecoHelpdesk podeEditar={ehGestor} />
     </>
+  );
+}
+
+/**
+ * Endereço base do helpdesk. O id do chamado completa a URL, e é isso que faz o
+ * número na tela de SLA virar link de volta para o sistema de origem.
+ */
+function EnderecoHelpdesk({ podeEditar }: { podeEditar: boolean }) {
+  const { empresa } = useSessao();
+  const consulta = useDados<{ url_helpdesk: string }>(() => api.get('/api/sla/configuracao'), [empresa?.id]);
+  const [url, setUrl] = useState<string | null>(null);
+  const [erro, setErro] = useState('');
+  const [salvo, setSalvo] = useState(false);
+  const valor = url ?? consulta.dados?.url_helpdesk ?? '';
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault();
+    setErro('');
+    setSalvo(false);
+    try {
+      await api.put('/api/sla/configuracao', { url_helpdesk: valor });
+      consulta.recarregar();
+      setSalvo(true);
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : String(falha));
+    }
+  }
+
+  return (
+    <Cartao
+      titulo="Endereço do helpdesk"
+      descricao="O número do chamado é acrescentado ao final, formando o link de volta"
+    >
+      {erro && <Aviso tipo="erro">{erro}</Aviso>}
+      {salvo && <Aviso tipo="ok">Endereço salvo.</Aviso>}
+      <form onSubmit={salvar} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <Campo rotulo="Endereço base">
+          <input
+            value={valor}
+            onChange={(e) => setUrl(e.target.value)}
+            disabled={!podeEditar}
+            placeholder="https://…/scp/tickets.php?id="
+            style={{ minWidth: 320 }}
+          />
+        </Campo>
+        {podeEditar && (
+          <button type="submit" className="botao primario">
+            Salvar
+          </button>
+        )}
+      </form>
+    </Cartao>
   );
 }
 

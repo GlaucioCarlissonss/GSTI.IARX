@@ -164,7 +164,9 @@ function linhasSla(ctx: Contexto) {
     db()
       .prepare(
         `SELECT f.nome AS filial, s.competencia, q.nome AS fila, ta.nome AS topico,
-                s.total_atendidos, s.dentro_sla, s.fora_sla, s.observacoes
+                s.total_atendidos, s.dentro_sla, s.fora_sla, s.observacoes,
+                s.ticket_id, s.numero, s.assunto, s.solicitante, s.responsavel,
+                s.nivel, s.status, s.origem_chamado, s.aberto_em, s.fechado_em, s.prazo_em, s.horas
            FROM tickets_sla s
            JOIN filas_ticket q ON q.id = s.fila_id
            LEFT JOIN topicos_ajuda ta ON ta.id = s.topico_ajuda_id
@@ -181,6 +183,18 @@ function linhasSla(ctx: Contexto) {
       dentro_sla: number;
       fora_sla: number;
       observacoes: string | null;
+      ticket_id: number | null;
+      numero: string | null;
+      assunto: string | null;
+      solicitante: string | null;
+      responsavel: string | null;
+      nivel: string | null;
+      status: string | null;
+      origem_chamado: string | null;
+      aberto_em: string | null;
+      fechado_em: string | null;
+      prazo_em: string | null;
+      horas: number | null;
     }>
   ).map((l) => ({
     Filial: l.filial ?? '',
@@ -190,6 +204,19 @@ function linhasSla(ctx: Contexto) {
     'Total Atendidos': l.total_atendidos,
     'Dentro SLA': l.dentro_sla,
     'Fora SLA': l.fora_sla,
+    // Vazio no registro agregado; preenchido quando a linha é um chamado.
+    Ticket: l.ticket_id ?? '',
+    'Número': l.numero ?? '',
+    Assunto: l.assunto ?? '',
+    Solicitante: l.solicitante ?? '',
+    'Responsável': l.responsavel ?? '',
+    'Nível': l.nivel ?? '',
+    Status: l.status ?? '',
+    Origem: l.origem_chamado ?? '',
+    'Aberto em': l.aberto_em ?? '',
+    'Fechado em': l.fechado_em ?? '',
+    Prazo: l.prazo_em ?? '',
+    Horas: l.horas ?? '',
     Observações: l.observacoes ?? '',
   }));
 }

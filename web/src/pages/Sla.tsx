@@ -189,6 +189,13 @@ interface RegistroSla {
   dentro_sla: number;
   fora_sla: number;
   pct_dentro_sla: number;
+  // Preenchido quando o registro é UM chamado do helpdesk, e não o agregado.
+  ticket_id: number | null;
+  numero: string | null;
+  assunto: string | null;
+  solicitante: string | null;
+  status: string | null;
+  horas: number | null;
 }
 
 interface Fila {
@@ -207,6 +214,7 @@ export function PaginaRegistrosSla() {
   const [excluir, setExcluir] = useState<RegistroSla | null>(null);
   const [competencia, setCompetencia] = useState('');
 
+  const configuracao = useDados<{ url_helpdesk: string }>(() => api.get('/api/sla/configuracao'), [empresa?.id]);
   const filas = useDados<Fila[]>(() => api.get('/api/filas'), []);
   const topicos = useDados<Topico[]>(() => api.get('/api/topicos-ajuda'), [empresa?.id]);
   const consulta = useDados<{ itens: RegistroSla[]; resumo: DashboardSla['totais_mes'] }>(
@@ -217,6 +225,11 @@ export function PaginaRegistrosSla() {
       }),
     [empresa?.id, filialId, competencia],
   );
+
+  // As colunas do chamado só aparecem quando há chamado no recorte: num
+  // registro agregado mensal elas seriam uma fileira de travessões.
+  const temChamados = (consulta.dados?.itens ?? []).some((r) => r.ticket_id !== null);
+  const urlHelpdesk = configuracao.dados?.url_helpdesk ?? '';
 
   return (
     <>
@@ -255,10 +268,14 @@ export function PaginaRegistrosSla() {
             <table>
               <thead>
                 <tr>
+                  {temChamados && <th>Chamado</th>}
                   <th>Competência</th>
                   <th>Filial</th>
                   <th>Fila</th>
                   <th>Tópico de ajuda</th>
+                  {temChamados && <th>Assunto</th>}
+                  {temChamados && <th>Solicitante</th>}
+                  {temChamados && <th>Status</th>}
                   <th className="num">Atendidos</th>
                   <th className="num">Dentro</th>
                   <th className="num">Fora</th>
@@ -269,10 +286,24 @@ export function PaginaRegistrosSla() {
               <tbody>
                 {consulta.dados.itens.map((r) => (
                   <tr key={r.id}>
+                    {temChamados && (
+                      <td>
+                        {r.ticket_id === null ? (
+                          '—'
+                        ) : (
+                          <a href={urlHelpdesk + r.ticket_id} target="_blank" rel="noopener noreferrer">
+                            {r.numero ?? r.ticket_id}
+                          </a>
+                        )}
+                      </td>
+                    )}
                     <td>{r.competencia}</td>
                     <td>{r.filial_nome ?? <em style={{ color: 'var(--tinta-fraca)' }}>empresa</em>}</td>
                     <td>{r.fila}</td>
                     <td>{r.topico_ajuda ?? '—'}</td>
+                    {temChamados && <td>{r.assunto ?? '—'}</td>}
+                    {temChamados && <td>{r.solicitante ?? '—'}</td>}
+                    {temChamados && <td>{r.status ?? '—'}</td>}
                     <td className="num">{inteiro(r.total_atendidos)}</td>
                     <td className="num">{inteiro(r.dentro_sla)}</td>
                     <td className="num">{inteiro(r.fora_sla)}</td>

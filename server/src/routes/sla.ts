@@ -4,11 +4,28 @@ import {
   excluirTicketSla,
   listarTicketsSla,
   obterTicketSla,
+  lerConfiguracao,
   registrarTicketSla,
+  gravarUrlHelpdesk,
 } from '../domain/sla.js';
 import { ctx, somenteGestor } from '../middleware/index.js';
 
 export const rotasSla = Router();
+
+/** Detalhe do chamado no corpo da requisição, só com o que veio preenchido. */
+function detalheDoChamado(corpo: Record<string, unknown>) {
+  const mapa: Array<[string, string]> = [
+    ['ticket_id', 'ticketId'], ['numero', 'numero'], ['assunto', 'assunto'],
+    ['solicitante', 'solicitante'], ['responsavel', 'responsavel'], ['nivel', 'nivel'],
+    ['status', 'status'], ['origem_chamado', 'origemChamado'], ['aberto_em', 'abertoEm'],
+    ['fechado_em', 'fechadoEm'], ['prazo_em', 'prazoEm'], ['horas', 'horas'],
+  ];
+  const saida: Record<string, unknown> = {};
+  for (const [deFora, interno] of mapa) {
+    if (corpo[deFora] !== undefined) saida[interno] = corpo[deFora];
+  }
+  return saida;
+}
 
 rotasSla.get('/', (req, res) => {
   const q = req.query;
@@ -29,6 +46,13 @@ rotasSla.get('/', (req, res) => {
   );
 });
 
+// Precisa vir antes de `/:id`, senão "configuracao" seria lido como um id.
+rotasSla.get('/configuracao', (req, res) => res.json(lerConfiguracao(ctx(req))));
+
+rotasSla.put('/configuracao', somenteGestor, (req, res) => {
+  res.json(gravarUrlHelpdesk(ctx(req), req.body?.url_helpdesk ?? null));
+});
+
 rotasSla.get('/:id', (req, res) => res.json(obterTicketSla(ctx(req), Number(req.params.id))));
 
 rotasSla.post('/', somenteGestor, (req, res) => {
@@ -43,6 +67,7 @@ rotasSla.post('/', somenteGestor, (req, res) => {
       dentroSla: Number(corpo.dentro_sla),
       foraSla: corpo.fora_sla === undefined || corpo.fora_sla === null ? null : Number(corpo.fora_sla),
       observacoes: corpo.observacoes ?? null,
+      ...detalheDoChamado(corpo),
     }),
   );
 });
@@ -59,6 +84,7 @@ rotasSla.patch('/:id', somenteGestor, (req, res) => {
       dentroSla: corpo.dentro_sla !== undefined ? Number(corpo.dentro_sla) : undefined,
       foraSla: corpo.fora_sla !== undefined ? Number(corpo.fora_sla) : undefined,
       observacoes: corpo.observacoes,
+      ...detalheDoChamado(corpo),
       justificativa: corpo.justificativa,
     }),
   );

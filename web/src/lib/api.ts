@@ -52,6 +52,8 @@ export const api = {
   },
   post: <T>(caminho: string, corpo?: unknown) =>
     fetch(caminho, { method: 'POST', headers: cabecalhos(true), body: JSON.stringify(corpo ?? {}) }).then(tratar<T>),
+  put: <T>(caminho: string, corpo?: unknown) =>
+    fetch(caminho, { method: 'PUT', headers: cabecalhos(true), body: JSON.stringify(corpo ?? {}) }).then(tratar<T>),
   patch: <T>(caminho: string, corpo?: unknown) =>
     fetch(caminho, { method: 'PATCH', headers: cabecalhos(true), body: JSON.stringify(corpo ?? {}) }).then(tratar<T>),
   remover: <T>(caminho: string, corpo?: unknown) =>
