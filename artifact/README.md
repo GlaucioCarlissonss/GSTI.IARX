@@ -96,6 +96,7 @@ Quatro suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-completo.cjs` | as 5 empresas × 8 abas, tempo de render, erro de console, rolagem horizontal a 400 px |
 | `testar-edicao.cjs` | criar, parcelar, reclassificar, excluir, fechar e reabrir competência, conferindo totais e trilha de auditoria |
 | `testar-coerencia.cjs` | os números de cada tela fecham entre si: KPI × rankings, conferência por origem × mês a mês, rodapé × linhas |
+| `testar-projetos-sla.cjs` | projetos (atraso e desvio derivados), SLA (percentual, recusa de `dentro > total`) e o ciclo de planilha do SLA |
 | `testar-dados.cjs` | exportar, reimportar sem duplicar, importar planilha quebrada sem derrubar o lote |
 
 `testar-coerencia.cjs` existe por um motivo específico: a reclamação que

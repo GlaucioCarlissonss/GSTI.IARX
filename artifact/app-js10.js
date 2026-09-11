@@ -327,8 +327,10 @@ async function importarSla(empresa, aba, opcoes, rel) {
     if (!Number.isInteger(fora) || fora < 0) return erro('Fora do SLA inválido.');
     if (dentro + fora !== total) return erro('Dentro (' + dentro + ') + fora (' + fora + ') não fecha com o total (' + total + ').');
 
+    // `fora` não é gravado: é derivado de total − dentro em toda leitura, como
+    // na tela. Guardar o derivado abriria espaço para ele discordar da conta.
     const reg = { id: novoId(), filial: ler(linha,'Filial') || null, fila, topico: ler(linha,'Tópico de Ajuda') || null,
-      total, dentro, fora, obs: ler(linha,'Observações') || null };
+      total, dentro, obs: ler(linha,'Observações') || null };
     const k = [competencia, reg.fila, reg.topico || '', reg.filial || '', total, dentro].join('|');
     if (jaTem.has(k)) { duplicadas++; return; }
     jaTem.add(k);
