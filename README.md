@@ -12,7 +12,22 @@ gestor de TI precisa acompanhar por empresa e por filial:
 Todo registro pertence a uma **empresa** e, opcionalmente, a uma **filial**.
 Nenhuma consulta ou escrita ocorre fora desse contexto organizacional.
 
-## Começando a usar
+## Duas formas de usar
+
+**Hospedada, sem instalar nada.** O mesmo sistema roda como página no
+claude.ai, com os dados do grupo já carregados:
+
+> https://claude.ai/code/artifact/decb67fb-6b2d-4869-9f53-8f39cb68e80f
+
+É privado à conta que publicou até ser compartilhado, tem os mesmos módulos,
+o mesmo CRUD, a mesma trilha de auditoria e o mesmo ciclo de importação e
+exportação com o Excel. O código está em [`artifact/`](artifact/README.md).
+
+**Local, na sua máquina.** É o que o restante deste documento descreve, e o que
+você quer se precisar do banco sob seu controle, integração com outros sistemas
+ou vários usuários com papéis distintos.
+
+## Começando a usar localmente
 
 A aplicação inteira — API e interface — sobe em um processo só:
 
@@ -38,6 +53,15 @@ A partir daí há dois caminhos para popular o ambiente:
    e envie. `Validar sem gravar` mostra o relatório antes de qualquer escrita.
 2. **Tela** — lance direto em *Lançamentos*, *Projetos e tarefas* ou
    *Registros de tickets*.
+
+### De onde vem cada número
+
+O total que o sistema mostra não é o total das planilhas enviadas: sobre as
+linhas importadas somam-se a folha de TI rateada e a projeção do novo ERP, que
+não existiam como linha de despesa. Cada lançamento carrega sua **origem**, e a
+tela *Conferência de origem* decompõe o consolidado — por origem, mês a mês —
+para que a diferença possa ser conferida parcela por parcela. Ver
+[`docs/regras-de-negocio.md`](docs/regras-de-negocio.md#módulo-financeiro).
 
 ### Com Docker
 
