@@ -17,11 +17,14 @@ Nenhuma consulta ou escrita ocorre fora desse contexto organizacional.
 A aplicação inteira — API e interface — sobe em um processo só:
 
 ```bash
-cp .env.example .env        # defina ao menos JWT_SECRET
 npm ci
-npm run build
-npm start                   # http://localhost:3333
+npm run iniciar             # configura, compila e sobe em http://localhost:3333
 ```
+
+`npm run iniciar` gera o `.env` com um segredo de sessão aleatório na primeira
+execução. Nas vezes seguintes, `npm start` basta. O passo a passo completo —
+instalar o Node, carregar as planilhas, backup e solução de problemas — está em
+[`docs/instalacao-local.md`](docs/instalacao-local.md).
 
 Abra o endereço e a tela pedirá para **criar a conta do gestor**: é a primeira
 do ambiente e, assim que existe, o auto-cadastro se fecha sozinho (novos
