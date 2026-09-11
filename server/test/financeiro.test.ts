@@ -13,6 +13,7 @@ import {
 import { fecharCompetencia } from '../src/domain/fechamento.js';
 import { criarFilial } from '../src/domain/cadastros.js';
 import { listarAuditoria } from '../src/domain/auditoria.js';
+import { conferenciaOrigem } from '../src/domain/dashboards.js';
 
 test('despesa parcelada projeta uma parcela por mês subsequente', () => {
   const { ctx } = ambienteLimpo();
@@ -256,4 +257,31 @@ test('consulta filtra por competência, natureza e classificação dentro do ten
   assert.equal(listarLancamentos(ctx, { classificacao: 'investimento' }).total_valor, 250);
   assert.equal(listarLancamentos(ctx, { natureza: 'fixa' }).total_valor, 100);
   assert.equal(listarLancamentos(ctx, { competencia: mesRelativo(6) }).total, 0);
+});
+
+test('a conferência separa o que veio da planilha do que o sistema acrescentou', () => {
+  const { ctx } = ambienteLimpo();
+  const tipo = idTipoDespesa(ctx);
+  const comum = { tipoDespesaId: tipo, natureza: 'fixa' as const, classificacao: 'despesa' as const,
+    justificativa: 'carga de conferência' };
+
+  criarLancamento(ctx, { ...comum, competencia: mesRelativo(-1), valor: 1000, origem: 'planilha' });
+  criarLancamento(ctx, { ...comum, competencia: mesRelativo(0), valor: 500, origem: 'planilha' });
+  criarLancamento(ctx, { ...comum, competencia: mesRelativo(0), valor: 300, origem: 'folha_ti' });
+  criarLancamento(ctx, { ...comum, competencia: mesRelativo(1), valor: 200, origem: 'projecao_spincare' });
+  criarLancamento(ctx, { ...comum, competencia: mesRelativo(0), valor: 50 });   // manual
+
+  const c = conferenciaOrigem(ctx);
+  assert.equal(c.total, 2050);
+  assert.equal(c.base_enviada, 1500, 'só as linhas das planilhas');
+  assert.equal(c.acrescentado, 550, 'folha + projeção + manual');
+
+  const porChave = Object.fromEntries(c.por_origem.map((o) => [o.origem, o]));
+  assert.equal(porChave.planilha!.lancamentos, 2);
+  assert.equal(porChave.folha_ti!.valor, 300);
+  assert.equal(porChave.projecao_spincare!.valor, 200);
+  assert.equal(porChave.manual!.valor, 50);
+
+  // As linhas mensais têm de fechar com o total.
+  assert.equal(c.por_competencia.reduce((s, m) => s + m.total, 0), c.total);
 });

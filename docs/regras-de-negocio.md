@@ -47,6 +47,28 @@ Gerenciais) e aceita novos tipos sem limite.
 - `pontual_parcelada` — exige duas ou mais parcelas e projeta uma linha por mês
   subsequente.
 
+**Origem do lançamento.** Todo lançamento carrega a procedência do dado, porque
+o total que o sistema mostra **não é** o total das planilhas enviadas pelo
+gestor — e isso precisa ser verificável, não explicado:
+
+| origem | significado |
+|---|---|
+| `planilha` | linha importada das bases enviadas, com o valor intocado |
+| `folha_ti` | custo de pessoal de TI alocado ou rateado; não existia como linha de despesa nas planilhas |
+| `projecao_spincare` | mensalidade projetada do novo ERP, ainda não realizada |
+| `manual` | criado ou editado por um usuário dentro do sistema |
+
+Editar um lançamento **não** muda sua origem: uma linha de planilha corrigida
+continua sendo de planilha, e a alteração fica na trilha de auditoria. Arquivo
+importado sem a coluna `Origem` entra como `planilha` — veio de fora, não foi
+lançado aqui.
+
+A tela **Conferência de origem** (`/conferencia`, endpoint
+`/api/dashboards/conferencia`) decompõe o total por origem, mês a mês, e mostra
+quanto do número consolidado é base enviada e quanto o sistema acrescentou.
+Na base carregada das planilhas do grupo isso dá R$ 1.328.988,35 de planilha,
+R$ 273.929,60 de folha rateada e R$ 426.720,00 de projeção.
+
 **Parcelamento.** O valor informado pode ser o total do contrato (rateado) ou o
 valor de cada parcela. No rateio, `ratear()` distribui o resto nas primeiras
 parcelas, de modo que a soma fecha exatamente no total — propriedade verificada
@@ -135,6 +157,11 @@ n-ésima repetição casa com a n-ésima já existente, preservando a contagem.
 
 **Simulação.** `Validar sem gravar` executa a importação inteira dentro de uma
 transação desfeita ao final: o relatório é real, o banco não muda.
+
+**Versões do template.** `1.0` é o layout original; `1.1` acrescentou a coluna
+`Origem` à aba `Financeiro`. Um arquivo `1.0` continua importável — a origem
+ausente vira `planilha` —, e um arquivo `1.1` aberto por uma versão antiga
+apenas ignora a coluna a mais.
 
 ## Expansões previstas
 

@@ -17,6 +17,41 @@ import { paraCentavos, paraReais, ratear } from './dinheiro.js';
 export type Natureza = 'fixa' | 'pontual_unica' | 'pontual_parcelada';
 export type Classificacao = 'despesa' | 'investimento';
 
+/**
+ * Procedência do lançamento. O total do sistema não é o total das planilhas
+ * enviadas — há folha de TI rateada e projeção somadas por cima —, e é esta
+ * coluna que permite decompor a diferença em vez de discutir o número final.
+ */
+export type Origem = 'planilha' | 'folha_ti' | 'projecao_spincare' | 'manual';
+
+export const ROTULO_ORIGEM: Record<Origem, string> = {
+  planilha: 'Planilhas do cliente',
+  folha_ti: 'Folha de TI (rateio)',
+  projecao_spincare: 'Projeção SpinCare',
+  manual: 'Lançado no sistema',
+};
+
+/** Aceita a chave interna ou o rótulo exibido; devolve null se não reconhecer. */
+export function interpretarOrigem(texto: string | null | undefined): Origem | null {
+  const bruto = String(texto ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[\s-]+/g, '_');
+  if (!bruto) return null;
+  for (const chave of Object.keys(ROTULO_ORIGEM) as Origem[]) {
+    if (bruto === chave) return chave;
+    const rotulo = ROTULO_ORIGEM[chave]
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
+    if (bruto === rotulo) return chave;
+  }
+  return null;
+}
+
 export interface EntradaLancamento {
   filialId?: number | null;
   tipoDespesaId: number;
@@ -35,6 +70,8 @@ export interface EntradaLancamento {
   cenario?: string | null;
   justificativa?: string | null;
   dedupHash?: string | null;
+  /** Procedência do dado; ver docs/regras-de-negocio.md. Padrão: 'manual'. */
+  origem?: Origem | null;
 }
 
 interface LinhaLancamento extends Record<string, unknown> {
@@ -52,6 +89,7 @@ interface LinhaLancamento extends Record<string, unknown> {
   descricao: string | null;
   observacoes: string | null;
   cenario: string;
+  origem: Origem;
   excluido_em: string | null;
 }
 
@@ -77,6 +115,8 @@ function apresentar(linha: LinhaLancamento & Record<string, unknown>) {
     descricao: linha.descricao,
     observacoes: linha.observacoes,
     cenario: linha.cenario,
+    origem: linha.origem,
+    origem_rotulo: ROTULO_ORIGEM[linha.origem] ?? linha.origem,
   };
 }
 
@@ -157,8 +197,8 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
     const inserir = db().prepare(
       `INSERT INTO lancamentos
          (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
-          qtd_parcelas, parcela_numero, lancamento_origem_id, descricao, observacoes, cenario, dedup_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          qtd_parcelas, parcela_numero, lancamento_origem_id, descricao, observacoes, cenario, origem, dedup_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
     const primeiro = valores[0]!;
@@ -176,6 +216,7 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
       entrada.descricao ?? null,
       entrada.observacoes ?? null,
       cenario,
+      entrada.origem ?? 'manual',
       entrada.dedupHash ?? null,
     );
     const origemId = Number(infoPrimeiro.lastInsertRowid);
@@ -196,6 +237,7 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
         entrada.descricao ?? null,
         entrada.observacoes ?? null,
         cenario,
+        entrada.origem ?? 'manual',
         null, // a chave de dedup pertence ao lançamento de origem, não às projeções
       );
       ids.push(Number(info.lastInsertRowid));

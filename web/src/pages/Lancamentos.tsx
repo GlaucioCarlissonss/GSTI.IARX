@@ -18,6 +18,8 @@ interface Lancamento {
   parcela_numero: number | null;
   grupo_id: number;
   cenario: string;
+  origem: string;
+  origem_rotulo: string;
   descricao: string | null;
   observacoes: string | null;
 }
@@ -34,6 +36,24 @@ interface TipoDespesa {
 }
 
 const NATUREZAS = ['fixa', 'pontual_unica', 'pontual_parcelada'] as const;
+
+/**
+ * Procedência do lançamento. O total do sistema soma, às linhas das planilhas
+ * enviadas, a folha de TI rateada e a projeção do ERP — mostrar a origem é o
+ * que permite conferir cada parcela em vez de discutir o número final.
+ */
+const COR_ORIGEM: Record<string, string> = {
+  planilha: 'var(--serie-1)',
+  folha_ti: 'var(--serie-2)',
+  projecao_spincare: 'var(--serie-3)',
+  manual: 'var(--tinta-fraca)',
+};
+const ORIGEM_CURTA: Record<string, string> = {
+  planilha: 'Planilha',
+  folha_ti: 'Folha',
+  projecao_spincare: 'Projeção',
+  manual: 'Manual',
+};
 
 export function PaginaLancamentos() {
   const { empresa, filialId, paramFilial, filiais, ehGestor } = useSessao();
@@ -149,6 +169,7 @@ export function PaginaLancamentos() {
                   <th>Filial</th>
                   <th>Tipo de despesa</th>
                   <th>Descrição</th>
+                  <th>Origem</th>
                   <th>Natureza</th>
                   <th>Classificação</th>
                   <th className="num">Valor</th>
@@ -171,6 +192,12 @@ export function PaginaLancamentos() {
                           <Etiqueta texto={`cenário: ${l.cenario}`} tom="atencao" />
                         </div>
                       )}
+                    </td>
+                    <td title={l.origem_rotulo}>
+                      <Etiqueta
+                        texto={ORIGEM_CURTA[l.origem] ?? l.origem_rotulo ?? l.origem}
+                        cor={COR_ORIGEM[l.origem] ?? 'var(--tinta-fraca)'}
+                      />
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {ROTULO_NATUREZA[l.natureza] ?? l.natureza}
@@ -211,7 +238,7 @@ export function PaginaLancamentos() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={6}>Total exibido</td>
+                  <td colSpan={7}>Total exibido</td>
                   <td className="num">{moeda(consulta.dados.itens.reduce((s, l) => s + l.valor, 0))}</td>
                   <td />
                 </tr>

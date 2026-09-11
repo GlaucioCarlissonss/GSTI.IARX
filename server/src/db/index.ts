@@ -17,7 +17,23 @@ export function abrirBanco(caminho: string): Conexao {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(readFileSync(CAMINHO_SCHEMA, 'utf8'));
+  migrar(db);
   return db;
+}
+
+/**
+ * Ajustes em bancos que já existiam antes de uma coluna nova. `CREATE TABLE IF
+ * NOT EXISTS` não altera tabela criada, então cada coluna acrescentada depois
+ * precisa entrar aqui — de forma idempotente, porque roda em toda abertura.
+ */
+function migrar(db: Conexao): void {
+  const colunas = new Set(
+    (db.prepare('PRAGMA table_info(lancamentos)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!colunas.has('origem')) {
+    // Sem CHECK: o SQLite não aceita restrição em ALTER TABLE ADD COLUMN.
+    db.exec(`ALTER TABLE lancamentos ADD COLUMN origem TEXT NOT NULL DEFAULT 'manual'`);
+  }
 }
 
 export function db(): Conexao {

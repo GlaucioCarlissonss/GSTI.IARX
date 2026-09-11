@@ -5,7 +5,7 @@ import { auditar } from './auditoria.js';
 import { ehCompetenciaValida, paraInterno } from './competencia.js';
 import type { Contexto } from './contexto.js';
 import { paraCentavos } from './dinheiro.js';
-import { criarLancamento, garantirCenario } from './financeiro.js';
+import { criarLancamento, garantirCenario, interpretarOrigem, type Origem } from './financeiro.js';
 import { criarFilial, resolverFila, resolverTipoDespesa, resolverTopicoAjuda } from './cadastros.js';
 import { competenciaEstaFechada } from './fechamento.js';
 import { lerCsv, lerXlsx, type Aba } from '../lib/planilha.js';
@@ -465,6 +465,9 @@ function importarLancamento(
   const cenario = resolverCenario(ctx, ler(linha, 'Cenário'), criar);
   const descricao = ler(linha, 'Descrição') || null;
   const observacoes = ler(linha, 'Observações') || null;
+  // Arquivo sem a coluna Origem (modelo 1.0, ou planilha do próprio gestor) é
+  // planilha por definição: veio de fora, não foi lançado aqui.
+  const origem = interpretarOrigem(ler(linha, 'Origem')) ?? 'planilha';
 
   if (natureza === 'pontual_parcelada' && parcelaNumero === null && (qtdParcelas === null || qtdParcelas < 2)) {
     throw new Error('Despesa pontual parcelada exige "Qtd Parcelas" maior ou igual a 2.');
@@ -529,6 +532,7 @@ function importarLancamento(
       classificacao,
       qtdParcelas: qtdParcelas!,
       cenario,
+      origem,
       descricao,
       observacoes,
       dedup,
@@ -544,8 +548,8 @@ function importarLancamento(
     .prepare(
       `INSERT INTO lancamentos
          (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
-          qtd_parcelas, parcela_numero, lancamento_origem_id, cenario, descricao, observacoes, dedup_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          qtd_parcelas, parcela_numero, lancamento_origem_id, cenario, origem, descricao, observacoes, dedup_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       ctx.empresaId,
@@ -559,6 +563,7 @@ function importarLancamento(
       parcelaNumero,
       origemId,
       cenario,
+      origem,
       descricao,
       observacoes,
       dedup,
@@ -581,6 +586,7 @@ function criarLancamentoImportado(
     classificacao: string;
     qtdParcelas: number;
     cenario: string;
+    origem: Origem;
     descricao: string | null;
     observacoes: string | null;
     dedup: string;
@@ -598,6 +604,7 @@ function criarLancamentoImportado(
     cenario: entrada.cenario,
     descricao: entrada.descricao,
     observacoes: entrada.observacoes,
+    origem: entrada.origem,
     dedupHash: entrada.dedup,
   });
   return criado.ocorrencias;

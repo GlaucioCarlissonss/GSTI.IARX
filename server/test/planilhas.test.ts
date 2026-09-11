@@ -191,3 +191,56 @@ test('importação não entra em competência fechada', async () => {
   assert.equal(resultado.com_erro, 1);
   assert.match(resultado.erros[0]!.mensagem, /fechada/);
 });
+
+test('a origem sobrevive ao ciclo de exportar e reimportar', async () => {
+  const { ctx } = ambienteLimpo();
+  const tipo = idTipoDespesa(ctx);
+
+  // Uma de cada procedência, como acontece na base real.
+  criarLancamento(ctx, { tipoDespesaId: tipo, competencia: mesRelativo(0), valor: 100,
+    natureza: 'fixa', classificacao: 'despesa', descricao: 'da planilha', origem: 'planilha' });
+  criarLancamento(ctx, { tipoDespesaId: tipo, competencia: mesRelativo(0), valor: 200,
+    natureza: 'fixa', classificacao: 'despesa', descricao: 'folha rateada', origem: 'folha_ti' });
+  criarLancamento(ctx, { tipoDespesaId: tipo, competencia: mesRelativo(0), valor: 300,
+    natureza: 'fixa', classificacao: 'despesa', descricao: 'lançado aqui' });
+
+  const antes = listarLancamentos(ctx, {}).itens;
+  assert.deepEqual(
+    Object.fromEntries(antes.map((l) => [l.descricao, l.origem])),
+    { 'da planilha': 'planilha', 'folha rateada': 'folha_ti', 'lançado aqui': 'manual' },
+  );
+
+  const planilha = await exportarXlsx(ctx, 'financeiro');
+  const relatorio = await importarPlanilha(ctx, planilha, {
+    modulo: 'financeiro',
+    arquivoNome: 'volta.xlsx',
+  });
+
+  assert.equal(relatorio.com_erro, 0, JSON.stringify(relatorio.erros));
+  assert.equal(relatorio.importadas, 0, 'reimportar a própria exportação não pode criar nada');
+  const depois = listarLancamentos(ctx, {}).itens;
+  assert.equal(depois.length, antes.length);
+  assert.deepEqual(
+    Object.fromEntries(depois.map((l) => [l.descricao, l.origem])),
+    { 'da planilha': 'planilha', 'folha rateada': 'folha_ti', 'lançado aqui': 'manual' },
+  );
+});
+
+test('planilha sem coluna Origem entra como "planilha", não como manual', async () => {
+  const { ctx } = ambienteLimpo();
+  const csv = escreverCsv(
+    ['Tipo de Despesa', 'Competência', 'Valor', 'Natureza', 'Classificação'],
+    [{ 'Tipo de Despesa': 'Link de Internet', 'Competência': mesRelativo(0),
+       Valor: '1.234,56', Natureza: 'fixa', 'Classificação': 'despesa' }],
+  );
+  const relatorio = await importarPlanilha(ctx, Buffer.from(csv, 'utf8'), {
+    modulo: 'financeiro',
+    arquivoNome: 'do-gestor.csv',
+    criarCadastros: true,
+  });
+  assert.equal(relatorio.com_erro, 0, JSON.stringify(relatorio.erros));
+  assert.equal(relatorio.importadas, 1);
+  const [lancamento] = listarLancamentos(ctx, {}).itens;
+  assert.equal(lancamento!.origem, 'planilha');
+  assert.equal(lancamento!.origem_rotulo, 'Planilhas do cliente');
+});

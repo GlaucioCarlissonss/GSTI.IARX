@@ -73,6 +73,10 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   observacoes         TEXT,
   -- 'oficial' é a projeção vigente; outros cenários convivem sem contaminar os totais
   cenario             TEXT NOT NULL DEFAULT 'oficial',
+  -- procedência do dado: o total do sistema não é o total das planilhas enviadas,
+  -- e sem isto não há como mostrar ao gestor de onde vem cada diferença
+  origem              TEXT NOT NULL DEFAULT 'manual'
+                        CHECK (origem IN ('planilha','folha_ti','projecao_spincare','manual')),
   dedup_hash          TEXT,
   excluido_em         TEXT,
   criado_em           TEXT NOT NULL DEFAULT (datetime('now')),

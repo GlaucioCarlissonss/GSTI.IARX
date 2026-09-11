@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { paraExibicao } from './competencia.js';
 import type { Contexto } from './contexto.js';
 import { paraReais } from './dinheiro.js';
+import { ROTULO_ORIGEM, type Origem } from './financeiro.js';
 import { escreverCsv, escreverXlsx, type Aba } from '../lib/planilha.js';
 import { ABAS, ABAS_POR_MODULO, TEMPLATE_VERSAO_ATUAL, type Modulo, type NomeAba } from './templates.js';
 
@@ -40,7 +41,7 @@ function linhasFinanceiro(ctx: Contexto) {
       .prepare(
         `SELECT l.id, f.nome AS filial, t.nome AS tipo, l.competencia, l.valor_centavos, l.natureza,
                 l.classificacao, l.qtd_parcelas, l.parcela_numero, l.lancamento_origem_id, l.cenario,
-                l.descricao, l.observacoes
+                l.origem, l.descricao, l.observacoes
            FROM lancamentos l
            JOIN tipos_despesa t ON t.id = l.tipo_despesa_id
            LEFT JOIN filiais f ON f.id = l.filial_id
@@ -59,6 +60,7 @@ function linhasFinanceiro(ctx: Contexto) {
       parcela_numero: number | null;
       lancamento_origem_id: number | null;
       cenario: string;
+      origem: Origem;
       descricao: string | null;
       observacoes: string | null;
     }>
@@ -74,6 +76,7 @@ function linhasFinanceiro(ctx: Contexto) {
     // O grupo identifica a série; na reimportação religa as parcelas ao lançamento de origem.
     Grupo: l.lancamento_origem_id ?? l.id,
     Cenário: l.cenario,
+    Origem: ROTULO_ORIGEM[l.origem] ?? l.origem,
     Descrição: l.descricao ?? '',
     Observações: l.observacoes ?? '',
   }));

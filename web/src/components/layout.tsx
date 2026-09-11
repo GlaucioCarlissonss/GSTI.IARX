@@ -12,6 +12,7 @@ const NAVEGACAO = [
       { para: '/financeiro', glifo: '◱', rotulo: 'Dashboard' },
       { para: '/lancamentos', glifo: '≡', rotulo: 'Lançamentos' },
       { para: '/fechamentos', glifo: '⊘', rotulo: 'Fechamento mensal' },
+      { para: '/conferencia', glifo: '⚖', rotulo: 'Conferência de origem' },
     ],
   },
   {

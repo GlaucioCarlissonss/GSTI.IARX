@@ -7,7 +7,7 @@
  * quando o template evoluir.
  */
 
-export const TEMPLATE_VERSAO_ATUAL = '1.0';
+export const TEMPLATE_VERSAO_ATUAL = '1.1';   // 1.1 acrescentou a coluna Origem
 
 export type NomeAba =
   | 'Filiais'
@@ -61,6 +61,7 @@ export const ABAS: Record<NomeAba, DefinicaoAba> = {
       'Parcela',
       'Grupo',
       'Cenário',
+      'Origem',
       'Descrição',
       'Observações',
     ],
@@ -73,6 +74,7 @@ export const ABAS: Record<NomeAba, DefinicaoAba> = {
       Parcela: ['parcela', 'numeroparcela', 'parcelanumero'],
       Grupo: ['grupo', 'grupoparcelamento', 'referencia', 'referenciaexterna'],
       Cenário: ['cenario', 'cenarioprojecao'],
+      Origem: ['origem', 'origemdodado', 'procedencia'],
       Descrição: ['descricao'],
       Observações: ['observacoes', 'obs'],
     },

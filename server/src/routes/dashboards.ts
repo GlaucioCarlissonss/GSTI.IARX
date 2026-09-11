@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { dashboardFinanceiro, dashboardProjetos, dashboardSla, visaoExecutiva } from '../domain/dashboards.js';
+import {
+  conferenciaOrigem,
+  dashboardFinanceiro,
+  dashboardProjetos,
+  dashboardSla,
+  visaoExecutiva,
+} from '../domain/dashboards.js';
 import { ctx } from '../middleware/index.js';
 import type { EscopoDashboard } from '../domain/dashboards.js';
 
@@ -35,4 +41,8 @@ rotasDashboards.get('/sla', (req, res) => {
 
 rotasDashboards.get('/executivo', (req, res) => {
   res.json(visaoExecutiva(ctx(req), escopoDaQuery(req.query as Record<string, unknown>)));
+});
+
+rotasDashboards.get('/conferencia', (req, res) => {
+  res.json(conferenciaOrigem(ctx(req), escopoDaQuery(req.query as Record<string, unknown>)));
 });

@@ -245,8 +245,8 @@ async function carregarDespesas(amb: Ambiente): Promise<Resumo> {
   const inserir = db().prepare(
     `INSERT INTO lancamentos
        (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
-        descricao, observacoes, cenario, dedup_hash)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'oficial', ?)`,
+        descricao, observacoes, cenario, origem, dedup_hash)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'oficial', 'planilha', ?)`,
   );
 
   for (const fonte of FONTES) {
@@ -352,8 +352,8 @@ async function carregarFolhaTI(amb: Ambiente, gastoPorEmpresaMes: Map<string, nu
   const inserir = db().prepare(
     `INSERT INTO lancamentos
        (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
-        descricao, observacoes, cenario, dedup_hash)
-     VALUES (?, ?, ?, ?, ?, 'fixa', 'despesa', ?, ?, 'oficial', ?)`,
+        descricao, observacoes, cenario, origem, dedup_hash)
+     VALUES (?, ?, ?, ?, ?, 'fixa', 'despesa', ?, ?, 'oficial', 'folha_ti', ?)`,
   );
 
   for (const competencia of competencias) {
@@ -547,6 +547,7 @@ function carregarSpinCare(amb: Ambiente): Resumo {
           repetirAte: paraExibicao(meses[meses.length - 1]!),
           cenario: cenario.chave === 'oficial' ? null : cenario.chave,
           descricao: `Mensalidade ${item.produto} — ${item.unidade}`,
+          origem: 'projecao_spincare',
           observacoes:
             `Projeto de migração do ERP SpinCare. ${bloco.rotulo}.` +
             (aplicaFator && cenario.fator !== 1

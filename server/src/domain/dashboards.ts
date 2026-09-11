@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { CENARIO_OFICIAL } from './financeiro.js';
+import { CENARIO_OFICIAL, ROTULO_ORIGEM, type Origem } from './financeiro.js';
 import {
   competenciaAtual,
   diferencaEmMeses,
@@ -562,5 +562,75 @@ export function visaoExecutiva(ctx: Contexto, escopo: EscopoDashboard = {}) {
     },
     projetos: projetos.indicadores,
     sla: sla.totais_mes,
+  };
+}
+
+// ==========================================================================
+// Conferência de origem
+// ==========================================================================
+
+/**
+ * Decompõe o total por procedência do dado.
+ *
+ * O total que o sistema mostra não é o total das planilhas enviadas pelo
+ * gestor: além das linhas importadas, a base soma a folha de TI rateada e a
+ * projeção do novo ERP, que não existiam como linha de despesa. Sem esta
+ * visão, a única conversa possível sobre a diferença é "o número está errado";
+ * com ela, o gestor confere parcela por parcela e decide o que é oficial.
+ *
+ * Ignora o recorte de filial de propósito: a conferência é da empresa inteira.
+ */
+export function conferenciaOrigem(ctx: Contexto, escopo: EscopoDashboard = {}) {
+  const cenario = escopo.cenario ?? CENARIO_OFICIAL;
+
+  const linhas = db()
+    .prepare(
+      `SELECT origem, competencia,
+              COUNT(*) AS n,
+              SUM(valor_centavos) AS centavos
+         FROM lancamentos
+        WHERE empresa_id = ? AND excluido_em IS NULL AND cenario = ?
+        GROUP BY origem, competencia
+        ORDER BY competencia`,
+    )
+    .all(ctx.empresaId, cenario) as Array<{ origem: Origem; competencia: string; n: number; centavos: number }>;
+
+  const totalCentavos = linhas.reduce((s, l) => s + l.centavos, 0);
+  const ordem: Origem[] = ['planilha', 'folha_ti', 'projecao_spincare', 'manual'];
+
+  const porOrigem = ordem.map((origem) => {
+    const minhas = linhas.filter((l) => l.origem === origem);
+    const centavos = minhas.reduce((s, l) => s + l.centavos, 0);
+    const meses = minhas.map((l) => l.competencia).sort();
+    return {
+      origem,
+      rotulo: ROTULO_ORIGEM[origem],
+      lancamentos: minhas.reduce((s, l) => s + l.n, 0),
+      valor: paraReais(centavos),
+      percentual: percentual(centavos, totalCentavos),
+      competencia_inicio: meses.length ? paraExibicao(meses[0]!) : null,
+      competencia_fim: meses.length ? paraExibicao(meses[meses.length - 1]!) : null,
+    };
+  });
+
+  const meses = [...new Set(linhas.map((l) => l.competencia))].sort();
+  const porCompetencia = meses.map((competencia) => {
+    const doMes = linhas.filter((l) => l.competencia === competencia);
+    return {
+      competencia: paraExibicao(competencia),
+      ...Object.fromEntries(ordem.map((o) => [o, paraReais(doMes.filter((l) => l.origem === o).reduce((s, l) => s + l.centavos, 0))])),
+      total: paraReais(doMes.reduce((s, l) => s + l.centavos, 0)),
+    };
+  });
+
+  const basePlanilha = linhas.filter((l) => l.origem === 'planilha').reduce((s, l) => s + l.centavos, 0);
+  return {
+    cenario,
+    base_enviada: paraReais(basePlanilha),
+    acrescentado: paraReais(totalCentavos - basePlanilha),
+    total: paraReais(totalCentavos),
+    peso_do_acrescimo: percentual(totalCentavos - basePlanilha, totalCentavos),
+    por_origem: porOrigem,
+    por_competencia: porCompetencia,
   };
 }
