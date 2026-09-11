@@ -140,10 +140,22 @@ const Loja = {
   },
 };
 
+/**
+ * O fechamento é gravado como {comp, quando} para a trilha saber quando foi,
+ * mas versões antigas guardaram a competência solta. Quem consulta precisa
+ * aceitar as duas formas — comparar o registro inteiro com a string faz o
+ * bloqueio nunca disparar, e o fechamento vira enfeite.
+ */
+const compDoFechamento = (f) => (f && typeof f === 'object' ? f.comp : f);
+function competenciaFechada(empresa, comp) {
+  return (E.fechamentos.get(empresa) || []).some((f) => compDoFechamento(f) === comp);
+}
+
 /** Competência fechada bloqueia escrita; passada exige justificativa. */
 function checarCompetencia(comp, justificativa) {
-  const fechadas = E.fechamentos.get(E.empresa) || [];
-  if (fechadas.includes(comp)) throw new Error('A competência ' + mesExib(comp) + ' está fechada. Reabra-a para alterar.');
+  if (competenciaFechada(E.empresa, comp)) {
+    throw new Error('A competência ' + mesExib(comp) + ' está fechada. Reabra-a para alterar.');
+  }
   if (comp < mesHoje() && !String(justificativa || '').trim()) {
     throw new Error('Alterações em competências passadas (' + mesExib(comp) + ') exigem justificativa.');
   }

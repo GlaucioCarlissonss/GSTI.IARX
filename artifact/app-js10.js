@@ -228,7 +228,6 @@ async function importarFinanceiro(empresa, aba, opcoes, rel) {
   const ler = (linha, col) => mapa.has(col) ? String(linha[mapa.get(col)] ?? '').trim() : '';
   const existentes = contarExistentes(empresa);
   const vistas = new Map();
-  const fechadas = new Set(E.fechamentos.get(empresa) || []);
   const tiposConhecidos = new Set(tiposDa(empresa).map((t) => t.nome));
   const filiaisConhecidas = new Set(filiaisDa(empresa).map((f) => f.nome));
   const cenariosConhecidos = new Set(cenariosDa(empresa).map((c) => c.chave));
@@ -250,7 +249,7 @@ async function importarFinanceiro(empresa, aba, opcoes, rel) {
     if (!natureza) return erro('Natureza inválida — use Fixa, Pontual única ou Pontual parcelada.');
     const classificacao = lerClassificacao(ler(linha, 'Classificação'));
     if (!classificacao) return erro('Classificação inválida — use Despesa ou Investimento.');
-    if (fechadas.has(competencia)) return erro('Competência ' + mesExib(competencia) + ' está fechada.');
+    if (competenciaFechada(empresa, competencia)) return erro('Competência ' + mesExib(competencia) + ' está fechada.');
 
     const filial = ler(linha, 'Filial') || null;
     const parcela = lerInteiro(ler(linha, 'Parcela'));

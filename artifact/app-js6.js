@@ -170,21 +170,26 @@ async function viewCadastros() {
           <input id="fc-comp" value="${mesExib(E.competencia||mesHoje())}"></div>
         <button class="bt pri" id="fc-fechar">Fechar competência</button>
       </div>
+      <div class="msg erro" id="fc-erro" hidden style="margin-top:10px"></div>
       ${fechadas.length===0 ? '<p class="vazio">Nenhuma competência fechada.</p>' : `
       <div class="rol" style="margin-top:10px"><table><thead><tr><th>Competência</th><th>Fechada em</th><th></th></tr></thead>
-        <tbody>${fechadas.map((f)=>`<tr data-fc="${esc(f.comp||f)}">
-          <td><span class="tag alerta">${mesExib(f.comp||f)}</span></td>
+        <tbody>${fechadas.map((f)=>`<tr data-fc="${esc(compDoFechamento(f))}">
+          <td><span class="tag alerta">${mesExib(compDoFechamento(f))}</span></td>
           <td>${f.quando?new Date(f.quando).toLocaleString('pt-BR'):'—'}</td>
           <td><button class="bt fant peq" data-reabrir>Reabrir</button></td></tr>`).join('')}</tbody></table></div>`}
     </section>`;
 
   el('#pagina').querySelectorAll('[data-novo]').forEach((b) => b.onclick = () => formCadastro(b.dataset.novo));
+  // alert() pode ser engolido pelo sandbox do visualizador: a recusa iria para
+  // o nada e o botão pareceria quebrado. A mensagem fica na própria página.
+  const avisar = (texto) => { const b = el('#fc-erro'); b.textContent = texto || ''; b.hidden = !texto; };
   el('#fc-fechar').onclick = async () => {
+    avisar('');
     const c = mesInterno(el('#fc-comp').value);
-    if (!c) return alert('Competência inválida: use MM/AAAA.');
-    if (c > mesHoje()) return alert('Não é possível fechar uma competência futura.');
+    if (!c) return avisar('Competência inválida: use MM/AAAA.');
+    if (c > mesHoje()) return avisar('Não é possível fechar uma competência futura — só meses já encerrados.');
     const atuais = await Loja.fechamentosDa(emp);
-    if (atuais.some((f)=>(f.comp||f)===c)) return alert('Esta competência já está fechada.');
+    if (atuais.some((f)=>compDoFechamento(f)===c)) return avisar('A competência ' + mesExib(c) + ' já está fechada.');
     await Loja.gravarFechamentos(emp, [...atuais, { comp:c, quando:new Date().toISOString() }]);
     await Loja.auditar({ acao:'fechar', entidade:'fechamento', depois:{ competencia: mesExib(c) } });
     render();
@@ -194,7 +199,7 @@ async function viewCadastros() {
       titulo:'Reabrir competência', mensagem:`A competência ${mesExib(tr.dataset.fc)} voltará a aceitar alterações.`,
       rotulo:'Reabrir', exigeJustificativa:true,
       async aoConfirmar(just) {
-        const atuais = (await Loja.fechamentosDa(emp)).filter((f)=>(f.comp||f)!==tr.dataset.fc);
+        const atuais = (await Loja.fechamentosDa(emp)).filter((f)=>compDoFechamento(f)!==tr.dataset.fc);
         await Loja.gravarFechamentos(emp, atuais);
         await Loja.auditar({ acao:'reabrir', entidade:'fechamento', justificativa:just, antes:{ competencia: mesExib(tr.dataset.fc) } });
         render();
