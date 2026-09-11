@@ -16,3 +16,8 @@ dados-origem/
 
 # Artefatos de build do TypeScript
 *.tsbuildinfo
+
+# Cópias locais dos documentos do artifact (dados reais do cliente)
+artifact/dados/
+artifact/sistema.html
+artifact/teste-local.html
