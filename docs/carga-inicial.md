@@ -123,9 +123,26 @@ integralmente reconhecida como duplicada.
    cortada no documento enviado — apenas as mensalidades foram carregadas. Assim
    que os valores forem informados, entram como despesa pontual parcelada e o
    sistema projeta as parcelas automaticamente.
-4. **Módulo de SLA sem dados.** Nenhuma base de tickets foi fornecida; o módulo
-   está funcional e vazio, pronto para receber os registros pela tela ou pela
-   planilha padrão.
+4. **Base de chamados do osTicket.** 10.233 chamados extraídos em 10/09/2026,
+   dos quais **10.116 (98,9 %) importados** e 117 descartados por pertencerem a
+   organizações fora das cinco empresas. O mapeamento (organização →
+   empresa/filial, tópico → fila) e o critério de SLA — `fechamento − abertura
+   ≤ 48h`, com chamado ainda aberto medido contra o momento da extração —
+   estão em [`regras-de-negocio.md`](regras-de-negocio.md#carga-da-base-do-osticket).
+   Resultado por empresa:
+
+   | empresa | chamados | dentro do SLA |
+   | --- | ---: | ---: |
+   | RESIDENCIAL | 6.998 | 67,4 % |
+   | MILAGRES | 2.086 | 61,9 % |
+   | ALIANÇA | 624 | 56,9 % |
+   | UNION CARE | 365 | 59,7 % |
+   | MOOVE | 43 | 74,4 % |
+   | **Total** | **10.116** | **65,4 %** |
+
+   Duas filas nasceram da base, além das três previstas: **Outros** (1.066
+   chamados de TI que não caem em Infraestrutura, Sistema ou Dados) e **Fora de
+   TI** (168 chamados de outros departamentos que trafegam pelo mesmo osTicket).
 5. **Colaborador em substituição.** `Miqueias (SUBSTITUIÇÃO LIMAS)` está fora do
    subtotal da planilha de origem, mas entrou no rateio corporativo por ser
    custo efetivo da equipe.
