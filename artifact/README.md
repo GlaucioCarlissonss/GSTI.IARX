@@ -87,6 +87,24 @@ O seletor **Base considerada**, na barra do topo, recorta todos os números do
 sistema por esse campo. É o que permite responder à pergunta que motivou a
 aba: *por que o total do sistema não é o total da minha planilha?*
 
+## Chamados (SLA)
+
+Um registro de SLA com `total = 1` e `dentro = 0|1` é **um chamado**. Como toda
+a agregação já trabalha em cima de `total` e `dentro`, os percentuais por fila,
+tópico e filial continuam saindo da mesma conta — e o registro ainda carrega o
+detalhe do chamado.
+
+Quando há `ticketId`, a aba SLA lista os chamados e o número vira link para o
+osTicket, porque o id compõe a URL de origem
+(`…/scp/tickets.php?id=21734`). O endereço base fica em **Cadastros → Endereço
+do osTicket**; a lista mostra no máximo 300 linhas e respeita os filtros.
+
+A carga vem de `scripts/gerar-sla.cjs <csv> <saída>`, que converte a extração do
+osTicket nos documentos do sistema. O mapeamento (organização → empresa/filial,
+tópico → fila, o que é descartado, e por que o SLA é `fechamento − abertura ≤
+48h` em vez da coluna `est_duedate` da extração) está em
+[`docs/regras-de-negocio.md`](../docs/regras-de-negocio.md#carga-da-base-do-osticket).
+
 ## Importar e exportar
 
 A aba **Dados** fecha o ciclo com o Excel, que é onde o gestor já trabalha.
@@ -114,7 +132,7 @@ vindos do Excel chegam comprimidos. Não há CDN envolvido.
 
 ### Verificação
 
-Quatro suítes, todas contra um `window.claude` simulado num Chromium real:
+Oito suítes, todas contra um `window.claude` simulado num Chromium real:
 
 | script | o que cobre |
 |---|---|

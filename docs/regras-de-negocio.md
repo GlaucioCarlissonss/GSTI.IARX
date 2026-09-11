@@ -123,6 +123,44 @@ Os indicadores derivados (% dentro, % fora, por fila, por tópico, por filial e
 tendência mensal) são calculados na consulta, nunca armazenados — não há como
 divergirem dos registros.
 
+### Chamado como registro de SLA
+
+Um registro pode representar **um chamado**, e não só um agregado mensal: basta
+`total = 1` e `dentro = 0|1`. Toda a agregação já existente (por fila, tópico,
+filial, percentual, tendência) continua valendo sem nenhuma mudança, e o
+registro ainda guarda o detalhe — `ticketId`, número, assunto, solicitante,
+responsável, nível, status, abertura, fechamento, prazo e horas.
+
+Com `ticketId` preenchido, a tela de SLA passa a listar os chamados e o número
+vira **link de volta para o osTicket**. O endereço base é configurável em
+*Cadastros → Endereço do osTicket* (padrão
+`https://www.suportehr.com.br/scp/tickets.php?id=`), porque o id compõe a URL do
+chamado no sistema de origem.
+
+### Carga da base do osTicket
+
+`scripts/gerar-sla.cjs <csv> <pasta-de-saída>` converte a extração do osTicket
+nos documentos de SLA. As decisões de mapeamento, todas confirmadas com o
+gestor, ficam no topo do script:
+
+| Decisão | Regra |
+| --- | --- |
+| Organização → empresa/filial | tabela `ORG`; `PB - Hospital Residencial` é **HR JP** |
+| `HR - Urgência Emergência` e `indefinido` | entram em **RESIDENCIAL sem filial**; as demais organizações fora das 5 empresas são descartadas e listadas no relatório |
+| Tópico → fila | `TI - Infra*`, `TI - Reset de Senha`, `TI - Segurança` e `TI - Aquisição` → **Infraestrutura**; `TI - IW/FOC/Sistemas` → **Sistema**; `TI - Dados` → **Dados**; demais `TI - *` → **Outros**; o resto → **Fora de TI** |
+| Dentro do SLA | `fechamento − abertura ≤ 48h` |
+| Chamado ainda aberto | medido contra o **momento da extração**, gravado em `extraidoEm`: um chamado vencido e sem fechar está **fora** do SLA, não "ainda dentro" |
+
+**Por que não usar `est_duedate`.** A coluna de vencimento estimado da extração
+só existe para os chamados fechados rápido (mediana de 1,3 h, 6,5 % acima de
+48 h) e está ausente justamente nos 2.805 chamados em atraso (mediana de 240 h,
+99,5 % acima de 48 h). Usá-la produziria um SLA perto de 100 %, que não descreve
+a operação. O cálculo adotado é o mesmo "Padrão SLA" que a própria tela do
+osTicket exibe como Data de Vencimento: abertura + 48 h.
+
+A idempotência da carga vem da chave `ticket:<ticketId>`: reimportar o mesmo
+arquivo atualiza o chamado, nunca o duplica.
+
 ## Filtros
 
 Todo filtro aceita **mais de um valor**. Na tela isso são caixas de seleção,
@@ -183,9 +221,13 @@ n-ésima repetição casa com a n-ésima já existente, preservando a contagem.
 transação desfeita ao final: o relatório é real, o banco não muda.
 
 **Versões do template.** `1.0` é o layout original; `1.1` acrescentou a coluna
-`Origem` à aba `Financeiro`. Um arquivo `1.0` continua importável — a origem
-ausente vira `planilha` —, e um arquivo `1.1` aberto por uma versão antiga
-apenas ignora a coluna a mais.
+`Origem` à aba `Financeiro`; `1.2` acrescentou à aba `SLA` as colunas de detalhe
+do chamado (`Ticket`, `Número`, `Assunto`, `Solicitante`, `Responsável`,
+`Nível`, `Status`, `Origem`, `Aberto em`, `Fechado em`, `Prazo`, `Horas`). Um
+arquivo `1.0` continua importável — a origem ausente vira `planilha` —, e um
+arquivo de versão maior aberto por uma versão antiga apenas ignora as colunas a
+mais. Na aba `SLA`, a linha com `Ticket` preenchido é deduplicada por
+`ticket:<id>`; sem `Ticket`, pelo conteúdo, como nas demais abas.
 
 ## Expansões previstas
 

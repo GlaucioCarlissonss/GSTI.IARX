@@ -6,7 +6,7 @@
 // coluna a mais: Origem. Sem ela a reimportação apagaria a procedência que a
 // aba Conferência usa, e o rateio de folha viraria linha de planilha.
 // ===========================================================================
-const MODELO_VERSAO = '1.1';
+const MODELO_VERSAO = '1.2';   // 1.2 levou o detalhe do chamado para a aba SLA
 
 const ABAS_MODELO = {
   Modelo: { colunas: ['Chave', 'Valor'], obrigatorias: [], apelidos: {} },
@@ -62,12 +62,22 @@ const ABAS_MODELO = {
     apelidos: { Projeto: ['projeto'], Envolvido: ['envolvido', 'nome'], Papel: ['papel', 'funcao'] },
   },
   SLA: {
-    colunas: ['Filial', 'Competência', 'Fila', 'Tópico de Ajuda', 'Total Atendidos', 'Dentro SLA', 'Fora SLA', 'Observações'],
+    // Um chamado é um registro com Total 1; as colunas de detalhe só vêm
+    // preenchidas quando a linha veio do osTicket, e é o Ticket que permite
+    // voltar ao chamado de origem.
+    colunas: ['Filial', 'Competência', 'Fila', 'Tópico de Ajuda', 'Total Atendidos', 'Dentro SLA', 'Fora SLA',
+      'Ticket', 'Número', 'Assunto', 'Solicitante', 'Responsável', 'Nível', 'Status', 'Origem',
+      'Aberto em', 'Fechado em', 'Prazo', 'Horas', 'Observações'],
     obrigatorias: ['Competência', 'Fila', 'Total Atendidos', 'Dentro SLA'],
     apelidos: { 'Competência': ['competencia', 'mes', 'mescompetencia', 'mesreferencia'],
       Fila: ['fila', 'filaticket', 'filadoticket'], 'Tópico de Ajuda': ['topicodeajuda', 'topico', 'topicoajuda'],
       'Total Atendidos': ['totalatendidos', 'total', 'atendidos'], 'Dentro SLA': ['dentrosla', 'dentrodosla'],
-      'Fora SLA': ['forasla', 'foradosla'], 'Observações': ['observacoes', 'obs'] },
+      'Fora SLA': ['forasla', 'foradosla'], 'Observações': ['observacoes', 'obs'],
+      Ticket: ['ticket', 'ticketid', 'idchamado', 'idticket'], 'Número': ['numero', 'numerochamado', 'number'],
+      Assunto: ['assunto', 'subject'], Solicitante: ['solicitante'], 'Responsável': ['responsavel', 'atendente'],
+      'Nível': ['nivel', 'departamento'], Status: ['status'], Origem: ['origem', 'source'],
+      'Aberto em': ['abertoem', 'criadoem', 'created'], 'Fechado em': ['fechadoem', 'closed'],
+      Prazo: ['prazo', 'prazoem', 'duedate', 'estduedate'], Horas: ['horas'] },
   },
 };
 
@@ -189,8 +199,11 @@ async function montarAbas(empresa, modulo) {
     Envolvidos: projetos.flatMap((p) => (p.envolvidos||[]).map((v) => ({ Projeto:p.nome, Envolvido:v.nome, Papel:v.papel||'' }))),
     SLA: sla.map((s) => ({ Filial:s.filial||'', 'Competência':mesExib(s.competencia), Fila:s.fila,
       'Tópico de Ajuda':s.topico||'', 'Total Atendidos':Number(s.total)||0,
-      'Dentro SLA':Number(s.dentro)||0, 'Fora SLA':Number(s.fora ?? ((s.total||0)-(s.dentro||0))),
-      'Observações':s.obs||'' })),
+      'Dentro SLA':Number(s.dentro)||0, 'Fora SLA':(Number(s.total)||0)-(Number(s.dentro)||0),
+      Ticket:s.ticketId||'', 'Número':s.numero||'', Assunto:s.assunto||'', Solicitante:s.solicitante||'',
+      'Responsável':s.atendente||'', 'Nível':s.nivel||'', Status:s.status||'', Origem:s.origem||'',
+      'Aberto em':s.criadoEm||'', 'Fechado em':s.fechadoEm||'', Prazo:s.prazoEm||'',
+      Horas:(s.horas ?? ''), 'Observações':s.obs||'' })),
   };
   return MODULOS[modulo].abas.map((nome) => ({ nome, colunas: ABAS_MODELO[nome].colunas, linhas: conteudo[nome] || [] }));
 }
@@ -305,8 +318,9 @@ async function importarSla(empresa, aba, opcoes, rel) {
   const faltando = ABAS_MODELO.SLA.obrigatorias.filter((c) => !mapa.has(c));
   if (faltando.length) { rel.abas.push({ nome:'SLA', erro:'Faltam colunas obrigatórias: ' + faltando.join(', ') }); return; }
   const ler = (l, c) => mapa.has(c) ? String(l[mapa.get(c)] ?? '').trim() : '';
-  const jaTem = new Set((await Loja.slaDa(empresa)).map((s) =>
-    [s.competencia, s.fila, s.topico || '', s.filial || '', s.total, s.dentro].join('|')));
+  const jaTem = new Set((await Loja.slaDa(empresa)).map((s) => s.ticketId
+    ? 'ticket:' + s.ticketId
+    : [s.competencia, s.fila, s.topico || '', s.filial || '', s.total, s.dentro].join('|')));
   const porMes = new Map();
   let criadas = 0, duplicadas = 0;
 
@@ -329,9 +343,23 @@ async function importarSla(empresa, aba, opcoes, rel) {
 
     // `fora` não é gravado: é derivado de total − dentro em toda leitura, como
     // na tela. Guardar o derivado abriria espaço para ele discordar da conta.
-    const reg = { id: novoId(), filial: ler(linha,'Filial') || null, fila, topico: ler(linha,'Tópico de Ajuda') || null,
+    const ticketId = lerInteiro(ler(linha, 'Ticket'));
+    const reg = { id: ticketId ? 't' + ticketId : novoId(),
+      filial: ler(linha,'Filial') || null, fila, topico: ler(linha,'Tópico de Ajuda') || null,
       total, dentro, obs: ler(linha,'Observações') || null };
-    const k = [competencia, reg.fila, reg.topico || '', reg.filial || '', total, dentro].join('|');
+    if (ticketId) {
+      Object.assign(reg, { ticketId,
+        numero: ler(linha,'Número') || null, assunto: ler(linha,'Assunto') || null,
+        solicitante: ler(linha,'Solicitante') || null, atendente: ler(linha,'Responsável') || null,
+        nivel: ler(linha,'Nível') || null, status: ler(linha,'Status') || null, origem: ler(linha,'Origem') || null,
+        criadoEm: ler(linha,'Aberto em') || null, fechadoEm: ler(linha,'Fechado em') || null,
+        prazoEm: ler(linha,'Prazo') || null,
+        horas: ler(linha,'Horas') === '' ? null : lerValorPlanilha(ler(linha,'Horas')) });
+    }
+    // O chamado se identifica pelo próprio número no osTicket; o registro
+    // digitado à mão continua casando por conteúdo.
+    const k = ticketId ? 'ticket:' + ticketId
+      : [competencia, reg.fila, reg.topico || '', reg.filial || '', total, dentro].join('|');
     if (jaTem.has(k)) { duplicadas++; return; }
     jaTem.add(k);
     if (!porMes.has(competencia)) porMes.set(competencia, []);

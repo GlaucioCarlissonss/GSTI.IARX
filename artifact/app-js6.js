@@ -2,49 +2,94 @@
 // SLA — registro mensal por fila e tópico, com indicadores derivados
 // ===========================================================================
 async function viewSla() {
+  await Loja.configuracao();
   const carregados = [];
   for (const e of escopoEmpresas()) for (const r of await Loja.slaDa(e)) carregados.push({ ...r, empresa: e });
   const regs = carregados.filter((r) => passaNoFiltro(E.filiaisSel, r.filial || '(empresa)'));
-  const comps = [...new Set(regs.map((r)=>r.competencia))].sort();
+  const comps = [...new Set(regs.map((r) => r.competencia))].sort();
   // O SLA acompanha a competência escolhida no topo, limitada ao que existe aqui.
   const escolhidas = [...E.competencias].filter((c) => comps.includes(c));
   const foco = new Set(escolhidas.length ? escolhidas : comps.slice(-1));
   const comp = ordenado(foco).pop() || mesHoje();
   const doMes = regs.filter((r) => foco.has(r.competencia));
   const periodo = foco.size <= 1 ? mesExib(comp) : `${mesExib(ordenado(foco)[0])} a ${mesExib(comp)}`;
-  const T = doMes.reduce((s,r)=>s+(r.total||0),0), D = doMes.reduce((s,r)=>s+(r.dentro||0),0);
 
+  // Um chamado é um registro com total=1: a agregação vale para os dois casos,
+  // o lote importado do osTicket e o total digitado à mão.
+  const f = E.filtrosSla;
+  const aberto = (r) => r.status && !/resolvid|fechad/i.test(r.status);
+  const filtrado = doMes.filter((r) => {
+    if (!passaNoFiltro(f.filas, r.fila)) return false;
+    if (!passaNoFiltro(f.status, r.status || '(sem status)')) return false;
+    if (!passaNoFiltro(f.niveis, r.nivel || '(sem nível)')) return false;
+    if (f.sla.size && !f.sla.has(r.dentro >= (r.total || 1) ? 'dentro' : 'fora')) return false;
+    if (f.busca) {
+      const alvo = [r.assunto, r.solicitante, r.atendente, r.topico, r.numero, r.ticketId].join(' ').toLowerCase();
+      if (!alvo.includes(f.busca.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  const T = filtrado.reduce((s, r) => s + (r.total || 0), 0);
+  const D = filtrado.reduce((s, r) => s + (r.dentro || 0), 0);
+  const emAberto = filtrado.filter(aberto).length;
+  const comHoras = filtrado.filter((r) => typeof r.horas === 'number');
+  const medianaHoras = comHoras.length
+    ? comHoras.map((r) => r.horas).sort((a, b) => a - b)[Math.floor(comHoras.length / 2)] : null;
+
+  // Chamado sem filial é do nível empresa — dizer "(sem)" esconde o que é.
+  const VAZIO = { filial:'Sem filial (empresa)', topico:'(sem tópico)', fila:'(sem fila)',
+    status:'(sem status)', nivel:'(sem nível)' };
   const agrupar = (chave) => {
     const m = {};
-    for (const r of doMes) { const k = r[chave] || '(sem)'; m[k] = m[k] || { t:0, d:0 }; m[k].t += r.total||0; m[k].d += r.dentro||0; }
-    return Object.entries(m).map(([k,v]) => ({ nome:k, total:v.t, dentro:v.d, fora:v.t-v.d, pct:pct(v.d,v.t) }));
+    for (const r of filtrado) { const k = r[chave] || VAZIO[chave] || '(sem)'; m[k] = m[k] || { t:0, d:0 }; m[k].t += r.total||0; m[k].d += r.dentro||0; }
+    return Object.entries(m).map(([k, v]) => ({ nome:k, total:v.t, dentro:v.d, fora:v.t-v.d, pct:pct(v.d, v.t) }))
+      .sort((a, b) => b.total - a.total);
   };
   const porFila = agrupar('fila'), porTopico = agrupar('topico'), porFilial = agrupar('filial');
   const tendencia = comps.map((c) => {
-    const dd = regs.filter((r)=>r.competencia===c);
-    const t = dd.reduce((s,r)=>s+(r.total||0),0), d = dd.reduce((s,r)=>s+(r.dentro||0),0);
-    return { rot: mesCurto(c), v: { p: pct(d,t) } };
+    const dd = regs.filter((r) => r.competencia === c);
+    const t = dd.reduce((s, r) => s + (r.total||0), 0), d = dd.reduce((s, r) => s + (r.dentro||0), 0);
+    return { rot: mesCurto(c), v: { p: pct(d, t) } };
   });
+
+  const chamados = filtrado.filter((r) => r.ticketId).sort((a, b) => String(b.criadoEm).localeCompare(String(a.criadoEm)));
+  const TETO = 300;
+  const hora = (t) => (t ? new Date(t).toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' }) : '—');
+  const itensDe = (chave, rotulo) => [...new Set(doMes.map((r) => r[chave] || rotulo))].sort()
+    .map((v) => ({ valor: v, rotulo: v }));
+
 
   el('#pagina').innerHTML = `
     <div class="filtros">
-      <div class="campo" style="width:190px"><label for="s-comp">Competência</label><div data-sel="scomp"></div></div>
-      <div style="margin-left:auto;font-size:12px;color:var(--tinta3)">${esc(rotuloEscopo())} · ${esc(periodo)}</div>
+      <div class="campo" style="width:180px"><label for="s-comp">Competência</label><div data-sel="scomp"></div></div>
+      <div class="campo" style="width:150px"><label for="s-fila">Fila</label><div data-sel="sfila"></div></div>
+      <div class="campo" style="width:140px"><label for="s-status">Status</label><div data-sel="sstatus"></div></div>
+      <div class="campo" style="width:130px"><label for="s-nivel">Nível</label><div data-sel="snivel"></div></div>
+      <div class="campo" style="width:130px"><label for="s-sla">SLA</label><div data-sel="ssla"></div></div>
+      <div class="campo" style="flex:1 1 150px"><label for="s-busca">Buscar</label>
+        <input id="s-busca" placeholder="assunto, solicitante, nº…" value="${esc(f.busca)}"></div>
       <button class="bt pri" id="s-novo"${empresaAtiva() ? '' : ' disabled title="Deixe uma só empresa marcada para registrar"'}>Registrar tickets do mês</button>
     </div>
     <div class="fichas" id="s-fichas" hidden></div>
     ${regs.length === 0 ? `<section class="bloco"><p class="vazio">
         Nenhum ticket registrado nesta empresa. Use <strong>Registrar tickets do mês</strong> para lançar
-        o total atendido, quantos ficaram dentro do SLA, por fila e por tópico de ajuda.</p></section>` : `
+        o total atendido, ou importe a base do osTicket pela aba <strong>Dados</strong>.</p></section>` : `
     <div class="kpis">
-      <div class="kpi"><span class="r">Tickets atendidos</span><span class="n">${inteiro(T)}</span><span class="a">${mesExib(comp)}</span></div>
-      <div class="kpi"><span class="r">Dentro do SLA</span><span class="n">${pctTxt(pct(D,T))}</span><span class="a">${inteiro(D)} tickets</span></div>
-      <div class="kpi"><span class="r">Fora do SLA</span><span class="n">${pctTxt(pct(T-D,T))}</span><span class="a">${inteiro(T-D)} tickets</span></div>
-      <div class="kpi"><span class="r">Filas monitoradas</span><span class="n">${inteiro(porFila.length)}</span>
-        <span class="a">${esc(porFila.map((f)=>f.nome).join(' · '))}</span></div>
+      <div class="kpi"><span class="r">Tickets atendidos</span><span class="n">${inteiro(T)}</span>
+        <span class="a">${esc(periodo)}</span></div>
+      <div class="kpi"><span class="r">Dentro do SLA</span><span class="n">${pctTxt(pct(D, T))}</span>
+        <span class="a">${inteiro(D)} de ${inteiro(T)}</span></div>
+      <div class="kpi"><span class="r">Fora do SLA</span><span class="n">${pctTxt(pct(T-D, T))}</span>
+        <span class="a">${inteiro(T-D)} tickets</span></div>
+      ${medianaHoras === null
+        ? `<div class="kpi"><span class="r">Filas monitoradas</span><span class="n">${inteiro(porFila.length)}</span>
+             <span class="a">${esc(porFila.map((x)=>x.nome).join(' · '))}</span></div>`
+        : `<div class="kpi"><span class="r">Mediana de atendimento</span><span class="n">${medianaHoras.toLocaleString('pt-BR',{maximumFractionDigits:1})} h</span>
+             <span class="a">${emAberto ? inteiro(emAberto) + ' ainda em aberto' : 'todos encerrados'}</span></div>`}
     </div>
     <div class="grade g2">
-      <section class="bloco"><header><h2>Desempenho por fila</h2><span class="nota">${mesExib(comp)}</span></header>
+      <section class="bloco"><header><h2>Desempenho por fila</h2><span class="nota">${esc(periodo)}</span></header>
         <div class="leg"><span><i style="background:var(--bom)"></i>Dentro do SLA</span><span><i style="background:var(--crit)"></i>Fora do SLA</span></div>
         <div id="s-g1"></div></section>
       <section class="bloco"><header><h2>Tendência de conformidade</h2><span class="nota">% dentro do SLA</span></header>
@@ -54,49 +99,101 @@ async function viewSla() {
       <section class="bloco"><header><h2>Por tópico de ajuda</h2></header><div class="rank" id="s-r1"></div></section>
       <section class="bloco"><header><h2>Por filial</h2></header>
         <div class="rol"><table><thead><tr><th>Filial</th><th class="n">Atendidos</th><th class="n">Dentro</th><th class="n">Fora</th><th class="n">% no SLA</th></tr></thead>
-        <tbody>${porFilial.map((f)=>`<tr><td>${esc(f.nome)}</td><td class="n">${inteiro(f.total)}</td>
-          <td class="n">${inteiro(f.dentro)}</td><td class="n">${inteiro(f.fora)}</td>
-          <td class="n"><span class="tag ${f.pct>=90?'bom':f.pct>=75?'alerta':'crit'}">${pctTxt(f.pct)}</span></td></tr>`).join('')}
+        <tbody>${porFilial.map((x)=>`<tr><td>${esc(x.nome)}</td><td class="n">${inteiro(x.total)}</td>
+          <td class="n">${inteiro(x.dentro)}</td><td class="n">${inteiro(x.fora)}</td>
+          <td class="n"><span class="tag ${x.pct>=90?'bom':x.pct>=75?'alerta':'crit'}">${pctTxt(x.pct)}</span></td></tr>`).join('')}
         </tbody></table></div></section>
     </div>
-    <section class="bloco"><header><h2>Registros de ${mesExib(comp)}</h2></header>
+
+    ${chamados.length ? `
+    <section class="bloco" id="s-chamados">
+      <header><h2>Chamados</h2><span class="nota">${inteiro(chamados.length)} no recorte${chamados.length > TETO ? ` · exibindo os ${TETO} mais recentes` : ''}</span></header>
+      <div class="rol"><table>
+        <thead><tr><th>Chamado</th><th>Aberto em</th><th>Filial</th><th>Fila</th><th>Tópico</th>
+          <th>Assunto</th><th>Solicitante</th><th>Responsável</th><th>Status</th>
+          <th class="n">Horas</th><th>SLA</th></tr></thead>
+        <tbody>${chamados.slice(0, TETO).map((r) => {
+          const url = urlDoChamado(r.ticketId);
+          const ok = (r.dentro || 0) >= (r.total || 1);
+          return `<tr>
+            <td style="white-space:nowrap">${url
+              ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">#${esc(r.numero || r.ticketId)}</a>`
+              : esc(r.numero || '—')}</td>
+            <td style="white-space:nowrap">${esc(hora(r.criadoEm))}</td>
+            <td>${r.filial ? esc(r.filial) : '<em style="color:var(--tinta3)">empresa</em>'}</td>
+            <td>${esc(r.fila || '—')}</td>
+            <td style="max-width:170px">${esc(r.topico || '—')}</td>
+            <td style="max-width:240px">${esc(r.assunto || '—')}</td>
+            <td style="max-width:140px">${esc(r.solicitante || '—')}</td>
+            <td>${esc(r.atendente || '—')}${r.nivel ? `<div style="color:var(--tinta3);font-size:12px">${esc(r.nivel)}</div>` : ''}</td>
+            <td><span class="tag${aberto(r) ? ' alerta' : ''}">${esc(r.status || '—')}</span></td>
+            <td class="n">${r.horas === null || r.horas === undefined ? '—' : r.horas.toLocaleString('pt-BR',{maximumFractionDigits:1})}</td>
+            <td><span class="tag ${ok ? 'bom' : 'crit'}">${ok ? 'Dentro' : 'Fora'}</span></td></tr>`;
+        }).join('')}</tbody></table></div>
+      <p class="nota" style="margin-top:10px">O número do chamado abre o registro no osTicket.
+        O prazo é a criação mais 48 h do Padrão SLA; chamado ainda aberto é medido contra a data da extração.</p>
+    </section>` : `
+    <section class="bloco"><header><h2>Registros de ${esc(periodo)}</h2></header>
       <div class="rol"><table><thead><tr><th>Filial</th><th>Fila</th><th>Tópico</th>
         <th class="n">Atendidos</th><th class="n">Dentro</th><th class="n">Fora</th><th class="n">%</th><th></th></tr></thead>
-      <tbody>${doMes.map((r)=>`<tr data-sid="${esc(r.id)}">
+      <tbody>${filtrado.map((r)=>`<tr data-sid="${esc(r.id)}">
         <td>${r.filial?esc(r.filial):'<em style="color:var(--tinta3)">empresa</em>'}</td>
         <td>${esc(r.fila)}</td><td>${esc(r.topico||'—')}</td>
         <td class="n">${inteiro(r.total)}</td><td class="n">${inteiro(r.dentro)}</td><td class="n">${inteiro(r.total-r.dentro)}</td>
         <td class="n">${pctTxt(pct(r.dentro,r.total))}</td>
-        <td><button class="bt fant peq" data-sdel>Excluir</button></td></tr>`).join('')}</tbody></table></div></section>`}`;
+        <td><button class="bt fant peq" data-sdel>Excluir</button></td></tr>`).join('')}</tbody></table></div></section>`}`}`;
 
   const itensSComp = comps.map((c) => ({ valor: c, rotulo: mesExib(c) }));
+  const grupos = [
+    { chave:'scomp', id:'s-comp', rotulo:'Competência', itens:itensSComp, minimo:1,
+      get sel() { return foco; }, aplicar:(n) => { E.competencias = n; } },
+    { chave:'sfila', id:'s-fila', rotulo:'Fila', itens:itensDe('fila', '(sem fila)'),
+      get sel() { return f.filas; }, aplicar:(n) => { f.filas = n; } },
+    { chave:'sstatus', id:'s-status', rotulo:'Status', itens:itensDe('status', '(sem status)'),
+      get sel() { return f.status; }, aplicar:(n) => { f.status = n; } },
+    { chave:'snivel', id:'s-nivel', rotulo:'Nível', itens:itensDe('nivel', '(sem nível)'),
+      get sel() { return f.niveis; }, aplicar:(n) => { f.niveis = n; } },
+    { chave:'ssla', id:'s-sla', rotulo:'SLA',
+      itens:[{ valor:'dentro', rotulo:'Dentro do SLA' }, { valor:'fora', rotulo:'Fora do SLA' }],
+      get sel() { return f.sla; }, aplicar:(n) => { f.sla = n; } },
+  ];
   if (comps.length) {
-    seletorMulti(el('[data-sel="scomp"]'), {
-      id: 's-comp', rotulo: 'Competência', itens: itensSComp, selecionados: foco, minimo: 1,
-      aoMudar: (novo) => { E.competencias = novo; render(); },
-    });
-    pintarFichas(el('#s-fichas'), [{ chave:'scomp', rotulo:'Competência', itens:itensSComp,
-      selecionados:foco, minimo:1, ocultarSeTudo:false, total:itensSComp.length,
-      aoMudar:(n) => { E.competencias = n; render(); } }]);
+    for (const g of grupos) {
+      seletorMulti(el(`[data-sel="${g.chave}"]`), {
+        id: g.id, rotulo: g.rotulo, itens: g.itens, selecionados: g.sel, minimo: g.minimo || 0,
+        aoMudar: (novo) => { g.aplicar(novo); render(); },
+      });
+    }
+    pintarFichas(el('#s-fichas'), grupos.map((g) => ({
+      chave: g.chave, rotulo: g.rotulo, itens: g.itens, selecionados: g.sel, minimo: g.minimo || 0,
+      ocultarSeTudo: !g.minimo, total: g.itens.length,
+      aoMudar: (n) => { g.aplicar(n); render(); },
+    })));
   } else {
     el('[data-sel="scomp"]').innerHTML = '<span class="nota">sem registros</span>';
   }
+  el('#s-busca').addEventListener('change', () => { f.busca = el('#s-busca').value; render(); });
   el('#s-novo').onclick = () => formSla(comp || mesHoje());
+
   if (regs.length) {
-    barras(el('#s-g1'), porFila.map((f)=>({ rot:f.nome, v:{ d:f.dentro, f:f.fora } })),
+    barras(el('#s-g1'), porFila.map((x)=>({ rot:x.nome, v:{ d:x.dentro, f:x.fora } })),
       [{k:'d',nome:'Dentro do SLA',cor:'var(--bom)'},{k:'f',nome:'Fora do SLA',cor:'var(--crit)'}], 'empilhado', inteiro, inteiro);
     linhas(el('#s-g2'), tendencia, [{k:'p',nome:'% dentro do SLA',cor:'var(--s1)'}], pctTxt, (v)=>String(Math.round(v)), '%');
-    ranking(el('#s-r1'), porTopico.map((t)=>({ rotulo:t.nome+' — '+pctTxt(t.pct)+' no SLA', valor:t.total })),
+    ranking(el('#s-r1'), porTopico.slice(0, 14).map((t)=>({ rotulo:t.nome+' — '+pctTxt(t.pct)+' no SLA', valor:t.total })),
       (v)=>inteiro(v)+' tickets', 'var(--s3)');
     el('#pagina').querySelectorAll('tr[data-sid]').forEach((tr) => {
       tr.querySelector('[data-sdel]').onclick = () => confirmar({
         titulo:'Excluir registro de SLA', mensagem:'O registro será removido e a exclusão fica na auditoria.',
         rotulo:'Excluir', exigeJustificativa:true,
         async aoConfirmar(just) {
-          const restantes = (await Loja.slaDa(emp)).filter((r)=>r.competencia===comp && r.id!==tr.dataset.sid)
-            .map(({competencia, ...r})=>r);
-          await Loja.gravarSlaMes(emp, comp, restantes);
-          await Loja.auditar({ acao:'excluir', entidade:'ticket_sla', id:tr.dataset.sid, justificativa:just });
+          // A exclusão manual vale para o registro digitado; chamado importado
+          // some com a reimportação da base, não linha a linha.
+          const dono = empresaAtiva();
+          if (!dono) throw new Error('Deixe uma só empresa marcada para excluir.');
+          const restantes = (await Loja.slaDa(dono)).filter((r) => r.competencia === comp && r.id !== tr.dataset.sid)
+            .map(({ competencia, empresa, ...r }) => r);
+          await Loja.gravarSlaMes(dono, comp, restantes);
+          await Loja.auditar({ acao:'excluir', entidade:'ticket_sla', id:tr.dataset.sid, justificativa:just }, dono);
           render();
         } });
     });
@@ -159,6 +256,7 @@ function formSla(comp) {
 // Cadastros, fechamento e auditoria
 // ===========================================================================
 async function viewCadastros() {
+  await Loja.configuracao();
   const emp = empresaAtiva();
   if (!emp) {
     el('#pagina').innerHTML = `<div class="msg alerta"><strong>Cadastros são de uma empresa por vez.</strong>
@@ -185,6 +283,17 @@ async function viewCadastros() {
       ${lista('Filas de ticket', filasDa(emp).map((f)=>f.nome), 'fila')}
       ${lista('Cenários de projeção', cenariosDa(emp).map((c)=>c.nome), 'cenario')}
     </div>
+    <section class="bloco"><header><h2>Endereço do osTicket</h2></header>
+      <div class="msg">O número do chamado, na aba SLA, vira link para o sistema de origem. O id interno entra no
+        fim do endereço — <code>tickets.php?id=<strong>21734</strong></code>.</div>
+      <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
+        <div class="campo" style="flex:1 1 340px"><label for="cfg-url">Base do endereço</label>
+          <input id="cfg-url" value="${esc((E.config && E.config.urlOsTicket) || URL_OSTICKET_PADRAO)}"></div>
+        <button class="bt" id="cfg-salvar">Salvar</button>
+      </div>
+      <div class="msg" id="cfg-ok" hidden style="margin-top:10px"></div>
+    </section>
+
     <section class="bloco"><header><h2>Fechamento de competência</h2></header>
       <div class="msg">Uma competência fechada não aceita novo lançamento nem alteração. Reabrir exige justificativa,
         e tudo fica na trilha de auditoria.</div>
@@ -203,6 +312,19 @@ async function viewCadastros() {
     </section>`;
 
   el('#pagina').querySelectorAll('[data-novo]').forEach((b) => b.onclick = () => formCadastro(b.dataset.novo));
+  el('#cfg-salvar').onclick = async () => {
+    const base = el('#cfg-url').value.trim();
+    const aviso = el('#cfg-ok');
+    if (!/^https?:\/\//i.test(base)) {
+      aviso.hidden = false; aviso.className = 'msg erro';
+      aviso.textContent = 'O endereço precisa começar com http:// ou https://.';
+      return;
+    }
+    await Loja.gravarConfiguracao({ urlOsTicket: base });
+    await Loja.auditar({ acao:'atualizar', entidade:'configuracao', depois:{ urlOsTicket: base } }, emp);
+    aviso.hidden = false; aviso.className = 'msg bom';
+    aviso.textContent = 'Endereço salvo. Exemplo: ' + base + '21734';
+  };
   // alert() pode ser engolido pelo sandbox do visualizador: a recusa iria para
   // o nada e o botão pareceria quebrado. A mensagem fica na própria página.
   const avisar = (texto) => { const b = el('#fc-erro'); b.textContent = texto || ''; b.hidden = !texto; };

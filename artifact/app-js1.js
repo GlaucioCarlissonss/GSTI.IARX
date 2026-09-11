@@ -64,7 +64,23 @@ const E = {
   competencias: new Set(),
   cenarios: new Set(['oficial']),
   filtros: { tipos: new Set(), naturezas: new Set(), classificacoes: new Set(), busca:'', de:'', ate:'' },
+  filtrosSla: { filas: new Set(), status: new Set(), niveis: new Set(), sla: new Set(), busca:'' },
+  config: null,             // preferências da empresa (endereço do osTicket, etc.)
 };
+
+/**
+ * Endereço do chamado no osTicket.
+ *
+ * O id interno compõe a URL (`tickets.php?id=21734`), então guardar o id no
+ * registro basta para voltar ao chamado de origem. A base fica configurável
+ * porque é a instalação do cliente, não um endereço fixo do sistema.
+ */
+const URL_OSTICKET_PADRAO = 'https://www.suportehr.com.br/scp/tickets.php?id=';
+function urlDoChamado(ticketId) {
+  if (ticketId === null || ticketId === undefined || ticketId === '') return null;
+  const base = (E.config && E.config.urlOsTicket) || URL_OSTICKET_PADRAO;
+  return base + encodeURIComponent(ticketId);
+}
 
 /**
  * Empresa em que se escreve. Criar, editar e excluir precisam de uma só — com
@@ -164,6 +180,17 @@ const Loja = {
   async gravarCatalogo(nome, itens) {
     await E.db.doc('catalogo/' + nome).set({ itens });
     E[nome] = itens;
+  },
+  async configuracao() {
+    if (E.config) return E.config;
+    const s = await E.db.doc('catalogo/config').get();
+    E.config = s.exists ? (s.data() || {}) : {};
+    return E.config;
+  },
+  async gravarConfiguracao(valores) {
+    const novo = { ...(E.config || {}), ...valores };
+    await E.db.doc('catalogo/config').set(novo);
+    E.config = novo;
   },
 };
 

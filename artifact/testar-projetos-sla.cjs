@@ -107,14 +107,17 @@ const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs
   await registrar({ comp: '08/2026', fila: 'Infraestrutura', topico: 'Rede', total: '100', dentro: '90' });
   await registrar({ comp: '08/2026', fila: 'Sistema', topico: 'ERP', total: '50', dentro: '20' });
 
-  const sla = await pag.evaluate(async () => {
+  // A base traz chamados importados do osTicket; o teste só olha os registros
+  // que ele mesmo criou, reconhecíveis pelos tópicos que usou.
+  const MEUS = ['Rede', 'ERP'];
+  const sla = await pag.evaluate(async (meus) => {
     E.sla.delete(empresaAtiva());
     const its = await Loja.slaDa(empresaAtiva());
-    return its.map((s) => ({ comp: s.competencia, fila: s.fila, total: s.total, dentro: s.dentro,
-      guardaFora: Object.prototype.hasOwnProperty.call(s, 'fora') }));
-  });
-  console.log('    registros:', JSON.stringify(sla));
-  confere('tickets registrados', sla.length, slaAntes + 2);
+    return its.filter((s) => meus.includes(s.topico)).map((s) => ({ comp: s.competencia, fila: s.fila,
+      total: s.total, dentro: s.dentro, guardaFora: Object.prototype.hasOwnProperty.call(s, 'fora') }));
+  }, MEUS);
+  console.log('    registros criados pelo teste:', JSON.stringify(sla));
+  confere('tickets registrados', sla.length, 2);
   confere('competência gravada', sla.every((s) => s.comp === '2026-08'), true);
   // `fora` é derivado de total − dentro; gravá-lo abriria espaço para discordar da conta
   confere('fora não é gravado', sla.some((s) => s.guardaFora), false);
@@ -122,11 +125,19 @@ const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs
   confere('fora derivado (50−20)', sla.find((s) => s.fila === 'Sistema').total - sla.find((s) => s.fila === 'Sistema').dentro, 30);
 
   await ir('SLA');
+  // O percentual da tela soma os importados aos dois registros do teste, então
+  // a conferência é contra a própria conta da base, não contra um número fixo.
+  const esperado = await pag.evaluate(async () => {
+    const its = await Loja.slaDa(empresaAtiva());
+    const doMes = its.filter((s) => s.competencia === '2026-08');
+    const t = doMes.reduce((a, s) => a + (s.total || 0), 0);
+    const d = doMes.reduce((a, s) => a + (s.dentro || 0), 0);
+    return pctTxt(pct(d, t));
+  });
   const texto = await pag.$eval('#pagina', (e) => e.textContent.replace(/\s+/g, ' '));
-  const pct = /(\d{1,3},\d)%/.exec(texto);
-  console.log('    percentual exibido:', pct ? pct[1] + '%' : '(nenhum)');
-  // 110 dentro de 150 = 73,3%
-  confere('percentual dentro do SLA', pct && pct[1], '73,3');
+  const achado = /(\d{1,3},\d)%/.exec(texto);
+  console.log('    percentual exibido:', achado ? achado[1] + '%' : '(nenhum)', '| esperado', esperado);
+  confere('percentual dentro do SLA', achado && achado[1] + '%', esperado);
 
   // recusa incoerente: dentro > total
   await pag.click('#pagina button:text-matches("Registrar|Novo|Adicionar", "i")');
@@ -161,7 +172,42 @@ const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs
   await pag.waitForTimeout(500);
   console.log('   ', (await pag.$eval('#d-saida-imp .msg', (e) => e.textContent)).trim().replace(/\s+/g, ' '));
   const depois = await pag.evaluate(async () => { E.sla.delete(empresaAtiva()); return (await Loja.slaDa(empresaAtiva())).length; });
-  confere('reimportar SLA não duplica', depois, slaAntes + 2);
+  confere('reimportar SLA não duplica', depois, slaAntes + 2);   // slaAntes já inclui os importados
+
+  // ---------------------------------------------- chamados vindos do osTicket
+  console.log('\nCHAMADOS — a base importada e o link de volta');
+  await pag.evaluate(async () => {
+    E.empresasSel = new Set(['residencial']);
+    for (const e of E.empresasSel) await garantirDados(e);
+    ajustarCompetencias(); pintarSeletores(); await render();
+  });
+  await pag.waitForTimeout(700);
+  await ir('SLA');
+
+  const secao = '#s-chamados';
+  const cab = await pag.$$eval(secao + ' thead th', (ts) => ts.map((t) => t.textContent));
+  confere('tabela de chamados aparece', cab.includes('Chamado'), true);
+
+  const link = await pag.$eval(secao + ' tbody a', (a) => ({ texto: a.textContent, href: a.href, alvo: a.target }));
+  console.log('    primeiro link:', link.texto, '→', link.href);
+  confere('o link aponta para o osTicket', /suportehr\.com\.br\/scp\/tickets\.php\?id=\d+$/.test(link.href), true);
+  confere('abre em outra aba', link.alvo, '_blank');
+  // o id da URL tem de ser o ticketId do registro, não o número exibido
+  const bate = await pag.evaluate((href) => {
+    const id = Number(new URL(href).searchParams.get('id'));
+    const todos = [...E.sla.values()].flat();
+    return todos.some((r) => r.ticketId === id);
+  }, link.href);
+  confere('o id da URL existe na base', bate, true);
+
+  // o filtro de SLA recorta a tabela
+  const linhasTodas = await pag.$$eval(secao + ' tbody tr', (r) => r.length);
+  await pag.evaluate(async () => { E.filtrosSla.sla = new Set(['fora']); await render(); });
+  await pag.waitForTimeout(700);
+  const soFora = await pag.$$eval(secao + ' tbody tr td:last-child', (ts) => ts.map((t) => t.textContent.trim()));
+  console.log('    linhas sem filtro:', linhasTodas, '| com filtro "fora":', soFora.length);
+  confere('filtro deixa só os fora do SLA', soFora.every((t) => t === 'Fora'), true);
+  await pag.evaluate(async () => { E.filtrosSla.sla = new Set(); await render(); });
 
   console.log('\n=== falhas: ' + (falhas.length ? falhas.join('; ') : 'nenhuma') + ' ===');
   console.log('=== erros de console: ' + (erros.length ? '\n' + erros.join('\n') : 'nenhum') + ' ===');
