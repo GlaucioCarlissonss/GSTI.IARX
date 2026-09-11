@@ -97,7 +97,13 @@ Quatro suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-edicao.cjs` | criar, parcelar, reclassificar, excluir, fechar e reabrir competência, conferindo totais e trilha de auditoria |
 | `testar-coerencia.cjs` | os números de cada tela fecham entre si: KPI × rankings, conferência por origem × mês a mês, rodapé × linhas |
 | `testar-projetos-sla.cjs` | projetos (atraso e desvio derivados), SLA (percentual, recusa de `dentro > total`) e o ciclo de planilha do SLA |
+| `testar-isolamento.cjs` | nada atravessa a empresa, inclusive com as cinco carregadas em memória; cadastros não vazam |
 | `testar-dados.cjs` | exportar, reimportar sem duplicar, importar planilha quebrada sem derrubar o lote |
+
+`testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
+arriscado, não no mais confortável: com **todas** as empresas carregadas ao
+mesmo tempo, que é o que a aba Conferência provoca ao somar o grupo. É aí que
+um vazamento apareceria.
 
 `testar-coerencia.cjs` existe por um motivo específico: a reclamação que
 originou a aba Conferência foi "os valores não estão coerentes". Um KPI que

@@ -26,6 +26,7 @@ const { chromium } = require('playwright');
   await pag.selectOption('#f-empresa', 'moove');
   await pag.waitForTimeout(600);
   const n0 = await conta(), s0 = await soma(), a0 = await auditoria();
+  let deltaEdicao = 0;   // acumula o que a edição do passo 4b mexeu na soma
   console.log(`MOOVE: ${n0} lançamentos, R$ ${(s0/100).toFixed(2)}, ${a0} eventos na trilha\n`);
 
   const preencher = async (campos) => {
@@ -98,6 +99,52 @@ const { chromium } = require('playwright');
     confere('parcelas reclassificadas', despesas, 4);
   } else { console.log('    linha da série não encontrada'); falhas.push('linha da série'); }
 
+  // 4b. editar um lançamento existente
+  console.log('\n4b. editar um lançamento das planilhas');
+  await ir('Lançamentos');
+  const alvo = await pag.evaluate(() => {
+    const l = Loja.todos(E.empresa).find((x) => x.origem === 'planilha' && x.competencia < mesHoje());
+    return l ? { id: l.id, comp: l.competencia, valor: l.valor, origem: l.origem, tipo: l.tipo } : null;
+  });
+  if (!alvo) { console.log('    nenhum lançamento de planilha para editar'); falhas.push('alvo de edição'); }
+  else {
+    const novoValor = Math.round(alvo.valor * 100) + 12345;   // sempre diferente do original
+    const novoTexto = (novoValor / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    console.log(`    alvo: ${alvo.id} ${alvo.comp} R$ ${alvo.valor} (${alvo.origem}) → ${novoTexto}`);
+    const somaAntes = await soma();
+    const btEd = await pag.$(`tbody tr[data-id="${alvo.id}"] [data-ed]`);
+    if (!btEd) { console.log('    linha não visível na tabela'); falhas.push('linha do alvo'); }
+    else {
+      // sem justificativa, competência passada tem de ser recusada
+      await btEd.click();
+      await pag.waitForSelector('.modal', { timeout: 8000 });
+      await pag.fill('.modal [name="valor"]', '');
+      await pag.fill('.modal [name="valor"]', novoTexto);
+      await pag.fill('.modal [name="just"]', '');
+      await pag.click('.modal .acoes .bt.pri');
+      await pag.waitForTimeout(600);
+      const recusa = await pag.$eval('.modal [data-erro]', (e) => e.hidden ? '' : e.textContent.trim()).catch(() => '');
+      console.log('    sem justificativa →', recusa || '(aceitou!)');
+      confere('exige justificativa em competência passada', /justificativa/i.test(recusa), true);
+
+      // com justificativa, grava
+      await pag.fill('.modal [name="just"]', 'correção conferida com o fornecedor');
+      await pag.click('.modal .acoes .bt.pri');
+      await pag.waitForTimeout(900);
+      const depois = await pag.evaluate((id) => {
+        const l = Loja.todos(E.empresa).find((x) => x.id === id);
+        return l ? { valor: l.valor, origem: l.origem, comp: l.competencia } : null;
+      }, alvo.id);
+      console.log('    depois:', JSON.stringify(depois));
+      confere('valor editado', depois && Math.round(depois.valor * 100), novoValor);
+      confere('competência preservada', depois && depois.comp, alvo.comp);
+      // editar corrige o número, não reescreve de onde ele veio
+      confere('origem preservada', depois && depois.origem, 'planilha');
+      deltaEdicao = novoValor - Math.round(alvo.valor * 100);
+      confere('soma acompanha a edição', await soma(), somaAntes + deltaEdicao);
+    }
+  }
+
   // 5. excluir o pontual único
   console.log('\n5. excluir o lançamento pontual único');
   const idUnico = await pag.evaluate(() => Loja.todos(E.empresa)
@@ -110,7 +157,7 @@ const { chromium } = require('playwright');
     await pag.click('.modal [data-sim]');
     await pag.waitForTimeout(900);
     confere('lançamentos após exclusão', await conta(), n0 + 4);
-    confere('soma (centavos)', await soma(), s0 + 400000);
+    confere('soma (centavos)', await soma(), s0 + 400000 + deltaEdicao);
   } else { console.log('    linha do pontual não encontrada'); falhas.push('linha do pontual'); }
 
   // 6. fechamento de competência: tem de bloquear de verdade
