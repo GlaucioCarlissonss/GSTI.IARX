@@ -186,8 +186,13 @@ export function resolverTopicoAjuda(
 
 // ------------------------------------------------------------ Filas SLA
 
-export function listarFilas() {
-  return db().prepare('SELECT id, nome, ativo FROM filas_ticket WHERE ativo = 1 ORDER BY ordem, nome').all();
+/** Filas padrão criadas junto com toda empresa nova. */
+export const FILAS_PADRAO = ['Infraestrutura', 'Sistema', 'Dados'] as const;
+
+export function listarFilas(ctx: Contexto) {
+  return db()
+    .prepare('SELECT id, nome, ativo FROM filas_ticket WHERE empresa_id = ? AND ativo = 1 ORDER BY ordem, nome')
+    .all(ctx.empresaId);
 }
 
 /**
@@ -197,18 +202,26 @@ export function listarFilas() {
 export function criarFila(ctx: Contexto, nome: string) {
   const limpo = nome.trim();
   if (!limpo) throw erroValidacao('Nome da fila é obrigatório.');
-  const existente = db().prepare('SELECT id FROM filas_ticket WHERE nome = ? COLLATE NOCASE').get(limpo);
-  if (existente) throw erroConflito(`A fila "${limpo}" já existe.`);
-  const ordem = (db().prepare('SELECT COALESCE(MAX(ordem), 0) + 1 AS n FROM filas_ticket').get() as { n: number }).n;
-  const info = db().prepare('INSERT INTO filas_ticket (nome, ordem) VALUES (?, ?)').run(limpo, ordem);
+  const existente = db()
+    .prepare('SELECT id FROM filas_ticket WHERE empresa_id = ? AND nome = ? COLLATE NOCASE')
+    .get(ctx.empresaId, limpo);
+  if (existente) throw erroConflito(`A fila "${limpo}" já existe nesta empresa.`);
+  const ordem = (
+    db()
+      .prepare('SELECT COALESCE(MAX(ordem), 0) + 1 AS n FROM filas_ticket WHERE empresa_id = ?')
+      .get(ctx.empresaId) as { n: number }
+  ).n;
+  const info = db()
+    .prepare('INSERT INTO filas_ticket (empresa_id, nome, ordem) VALUES (?, ?, ?)')
+    .run(ctx.empresaId, limpo, ordem);
   const id = Number(info.lastInsertRowid);
   auditar(ctx, { entidade: 'fila_ticket', entidadeId: id, acao: 'criar', depois: { nome: limpo } });
   return { id, nome: limpo, ativo: 1 };
 }
 
-export function resolverFila(nome: string): number | null {
-  const linha = db().prepare('SELECT id FROM filas_ticket WHERE nome = ? COLLATE NOCASE').get(nome.trim()) as
-    | { id: number }
-    | undefined;
+export function resolverFila(empresaId: number, nome: string): number | null {
+  const linha = db()
+    .prepare('SELECT id FROM filas_ticket WHERE empresa_id = ? AND nome = ? COLLATE NOCASE')
+    .get(empresaId, nome.trim()) as { id: number } | undefined;
   return linha?.id ?? null;
 }

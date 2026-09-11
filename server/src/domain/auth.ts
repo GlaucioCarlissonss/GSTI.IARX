@@ -5,13 +5,23 @@ import { erroConflito, erroNaoAutenticado, erroSemPermissao, erroValidacao } fro
 
 const EXPIRACAO = '12h';
 
+/**
+ * Segredo de assinatura das sessões.
+ *
+ * Não há valor padrão: um segredo embutido no código é público e permitiria a
+ * qualquer um forjar um token de gestor. Sem `JWT_SECRET` a aplicação recusa
+ * subir, em vez de operar com uma sessão falsificável.
+ */
 export function segredoJwt(): string {
-  const segredo = process.env.JWT_SECRET;
+  const segredo = process.env.JWT_SECRET?.trim();
   if (!segredo) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('JWT_SECRET é obrigatório em produção.');
-    }
-    return 'segredo-de-desenvolvimento-nao-usar-em-producao';
+    throw new Error(
+      'JWT_SECRET não está definido. Rode "npm run configurar" para gerar um, ' +
+        'ou defina a variável de ambiente antes de subir a aplicação.',
+    );
+  }
+  if (segredo.length < 32) {
+    throw new Error('JWT_SECRET curto demais: use ao menos 32 caracteres.');
   }
   return segredo;
 }
@@ -72,7 +82,13 @@ export function verificarToken(token: string): Sessao {
   try {
     const conteudo = jwt.verify(token, segredoJwt()) as Sessao;
     if (!conteudo?.usuarioId) throw new Error('token sem identificação');
-    return { usuarioId: conteudo.usuarioId, email: conteudo.email, nome: conteudo.nome };
+    // A assinatura sozinha não basta: a conta pode ter sido desativada ou
+    // removida depois que o token foi emitido.
+    const usuario = db()
+      .prepare('SELECT id, nome, email, ativo FROM usuarios WHERE id = ?')
+      .get(conteudo.usuarioId) as { id: number; nome: string; email: string; ativo: number } | undefined;
+    if (!usuario || !usuario.ativo) throw new Error('conta inativa ou inexistente');
+    return { usuarioId: usuario.id, email: usuario.email, nome: usuario.nome };
   } catch {
     throw erroNaoAutenticado('Sessão inválida ou expirada.');
   }

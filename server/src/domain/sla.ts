@@ -78,9 +78,9 @@ function validarNumeros(entrada: EntradaTicketSla) {
   return { total, dentro, fora };
 }
 
-function garantirFila(filaId: number) {
-  const linha = db().prepare('SELECT id FROM filas_ticket WHERE id = ?').get(filaId);
-  if (!linha) throw erroValidacao(`Fila ${filaId} não existe.`);
+function garantirFila(empresaId: number, filaId: number) {
+  const linha = db().prepare('SELECT id FROM filas_ticket WHERE id = ? AND empresa_id = ?').get(filaId, empresaId);
+  if (!linha) throw erroValidacao(`Fila ${filaId} não pertence à empresa em contexto.`);
 }
 
 function garantirTopico(empresaId: number, topicoId: number | null | undefined): number | null {
@@ -93,7 +93,7 @@ function garantirTopico(empresaId: number, topicoId: number | null | undefined):
 export function registrarTicketSla(ctx: Contexto, entrada: EntradaTicketSla) {
   const competencia = paraInterno(entrada.competencia);
   const filialId = validarFilial(ctx.empresaId, entrada.filialId);
-  garantirFila(entrada.filaId);
+  garantirFila(ctx.empresaId, entrada.filaId);
   const topicoId = garantirTopico(ctx.empresaId, entrada.topicoAjudaId);
   const { total, dentro, fora } = validarNumeros(entrada);
 
@@ -206,7 +206,7 @@ export function atualizarTicketSla(
   const competencia = dados.competencia ? paraInterno(dados.competencia) : antes.competencia;
   const filialId = dados.filialId !== undefined ? validarFilial(ctx.empresaId, dados.filialId) : antes.filial_id;
   const filaId = dados.filaId ?? antes.fila_id;
-  garantirFila(filaId);
+  garantirFila(ctx.empresaId, filaId);
   const topicoId =
     dados.topicoAjudaId !== undefined ? garantirTopico(ctx.empresaId, dados.topicoAjudaId) : antes.topico_ajuda_id;
 

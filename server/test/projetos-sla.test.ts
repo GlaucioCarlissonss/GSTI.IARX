@@ -15,8 +15,11 @@ import { criarEmpresa } from '../src/domain/empresas.js';
 import { dashboardFinanceiro, dashboardProjetos, dashboardSla } from '../src/domain/dashboards.js';
 import { criarLancamento } from '../src/domain/financeiro.js';
 
-function primeiraFila() {
-  return (listarFilas() as Array<{ id: number; nome: string }>)[0]!;
+import type { Contexto } from '../src/domain/contexto.js';
+
+/** As filas pertencem ao tenant: toda consulta precisa do contexto. */
+function filasDe(ctx: Contexto) {
+  return listarFilas(ctx) as Array<{ id: number; nome: string }>;
 }
 
 test('atraso é derivado do mês corrente e do fim planejado', () => {
@@ -108,7 +111,7 @@ test('dashboard de projetos monta Gantt, carga por envolvido e desvios', () => {
 
 test('registro de SLA exige que dentro + fora feche com o total', () => {
   const { ctx } = ambienteLimpo();
-  const fila = primeiraFila();
+  const fila = filasDe(ctx)[0]!;
   assert.throws(
     () =>
       registrarTicketSla(ctx, {
@@ -140,7 +143,7 @@ test('percentuais de SLA são consistentes e não dividem por zero', () => {
 test('dashboard de SLA agrega por fila, tópico e filial', () => {
   const { ctx } = ambienteLimpo();
   const filial = criarFilial(ctx, { nome: 'Recife' });
-  const filas = listarFilas() as Array<{ id: number; nome: string }>;
+  const filas = filasDe(ctx);
   const topico = criarTopicoAjuda(ctx, 'Impressora');
   const competencia = mesRelativo(-1);
 
@@ -208,7 +211,7 @@ test('o escopo de um tenant nunca vaza para outro', () => {
   criarProjeto(primeiro.ctx, { nome: 'Projeto A', mesInicio: mesRelativo(0), mesFimPlanejado: mesRelativo(2) });
   registrarTicketSla(primeiro.ctx, {
     competencia: mesRelativo(0),
-    filaId: primeiraFila().id,
+    filaId: filasDe(primeiro.ctx)[0]!.id,
     totalAtendidos: 10,
     dentroSla: 10,
   });

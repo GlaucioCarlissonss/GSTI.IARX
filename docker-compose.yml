@@ -5,7 +5,9 @@ services:
     container_name: gsti-iarx
     restart: unless-stopped
     ports:
-      - "${PORT:-3333}:3333"
+      # Publicado só no loopback do host: troque para "0.0.0.0:3333:3333" e
+      # ponha um proxy reverso com HTTPS na frente para expor à rede.
+      - "127.0.0.1:${PORT:-3333}:3333"
     environment:
       # Obrigatório: segredo de assinatura das sessões.
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no arquivo .env}

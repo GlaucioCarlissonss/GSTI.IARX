@@ -6,11 +6,14 @@
  *
  *   npm run seed -- --recriar
  */
-import 'dotenv/config';
+import { randomBytes } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { caminhoDoProjeto, carregarAmbiente } from '../lib/ambiente.js';
 import { abrirBanco, db, definirBanco } from './index.js';
+
+carregarAmbiente();
 import { registrar } from '../domain/auth.js';
 import { criarEmpresa } from '../domain/empresas.js';
 import { criarFilial, resolverTipoDespesa } from '../domain/cadastros.js';
@@ -29,14 +32,38 @@ import {
   resolverUnidade,
 } from './organograma.js';
 
-const DIR_DADOS = resolve(process.cwd(), process.env.DADOS_ORIGEM ?? 'dados-origem');
-const CAMINHO_BANCO = process.env.DATABASE_PATH ?? resolve(process.cwd(), 'data/gsti.sqlite');
+const DIR_DADOS = caminhoDoProjeto(process.env.DADOS_ORIGEM, 'dados-origem');
+const CAMINHO_BANCO = caminhoDoProjeto(process.env.DATABASE_PATH, 'data/gsti.sqlite');
 const RECRIAR = process.argv.includes('--recriar');
 
+/**
+ * Credenciais da conta criada pela carga.
+ *
+ * Não há senha padrão no código: uma senha publicada no repositório daria
+ * acesso de gestor a todas as empresas semeadas. Sem `SEED_SENHA`, o script
+ * sorteia uma e a imprime uma única vez, ao final.
+ */
+const PLACEHOLDERS_DE_SENHA = new Set(['troque-esta-senha', 'gsti-2026-demo', 'senha', 'mudar']);
+
+function senhaConfigurada(): string | null {
+  const informada = process.env.SEED_SENHA?.trim();
+  if (!informada) return null;
+  if (PLACEHOLDERS_DE_SENHA.has(informada.toLowerCase()) || informada.length < 8) {
+    throw new Error(
+      'SEED_SENHA é um valor de exemplo ou curto demais. Defina uma senha real com ao menos 8 caracteres, ' +
+        'ou remova a variável para que o script sorteie uma.',
+    );
+  }
+  return informada;
+}
+
+const SENHA_INFORMADA = senhaConfigurada();
+const SENHA_SORTEADA = SENHA_INFORMADA ? null : randomBytes(12).toString('base64url');
+
 const USUARIO = {
-  nome: process.env.SEED_NOME ?? 'Gláucio Carlisson',
-  email: process.env.SEED_EMAIL ?? 'gestor@gsti.local',
-  senha: process.env.SEED_SENHA ?? 'gsti-2026-demo',
+  nome: process.env.SEED_NOME?.trim() || 'Gestor de TI',
+  email: process.env.SEED_EMAIL?.trim() || 'gestor@gsti.local',
+  senha: SENHA_INFORMADA ?? SENHA_SORTEADA!,
 };
 
 // --------------------------------------------------------------- utilidades
@@ -591,7 +618,12 @@ async function principal() {
 
   // ------------------------------------------------------------- relatório
   console.log('\n== Carga inicial concluída ==\n');
-  console.log(`Usuário .......... ${usuario.email} (senha: ${USUARIO.senha})`);
+  console.log(
+    `Usuário .......... ${usuario.email}` +
+      (SENHA_SORTEADA
+        ? `\n  Senha sorteada ... ${SENHA_SORTEADA}  (anote agora — não será exibida de novo)`
+        : '  (senha definida em SEED_SENHA)'),
+  );
   console.log(`Empresas ......... ${EMPRESAS.join(', ')}`);
   console.log(`Filiais .......... ${listarUnidades().length}`);
   console.log(

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { caminhoDoProjeto } from '../lib/ambiente.js';
 
 const aquiDir = dirname(fileURLToPath(import.meta.url));
 const CAMINHO_SCHEMA = resolve(aquiDir, 'schema.sql');
@@ -21,7 +22,7 @@ export function abrirBanco(caminho: string): Conexao {
 
 export function db(): Conexao {
   if (!instancia) {
-    instancia = abrirBanco(process.env.DATABASE_PATH ?? resolve(process.cwd(), 'data/gsti.sqlite'));
+    instancia = abrirBanco(caminhoDoProjeto(process.env.DATABASE_PATH, 'data/gsti.sqlite'));
   }
   return instancia;
 }

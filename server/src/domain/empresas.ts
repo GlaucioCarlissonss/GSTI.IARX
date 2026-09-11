@@ -1,6 +1,6 @@
 import { db, emTransacao } from '../db/index.js';
 import { erroConflito, erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
-import { TIPOS_DESPESA_PADRAO } from './cadastros.js';
+import { FILAS_PADRAO, TIPOS_DESPESA_PADRAO } from './cadastros.js';
 
 export interface EmpresaDoUsuario {
   id: number;
@@ -46,6 +46,8 @@ export function criarEmpresa(
       .run(usuarioId, empresaId);
     const inserirTipo = db().prepare('INSERT INTO tipos_despesa (empresa_id, nome) VALUES (?, ?)');
     for (const tipo of TIPOS_DESPESA_PADRAO) inserirTipo.run(empresaId, tipo);
+    const inserirFila = db().prepare('INSERT INTO filas_ticket (empresa_id, nome, ordem) VALUES (?, ?, ?)');
+    FILAS_PADRAO.forEach((fila, i) => inserirFila.run(empresaId, fila, i + 1));
     return { id: empresaId, nome: dados.nome.trim(), cnpj: dados.cnpj ?? null, status: 'ativa', papel: 'gestor' };
   });
 }

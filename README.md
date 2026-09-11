@@ -140,3 +140,22 @@ As bases de origem contêm dados de pessoas (nomes, matrículas, salários) e
 valores contratuais. Elas ficam em `dados-origem/`, **ignorada pelo Git**, e o
 banco gerado (`data/`) também não é versionado. O repositório contém apenas
 código.
+
+Decisões que sustentam isso:
+
+- **Sem segredo padrão.** `JWT_SECRET` não tem fallback no código: a aplicação
+  recusa subir sem ele, porque um segredo publicado no repositório permitiria
+  forjar uma sessão de gestor. `npm run configurar` gera um.
+- **Escuta só em loopback.** O bind padrão é `127.0.0.1`; expor à rede exige
+  `HOST=0.0.0.0` e pede um proxy reverso com HTTPS, já que a aplicação não
+  termina TLS.
+- **Sessão revalidada a cada requisição** contra o estado da conta — desativar
+  um usuário encerra o acesso dele, mesmo com token ainda válido.
+- **Carga inicial sem senha fixa:** sem `SEED_SENHA`, o script sorteia uma e a
+  exibe uma única vez.
+- **Exportação neutraliza fórmula.** Valores iniciados por `=`, `+`, `-` ou `@`
+  saem prefixados por apóstrofo, para que um texto salvo no sistema não vire
+  código ao abrir a planilha; a leitura desfaz o prefixo, preservando a ida e
+  volta.
+- **Erro de restrição do banco não vaza schema** — a mensagem do driver fica no
+  log do servidor, não na resposta.

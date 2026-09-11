@@ -22,6 +22,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3333
 ENV DATABASE_PATH=/app/data/gsti.sqlite
+# Dentro do contêiner o loopback não é alcançável pelo mapeamento de porta; o
+# isolamento aqui é do Docker, não do bind.
+ENV HOST=0.0.0.0
 
 COPY --from=construcao /app/node_modules ./node_modules
 COPY --from=construcao /app/package.json ./package.json

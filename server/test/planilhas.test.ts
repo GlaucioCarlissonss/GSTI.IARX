@@ -74,7 +74,7 @@ test('exportação completa preserva projetos, tarefas e SLA na reimportação',
     responsavel: 'Equipe de TI',
   });
   const topico = criarTopicoAjuda(ctx, 'Acesso e senha');
-  const fila = (listarFilas() as Array<{ id: number; nome: string }>)[0]!;
+  const fila = (listarFilas(ctx) as Array<{ id: number; nome: string }>)[0]!;
   registrarTicketSla(ctx, {
     competencia: mesRelativo(-1),
     filaId: fila.id,

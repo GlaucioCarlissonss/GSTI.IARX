@@ -168,11 +168,15 @@ CREATE TABLE IF NOT EXISTS topicos_ajuda (
   UNIQUE (empresa_id, nome)
 );
 
+-- As filas nascem como Infraestrutura | Sistema | Dados em cada empresa e o
+-- cadastro é expansível; como todo catálogo, pertencem a um tenant.
 CREATE TABLE IF NOT EXISTS filas_ticket (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  nome       TEXT NOT NULL UNIQUE,
+  empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  nome       TEXT NOT NULL,
   ativo      INTEGER NOT NULL DEFAULT 1,
-  ordem      INTEGER NOT NULL DEFAULT 0
+  ordem      INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (empresa_id, nome)
 );
 
 CREATE TABLE IF NOT EXISTS tickets_sla (
@@ -229,5 +233,3 @@ CREATE TABLE IF NOT EXISTS importacoes (
   criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS ix_import_empresa ON importacoes(empresa_id, criado_em DESC);
-
-INSERT OR IGNORE INTO filas_ticket (nome, ordem) VALUES ('Infraestrutura', 1), ('Sistema', 2), ('Dados', 3);

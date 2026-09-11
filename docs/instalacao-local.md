@@ -151,12 +151,34 @@ exportadas.
 
 ## 9. Acesso de outras máquinas da rede
 
-Por padrão a aplicação atende em `localhost`, ou seja, só no próprio
-computador. Para abrir à rede local é preciso liberar a porta 3333 no firewall
-e acessar por `http://<ip-da-máquina>:3333`.
+A aplicação escuta apenas em `127.0.0.1`, ou seja, só responde no próprio
+computador — nem o firewall precisa entrar na conta. Abrir à rede é uma decisão
+explícita: `HOST=0.0.0.0` no `.env`.
 
-Antes de fazer isso, considere que a base contém salários e valores
-contratuais, e que a aplicação não tem HTTPS por conta própria — em rede, o
-tráfego (inclusive a senha no login) vai em texto claro. Para uso além da sua
-máquina, o caminho adequado é um servidor com HTTPS na frente (nginx ou Caddy
-como proxy reverso).
+**Não faça isso sem um proxy reverso com HTTPS na frente.** A base contém
+salários e valores contratuais, e a aplicação não termina TLS por conta
+própria: em HTTP simples, a senha do login e todos os dados trafegam em texto
+claro pela rede. O caminho adequado é manter `HOST=127.0.0.1` e pôr nginx ou
+Caddy escutando em 443, encaminhando para a porta local.
+
+Exemplo mínimo com Caddy, que resolve o certificado sozinho:
+
+```
+gsti.suaempresa.com.br {
+    reverse_proxy 127.0.0.1:3333
+}
+```
+
+## 10. Notas de segurança
+
+- **O `.env` guarda o segredo das sessões.** Ele é gerado por
+  `npm run configurar` e a aplicação se recusa a subir sem ele — não há valor
+  padrão embutido, justamente porque um segredo publicado permitiria forjar
+  sessões de gestor. Trocá-lo desconecta todo mundo, mas não apaga dado algum.
+- **A carga inicial não tem senha fixa.** Sem `SEED_SENHA` definida,
+  `npm run seed` sorteia uma senha e a imprime uma única vez no terminal.
+  Anote-a na hora.
+- **Sessões duram 12 horas** e deixam de valer se a conta for desativada.
+- **Crie uma segunda conta de gestor** como reserva: não há recuperação de
+  senha por e-mail, e perder a única conta de gestor significa recomeçar do
+  backup.

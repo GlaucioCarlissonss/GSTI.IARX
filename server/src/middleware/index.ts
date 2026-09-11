@@ -66,12 +66,17 @@ export function tratadorDeErros(erro: unknown, _req: Request, res: Response, _ne
     return res.status(erro.status).json({ erro: erro.message, detalhes: erro.detalhes ?? null });
   }
   const mensagem = erro instanceof Error ? erro.message : 'Erro inesperado.';
-  // Violações de restrição do banco viram mensagens de negócio legíveis.
+  // Violações de restrição do banco viram mensagens de negócio legíveis. A
+  // mensagem do driver carrega tabela e coluna — fica no log do servidor, não
+  // na resposta, para não entregar o schema nem servir de oráculo de
+  // existência de conta.
   if (/UNIQUE constraint failed/i.test(mensagem)) {
-    return res.status(409).json({ erro: 'Registro duplicado.', detalhes: mensagem });
+    console.error('[restrição]', mensagem);
+    return res.status(409).json({ erro: 'Registro duplicado.', detalhes: null });
   }
   if (/CHECK constraint failed|FOREIGN KEY constraint failed/i.test(mensagem)) {
-    return res.status(400).json({ erro: 'Dados inconsistentes para a regra de negócio.', detalhes: mensagem });
+    console.error('[restrição]', mensagem);
+    return res.status(400).json({ erro: 'Dados inconsistentes para a regra de negócio.', detalhes: null });
   }
   if (/Competência inválida|Valor monetário inválido/i.test(mensagem)) {
     return res.status(400).json({ erro: mensagem });

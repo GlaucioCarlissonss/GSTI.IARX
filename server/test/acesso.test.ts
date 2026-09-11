@@ -4,8 +4,10 @@ import { abrirBanco, definirBanco } from '../src/db/index.js';
 import { autenticar, registrar, registroAberto, verificarToken } from '../src/domain/auth.js';
 import { acessoDoUsuario, concederAcesso, criarEmpresa, listarEmpresasDoUsuario } from '../src/domain/empresas.js';
 import { listarTiposDespesa, TIPOS_DESPESA_PADRAO } from '../src/domain/cadastros.js';
+import { SEGREDO_DE_TESTE } from './apoio.js';
 
 function bancoVazio() {
+  process.env.JWT_SECRET = SEGREDO_DE_TESTE;
   definirBanco(abrirBanco(':memory:'));
   delete process.env.REGISTRO_ABERTO;
 }

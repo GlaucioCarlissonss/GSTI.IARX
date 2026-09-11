@@ -736,7 +736,7 @@ function importarSla(
   const competencia = paraInterno(competenciaBruta);
 
   const nomeFila = ler(linha, 'Fila');
-  const filaId = resolverFila(nomeFila);
+  const filaId = resolverFila(ctx.empresaId, nomeFila);
   if (!filaId) throw new Error(`Fila "${nomeFila}" inválida. Filas válidas: Infraestrutura, Sistema, Dados.`);
 
   const nomeTopico = ler(linha, 'Tópico de Ajuda');

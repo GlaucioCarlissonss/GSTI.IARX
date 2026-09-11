@@ -72,7 +72,7 @@ rotasCadastros.patch('/topicos-ajuda/:id', somenteGestor, (req, res) => {
 });
 
 // -------------------------------------------------------------- Filas SLA
-rotasCadastros.get('/filas', (_req, res) => res.json(listarFilas()));
+rotasCadastros.get('/filas', (req, res) => res.json(listarFilas(ctx(req))));
 
 rotasCadastros.post('/filas', somenteGestor, (req, res) => {
   res.status(201).json(criarFila(ctx(req), String(req.body?.nome ?? '')));

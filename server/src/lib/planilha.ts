@@ -69,12 +69,32 @@ export function lerCsv(conteudo: string): Array<Record<string, string>> {
   const cabecalho = (linhas.shift() ?? []).map((c) => c.trim());
   return linhas
     .filter((l) => l.some((c) => c.trim() !== ''))
-    .map((l) => Object.fromEntries(cabecalho.map((coluna, i) => [coluna, (l[i] ?? '').trim()])));
+    .map((l) => Object.fromEntries(cabecalho.map((coluna, i) => [coluna, restaurarFormula((l[i] ?? '').trim())])));
+}
+
+/**
+ * Neutraliza fórmula em célula de CSV.
+ *
+ * Excel e LibreOffice interpretam um valor iniciado por `=`, `+`, `-`, `@`,
+ * tabulação ou CR como fórmula. Como descrições, observações e nomes vêm do
+ * usuário e voltam na exportação, um valor como `=WEBSERVICE(...)` executaria
+ * na máquina de quem abrir a planilha. O apóstrofo à frente força o texto.
+ */
+function neutralizarFormula(texto: string): string {
+  return /^[=+\-@\t\r]/.test(texto) ? `'${texto}` : texto;
+}
+
+/**
+ * Inverso de `neutralizarFormula`, aplicado na leitura para que exportar e
+ * reimportar devolva exatamente o valor original.
+ */
+function restaurarFormula(texto: string): string {
+  return /^'[=+\-@\t\r]/.test(texto) ? texto.slice(1) : texto;
 }
 
 export function escreverCsv(colunas: string[], linhas: Array<Record<string, unknown>>): string {
   const escapar = (v: unknown) => {
-    const texto = v === null || v === undefined ? '' : String(v);
+    const texto = neutralizarFormula(v === null || v === undefined ? '' : String(v));
     return /[";\n\r]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
   };
   const corpo = linhas.map((l) => colunas.map((c) => escapar(l[c])).join(';'));
@@ -107,7 +127,7 @@ export async function lerXlsx(buffer: Buffer): Promise<Aba[]> {
         if (valor instanceof Date) {
           valor = `${String(valor.getMonth() + 1).padStart(2, '0')}/${valor.getFullYear()}` as never;
         }
-        const texto = valor === null || valor === undefined ? '' : String(valor).trim();
+        const texto = restaurarFormula(valor === null || valor === undefined ? '' : String(valor).trim());
         if (texto !== '') vazia = false;
         registro[coluna] = texto;
       });
@@ -125,7 +145,13 @@ export async function escreverXlsx(abas: Aba[]): Promise<Buffer> {
   for (const aba of abas) {
     const ws = wb.addWorksheet(aba.nome);
     ws.columns = aba.colunas.map((c) => ({ header: c, key: c, width: Math.min(Math.max(c.length + 4, 14), 40) }));
-    for (const linha of aba.linhas) ws.addRow(linha);
+    for (const linha of aba.linhas) {
+      ws.addRow(
+        Object.fromEntries(
+          Object.entries(linha).map(([k, v]) => [k, typeof v === 'string' ? neutralizarFormula(v) : v]),
+        ),
+      );
+    }
     ws.getRow(1).font = { bold: true };
     ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EDF5' } };
     ws.views = [{ state: 'frozen', ySplit: 1 }];
