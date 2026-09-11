@@ -179,7 +179,9 @@ textarea { resize: vertical; min-height: 62px; }
   padding: 16px 18px;
   box-shadow: var(--sombra);
 }
-.cartao > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+/* sem wrap, título + descrição + botão de ação não cabem em telas estreitas
+   e o botão vaza para fora da página */
+.cartao > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .cartao > header h2 { margin-right: auto; }
 .cartao > header small { color: var(--tinta-fraca); font-size: 12px; }
 
@@ -224,11 +226,14 @@ tfoot td { padding: 8px 10px; font-weight: 600; border-top: 1px solid var(--eixo
 .etiqueta.atencao { color: var(--tinta); border-color: color-mix(in srgb, var(--atencao) 55%, transparent); }
 
 /* -------------------------------------------------------------------- avisos */
+/* Texto corrido: `display:flex` transformava cada <strong> e <a> em coluna,
+   o que só passava despercebido enquanto os avisos cabiam numa linha. */
 .aviso {
-  padding: 10px 12px; border-radius: 8px; font-size: 13px;
+  padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.55;
   border: 1px solid var(--borda-forte); background: var(--superficie-2);
-  display: flex; gap: 8px; align-items: flex-start;
 }
+.aviso > p:first-child { margin-top: 0; }
+.aviso > p:last-child { margin-bottom: 0; }
 .aviso.erro { border-color: color-mix(in srgb, var(--critico) 50%, transparent); color: var(--critico); }
 .aviso.ok { border-color: color-mix(in srgb, var(--bom) 50%, transparent); color: var(--positivo-texto); }
 .vazio { color: var(--tinta-fraca); font-size: 13px; padding: 22px; text-align: center; }
