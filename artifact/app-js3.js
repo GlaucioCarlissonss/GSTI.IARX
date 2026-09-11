@@ -83,7 +83,11 @@ function viewPainel() {
 
   const porTipo = {}; for (const l of doMes) porTipo[l.tipo] = (porTipo[l.tipo]||0) + cent(l.valor);
   const porNat = {}; for (const l of doMes) porNat[l.natureza] = (porNat[l.natureza]||0) + cent(l.valor);
-  const porFil = {}; for (const l of Loja.todos(emp).filter((l)=>l.cenario===E.cenario && l.competencia===comp))
+  // Ignora o filtro de filial de propósito — o ranking existe para comparar as
+  // filiais entre si —, mas obedece ao recorte de base: senão o total do KPI e
+  // a soma do ranking discordam na mesma tela.
+  const porFil = {};
+  for (const l of Loja.todos(emp).filter((l)=>l.cenario===E.cenario && l.competencia===comp && naOrigem(l)))
     porFil[l.filial || '(empresa)'] = (porFil[l.filial||'(empresa)']||0) + cent(l.valor);
 
   const cls = varia===null ? 'zero' : varia>.05 ? 'sobe' : varia<-.05 ? 'desce' : 'zero';
