@@ -1,37 +1,38 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { FichasSelecao, SeletorMulti } from './seletor-multi';
 import { useSessao } from '../lib/sessao';
+import { ICONE_TEMA, ROTULO_TEMA, useTema } from '../lib/tema';
 
+// O menu é o desenho dos módulos do negócio. Quem trabalha com dinheiro não
+// precisa esbarrar em chamado, e vice-versa. `Sistema` guarda o que atravessa
+// os três — planilha, cadastro e auditoria — e por isso não cabe em nenhum.
 const NAVEGACAO = [
   {
-    grupo: 'Visão geral',
-    itens: [{ para: '/', glifo: '◆', rotulo: 'Painel executivo', fim: true }],
-  },
-  {
-    grupo: 'Financeiro',
+    grupo: 'Controle Financeiro',
     itens: [
-      { para: '/financeiro', glifo: '◱', rotulo: 'Dashboard' },
+      { para: '/', glifo: '◆', rotulo: 'Painel executivo', fim: true },
+      { para: '/financeiro', glifo: '◱', rotulo: 'Dashboard financeiro' },
       { para: '/lancamentos', glifo: '≡', rotulo: 'Lançamentos' },
       { para: '/fechamentos', glifo: '⊘', rotulo: 'Fechamento mensal' },
       { para: '/conferencia', glifo: '⚖', rotulo: 'Conferência de origem' },
     ],
   },
   {
-    grupo: 'Projetos',
+    grupo: 'Gestão de Projetos',
     itens: [
       { para: '/projetos', glifo: '◫', rotulo: 'Dashboard e Gantt' },
       { para: '/projetos/cadastro', glifo: '≡', rotulo: 'Projetos e tarefas' },
     ],
   },
   {
-    grupo: 'Suporte',
+    grupo: 'Gestão de Suporte TI',
     itens: [
-      { para: '/sla', glifo: '◷', rotulo: 'Dashboard de SLA' },
-      { para: '/sla/registros', glifo: '≡', rotulo: 'Registros de tickets' },
+      { para: '/sla', glifo: '◷', rotulo: 'Indicadores de SLA' },
+      { para: '/sla/registros', glifo: '≡', rotulo: 'Chamados' },
     ],
   },
   {
-    grupo: 'Administração',
+    grupo: 'Sistema',
     itens: [
       { para: '/planilhas', glifo: '⇅', rotulo: 'Importar / Exportar' },
       { para: '/cadastros', glifo: '⚙', rotulo: 'Cadastros' },
@@ -43,6 +44,7 @@ const NAVEGACAO = [
 export function Layout() {
   const { usuario, empresas, empresa, trocarEmpresa, filiaisSel, definirFiliais, filiais, sair, ehGestor } =
     useSessao();
+  const { tema, alternar } = useTema();
 
   const itensFilial = [
     { valor: 'nenhuma', rotulo: 'Sem filial (empresa)' },
@@ -124,6 +126,17 @@ export function Layout() {
               aoMudar={(v) => definirFiliais(v.map((x) => (x === 'nenhuma' ? 'nenhuma' : Number(x))))}
             />
           </div>
+
+          <button
+            type="button"
+            className="botao discreto bt-tema"
+            onClick={alternar}
+            title="Alternar entre tema do sistema, claro e escuro"
+            aria-pressed={tema === 'escuro'}
+          >
+            <span aria-hidden>{ICONE_TEMA[tema]}</span>
+            {ROTULO_TEMA[tema]}
+          </button>
         </header>
 
         {filiaisSel.length > 1 && (

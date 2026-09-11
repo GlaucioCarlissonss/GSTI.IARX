@@ -2,7 +2,7 @@
 // O atraso e os percentuais são derivados, então o teste confere a derivação,
 // não só se a tela monta.
 const { chromium } = require('playwright');
-const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs');
+const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-testes.cjs');
 
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
@@ -24,7 +24,7 @@ const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs
   });
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#abas button', { timeout: 15000 });
-  const ir = async (r) => { await pag.click(`#abas button:text-is("${r}")`); await pag.waitForTimeout(450); };
+  const ir = (r) => irPara(pag, r, 450);
   const confere = (nome, obtido, esperado) => {
     const ok = String(obtido) === String(esperado);
     console.log(`  ${ok ? '✓' : '✗'} ${nome}: ${obtido}${ok ? '' : ' (esperado ' + esperado + ')'}`);
@@ -182,7 +182,9 @@ const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs
     ajustarCompetencias(); pintarSeletores(); await render();
   });
   await pag.waitForTimeout(700);
-  await ir('SLA');
+  // A tabela de chamados vive na tela Chamados, do módulo Gestão de Suporte TI;
+  // a tela de Indicadores fica com os gráficos.
+  await ir('Chamados');
 
   const secao = '#s-chamados';
   const cab = await pag.$$eval(secao + ' thead th', (ts) => ts.map((t) => t.textContent));

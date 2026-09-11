@@ -3,21 +3,99 @@
 // ===========================================================================
 const ORDEM_BASE = ['planilha', 'folha_ti', 'projecao_spincare', 'manual'];
 
-const ABAS = [
-  { id:'painel',      rotulo:'Painel',      view: viewPainel },
-  { id:'lancamentos', rotulo:'Lançamentos', view: viewLancamentos },
-  { id:'projetos',    rotulo:'Projetos',    view: viewProjetos },
-  { id:'sla',         rotulo:'SLA',         view: viewSla },
-  { id:'conferencia', rotulo:'Conferência', view: viewConferencia },
-  { id:'dados',       rotulo:'Dados',       view: viewDados },
-  { id:'cadastros',   rotulo:'Cadastros',   view: viewCadastros },
-  { id:'auditoria',   rotulo:'Auditoria',   view: viewAuditoria },
+// A navegação tem dois níveis: o módulo do negócio e, dentro dele, a tela.
+// Quem trabalha com dinheiro não precisa esbarrar em chamado, e vice-versa.
+// `sistema` guarda o que atravessa os três — planilha, cadastro e auditoria —
+// e por isso não cabe dentro de nenhum.
+const MODULOS_NAV = [
+  { id:'financeiro', rotulo:'Controle Financeiro',  abas:['painel', 'lancamentos', 'conferencia'] },
+  { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos'] },
+  { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados'] },
+  { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'cadastros', 'auditoria'] },
 ];
 
+const ABAS = [
+  { id:'painel',      rotulo:'Painel',       view: viewPainel },
+  { id:'lancamentos', rotulo:'Lançamentos',  view: viewLancamentos },
+  { id:'conferencia', rotulo:'Conferência',  view: viewConferencia },
+  { id:'projetos',    rotulo:'Projetos',     view: viewProjetos },
+  { id:'sla',         rotulo:'Indicadores',  view: () => viewSla('indicadores') },
+  { id:'chamados',    rotulo:'Chamados',     view: () => viewSla('chamados') },
+  { id:'dados',       rotulo:'Dados',        view: viewDados },
+  { id:'cadastros',   rotulo:'Cadastros',    view: viewCadastros },
+  { id:'auditoria',   rotulo:'Auditoria',    view: viewAuditoria },
+];
+
+/** Módulo a que a aba pertence. */
+const moduloDaAba = (aba) => MODULOS_NAV.find((m) => m.abas.includes(aba)) || MODULOS_NAV[0];
+
+function pintarModulos() {
+  const atual = moduloDaAba(E.aba);
+  el('#modulos').innerHTML = MODULOS_NAV.map((m) =>
+    `<button type="button" data-mod="${m.id}"${m.id===atual.id?' aria-current="page"':''}>
+       <span class="pt"></span>${m.rotulo}</button>`).join('');
+  el('#modulos').querySelectorAll('button').forEach((b) => b.onclick = () => {
+    const mod = MODULOS_NAV.find((m) => m.id === b.dataset.mod);
+    // Entrar num módulo abre a primeira tela dele; voltar ao módulo em que já
+    // se está não tira ninguém da tela em que estava.
+    if (mod && mod.id !== moduloDaAba(E.aba).id) { E.aba = mod.abas[0]; render(); }
+  });
+}
+
 function pintarAbas() {
-  el('#abas').innerHTML = ABAS.map((a) =>
-    `<button type="button" data-aba="${a.id}"${a.id===E.aba?' aria-current="page"':''}>${a.rotulo}</button>`).join('');
-  el('#abas').querySelectorAll('button').forEach((b) => b.onclick = () => { E.aba = b.dataset.aba; render(); });
+  const mod = moduloDaAba(E.aba);
+  const barra = el('#abas');
+  // Módulo de uma tela só não ganha barra de abas: seria um botão sozinho.
+  barra.hidden = mod.abas.length < 2;
+  if (barra.hidden) { barra.innerHTML = ''; return; }
+  barra.innerHTML = mod.abas.map((id) => {
+    const a = ABAS.find((x) => x.id === id);
+    return `<button type="button" data-aba="${a.id}"${a.id===E.aba?' aria-current="page"':''}>${a.rotulo}</button>`;
+  }).join('');
+  barra.querySelectorAll('button').forEach((b) => b.onclick = () => { E.aba = b.dataset.aba; render(); });
+}
+
+// ----------------------------------------------------------------- tema
+// Três estados: `sistema` segue o aparelho, e as duas escolhas explícitas
+// carimbam `data-theme` na raiz, que é o que o CSS já sabe interpretar.
+const TEMAS = ['sistema', 'claro', 'escuro'];
+const ROTULO_TEMA = { sistema: 'Tema do sistema', claro: 'Tema claro', escuro: 'Tema escuro' };
+const ICONE_TEMA = { sistema: '◐', claro: '☀', escuro: '☾' };
+
+function temaAtual() {
+  try { const t = localStorage.getItem('iarx-tema'); return TEMAS.includes(t) ? t : 'sistema'; }
+  catch (e) { return 'sistema'; }
+}
+
+function aplicarTema(tema) {
+  const raiz = document.documentElement;
+  if (tema === 'claro') raiz.setAttribute('data-theme', 'light');
+  else if (tema === 'escuro') raiz.setAttribute('data-theme', 'dark');
+  else raiz.removeAttribute('data-theme');
+  try { localStorage.setItem('iarx-tema', tema); } catch (e) { /* sem armazenamento: vale só nesta sessão */ }
+  pintarTema(tema);
+}
+
+function pintarTema(tema) {
+  const bt = el('#bt-tema');
+  if (!bt) return;
+  bt.innerHTML = `<span aria-hidden="true">${ICONE_TEMA[tema]}</span>${ROTULO_TEMA[tema]}`;
+  bt.title = 'Alternar entre tema do sistema, claro e escuro';
+  bt.setAttribute('aria-pressed', tema === 'escuro' ? 'true' : 'false');
+}
+
+function ligarTema() {
+  const bt = el('#bt-tema');
+  if (!bt) return;
+  pintarTema(temaAtual());
+  bt.onclick = () => {
+    const proximo = TEMAS[(TEMAS.indexOf(temaAtual()) + 1) % TEMAS.length];
+    aplicarTema(proximo);
+    // Os gráficos são SVG desenhado com as cores resolvidas no momento da
+    // montagem: sem repintar a tela, eles ficariam com a paleta antiga. Na
+    // tela de erro não há o que repintar — e não há base para montar nada.
+    if (E.db) render();
+  };
 }
 
 function pintarSeletores() {
@@ -82,6 +160,7 @@ async function render() {
   sumirDica();
   try {
     const aba = ABAS.find((a)=>a.id===E.aba) || ABAS[0];
+    pintarModulos();
     pintarAbas();
     await aba.view();
   } catch (e) {
@@ -109,6 +188,9 @@ function semBanco(motivo) {
 }
 
 (async function iniciar() {
+  // Antes de qualquer coisa: o botão de tema precisa funcionar mesmo nas telas
+  // de erro, que são justamente onde alguém fica preso.
+  ligarTema();
   try {
     const db = await window.claude?.use?.('db');
     if (!db) return semBanco('Esta visualização não pôde abrir a base de dados do sistema.');

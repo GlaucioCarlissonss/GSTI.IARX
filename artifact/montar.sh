@@ -12,7 +12,9 @@ cd "$(dirname "$0")"
 } > sistema.html
 node -e '
   const fs=require("fs"),h=fs.readFileSync("sistema.html","utf8");
-  const js=h.slice(h.indexOf("<script>")+8, h.lastIndexOf("</script>"));
+  // lastIndexOf: o cabeçalho tem um <script> próprio (o tema), e o bloco a
+  // conferir é o último do arquivo.
+  const js=h.slice(h.lastIndexOf("<script>")+8, h.lastIndexOf("</script>"));
   fs.writeFileSync("_chk.js", js);'
 node --check _chk.js && rm -f _chk.js
 wc -c sistema.html

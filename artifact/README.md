@@ -47,6 +47,33 @@ node testar.cjs
 `dados/` fica fora do git: são os documentos reais do cliente (nomes de
 colaboradores nas descrições de folha, valores contratuais).
 
+## Navegação por módulo
+
+A barra superior tem dois níveis: o **módulo do negócio** e, dentro dele, a
+tela. Quem trabalha com dinheiro não esbarra em chamado, e vice-versa.
+
+| módulo | telas |
+|---|---|
+| **Controle Financeiro** | Painel · Lançamentos · Conferência |
+| **Gestão de Projetos** | Projetos |
+| **Gestão de Suporte TI** | Indicadores · Chamados |
+| **Sistema** | Dados · Cadastros · Auditoria |
+
+`Sistema` existe porque planilha, cadastro e auditoria atravessam os três
+módulos — não cabem dentro de nenhum. Entrar num módulo abre a primeira tela
+dele; módulo de tela única não ganha barra de abas, que seria um botão sozinho.
+
+## Tema claro e escuro
+
+O botão no topo cicla **tema do sistema → claro → escuro**, e a escolha fica em
+`localStorage`. O tema é aplicado por um `<script>` no começo do arquivo, antes
+do resto da página pintar: sem isso a tela abre no tema do aparelho e troca
+depois, e a piscada é visível.
+
+Trocar o tema repinta a tela inteira, e não só as cores: os gráficos são SVG
+desenhado com as cores resolvidas no momento da montagem, então sem repintar
+ficariam com a paleta antiga.
+
 ## Filtros
 
 Todo filtro é seleção múltipla com caixas, e o que está escolhido aparece em
@@ -132,7 +159,7 @@ vindos do Excel chegam comprimidos. Não há CDN envolvido.
 
 ### Verificação
 
-Oito suítes, todas contra um `window.claude` simulado num Chromium real:
+Nove suítes, todas contra um `window.claude` simulado num Chromium real:
 
 | script | o que cobre |
 |---|---|
@@ -144,6 +171,7 @@ Oito suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-isolamento.cjs` | nada atravessa a empresa, inclusive com as cinco carregadas em memória; cadastros não vazam |
 | `testar-multi.cjs` | filtros de múltipla escolha: somar meses, consolidar empresas, recortar por procedência, comparar cenários, fichas e mínimos |
 | `testar-dados.cjs` | exportar, reimportar sem duplicar, importar planilha quebrada sem derrubar o lote |
+| `testar-navegacao.cjs` | os quatro módulos e suas telas; o tema ciclando, persistindo e com contraste nas nove telas |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

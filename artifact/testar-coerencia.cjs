@@ -2,7 +2,7 @@
 // reclamou, então vira verificação: para cada empresa e cada recorte de base,
 // o KPI, os rankings, a conferência e o rodapé da tabela precisam somar igual.
 const { chromium } = require('playwright');
-const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs');
+const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-testes.cjs');
 
 const centavos = (txt) => {
   const m = /-?[\d.]+,\d{2}/.exec(String(txt || ''));
@@ -17,7 +17,7 @@ const centavos = (txt) => {
 
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#abas button', { timeout: 15000 });
-  const ir = async (r) => { await pag.click(`#abas button:text-is("${r}")`); await pag.waitForTimeout(420); };
+  const ir = (r) => irPara(pag, r, 420);
   const confere = (rotulo, a, b) => {
     const ok = a === b;
     if (!ok) falhas.push(`${rotulo}: ${a} ≠ ${b}`);

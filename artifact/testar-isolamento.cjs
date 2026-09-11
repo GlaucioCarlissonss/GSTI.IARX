@@ -4,7 +4,7 @@
 // justamente no estado mais arriscado — com TODAS as empresas carregadas na
 // memória ao mesmo tempo, que é o que a aba Conferência provoca.
 const { chromium } = require('playwright');
-const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs');
+const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-testes.cjs');
 
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
@@ -20,7 +20,7 @@ const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs
 
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#abas button', { timeout: 15000 });
-  const ir = async (r) => { await pag.click(`#abas button:text-is("${r}")`); await pag.waitForTimeout(450); };
+  const ir = (r) => irPara(pag, r, 450);
 
   // totais de referência, cada empresa carregada sozinha
   console.log('ISOLAMENTO — totais com uma empresa por vez');

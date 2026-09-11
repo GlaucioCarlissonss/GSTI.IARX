@@ -1,7 +1,12 @@
 // ===========================================================================
 // SLA — registro mensal por fila e tópico, com indicadores derivados
 // ===========================================================================
-async function viewSla() {
+/**
+ * `secao` separa as duas leituras do mesmo recorte: `indicadores` responde
+ * "como está o atendimento" e `chamados` responde "quais são os chamados".
+ * Filtros e dados são os mesmos — o que muda é o que a tela mostra.
+ */
+async function viewSla(secao = 'indicadores') {
   await Loja.configuracao();
   const carregados = [];
   for (const e of escopoEmpresas()) for (const r of await Loja.slaDa(e)) carregados.push({ ...r, empresa: e });
@@ -75,6 +80,7 @@ async function viewSla() {
     ${regs.length === 0 ? `<section class="bloco"><p class="vazio">
         Nenhum ticket registrado nesta empresa. Use <strong>Registrar tickets do mês</strong> para lançar
         o total atendido, ou importe a base do osTicket pela aba <strong>Dados</strong>.</p></section>` : `
+    ${secao !== 'indicadores' ? '' : `
     <div class="kpis">
       <div class="kpi"><span class="r">Tickets atendidos</span><span class="n">${inteiro(T)}</span>
         <span class="a">${esc(periodo)}</span></div>
@@ -103,9 +109,9 @@ async function viewSla() {
           <td class="n">${inteiro(x.dentro)}</td><td class="n">${inteiro(x.fora)}</td>
           <td class="n"><span class="tag ${x.pct>=90?'bom':x.pct>=75?'alerta':'crit'}">${pctTxt(x.pct)}</span></td></tr>`).join('')}
         </tbody></table></div></section>
-    </div>
+    </div>`}
 
-    ${chamados.length ? `
+    ${secao !== 'chamados' ? '' : chamados.length ? `
     <section class="bloco" id="s-chamados">
       <header><h2>Chamados</h2><span class="nota">${inteiro(chamados.length)} no recorte${chamados.length > TETO ? ` · exibindo os ${TETO} mais recentes` : ''}</span></header>
       <div class="rol"><table>
@@ -175,12 +181,16 @@ async function viewSla() {
   el('#s-busca').addEventListener('change', () => { f.busca = el('#s-busca').value; render(); });
   el('#s-novo').onclick = () => formSla(comp || mesHoje());
 
-  if (regs.length) {
+  // Os gráficos só existem na tela de indicadores; a tabela de registros, na
+  // de chamados. Cada bloco é ligado onde o seu destino está montado.
+  if (regs.length && secao === 'indicadores') {
     barras(el('#s-g1'), porFila.map((x)=>({ rot:x.nome, v:{ d:x.dentro, f:x.fora } })),
       [{k:'d',nome:'Dentro do SLA',cor:'var(--bom)'},{k:'f',nome:'Fora do SLA',cor:'var(--crit)'}], 'empilhado', inteiro, inteiro);
     linhas(el('#s-g2'), tendencia, [{k:'p',nome:'% dentro do SLA',cor:'var(--s1)'}], pctTxt, (v)=>String(Math.round(v)), '%');
     ranking(el('#s-r1'), porTopico.slice(0, 14).map((t)=>({ rotulo:t.nome+' — '+pctTxt(t.pct)+' no SLA', valor:t.total })),
       (v)=>inteiro(v)+' tickets', 'var(--s3)');
+  }
+  if (regs.length) {
     el('#pagina').querySelectorAll('tr[data-sid]').forEach((tr) => {
       tr.querySelector('[data-sdel]').onclick = () => confirmar({
         titulo:'Excluir registro de SLA', mensagem:'O registro será removido e a exclusão fica na auditoria.',

@@ -132,6 +132,8 @@ a { color: var(--serie-1); }
   position: sticky; top: 0; z-index: 20;
 }
 .topo .titulo { display: flex; flex-direction: column; margin-right: auto; min-width: 180px; }
+/* Alinha com os campos ao lado, que têm o rótulo acima do controle. */
+.bt-tema { align-self: flex-end; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .topo .titulo small { color: var(--tinta-fraca); font-size: 12px; }
 
 .pagina { padding: 24px; display: flex; flex-direction: column; gap: 20px; max-width: 1500px; }

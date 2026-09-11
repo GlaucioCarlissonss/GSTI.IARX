@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs');
+const { usarEmpresas, usarBase, usarCompetencias, irPara, todasAsAbas } = require('./ajuda-testes.cjs');
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
   const pag = await nav.newPage();
@@ -11,13 +11,11 @@ const { usarEmpresas, usarBase, usarCompetencias } = require('./ajuda-testes.cjs
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#abas button', { timeout: 10000 });
 
-  const abas = await pag.$$eval('#abas button', (bs) => bs.map((b) => b.textContent));
-  console.log('abas:', abas.join(' | '));
+  const modulos = await pag.$$eval('#modulos button', (bs) => bs.map((b) => b.textContent.trim()));
+  console.log('módulos:', modulos.join(' | '));
+  for (const t of await todasAsAbas(pag)) console.log(`  ${t.modulo} → ${t.aba}`);
 
-  const clicar = async (rot) => {
-    await pag.click(`#abas button:text-is("${rot}")`);
-    await pag.waitForTimeout(400);
-  };
+  const clicar = (rot) => irPara(pag, rot, 400);
 
   // 1. Conferência
   await clicar('Conferência');

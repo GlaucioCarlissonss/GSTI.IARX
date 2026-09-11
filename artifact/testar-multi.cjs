@@ -1,6 +1,7 @@
 // Filtros de múltipla escolha: marcar mais de uma opção tem de refletir nos
 // números, e a escolha tem de aparecer na tela sem reabrir o seletor.
 const { chromium } = require('playwright');
+const { irPara } = require('./ajuda-testes.cjs');
 
 const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||'')); 
   return m ? Math.round(Number(m[0].replace(/\./g,'').replace(',','.')) * 100) : null; };
@@ -19,7 +20,7 @@ const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||''));
 
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#abas button', { timeout: 15000 });
-  const ir = async (r) => { await pag.click(`#abas button:text-is("${r}")`); await pag.waitForTimeout(450); };
+  const ir = (r) => irPara(pag, r, 450);
 
   // abre um seletor pelo id do gatilho e marca/desmarca valores
   const marcar = async (id, valores, ligar = true) => {

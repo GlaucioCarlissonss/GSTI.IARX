@@ -161,6 +161,34 @@ osTicket exibe como Data de Vencimento: abertura + 48 h.
 A idempotência da carga vem da chave `ticket:<ticketId>`: reimportar o mesmo
 arquivo atualiza o chamado, nunca o duplica.
 
+## Navegação
+
+O sistema se apresenta pelos módulos do negócio, não pela lista de telas. São
+três, mais um lugar para o que atravessa todos eles:
+
+| módulo | o que reúne |
+| --- | --- |
+| **Controle Financeiro** | painel executivo, dashboard, lançamentos, fechamento mensal e conferência de origem |
+| **Gestão de Projetos** | dashboard com Gantt, projetos e tarefas |
+| **Gestão de Suporte TI** | indicadores de SLA e a lista de chamados |
+| **Sistema** | importação/exportação, cadastros e trilha de auditoria |
+
+`Sistema` não é um quarto módulo de negócio: é onde ficam planilha, cadastro e
+auditoria, que servem aos três e não pertencem a nenhum. Entrar num módulo abre
+a primeira tela dele, e módulo de tela única não mostra barra de abas.
+
+## Tema claro e escuro
+
+Três estados, não dois: **tema do sistema** (segue o aparelho), **claro** e
+**escuro**. O botão de alternar está no cabeçalho, presente em toda tela, e a
+escolha fica no navegador de quem usa — é preferência de quem olha, não dado do
+sistema, e por isso não vai para o banco nem para a auditoria.
+
+A escolha explícita vence a preferência do aparelho nos dois sentidos, e é
+aplicada antes do primeiro pixel: um script no topo do documento carimba o tema
+antes de a página pintar, senão a tela abriria no tema do aparelho e trocaria
+depois, com piscada visível.
+
 ## Filtros
 
 Todo filtro aceita **mais de um valor**. Na tela isso são caixas de seleção,

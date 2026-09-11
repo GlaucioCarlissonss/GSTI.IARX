@@ -1,4 +1,16 @@
 <title>Gestão de TI IARX</title>
+<script>
+// Aplica o tema escolhido antes de o resto da página pintar. Sem isto a tela
+// aparece no tema do sistema e só depois troca, e a piscada é visível.
+(function () {
+  try {
+    var t = localStorage.getItem('iarx-tema');
+    if (t === 'claro' || t === 'escuro') {
+      document.documentElement.setAttribute('data-theme', t === 'claro' ? 'light' : 'dark');
+    }
+  } catch (e) { /* armazenamento bloqueado: fica no tema do sistema */ }
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -44,6 +56,32 @@ code{font-family:var(--mono);font-size:.92em;background:var(--sup2);padding:1px 
 .marca{display:flex;flex-direction:column;margin-right:auto}
 .marca b{font-size:15px;letter-spacing:-.02em}
 .marca span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--tinta3)}
+/* Barra de módulos: o primeiro nível da navegação. As telas de cada módulo
+   ficam na barra de abas logo abaixo. */
+.modulos{display:flex;gap:6px;padding:12px 20px 0;overflow-x:auto}
+.modulos button{
+  font-family:inherit;font-size:13.5px;font-weight:600;padding:8px 15px;border:1px solid var(--linha);
+  background:var(--sup2);color:var(--tinta2);cursor:pointer;white-space:nowrap;border-radius:8px;
+  display:inline-flex;align-items:center;gap:7px;
+}
+.modulos button:hover{border-color:var(--linha2);color:var(--tinta)}
+.modulos button[aria-current="page"]{background:var(--s1);border-color:var(--s1);color:#fff}
+.modulos button .pt{width:7px;height:7px;border-radius:50%;background:var(--s1);flex:none}
+.modulos button[aria-current="page"] .pt{background:#fff}
+.modulos button[data-mod="projetos"] .pt{background:var(--s3)}
+.modulos button[data-mod="suporte"] .pt{background:var(--s2)}
+.modulos button[data-mod="sistema"] .pt{background:var(--tinta3)}
+.modulos button[aria-current="page"][data-mod="projetos"]{background:var(--s3);border-color:var(--s3)}
+.modulos button[aria-current="page"][data-mod="suporte"]{background:var(--s2);border-color:var(--s2)}
+.modulos button[aria-current="page"][data-mod="sistema"]{background:var(--tinta2);border-color:var(--tinta2)}
+
+.bt-tema{
+  font-family:inherit;font-size:13px;font-weight:500;padding:7px 12px;border:1px solid var(--linha);
+  background:var(--sup2);color:var(--tinta2);cursor:pointer;border-radius:8px;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:7px;align-self:flex-end;
+}
+.bt-tema:hover{border-color:var(--linha2);color:var(--tinta)}
+
 .abas{display:flex;gap:2px;padding:8px 20px 0;overflow-x:auto}
 .abas button{
   font-family:inherit;font-size:13.5px;font-weight:500;padding:8px 14px;border:0;border-bottom:2px solid transparent;

@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GSTI.IARX — Gestão de TI</title>
+    <script>
+      // Aplica o tema escolhido antes do primeiro pixel. Sem isto a tela abre
+      // no tema do sistema e troca depois, e a piscada é visível.
+      (function () {
+        try {
+          var t = localStorage.getItem('gsti-tema');
+          if (t === 'claro' || t === 'escuro') document.documentElement.setAttribute('data-tema', t);
+        } catch (e) { /* armazenamento bloqueado: fica no tema do sistema */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

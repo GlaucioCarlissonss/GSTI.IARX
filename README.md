@@ -5,12 +5,17 @@ gestor de TI precisa acompanhar por empresa e por filial:
 
 | Módulo | O que entrega |
 | --- | --- |
-| **Financeiro** | Lançamentos por tipo, natureza e classificação contábil, com projeção automática de parcelas, recorrências, cenários de projeção e fechamento mensal. |
-| **Projetos** | Projetos, tarefas e envolvidos com cronograma Gantt mensal, cálculo automático de atraso e desvio entre planejado e real. |
-| **SLA** | Chamados por fila (Infraestrutura, Sistema, Dados) e por tópico de ajuda, com indicadores de conformidade. Um registro pode ser o agregado do mês ou **um chamado** do helpdesk, com link de volta para o sistema de origem. |
+| **Controle Financeiro** | Lançamentos por tipo, natureza e classificação contábil, com projeção automática de parcelas, recorrências, cenários de projeção e fechamento mensal. |
+| **Gestão de Projetos** | Projetos, tarefas e envolvidos com cronograma Gantt mensal, cálculo automático de atraso e desvio entre planejado e real. |
+| **Gestão de Suporte TI** | Chamados por fila (Infraestrutura, Sistema, Dados) e por tópico de ajuda, com indicadores de conformidade. Um registro pode ser o agregado do mês ou **um chamado** do helpdesk, com link de volta para o sistema de origem. |
 
 Todo registro pertence a uma **empresa** e, opcionalmente, a uma **filial**.
 Nenhuma consulta ou escrita ocorre fora desse contexto organizacional.
+
+Os três módulos são também a navegação, cada um com as suas telas; um quarto
+grupo, *Sistema*, guarda o que atravessa os três — planilha, cadastros e
+auditoria. Em qualquer tela, o botão no cabeçalho alterna entre **tema do
+sistema, claro e escuro**, e a escolha fica guardada no navegador.
 
 ## Duas formas de usar
 

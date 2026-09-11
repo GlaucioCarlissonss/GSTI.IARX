@@ -2,6 +2,7 @@
 // que nada duplica, e que uma planilha com lixo entra no relatório sem
 // derrubar as linhas boas.
 const { chromium } = require('playwright');
+const { irPara } = require('./ajuda-testes.cjs');
 const fs = require('fs');
 
 (async () => {
@@ -26,7 +27,7 @@ const fs = require('fs');
 
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#abas button', { timeout: 10000 });
-  const ir = async (r) => { await pag.click(`#abas button:text-is("${r}")`); await pag.waitForTimeout(400); };
+  const ir = (r) => irPara(pag, r, 400);
 
   const totalDe = async () => { await ir('Conferência'); return pag.$eval('.kpi:nth-child(3) .n', (n) => n.textContent); };
   const contar = () => pag.evaluate(() => Loja.todos(empresaAtiva()).length);
