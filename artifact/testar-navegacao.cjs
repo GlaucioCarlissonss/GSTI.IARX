@@ -34,11 +34,12 @@ const MODULOS_ESPERADOS = ['Controle Financeiro', 'Gestão de Projetos', 'Gestã
   conferir('financeiro reúne painel, lançamentos, relatório e conferência',
     JSON.stringify(por('Controle Financeiro')) === JSON.stringify(['Painel', 'Lançamentos', 'Relatório', 'Conferência']),
     por('Controle Financeiro').join(', '));
-  conferir('suporte reúne indicadores e chamados',
-    JSON.stringify(por('Gestão de Suporte TI')) === JSON.stringify(['Indicadores', 'Chamados']),
+  conferir('suporte reúne indicadores, chamados e as duas origens',
+    JSON.stringify(por('Gestão de Suporte TI'))
+      === JSON.stringify(['Indicadores', 'Chamados', 'Sistema OStick', 'Sistema Bitrix24']),
     por('Gestão de Suporte TI').join(', '));
   conferir('nada de SLA ou chamado fora do módulo de suporte',
-    !telas.some((t) => t.modulo !== 'Gestão de Suporte TI' && /chamad|sla|indicad/i.test(t.aba)),
+    !telas.some((t) => t.modulo !== 'Gestão de Suporte TI' && /chamad|sla|indicad|ostick|bitrix/i.test(t.aba)),
     telas.filter((t) => t.modulo !== 'Gestão de Suporte TI').map((t) => t.aba).join(', '));
 
   // Entrar num módulo abre a primeira tela dele.
@@ -75,6 +76,20 @@ const MODULOS_ESPERADOS = ['Controle Financeiro', 'Gestão de Projetos', 'Gestã
     ind.kpis > 0 && !ind.chamados, `${ind.kpis} indicadores`);
   conferir('chamados mostram a tabela e não repetem os KPIs',
     cha.chamados && cha.kpis === 0, `${cha.linhas} linhas`);
+
+  // A aba por origem é a mesma tela com o sistema fixado: traz a tabela e os
+  // seus próprios indicadores, e dispensa o filtro de Sistema.
+  await irPara(pag, 'Sistema OStick', 900);
+  const ost = await pag.evaluate(() => ({
+    titulo: (document.querySelector('#s-chamados h2') || {}).textContent || '',
+    kpis: document.querySelectorAll('.kpi').length,
+    filtro: !!document.querySelector('[data-sel="ssistema"]'),
+    sistemas: [...new Set([...document.querySelectorAll('#s-chamados tbody tr')].map((tr) => tr.children[1].textContent.trim()))],
+  }));
+  conferir('a aba por origem traz só os chamados daquele sistema',
+    ost.titulo === 'Sistema OStick' && ost.kpis === 3 && !ost.filtro
+      && JSON.stringify(ost.sistemas) === JSON.stringify(['Sistema OStick']),
+    `${ost.titulo} · ${ost.kpis} indicadores · ${ost.sistemas.join(', ')}`);
 
   // ------------------------------------------------------------------ tema
   console.log('\nTEMA — claro e escuro em qualquer tela');

@@ -359,8 +359,23 @@ três, mais um lugar para o que atravessa todos eles:
 | --- | --- |
 | **Controle Financeiro** | painel executivo, dashboard, lançamentos, fechamento mensal e conferência de origem |
 | **Gestão de Projetos** | dashboard com Gantt, projetos e tarefas |
-| **Gestão de Suporte TI** | indicadores de SLA e a lista de chamados |
+| **Gestão de Suporte TI** | indicadores de SLA, a lista de chamados e uma entrada por sistema de origem |
 | **Sistema** | importação/exportação, cadastros e trilha de auditoria |
+
+**Uma entrada por sistema de origem.** *Sistema OStick* e *Sistema Bitrix24*
+são a **mesma tela** de chamados com a origem fixada — os dois helpdesks
+descrevem a mesma coisa com nomes diferentes, e duplicar a tela por origem só
+criaria duas cópias para manter em paridade. A aba que fixa o sistema não
+desenha o filtro de Sistema: ele seria redundante, e mexer nele contradiria a
+aba. O identificador da aba é o próprio `source_system`, então um terceiro
+helpdesk vira aba sem uma segunda lista para manter em dia.
+
+A aba *Chamados* continua existindo e mostra todas as origens juntas, com o
+filtro de Sistema disponível: é a leitura de quem quer o quadro completo.
+
+Origem sem chamado no recorte não some da navegação — a aba abre com um estado
+vazio que diz por onde os chamados daquele sistema entram. Esconder a aba faria
+parecer que o sistema não existe, quando ele só não tem registro ainda.
 
 `Sistema` não é um quarto módulo de negócio: é onde ficam planilha, cadastro e
 auditoria, que servem aos três e não pertencem a nenhum. Entrar num módulo abre

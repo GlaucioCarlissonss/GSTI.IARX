@@ -10,7 +10,7 @@ const ORDEM_BASE = ['planilha', 'folha_ti', 'projecao_spincare', 'manual'];
 const MODULOS_NAV = [
   { id:'financeiro', rotulo:'Controle Financeiro',  abas:['painel', 'lancamentos', 'relatorio', 'conferencia'] },
   { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos'] },
-  { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados'] },
+  { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados', 'OSTICK', 'BITRIX24'] },
   { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'cadastros', 'auditoria'] },
 ];
 
@@ -22,6 +22,11 @@ const ABAS = [
   { id:'projetos',    rotulo:'Projetos',     view: viewProjetos },
   { id:'sla',         rotulo:'Indicadores',  view: () => viewSla('indicadores') },
   { id:'chamados',    rotulo:'Chamados',     view: () => viewSla('chamados') },
+  // As duas entradas por sistema de origem são a MESMA tela de chamados, com a
+  // origem fixada. O id é o próprio `source_system`, e é o que a tela usa para
+  // se fixar — assim um sistema novo vira aba sem uma segunda lista para manter.
+  { id:'OSTICK',      rotulo:'Sistema OStick',   view: () => viewSla('OSTICK') },
+  { id:'BITRIX24',    rotulo:'Sistema Bitrix24', view: () => viewSla('BITRIX24') },
   { id:'dados',       rotulo:'Dados',        view: viewDados },
   { id:'cadastros',   rotulo:'Cadastros',    view: viewCadastros },
   { id:'auditoria',   rotulo:'Auditoria',    view: viewAuditoria },

@@ -2,11 +2,18 @@
 // SLA — registro mensal por fila e tópico, com indicadores derivados
 // ===========================================================================
 /**
- * `secao` separa as duas leituras do mesmo recorte: `indicadores` responde
- * "como está o atendimento" e `chamados` responde "quais são os chamados".
- * Filtros e dados são os mesmos — o que muda é o que a tela mostra.
+ * `secao` separa as leituras do mesmo recorte: `indicadores` responde "como
+ * está o atendimento" e `chamados` responde "quais são os chamados". Filtros e
+ * dados são os mesmos — o que muda é o que a tela mostra.
+ *
+ * `OSTICK` e `BITRIX24` são a MESMA tela de chamados com a origem fixada: os
+ * dois helpdesks descrevem a mesma coisa com nomes diferentes, e duplicar a
+ * tela por origem só criaria duas cópias para manter em paridade.
  */
 async function viewSla(secao = 'indicadores') {
+  // A origem fixada pela aba não passa pelo filtro de Sistema: ela É a tela.
+  const sistemaFixo = SISTEMAS_SUPORTE[secao] ? secao : null;
+  const listaDeChamados = sistemaFixo !== null || secao === 'chamados';
   await Loja.configuracao();
   const carregados = [];
   for (const e of escopoEmpresas()) for (const r of await Loja.slaDa(e)) carregados.push({ ...r, empresa: e });
@@ -27,7 +34,7 @@ async function viewSla(secao = 'indicadores') {
     if (!passaNoFiltro(f.filas, r.fila)) return false;
     if (!passaNoFiltro(f.status, r.status || '(sem status)')) return false;
     if (!passaNoFiltro(f.niveis, r.nivel || '(sem nível)')) return false;
-    if (!passaNoFiltro(f.sistemas, sistemaDe(r))) return false;
+    if (sistemaFixo ? sistemaDe(r) !== sistemaFixo : !passaNoFiltro(f.sistemas, sistemaDe(r))) return false;
     if (!passaNoFiltro(f.setores, setorDe(r))) return false;
     if (f.sla.size && !f.sla.has(r.dentro >= (r.total || 1) ? 'dentro' : 'fora')) return false;
     if (f.busca) {
@@ -74,7 +81,7 @@ async function viewSla(secao = 'indicadores') {
       <div class="campo" style="width:150px"><label for="s-fila">Fila</label><div data-sel="sfila"></div></div>
       <div class="campo" style="width:140px"><label for="s-status">Status</label><div data-sel="sstatus"></div></div>
       <div class="campo" style="width:130px"><label for="s-nivel">Nível</label><div data-sel="snivel"></div></div>
-      <div class="campo" style="width:160px"><label for="s-sistema">Sistema</label><div data-sel="ssistema"></div></div>
+      ${sistemaFixo ? '' : '<div class="campo" style="width:160px"><label for="s-sistema">Sistema</label><div data-sel="ssistema"></div></div>'}
       <div class="campo" style="width:160px"><label for="s-setor">Setor / área</label><div data-sel="ssetor"></div></div>
       <div class="campo" style="width:130px"><label for="s-sla">SLA</label><div data-sel="ssla"></div></div>
       <div class="campo" style="flex:1 1 150px"><label for="s-busca">Buscar</label>
@@ -85,7 +92,7 @@ async function viewSla(secao = 'indicadores') {
     ${regs.length === 0 ? `<section class="bloco"><p class="vazio">
         Nenhum ticket registrado nesta empresa. Use <strong>Registrar tickets do mês</strong> para lançar
         o total atendido, ou importe a base do osTicket pela aba <strong>Dados</strong>.</p></section>` : `
-    ${secao !== 'indicadores' ? '' : `
+    ${listaDeChamados ? '' : `
     <div class="kpis">
       <div class="kpi"><span class="r">Tickets atendidos</span><span class="n">${inteiro(T)}</span>
         <span class="a">${esc(periodo)}</span></div>
@@ -116,9 +123,18 @@ async function viewSla(secao = 'indicadores') {
         </tbody></table></div></section>
     </div>`}
 
-    ${secao !== 'chamados' ? '' : chamados.length ? `
+    ${!listaDeChamados ? '' : chamados.length ? `
+    ${!sistemaFixo ? '' : `
+    <div class="kpis">
+      <div class="kpi"><span class="r">Chamados no recorte</span><span class="n">${inteiro(chamados.length)}</span>
+        <span class="a">${esc(periodo)}</span></div>
+      <div class="kpi"><span class="r">Em aberto</span><span class="n">${inteiro(emAberto)}</span>
+        <span class="a">${inteiro(chamados.length - emAberto)} encerrados</span></div>
+      <div class="kpi"><span class="r">Dentro do SLA</span><span class="n">${pctTxt(pct(D, T))}</span>
+        <span class="a">${inteiro(D)} de ${inteiro(T)}</span></div>
+    </div>`}
     <section class="bloco" id="s-chamados">
-      <header><h2>Chamados</h2><span class="nota">${inteiro(chamados.length)} no recorte${chamados.length > TETO ? ` · exibindo os ${TETO} mais recentes` : ''}</span></header>
+      <header><h2>${esc(sistemaFixo ? SISTEMAS_SUPORTE[sistemaFixo] : 'Chamados')}</h2><span class="nota">${inteiro(chamados.length)} no recorte${chamados.length > TETO ? ` · exibindo os ${TETO} mais recentes` : ''}</span></header>
       <div class="rol"><table>
         <thead><tr><th>Chamado</th><th>Sistema</th><th>Aberto em</th><th>Setor / área</th><th>Filial</th>
           <th>Fila</th><th>Tópico</th><th>Assunto</th><th>Solicitante</th><th>Responsável</th><th>Status</th>
@@ -145,7 +161,13 @@ async function viewSla(secao = 'indicadores') {
         }).join('')}</tbody></table></div>
       <p class="nota" style="margin-top:10px">O número do chamado abre o registro no osTicket.
         O prazo é a criação mais 48 h do Padrão SLA; chamado ainda aberto é medido contra a data da extração.</p>
-    </section>` : `
+    </section>` : sistemaFixo ? `
+    <section class="bloco" id="s-chamados"><p class="vazio">
+      Nenhum chamado do <strong>${esc(SISTEMAS_SUPORTE[sistemaFixo])}</strong> no recorte atual.
+      ${sistemaFixo === 'BITRIX24'
+        ? 'Os chamados do Bitrix24 entram pela planilha padrão, na aba <strong>Dados</strong>.'
+        : 'Amplie a competência no topo, ou importe a base pela aba <strong>Dados</strong>.'}
+    </p></section>` : `
     <section class="bloco"><header><h2>Registros de ${esc(periodo)}</h2></header>
       <div class="rol"><table><thead><tr><th>Filial</th><th>Fila</th><th>Tópico</th>
         <th class="n">Atendidos</th><th class="n">Dentro</th><th class="n">Fora</th><th class="n">%</th><th></th></tr></thead>
@@ -175,7 +197,9 @@ async function viewSla(secao = 'indicadores') {
     { chave:'ssla', id:'s-sla', rotulo:'SLA',
       itens:[{ valor:'dentro', rotulo:'Dentro do SLA' }, { valor:'fora', rotulo:'Fora do SLA' }],
       get sel() { return f.sla; }, aplicar:(n) => { f.sla = n; } },
-  ];
+    // A aba que fixa o sistema não desenha o seletor dele: sem tirá-lo daqui,
+    // a montagem procuraria um campo que não existe na tela.
+  ].filter((g) => !(sistemaFixo && g.chave === 'ssistema'));
   if (comps.length) {
     for (const g of grupos) {
       seletorMulti(el(`[data-sel="${g.chave}"]`), {
@@ -250,6 +274,28 @@ async function viewSla(secao = 'indicadores') {
              : 'Tempo mediano entre a abertura e o encerramento do chamado.' },
     });
   }
+
+  // A aba por sistema tem indicadores próprios, do recorte já fixado nela.
+  if (sistemaFixo && chamados.length) {
+    const nome = SISTEMAS_SUPORTE[sistemaFixo];
+    ligarKpis({
+      0: { dica: 'Todos os chamados que atendem aos filtros acima, e não só os exibidos na tabela.',
+           abrir: () => detalharChamados(`${nome} — ${periodo}`, chamados, chamados.length) },
+      1: { dica: 'Chamados ainda sem encerramento.',
+           // Sem chamado em aberto não há o que abrir, e um detalhamento vazio
+           // só faria duvidar do número.
+           abrir: emAberto ? () => {
+             const lista = chamados.filter(aberto);
+             detalharChamados(`${nome} — em aberto`, lista, emAberto);
+           } : null },
+      2: { dica: 'Chamados atendidos dentro do prazo, sobre o total do recorte.',
+           abrir: D ? () => {
+             const lista = chamados.filter((r) => (r.dentro || 0) >= (r.total || 1));
+             detalharChamados(`${nome} — dentro do SLA`, lista, D);
+           } : null },
+    });
+  }
+
   if (regs.length) {
     el('#pagina').querySelectorAll('tr[data-sid]').forEach((tr) => {
       tr.querySelector('[data-sdel]').onclick = () => confirmar({
