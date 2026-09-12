@@ -50,10 +50,25 @@ encerra a aplicação.
 > O `.env` guarda o `JWT_SECRET`. Trocá-lo não apaga dado algum, mas desconecta
 > todas as sessões abertas. Vale copiá-lo junto com o backup.
 
+### Variáveis opcionais
+
+| variável | para quê |
+| --- | --- |
+| `WEBHOOK_SECRET` | Segredo dos webhooks quando a conexão não tem um próprio. Sem ele **e** sem segredo por empresa, o endpoint responde 503 de propósito. |
+| `SMTP_URL`, `SMTP_DE` | Ligam o envio de e-mail da recuperação de senha. Sem os dois, a mensagem fica registrada no sistema mas **não é enviada** — e a tela de acesso avisa isso. |
+| `SENHA_MINIMA` | Tamanho mínimo da senha. O piso de 8 não é negociável. |
+| `LOGIN_TENTATIVAS`, `LOGIN_BLOQUEIO_MS` | Quantos erros de login até bloquear a conta, e por quanto tempo. |
+| `SENHA_TOKEN_MINUTOS` | Validade do link de redefinição (entre 10 e 120). |
+
 ## 4. Primeiro acesso
 
-1. A tela abre no **cadastro do gestor**. Preencha nome, e-mail e uma senha de
-   ao menos 8 caracteres. Essa é a primeira conta do ambiente.
+1. A tela abre no **cadastro do gestor**. Preencha nome, e-mail, **usuário** e
+   uma senha de ao menos 8 caracteres, com letras e números. Essa é a primeira
+   conta do ambiente.
+
+   > O **usuário** é o identificador de login; o **e-mail** serve só para
+   > recuperar a senha. Deixando o campo de usuário em branco, ele sai do seu
+   > e-mail.
 2. Em seguida, cadastre a **primeira empresa**. Ela nasce com os nove tipos de
    despesa padrão e com você como gestor.
 

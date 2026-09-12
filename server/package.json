@@ -12,6 +12,7 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@types/nodemailer": "^8.0.1",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.6.0",
     "cors": "^2.8.5",
@@ -20,6 +21,7 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
+    "nodemailer": "^10.0.9",
     "zod": "^4.1.13"
   },
   "devDependencies": {

@@ -8,6 +8,7 @@ import { autenticado, comEmpresa, tratadorDeErros } from './middleware/index.js'
 import { rotasAuth } from './routes/auth.js';
 import { rotasCadastros } from './routes/cadastros.js';
 import { rotasFinanceiro } from './routes/financeiro.js';
+import { rotasAcesso } from './routes/acesso.js';
 import { rotasIntegracoes } from './routes/integracoes.js';
 import { rotasProjetos } from './routes/projetos.js';
 import { rotasSla } from './routes/sla.js';
@@ -57,6 +58,7 @@ export function criarApp() {
   protegido.use('/sla', rotasSla);
   protegido.use('/suporte', rotasSuporte);
   protegido.use('/integracoes', rotasIntegracoes);
+  protegido.use('/acesso', rotasAcesso);
   protegido.use('/dashboards', rotasDashboards);
   protegido.use('/planilhas', rotasPlanilhas);
   app.use('/api', protegido);

@@ -684,6 +684,89 @@ arquivo de versão maior aberto por uma versão antiga apenas ignora as colunas 
 mais. Na aba `SLA`, a linha com `Ticket` preenchido é deduplicada por
 `ticket:<id>`; sem `Ticket`, pelo conteúdo, como nas demais abas.
 
+## Acesso: usuários, perfis e permissões
+
+**O login é por `username`.** O e-mail sai da autenticação e passa a servir só
+à recuperação de senha: quem sabe o e-mail de alguém não deve, por isso, saber
+como essa pessoa entra no sistema. Contas que já existiam ganharam um
+identificador derivado do e-mail — um prefixo curto demais é completado com o
+domínio, porque `a@b.com` daria um nome de um caractere.
+
+A recusa de login é **sempre a mesma frase**, exista a conta ou não: uma
+mensagem que distingue "usuário não existe" de "senha errada" é uma lista de
+usuários válidos entregue a quem tenta adivinhar. Cinco erros e a conta fica
+quinze minutos fora (contagem em memória, por processo).
+
+Senha: mínimo de 8 caracteres, com letras **e** números, guardada com bcrypt.
+
+### As três camadas da permissão
+
+| camada | pergunta |
+| --- | --- |
+| **módulo** | esta pessoa vê Financeiro? |
+| **ação** | dentro dele, pode criar, editar, excluir, exportar, importar? |
+| **campo** | editando, pode mexer em `valor`? |
+
+As três valem **no servidor**. O que o front esconde é conveniência; a regra é
+o `exigir(modulo, acao)` das rotas, e uma recusa vira **403** e entra na
+auditoria — saber o que foi tentado e recusado é metade do valor de ter
+permissão.
+
+**Sem ver o módulo, as demais ações dele não valem.** Marcar "criar" com "ver"
+desmarcado daria uma matriz que mente; a gravação corrige isso na entrada.
+
+**Campo bloqueado é a exceção, não a regra.** Sem nenhuma linha para o módulo,
+valem todos os campos — exigir a lista completa transformaria cada campo novo
+numa permissão esquecida. A alteração devolve o que foi retirado, para a tela
+dizer o que não foi salvo em vez de fingir que salvou tudo.
+
+### O perfil fica no vínculo com a empresa
+
+E não no usuário. O sistema é multi-tenant por regra, e o mesmo usuário já
+podia ser gestor numa empresa e leitor em outra; um perfil por usuário faria
+quem é administrador numa empresa virar administrador em todas.
+
+Sem perfil atribuído, o **papel antigo** responde: gestor edita, leitor lê. É o
+que impede a migração de tirar acesso de quem já tinha — um sistema que tranca
+o próprio dono na atualização não é mais seguro, é só inútil.
+
+Dois perfis padrão por empresa. *Somente Visualização* vê o **conteúdo** e não
+escreve nada — nem exporta, que é escrita nenhuma mas é saída de dado — e **não
+vê os módulos administrativos** (Usuários e Integrações): quem tem acesso, com
+que e-mail e papel, e o endereço de cada integração são informação de
+administração, não conteúdo. *Edição* faz tudo, menos administrar acessos: dar
+permissão a si mesmo é o caminho mais curto para o perfil deixar de significar
+alguma coisa.
+
+O perfil padrão não é renomeado nem excluído — a leitura de quem ainda não tem
+perfil atribuído cai nele pelo nome. Para variar, **duplique**. Perfil em uso
+não é excluído em silêncio.
+
+**O gestor da empresa administra acessos por definição.** Fosse preciso um
+perfil para isso, uma configuração errada trancaria todo mundo para fora da
+própria tela de acessos.
+
+### Recuperação de senha
+
+Token aleatório, guardado como **hash**, de uso único e com prazo (45 minutos
+por padrão). Guardar em texto faria de um vazamento do banco um vazamento de
+contas. Um pedido novo invalida os anteriores: dois links válidos ao mesmo
+tempo dobram a janela de quem interceptar um.
+
+Token inexistente, usado e vencido dão **a mesma recusa** — distinguir os três
+contaria a quem tenta adivinhar quão perto chegou.
+
+**Redefinir a senha derruba as sessões abertas.** O carimbo da troca é gravado
+com milissegundos de propósito: `datetime('now')` tem resolução de um segundo,
+e trocar a senha no mesmo segundo do login deixava a sessão antiga de pé —
+justamente o caso de quem acabou de tomar a conta.
+
+**Sem SMTP configurado, o sistema não diz que enviou.** A mensagem fica
+registrada, com o motivo, e a tela de acesso avisa que o envio não está de pé,
+sugerindo pedir a um gestor. Dizer que enviou sem ter enviado é pior do que não
+enviar. O corpo do e-mail **não entra no log**: ele carrega o link. Para ligar
+o envio de verdade, defina `SMTP_URL` e `SMTP_DE`.
+
 ## Expansões previstas
 
 O modelo já acomoda novos tipos de despesa, filiais, empresas, filas e tópicos

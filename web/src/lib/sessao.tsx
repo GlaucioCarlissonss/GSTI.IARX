@@ -20,6 +20,8 @@ export interface Filial {
 export interface Usuario {
   usuarioId: number;
   nome: string;
+  /** Identificador de login. O e-mail serve só à recuperação de senha. */
+  username?: string;
   email: string;
 }
 
@@ -41,8 +43,9 @@ interface EstadoSessao {
   filiaisSel: Array<number | 'nenhuma'>;
   carregando: boolean;
   filiais: Filial[];
-  entrar: (email: string, senha: string) => Promise<void>;
-  criarConta: (dados: { nome: string; email: string; senha: string }) => Promise<void>;
+  /** O identificador de login é o USUÁRIO; o e-mail não autentica. */
+  entrar: (usuario: string, senha: string) => Promise<void>;
+  criarConta: (dados: { nome: string; email: string; senha: string; usuario?: string }) => Promise<void>;
   criarEmpresa: (dados: { nome: string; cnpj?: string }) => Promise<void>;
   instalacao: EstadoInstalacao | null;
   sair: () => void;
@@ -118,9 +121,9 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   }, [recarregarFiliais]);
 
   const entrar = useCallback(
-    async (email: string, senha: string) => {
+    async (usuario: string, senha: string) => {
       const dados = await api.post<{ token: string; usuario: Usuario; empresas: Empresa[] }>('/api/auth/login', {
-        email,
+        usuario,
         senha,
       });
       sessaoLocal.definirToken(dados.token);
@@ -132,13 +135,18 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   );
 
   const criarConta = useCallback(
-    async (dados: { nome: string; email: string; senha: string }) => {
-      const resposta = await api.post<{ token: string; usuario: { id: number; nome: string; email: string } }>(
-        '/api/auth/registrar',
-        dados,
-      );
+    async (dados: { nome: string; email: string; senha: string; usuario?: string }) => {
+      const resposta = await api.post<{
+        token: string;
+        usuario: { id: number; nome: string; email: string; username: string };
+      }>('/api/auth/registrar', { ...dados, username: dados.usuario || undefined });
       sessaoLocal.definirToken(resposta.token);
-      setUsuario({ usuarioId: resposta.usuario.id, nome: resposta.usuario.nome, email: resposta.usuario.email });
+      setUsuario({
+        usuarioId: resposta.usuario.id,
+        nome: resposta.usuario.nome,
+        email: resposta.usuario.email,
+        username: resposta.usuario.username,
+      });
       setEmpresas([]);
       aplicarEmpresa(null);
     },

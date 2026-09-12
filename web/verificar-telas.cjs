@@ -2,7 +2,7 @@
 //
 // Suba o servidor e rode com as credenciais do ambiente:
 //   npm start
-//   EMAIL=gestor@gsti.local SENHA=... node web/verificar-telas.cjs
+//   USUARIO=gestor SENHA=... node web/verificar-telas.cjs
 //
 // Falha em erro de console, página vazia, rolagem horizontal, ou aviso cujos
 // filhos viraram colunas (o sintoma de `display:flex` em texto corrido).
@@ -15,7 +15,8 @@ const PAGINAS = [
   ['/projetos/cadastro', 'Cadastro de projetos'], ['/sla', 'Indicadores de SLA'], ['/sla/registros', 'Chamados'],
   ['/suporte/ostick', 'Sistema OStick'], ['/suporte/bitrix24', 'Sistema Bitrix24'],
   ['/suporte/integracoes', 'Integrações'],
-  ['/planilhas', 'Planilhas'], ['/cadastros', 'Cadastros'], ['/auditoria', 'Auditoria'],
+  ['/planilhas', 'Planilhas'], ['/cadastros', 'Cadastros'],
+  ['/acessos', 'Usuários e acessos'], ['/auditoria', 'Auditoria'],
 ];
 
 // Os módulos do negócio, como o menu deve apresentá-los.
@@ -36,7 +37,7 @@ const BASE = process.env.BASE_URL || 'http://127.0.0.1:3333';
 
       await pag.goto(BASE + '/');
       await pag.waitForLoadState('networkidle');
-      await pag.fill('input[type="email"], input[name="email"]', process.env.EMAIL || 'gestor@gsti.local');
+      await pag.fill('input[autocomplete="username"], input[name="usuario"]', process.env.USUARIO || 'gestor');
       await pag.fill('input[type="password"], input[name="senha"]', process.env.SENHA || '');
       await pag.click('button[type="submit"], form button');
       await pag.waitForTimeout(2200);
@@ -80,7 +81,7 @@ const BASE = process.env.BASE_URL || 'http://127.0.0.1:3333';
     pag.on('pageerror', (e) => erros.push(e.message));
     await pag.goto(BASE + '/');
     await pag.waitForLoadState('networkidle');
-    await pag.fill('input[type="email"], input[name="email"]', process.env.EMAIL || 'gestor@gsti.local');
+    await pag.fill('input[autocomplete="username"], input[name="usuario"]', process.env.USUARIO || 'gestor');
     await pag.fill('input[type="password"], input[name="senha"]', process.env.SENHA || '');
     await pag.click('button[type="submit"], form button');
     await pag.waitForTimeout(2200);

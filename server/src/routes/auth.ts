@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { autenticar, registrar, registroAberto } from '../domain/auth.js';
 import { criarEmpresa, listarEmpresasDoUsuario } from '../domain/empresas.js';
-import { autenticado } from '../middleware/index.js';
+import { pedirRedefinicao, redefinirSenha, situacaoDoEmail } from '../domain/senha.js';
+import { assincrono, autenticado } from '../middleware/index.js';
 
 export const rotasAuth = Router();
 
@@ -13,15 +14,43 @@ rotasAuth.get('/estado', (_req, res) => {
 
 rotasAuth.post('/registrar', (req, res) => {
   const usuario = registrar(req.body ?? {});
-  const { token } = autenticar(usuario.email, req.body.senha);
+  const { token } = autenticar(usuario.username, req.body.senha);
   res.status(201).json({ usuario, token, empresas: [] });
 });
 
+/**
+ * Login por `usuario`. `email` ainda é aceito no corpo por compatibilidade com
+ * quem já tinha a tela antiga aberta — mas o que vale como identificador é o
+ * username, e é o que a tela nova envia.
+ */
 rotasAuth.post('/login', (req, res) => {
-  const { email, senha } = req.body ?? {};
-  const resultado = autenticar(email, senha);
+  const { usuario, username, email, senha } = req.body ?? {};
+  const resultado = autenticar(usuario ?? username ?? email, senha);
   res.json({ ...resultado, empresas: listarEmpresasDoUsuario(resultado.usuario.usuarioId) });
 });
+
+// -------------------------------------------------------- recuperação de senha
+
+/**
+ * A resposta é sempre a mesma, exista a conta ou não: dizer "não há usuário
+ * com esse e-mail" entrega uma lista de e-mails cadastrados a quem adivinha.
+ */
+rotasAuth.post(
+  '/senha/pedir',
+  assincrono(async (req, res) => {
+    const base = `${req.protocol}://${req.get('host') ?? 'localhost'}`;
+    const r = await pedirRedefinicao(String((req.body ?? {}).email ?? ''), base);
+    res.json({ aviso: r.aviso });
+  }),
+);
+
+rotasAuth.post('/senha/redefinir', (req, res) => {
+  const { token, senha } = req.body ?? {};
+  res.json(redefinirSenha(String(token ?? ''), String(senha ?? '')));
+});
+
+/** Diz à tela de acesso se o envio de e-mail está de pé nesta instalação. */
+rotasAuth.get('/senha/situacao', (_req, res) => res.json(situacaoDoEmail()));
 
 rotasAuth.get('/eu', autenticado, (req, res) => {
   const sessao = req.sessao!;

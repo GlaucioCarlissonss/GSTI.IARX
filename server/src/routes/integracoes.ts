@@ -17,7 +17,7 @@ import {
 } from '../domain/integracoes.js';
 import type { SistemaOrigem } from '../domain/suporte.js';
 import { erroValidacao } from '../lib/erros.js';
-import { ctx, somenteGestor } from '../middleware/index.js';
+import { ctx, exigir } from '../middleware/index.js';
 
 export const rotasIntegracoes = Router();
 
@@ -42,7 +42,7 @@ rotasIntegracoes.get('/', (req, res) => res.json(listarIntegracoes(ctx(req))));
  * fora do N8N. A resposta diz isso em voz alta, para o gestor copiar antes de
  * fechar a tela.
  */
-rotasIntegracoes.post('/:sistema/segredo', somenteGestor, (req, res) => {
+rotasIntegracoes.post('/:sistema/segredo', exigir('integracoes', 'create'), (req, res) => {
   const r = regenerarSegredo(ctx(req), sistemaDaRota(req.params.sistema));
   res.json({
     ...r,
@@ -50,14 +50,14 @@ rotasIntegracoes.post('/:sistema/segredo', somenteGestor, (req, res) => {
   });
 });
 
-rotasIntegracoes.patch('/:sistema', somenteGestor, (req, res) => {
+rotasIntegracoes.patch('/:sistema', exigir('integracoes', 'edit'), (req, res) => {
   const ativo = (req.body ?? {}).ativo;
   if (typeof ativo !== 'boolean') throw erroValidacao('Informe "ativo" como verdadeiro ou falso.');
   res.json(definirAtivo(ctx(req), sistemaDaRota(req.params.sistema), ativo));
 });
 
 /** Dispara o payload de exemplo pelo mesmo pipeline do webhook. */
-rotasIntegracoes.post('/:sistema/teste', somenteGestor, (req, res) => {
+rotasIntegracoes.post('/:sistema/teste', exigir('integracoes', 'create'), (req, res) => {
   res.json(enviarPayloadDeTeste(ctx(req), sistemaDaRota(req.params.sistema)));
 });
 
@@ -74,6 +74,6 @@ rotasIntegracoes.get('/eventos', (req, res) => {
   );
 });
 
-rotasIntegracoes.post('/eventos/:id/reprocessar', somenteGestor, (req, res) => {
+rotasIntegracoes.post('/eventos/:id/reprocessar', exigir('integracoes', 'create'), (req, res) => {
   res.json(reprocessarEvento(ctx(req), Number(req.params.id)));
 });

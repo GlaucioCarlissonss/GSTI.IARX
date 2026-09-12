@@ -14,7 +14,7 @@ import {
   obterProjeto,
   removerEnvolvido,
 } from '../domain/projetos.js';
-import { ctx, somenteGestor } from '../middleware/index.js';
+import { ctx, exigir } from '../middleware/index.js';
 
 export const rotasProjetos = Router();
 
@@ -68,11 +68,11 @@ rotasProjetos.get('/tarefas', (req, res) => {
 
 rotasProjetos.get('/:id', (req, res) => res.json(obterProjeto(ctx(req), Number(req.params.id))));
 
-rotasProjetos.post('/', somenteGestor, (req, res) => {
+rotasProjetos.post('/', exigir('projetos', 'create'), (req, res) => {
   res.status(201).json(criarProjeto(ctx(req), corpoProjeto(req.body ?? {})));
 });
 
-rotasProjetos.patch('/:id', somenteGestor, (req, res) => {
+rotasProjetos.patch('/:id', exigir('projetos', 'edit'), (req, res) => {
   const corpo = req.body ?? {};
   res.json(
     atualizarProjeto(ctx(req), Number(req.params.id), {
@@ -88,7 +88,7 @@ rotasProjetos.patch('/:id', somenteGestor, (req, res) => {
   );
 });
 
-rotasProjetos.delete('/:id', somenteGestor, (req, res) => {
+rotasProjetos.delete('/:id', exigir('projetos', 'delete'), (req, res) => {
   res.json(excluirProjeto(ctx(req), Number(req.params.id), req.body?.justificativa));
 });
 
@@ -97,7 +97,7 @@ rotasProjetos.get('/:id/tarefas', (req, res) => {
   res.json(listarTarefas(ctx(req), Number(req.params.id)));
 });
 
-rotasProjetos.post('/:id/tarefas', somenteGestor, (req, res) => {
+rotasProjetos.post('/:id/tarefas', exigir('projetos', 'create'), (req, res) => {
   const corpo = req.body ?? {};
   res.status(201).json(
     criarTarefa(ctx(req), Number(req.params.id), {
@@ -112,7 +112,7 @@ rotasProjetos.post('/:id/tarefas', somenteGestor, (req, res) => {
   );
 });
 
-rotasProjetos.patch('/tarefas/:tarefaId', somenteGestor, (req, res) => {
+rotasProjetos.patch('/tarefas/:tarefaId', exigir('projetos', 'edit'), (req, res) => {
   const corpo = req.body ?? {};
   res.json(
     atualizarTarefa(ctx(req), Number(req.params.tarefaId), {
@@ -129,7 +129,7 @@ rotasProjetos.patch('/tarefas/:tarefaId', somenteGestor, (req, res) => {
   );
 });
 
-rotasProjetos.delete('/tarefas/:tarefaId', somenteGestor, (req, res) => {
+rotasProjetos.delete('/tarefas/:tarefaId', exigir('projetos', 'delete'), (req, res) => {
   res.json(excluirTarefa(ctx(req), Number(req.params.tarefaId), req.body?.justificativa));
 });
 
@@ -138,10 +138,10 @@ rotasProjetos.get('/:id/envolvidos', (req, res) => {
   res.json(listarEnvolvidos(ctx(req), Number(req.params.id)));
 });
 
-rotasProjetos.post('/:id/envolvidos', somenteGestor, (req, res) => {
+rotasProjetos.post('/:id/envolvidos', exigir('projetos', 'create'), (req, res) => {
   res.status(201).json(adicionarEnvolvido(ctx(req), Number(req.params.id), req.body ?? {}));
 });
 
-rotasProjetos.delete('/:id/envolvidos/:envolvidoId', somenteGestor, (req, res) => {
+rotasProjetos.delete('/:id/envolvidos/:envolvidoId', exigir('projetos', 'delete'), (req, res) => {
   res.json(removerEnvolvido(ctx(req), Number(req.params.id), Number(req.params.envolvidoId)));
 });

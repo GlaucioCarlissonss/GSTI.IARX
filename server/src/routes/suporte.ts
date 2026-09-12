@@ -10,7 +10,7 @@ import multer from 'multer';
 import { listarChamados, obterChamado, opcoesDeFiltro, SISTEMAS, type SistemaOrigem } from '../domain/suporte.js';
 import { listarSetores, criarSetor, atualizarSetor } from '../domain/cadastros.js';
 import { paraInterno } from '../domain/competencia.js';
-import { ctx, somenteGestor } from '../middleware/index.js';
+import { ctx, exigir } from '../middleware/index.js';
 import { listaDaQuery, numerosDaQuery } from '../lib/consulta.js';
 import {
   ABA_TICKETS,
@@ -83,6 +83,7 @@ rotasSuporte.get('/chamados/opcoes', (req, res) => {
 /** Exporta o recorte em foco, com as duas abas do template. */
 rotasSuporte.get(
   '/chamados/exportacao.xlsx',
+  exigir('suporte_ostick', 'export'),
   assincrono(async (req, res) => {
     const abas = abasDeTickets(ctx(req), filtroDaQuery(req.query as Record<string, unknown>));
     const hoje = new Date().toISOString().slice(0, 10);
@@ -108,11 +109,11 @@ rotasSuporte.get('/setores', (req, res) => {
   res.json(listarSetores(ctx(req), req.query.incluir_inativos === 'true'));
 });
 
-rotasSuporte.post('/setores', somenteGestor, (req, res) => {
+rotasSuporte.post('/setores', exigir('suporte_ostick', 'create'), (req, res) => {
   res.status(201).json(criarSetor(ctx(req), String(req.body?.nome ?? '')));
 });
 
-rotasSuporte.patch('/setores/:id', somenteGestor, (req, res) => {
+rotasSuporte.patch('/setores/:id', exigir('suporte_ostick', 'edit'), (req, res) => {
   res.json(atualizarSetor(ctx(req), Number(req.params.id), { nome: req.body?.nome, ativo: req.body?.ativo }));
 });
 
@@ -132,7 +133,7 @@ const enviarXlsx = (res: Parameters<Parameters<typeof rotasSuporte.get>[1]>[1], 
  */
 rotasSuporte.post(
   '/chamados/importacao/previa',
-  somenteGestor,
+  exigir('suporte_ostick', 'create'),
   upload.single('arquivo'),
   assincrono(async (req, res) => {
     if (!req.file) throw erroValidacao(`Envie o arquivo no campo "arquivo" (multipart/form-data).`);
@@ -142,7 +143,7 @@ rotasSuporte.post(
 
 rotasSuporte.post(
   '/chamados/importacao',
-  somenteGestor,
+  exigir('suporte_ostick', 'create'),
   upload.single('arquivo'),
   assincrono(async (req, res) => {
     if (!req.file) throw erroValidacao(`Envie o arquivo no campo "arquivo" (multipart/form-data).`);

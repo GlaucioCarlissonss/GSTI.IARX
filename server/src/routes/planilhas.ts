@@ -4,7 +4,7 @@ import { importarPlanilha, listarImportacoes } from '../domain/importacao.js';
 import { exportarCsv, exportarXlsx, nomeArquivoExportacao } from '../domain/exportacao.js';
 import { ABAS, ABAS_POR_MODULO, TEMPLATE_VERSAO_ATUAL, type Modulo, type NomeAba } from '../domain/templates.js';
 import { erroValidacao } from '../lib/erros.js';
-import { assincrono, ctx, somenteGestor } from '../middleware/index.js';
+import { assincrono, ctx, exigir } from '../middleware/index.js';
 
 export const rotasPlanilhas = Router();
 
@@ -59,6 +59,8 @@ rotasPlanilhas.get(
 /** Exportação completa da base no mesmo template de importação. */
 rotasPlanilhas.get(
   '/exportacao/:modulo.xlsx',
+  // Exportar é escrita nenhuma, mas é saída de dado: tem ação própria.
+  exigir('financeiro', 'export'),
   assincrono(async (req, res) => {
     const modulo = validarModulo(String(req.params.modulo));
     const buffer = await exportarXlsx(ctx(req), modulo, false);
@@ -70,7 +72,7 @@ rotasPlanilhas.get(
   }),
 );
 
-rotasPlanilhas.get('/exportacao/:aba.csv', (req, res) => {
+rotasPlanilhas.get('/exportacao/:aba.csv', exigir('financeiro', 'export'), (req, res) => {
   const nomes = Object.keys(ABAS) as NomeAba[];
   const aba = nomes.find((n) => n.toLowerCase() === String(req.params.aba).toLowerCase());
   if (!aba) throw erroValidacao(`Aba "${req.params.aba}" inválida. Use: ${nomes.join(', ')}.`);
@@ -87,7 +89,11 @@ rotasPlanilhas.get('/exportacao/:aba.csv', (req, res) => {
  */
 rotasPlanilhas.post(
   '/importacao/:modulo',
-  somenteGestor,
+  // A planilha geral escreve nos três módulos: permitir importar em um só
+  // deixaria entrar pelo arquivo o que a permissão nega pela tela.
+  exigir('financeiro', 'import'),
+  exigir('projetos', 'import'),
+  exigir('suporte_ostick', 'import'),
   upload.single('arquivo'),
   assincrono(async (req, res) => {
     const modulo = validarModulo(String(req.params.modulo));

@@ -132,7 +132,10 @@ Toda rota sob `/api` (exceto `/api/auth/*` e `/api/saude`) exige o cabeçalho
 
 | Grupo | Rotas |
 | --- | --- |
-| Sessão | `POST /api/auth/registrar` · `POST /api/auth/login` · `GET /api/auth/eu` · `POST /api/auth/empresas` |
+| Sessão | `POST /api/auth/registrar` · `POST /api/auth/login` (por **usuário**, não por e-mail) · `GET /api/auth/eu` · `POST /api/auth/empresas` |
+| Senha | `POST /api/auth/senha/pedir` · `POST /api/auth/senha/redefinir` · `GET /api/auth/senha/situacao` |
+| Acesso | `GET /api/acesso/minhas-permissoes` · `/api/acesso/usuarios` · `/api/acesso/perfis` |
+| Integrações | `GET /api/health` · `/api/integracoes` · `/api/integracoes/eventos` |
 | Cadastros | `/api/filiais` · `/api/tipos-despesa` · `/api/topicos-ajuda` · `/api/filas` |
 | Financeiro | `/api/lancamentos` · `/api/lancamentos/:id/serie` · `/api/lancamentos/:id/reclassificar` · `/api/lancamentos/cenarios/lista` |
 | Fechamento | `/api/fechamentos` · `/api/fechamentos/reabrir` |

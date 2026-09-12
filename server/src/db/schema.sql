@@ -6,9 +6,16 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS usuarios (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   nome         TEXT NOT NULL,
+  -- `username` é o identificador de LOGIN; o e-mail serve só à recuperação de
+  -- senha. Quem sabe o e-mail de alguém não deve, por isso, saber como essa
+  -- pessoa entra no sistema.
+  username     TEXT UNIQUE COLLATE NOCASE,
   email        TEXT NOT NULL UNIQUE COLLATE NOCASE,
   senha_hash   TEXT NOT NULL,
   ativo        INTEGER NOT NULL DEFAULT 1,
+  -- Carimbo da última troca de senha: invalida os tokens emitidos antes dela.
+  senha_em     TEXT,
+  ultimo_login_em TEXT,
   criado_em    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -348,3 +355,68 @@ CREATE TABLE IF NOT EXISTS integracao_evento (
 );
 CREATE INDEX IF NOT EXISTS ix_evento_escopo ON integracao_evento(empresa_id, criado_em DESC);
 CREATE INDEX IF NOT EXISTS ix_evento_status ON integracao_evento(empresa_id, status, criado_em DESC);
+
+-- ============================================================
+-- Acesso: perfis, permissões e recuperação de senha
+-- ============================================================
+-- O perfil fica no VÍNCULO com a empresa, e não no usuário: o sistema é
+-- multi-tenant por regra, e o mesmo usuário já podia ser gestor numa empresa e
+-- leitor em outra. Um perfil por usuário faria quem é administrador numa
+-- empresa virar administrador em todas.
+CREATE TABLE IF NOT EXISTS perfis (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  empresa_id   INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  nome         TEXT NOT NULL,
+  tipo         TEXT NOT NULL CHECK (tipo IN ('VIEW_ONLY','EDIT')),
+  padrao       INTEGER NOT NULL DEFAULT 0 CHECK (padrao IN (0,1)),
+  criado_em    TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (empresa_id, nome)
+);
+
+-- Uma linha por (perfil, módulo, ação). A ausência da linha é negação: o
+-- padrão de um perfil novo é não poder nada além do que foi marcado.
+CREATE TABLE IF NOT EXISTS perfil_permissoes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  perfil_id  INTEGER NOT NULL REFERENCES perfis(id) ON DELETE CASCADE,
+  modulo     TEXT NOT NULL,
+  acao       TEXT NOT NULL CHECK (acao IN ('view','create','edit','delete','export','import')),
+  permitido  INTEGER NOT NULL DEFAULT 0 CHECK (permitido IN (0,1)),
+  UNIQUE (perfil_id, modulo, acao)
+);
+
+-- Campos que um perfil de edição PODE alterar. Sem nenhuma linha para o
+-- módulo, valem todos os campos — é o caso comum, e exigir a lista completa
+-- transformaria cada campo novo numa permissão esquecida.
+CREATE TABLE IF NOT EXISTS perfil_campos (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  perfil_id  INTEGER NOT NULL REFERENCES perfis(id) ON DELETE CASCADE,
+  modulo     TEXT NOT NULL,
+  campo      TEXT NOT NULL,
+  pode_editar INTEGER NOT NULL DEFAULT 1 CHECK (pode_editar IN (0,1)),
+  UNIQUE (perfil_id, modulo, campo)
+);
+
+-- Token de redefinição: guardado como hash, de uso único e com prazo. Guardar
+-- em texto faria de um vazamento do banco um vazamento de contas.
+CREATE TABLE IF NOT EXISTS tokens_redefinicao (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  token_hash  TEXT NOT NULL UNIQUE,
+  expira_em   TEXT NOT NULL,
+  usado_em    TEXT,
+  criado_em   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_token_usuario ON tokens_redefinicao(usuario_id, expira_em);
+
+-- Correspondência que o sistema tentou enviar. Sem SMTP configurado, é aqui
+-- que a mensagem fica — dizer que enviou sem ter enviado seria pior do que
+-- não enviar.
+CREATE TABLE IF NOT EXISTS emails_enviados (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  destinatario TEXT NOT NULL,
+  assunto     TEXT NOT NULL,
+  corpo       TEXT NOT NULL,
+  enviado     INTEGER NOT NULL DEFAULT 0 CHECK (enviado IN (0,1)),
+  erro        TEXT,
+  criado_em   TEXT NOT NULL DEFAULT (datetime('now'))
+);

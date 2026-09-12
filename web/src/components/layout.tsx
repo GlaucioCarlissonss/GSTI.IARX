@@ -43,6 +43,7 @@ const NAVEGACAO = [
     itens: [
       { para: '/planilhas', glifo: '⇅', rotulo: 'Importar / Exportar' },
       { para: '/cadastros', glifo: '⚙', rotulo: 'Cadastros' },
+      { para: '/acessos', glifo: '◈', rotulo: 'Usuários e acessos' },
       { para: '/auditoria', glifo: '◉', rotulo: 'Auditoria' },
     ],
   },

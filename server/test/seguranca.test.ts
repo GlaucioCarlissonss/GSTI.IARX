@@ -15,7 +15,7 @@ function ambiente() {
   definirBanco(abrirBanco(':memory:'));
   delete process.env.REGISTRO_ABERTO;
   process.env.JWT_SECRET = SEGREDO;
-  const usuario = registrar({ nome: 'Gestor', email: 'gestor@exemplo.com', senha: 'senha-bem-forte' });
+  const usuario = registrar({ nome: 'Gestor', email: 'gestor@exemplo.com', senha: 'senha-bem-forte-1' });
   const empresa = criarEmpresa(usuario.id, { nome: 'Empresa A' });
   const ctx: Contexto = {
     empresaId: empresa.id,
@@ -47,7 +47,7 @@ test('sem JWT_SECRET a aplicação recusa assinar sessão, em vez de usar um seg
 
 test('a sessão deixa de valer quando a conta é desativada ou removida', () => {
   const { usuario } = ambiente();
-  const { token } = autenticar('gestor@exemplo.com', 'senha-bem-forte');
+  const { token } = autenticar('gestor', 'senha-bem-forte-1');
   assert.equal(verificarToken(token).usuarioId, usuario.id);
 
   db().prepare('UPDATE usuarios SET ativo = 0 WHERE id = ?').run(usuario.id);
@@ -62,7 +62,7 @@ test('a sessão deixa de valer quando a conta é desativada ou removida', () => 
 
 test('um token assinado com outro segredo é recusado', () => {
   ambiente();
-  const { token } = autenticar('gestor@exemplo.com', 'senha-bem-forte');
+  const { token } = autenticar('gestor', 'senha-bem-forte-1');
   const anterior = process.env.JWT_SECRET;
   try {
     process.env.JWT_SECRET = 'b'.repeat(64);

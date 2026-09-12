@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ProvedorSessao, useSessao } from './lib/sessao';
 import { Layout } from './components/layout';
-import { Login, PrimeiraEmpresa } from './pages/Login';
+import { Login, PrimeiraEmpresa, RedefinirSenha } from './pages/Login';
 import { PaginaPainelExecutivo } from './pages/PainelExecutivo';
 import { PaginaFinanceiro } from './pages/Financeiro';
 import { PaginaLancamentos } from './pages/Lancamentos';
@@ -10,6 +10,7 @@ import { PaginaCadastroProjetos } from './pages/CadastroProjetos';
 import { PaginaRegistrosSla, PaginaSla } from './pages/Sla';
 import { PaginaBitrix24, PaginaOstick } from './pages/Suporte';
 import { PaginaIntegracoes } from './pages/Integracoes';
+import { PaginaAcessos } from './pages/Acessos';
 import { PaginaRelatorio } from './pages/Relatorio';
 import { PaginaPlanilhas } from './pages/Planilhas';
 import { PaginaConferencia } from './pages/Conferencia';
@@ -18,6 +19,10 @@ import { Carregando } from './components/base';
 
 function Rotas() {
   const { usuario, carregando, empresa } = useSessao();
+
+  // O link de redefinição vive fora da sessão: quem chega por ele está
+  // justamente sem conseguir entrar.
+  if (window.location.pathname === '/redefinir-senha') return <RedefinirSenha />;
 
   if (carregando) return <Carregando>Carregando sessão…</Carregando>;
   if (!usuario) return <Login />;
@@ -41,6 +46,7 @@ function Rotas() {
         <Route path="suporte/integracoes" element={<PaginaIntegracoes />} />
         <Route path="planilhas" element={<PaginaPlanilhas />} />
         <Route path="cadastros" element={<PaginaCadastros />} />
+        <Route path="acessos" element={<PaginaAcessos />} />
         <Route path="auditoria" element={<PaginaAuditoria />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

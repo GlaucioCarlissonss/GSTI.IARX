@@ -8,7 +8,7 @@ import {
   registrarTicketSla,
   gravarUrlHelpdesk,
 } from '../domain/sla.js';
-import { ctx, somenteGestor } from '../middleware/index.js';
+import { ctx, exigir } from '../middleware/index.js';
 
 export const rotasSla = Router();
 
@@ -56,13 +56,13 @@ rotasSla.get('/', (req, res) => {
 // Precisa vir antes de `/:id`, senão "configuracao" seria lido como um id.
 rotasSla.get('/configuracao', (req, res) => res.json(lerConfiguracao(ctx(req))));
 
-rotasSla.put('/configuracao', somenteGestor, (req, res) => {
+rotasSla.put('/configuracao', exigir('suporte_ostick', 'edit'), (req, res) => {
   res.json(gravarUrlHelpdesk(ctx(req), req.body?.url_helpdesk ?? null));
 });
 
 rotasSla.get('/:id', (req, res) => res.json(obterTicketSla(ctx(req), Number(req.params.id))));
 
-rotasSla.post('/', somenteGestor, (req, res) => {
+rotasSla.post('/', exigir('suporte_ostick', 'create'), (req, res) => {
   const corpo = req.body ?? {};
   res.status(201).json(
     registrarTicketSla(ctx(req), {
@@ -79,7 +79,7 @@ rotasSla.post('/', somenteGestor, (req, res) => {
   );
 });
 
-rotasSla.patch('/:id', somenteGestor, (req, res) => {
+rotasSla.patch('/:id', exigir('suporte_ostick', 'edit'), (req, res) => {
   const corpo = req.body ?? {};
   res.json(
     atualizarTicketSla(ctx(req), Number(req.params.id), {
@@ -97,6 +97,6 @@ rotasSla.patch('/:id', somenteGestor, (req, res) => {
   );
 });
 
-rotasSla.delete('/:id', somenteGestor, (req, res) => {
+rotasSla.delete('/:id', exigir('suporte_ostick', 'delete'), (req, res) => {
   res.json(excluirTicketSla(ctx(req), Number(req.params.id), req.body?.justificativa));
 });

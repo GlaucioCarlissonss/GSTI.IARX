@@ -11,7 +11,7 @@ import {
   obterLancamento,
   reclassificarLancamento,
 } from '../domain/financeiro.js';
-import { ctx, somenteGestor } from '../middleware/index.js';
+import { ctx, exigir } from '../middleware/index.js';
 import { filiaisDaQuery, listaDaQuery, numerosDaQuery } from '../lib/consulta.js';
 
 export const rotasFinanceiro = Router();
@@ -48,7 +48,7 @@ rotasFinanceiro.get('/:id/serie', (req, res) => {
   res.json(listarSerie(ctx(req), Number(req.params.id)));
 });
 
-rotasFinanceiro.post('/', somenteGestor, (req, res) => {
+rotasFinanceiro.post('/', exigir('financeiro', 'create'), (req, res) => {
   const corpo = req.body ?? {};
   res.status(201).json(
     criarLancamento(ctx(req), {
@@ -78,11 +78,11 @@ rotasFinanceiro.get('/competencias/lista', (req, res) => {
   res.json(listarCompetencias(ctx(req), listaDaQuery((req.query as Record<string, unknown>).cenario)));
 });
 
-rotasFinanceiro.post('/cenarios', somenteGestor, (req, res) => {
+rotasFinanceiro.post('/cenarios', exigir('financeiro', 'create'), (req, res) => {
   res.status(201).json(criarCenario(ctx(req), req.body ?? {}));
 });
 
-rotasFinanceiro.patch('/:id', somenteGestor, (req, res) => {
+rotasFinanceiro.patch('/:id', exigir('financeiro', 'edit'), (req, res) => {
   const corpo = req.body ?? {};
   res.json(
     atualizarLancamento(ctx(req), Number(req.params.id), {
@@ -102,7 +102,7 @@ rotasFinanceiro.patch('/:id', somenteGestor, (req, res) => {
   );
 });
 
-rotasFinanceiro.post('/:id/reclassificar', somenteGestor, (req, res) => {
+rotasFinanceiro.post('/:id/reclassificar', exigir('financeiro', 'edit'), (req, res) => {
   const corpo = req.body ?? {};
   res.json(
     reclassificarLancamento(ctx(req), Number(req.params.id), {
@@ -113,7 +113,7 @@ rotasFinanceiro.post('/:id/reclassificar', somenteGestor, (req, res) => {
   );
 });
 
-rotasFinanceiro.delete('/:id', somenteGestor, (req, res) => {
+rotasFinanceiro.delete('/:id', exigir('financeiro', 'delete'), (req, res) => {
   const corpo = (req.body ?? {}) as { justificativa?: string; incluir_parcelas?: boolean };
   res.json(
     excluirLancamento(ctx(req), Number(req.params.id), {

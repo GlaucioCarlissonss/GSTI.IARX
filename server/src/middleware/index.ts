@@ -3,6 +3,8 @@ import { ErroHttp, erroNaoAutenticado, erroSemPermissao, erroValidacao } from '.
 import { verificarToken, type Sessao } from '../domain/auth.js';
 import { acessoDoUsuario } from '../domain/empresas.js';
 import type { Contexto } from '../domain/contexto.js';
+import { exigirPermissao, type Acao } from '../domain/acesso.js';
+import { auditar } from '../domain/auditoria.js';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -54,6 +56,36 @@ export function somenteGestor(req: Request, _res: Response, next: NextFunction) 
     return next(erroSemPermissao('Esta operação exige o papel de gestor na empresa.'));
   }
   next();
+}
+
+/**
+ * Autorização por módulo e ação, conferida no SERVIDOR. O que o front esconde
+ * é conveniência; a regra é esta. Uma recusa vira 403 e entra na auditoria.
+ */
+export function exigir(modulo: string, acao: Acao) {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const contexto = ctx(req);
+      exigirPermissao(contexto, modulo, acao);
+      next();
+    } catch (erro) {
+      if (erro instanceof Error && 'status' in erro && (erro as { status: number }).status === 403) {
+        // A negação fica registrada: saber o que foi tentado e recusado é
+        // metade do valor de ter permissão.
+        try {
+          auditar(ctx(req), {
+            entidade: 'permissao',
+            acao: 'negar',
+            justificativa: `${acao} em ${modulo}`,
+            depois: { rota: req.originalUrl, metodo: req.method },
+          });
+        } catch {
+          // Auditar não pode ser o motivo de a recusa virar erro 500.
+        }
+      }
+      next(erro);
+    }
+  };
 }
 
 export function ctx(req: Request): Contexto {

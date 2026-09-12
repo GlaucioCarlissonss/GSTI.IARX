@@ -116,6 +116,52 @@ function migrar(db: Conexao): void {
              ON tickets_sla(empresa_id, source_system, external_id)
              WHERE external_id IS NOT NULL AND excluido_em IS NULL`);
   db.exec('CREATE INDEX IF NOT EXISTS ix_sla_setor ON tickets_sla(setor_id)');
+
+  // ------------------------------------------------------------------ acesso
+  //
+  // Login por `username`. O e-mail sai da autenticação e passa a servir só à
+  // recuperação de senha — quem sabe o e-mail de alguém não deve, por isso,
+  // saber o identificador de login dessa pessoa.
+  const colunasUsuario = new Set(
+    (db.prepare('PRAGMA table_info(usuarios)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!colunasUsuario.has('username')) {
+    db.exec('ALTER TABLE usuarios ADD COLUMN username TEXT');
+    // A conta que já existia não pode perder o acesso: o identificador sai do
+    // e-mail, e o desempate por sufixo cobre dois e-mails de mesmo prefixo.
+    const usuarios = db.prepare('SELECT id, email FROM usuarios ORDER BY id').all() as Array<{
+      id: number;
+      email: string;
+    }>;
+    const usados = new Set<string>();
+    const atualizar = db.prepare('UPDATE usuarios SET username = ? WHERE id = ?');
+    for (const u of usuarios) {
+      // Mesma derivação do cadastro: prefixo do e-mail, completado com o
+      // domínio quando curto demais para valer como identificador.
+      const limpar = (s: string) =>
+        s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9._-]/g, '');
+      const partes = String(u.email).split('@');
+      let base = limpar(partes[0] ?? '');
+      if (base.length < 3) base = `${base}${limpar((partes[1] ?? '').split('.')[0] ?? '')}`;
+      while (base.length < 3) base += '0';
+      base = base.slice(0, 40) || `usuario${u.id}`;
+      let nome = base;
+      for (let i = 2; usados.has(nome); i++) nome = `${base}${i}`;
+      usados.add(nome);
+      atualizar.run(nome, u.id);
+    }
+  }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_usuario_username ON usuarios(username) WHERE username IS NOT NULL');
+  if (!colunasUsuario.has('ultimo_login_em')) db.exec('ALTER TABLE usuarios ADD COLUMN ultimo_login_em TEXT');
+  // Quando a senha foi trocada pela última vez. É o carimbo que invalida os
+  // tokens emitidos antes — sem ele, redefinir a senha não expulsaria ninguém.
+  if (!colunasUsuario.has('senha_em')) db.exec('ALTER TABLE usuarios ADD COLUMN senha_em TEXT');
+
+  const colunasVinculo = new Set(
+    (db.prepare('PRAGMA table_info(usuario_empresas)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!colunasVinculo.has('perfil_id')) db.exec('ALTER TABLE usuario_empresas ADD COLUMN perfil_id INTEGER');
+
 }
 
 export function db(): Conexao {
