@@ -110,6 +110,22 @@ as filiais junto do macro tornaria a primeira tela lenta pelo que quase nunca é
 olhado. Na versão hospedada a base já está em memória, mas as linhas só são
 montadas quando abertas, pelo mesmo motivo.
 
+**O que não pode sumir ao rolar fica preso.** São até 24 colunas de mês e
+centenas de linhas: rolando, o gestor perdia de vista de que competência era a
+coluna e quanto dava o total. Ficam fixos o **cabeçalho** (no topo), a linha de
+**Total Geral** (na base) e a **coluna de rótulos** (à esquerda, para a rolagem
+lateral não levar junto o nome da filial).
+
+Para isso a tabela precisa de caixa própria de rolagem, com altura limitada:
+sem altura, quem rola é a página, e não há de que grudar. A célula presa também
+precisa de fundo opaco — senão o número da coluna seguinte passa por baixo dela
+— e de sombra no lugar da borda, porque `border-collapse: collapse` descola a
+borda de quem está preso.
+
+**Tela cheia** (botão no cabeçalho do relatório, `Esc` para sair): a mesa
+inteira ocupa a janela, sem o cabeçalho do sistema. Os fixos continuam valendo
+lá dentro, que é justamente onde há mais linha para rolar.
+
 **A soma do detalhe aparece ao lado do total da linha**, com um aviso explícito
 quando diverge. Não é decoração: é onde uma divergência entre macro e detalhe
 apareceria, em vez de passar despercebida.

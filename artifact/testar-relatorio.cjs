@@ -140,6 +140,58 @@ const ANEXO = {
   await irPara(pag, 'Relatório', 900);
   confere('o que estava aberto continua aberto ao voltar', (await pag.$$('tr.lancamento')).length > 0, true);
 
+  // ------------------------------------------------ cabeçalho e total presos
+  //
+  // São 24 colunas de mês e centenas de linhas: rolar sem isso faz perder de
+  // vista de que competência é a coluna e quanto dá o total.
+  console.log('\nFIXOS — o que não pode sumir ao rolar');
+  await pag.click('#r-abrir');
+  await pag.waitForTimeout(1200);
+
+  const medir = () => pag.evaluate(() => {
+    const c = document.querySelector('.rol-fixo');
+    const cx = c.getBoundingClientRect();
+    const th = document.querySelector('.pivot thead th').getBoundingClientRect();
+    const tf = document.querySelector('.pivot tfoot th').getBoundingClientRect();
+    const rot = document.querySelector('.pivot tbody tr th:first-child, .pivot tbody tr td:first-child');
+    return {
+      rola: c.scrollHeight > c.clientHeight,
+      topo: Math.round(th.top - cx.top),
+      base: Math.round(cx.bottom - tf.bottom),
+      esquerda: Math.round(rot.getBoundingClientRect().left - cx.left),
+      fundoDoRotulo: getComputedStyle(rot).backgroundColor,
+      competencia: [...document.querySelectorAll('.pivot thead th')][1].textContent.trim(),
+    };
+  });
+
+  confere('a tabela rola por dentro da própria caixa', (await medir()).rola, true);
+  await pag.evaluate(() => { const c = document.querySelector('.rol-fixo'); c.scrollTop = 900; c.scrollLeft = 700; });
+  await pag.waitForTimeout(500);
+  const fixos = await medir();
+  confere('o cabeçalho fica preso no topo, com a competência à vista',
+    [Math.abs(fixos.topo) <= 2, /^\d\d\/\d{4}$/.test(fixos.competencia)], [true, true]);
+  confere('o total geral fica preso na base', Math.abs(fixos.base) <= 2, true);
+  confere('a coluna de rótulos acompanha a rolagem lateral', Math.abs(fixos.esquerda) <= 2, true);
+  // Sem fundo próprio, o número da coluna seguinte passaria por baixo do rótulo.
+  confere('e o rótulo tem fundo opaco', /rgba\(0, 0, 0, 0\)/.test(fixos.fundoDoRotulo), false);
+
+  console.log('\nTELA CHEIA');
+  await pag.click('#r-tela');
+  await pag.waitForTimeout(700);
+  const cheia = await pag.evaluate(() => {
+    const r = document.querySelector('#r-bloco').getBoundingClientRect();
+    return { ocupaTudo: Math.round(r.width) === innerWidth && Math.round(r.height) === innerHeight,
+      pressionado: document.querySelector('#r-tela').getAttribute('aria-pressed') };
+  });
+  confere('a tela cheia ocupa a janela e se anuncia', [cheia.ocupaTudo, cheia.pressionado], [true, 'true']);
+  await pag.evaluate(() => { document.querySelector('.rol-fixo').scrollTop = 1200; });
+  await pag.waitForTimeout(400);
+  confere('e o cabeçalho segue preso na tela cheia', Math.abs((await medir()).topo) <= 2, true);
+  await pag.keyboard.press('Escape');
+  await pag.waitForTimeout(600);
+  confere('Esc devolve a tela',
+    await pag.evaluate(() => !document.querySelector('#r-bloco').classList.contains('tela-cheia')), true);
+
   console.log('\n=== falhas: ' + (falhas.length ? falhas.join('; ') : 'nenhuma') + ' ===');
   console.log('=== erros de console: ' + (erros.length ? '\n' + erros.join('\n') : 'nenhum') + ' ===');
   await nav.close();

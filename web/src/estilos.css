@@ -226,6 +226,36 @@ textarea { resize: vertical; min-height: 62px; }
 .pivot tfoot tr.total-geral > th, .pivot tfoot tr.total-geral > td {
   background: var(--superficie-2); font-weight: 600; border-top: 2px solid var(--eixo);
 }
+/* O relatório tem dezenas de colunas de mês e centenas de linhas: rolar a tela
+   faz perder de vista de que competência é a coluna e quanto dá o total.
+   Cabeçalho, rodapé e a coluna de rótulos ficam presos no lugar.
+
+   A caixa precisa de altura própria para rolar por dentro — sem isso quem rola
+   é a página, e não há de que grudar. */
+.tabela-envolucro.rol-fixo { overflow: auto; max-height: calc(100vh - 320px); min-height: 260px; }
+.pivot thead th { position: sticky; top: 0; z-index: 3; background: var(--superficie); }
+.pivot tfoot th, .pivot tfoot td { position: sticky; bottom: 0; z-index: 3; }
+.pivot thead th:first-child, .pivot tbody th:first-child, .pivot tbody td:first-child,
+.pivot tfoot th:first-child { position: sticky; left: 0; background: var(--superficie); }
+/* Os quatro cantos se cruzam: os da esquerda precisam ficar acima das duas
+   faixas, ou um deles passa por baixo da outra. */
+.pivot thead th:first-child { z-index: 4; }
+.pivot tfoot th:first-child, .pivot tfoot td:first-child { z-index: 4; background: var(--superficie-2); }
+/* `border-collapse: collapse` descola a borda da célula presa; a sombra faz o
+   papel da linha sem depender disso. */
+.pivot thead th { box-shadow: inset 0 -1px 0 var(--eixo); }
+.pivot tfoot th, .pivot tfoot td { box-shadow: inset 0 2px 0 var(--eixo); }
+.pivot tbody th:first-child, .pivot tbody td:first-child { box-shadow: inset -1px 0 0 var(--grade); }
+.pivot thead th:first-child { box-shadow: inset -1px 0 0 var(--grade), inset 0 -1px 0 var(--eixo); }
+.pivot tfoot th:first-child { box-shadow: inset -1px 0 0 var(--grade), inset 0 2px 0 var(--eixo); }
+
+/* Tela cheia: a mesa inteira para analisar, sem o cabeçalho do sistema. */
+.cartao.tela-cheia {
+  position: fixed; inset: 0; z-index: 60; margin: 0; border-radius: 0;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.cartao.tela-cheia .tabela-envolucro.rol-fixo { max-height: none; flex: 1 1 auto; }
+
 .pivot-grupo {
   flex: none; width: 18px; height: 18px; padding: 0; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center;

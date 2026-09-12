@@ -4,15 +4,18 @@ export function Cartao({
   titulo,
   descricao,
   acoes,
+  classe,
   children,
 }: {
   titulo?: string;
   descricao?: ReactNode;
   acoes?: ReactNode;
+  /** Classe extra no cartão — hoje só a tela cheia do relatório usa. */
+  classe?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="cartao">
+    <section className={classe ? `cartao ${classe}` : 'cartao'}>
       {(titulo || acoes) && (
         <header>
           {titulo && <h2>{titulo}</h2>}

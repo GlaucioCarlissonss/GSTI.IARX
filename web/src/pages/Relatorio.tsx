@@ -92,6 +92,7 @@ export function PaginaRelatorio() {
   const [ate, setAte] = useState('');
   const [classificacoes, setClassificacoes] = useState<string[]>([]);
   const [aberto, setAberto] = useState<Lancamento | null>(null);
+  const [telaCheia, setTelaCheia] = useState(false);
 
   const consulta = useDados<Relatorio>(
     () =>
@@ -107,6 +108,17 @@ export function PaginaRelatorio() {
   // O detalhe de cada linha expandida, buscado sob demanda e mantido em cache
   // enquanto o filtro não muda — reabrir o mesmo grupo não refaz a consulta.
   const [detalhes, setDetalhes] = useState<Record<string, Detalhe | 'carregando' | 'erro'>>({});
+
+  // Esc sai da tela cheia: é o que a mão já faz, e sem isso só o botão devolve
+  // a tela — que some de vista quando a tabela está rolada.
+  useEffect(() => {
+    if (!telaCheia) return;
+    const sair = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setTelaCheia(false);
+    };
+    document.addEventListener('keydown', sair);
+    return () => document.removeEventListener('keydown', sair);
+  }, [telaCheia]);
   useEffect(() => setDetalhes({}), [empresa?.id, filialId, de, ate, classificacoes]);
 
   const buscarDetalhe = useCallback(
@@ -208,14 +220,24 @@ export function PaginaRelatorio() {
         <Cartao
           titulo="Relatório financeiro"
           descricao={`${inteiro(d.total_geral.lancamentos)} lançamento(s) · ${colunas.length} mês(es) · clique em + para abrir o detalhe`}
+          classe={telaCheia ? 'tela-cheia' : undefined}
+          acoes={
+            <button
+              type="button"
+              className="botao discreto pequeno"
+              aria-pressed={telaCheia}
+              onClick={() => setTelaCheia((v) => !v)}
+            >
+              {telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
+            </button>
+          }
         >
-          <div className="tabela-envolucro">
+          <div className="tabela-envolucro rol-fixo">
             <table className="pivot">
               <thead>
                 <tr>
-                  <th style={{ minWidth: 240, position: 'sticky', left: 0, background: 'var(--superficie)' }}>
-                    Rótulos de linha
-                  </th>
+                  {/* Fixo pela folha de estilo, junto do cabeçalho e do rodapé. */}
+                  <th style={{ minWidth: 240 }}>Rótulos de linha</th>
                   {colunas.map((m) => (
                     <th key={m} className="num">
                       {m}
@@ -247,7 +269,7 @@ export function PaginaRelatorio() {
               </tbody>
               <tfoot>
                 <tr className="total-geral">
-                  <th style={{ position: 'sticky', left: 0, background: 'var(--superficie-2)' }}>Total Geral</th>
+                  <th>Total Geral</th>
                   {colunas.map((m) => (
                     <td key={m} className="num">
                       {d.total_geral.meses[m] ? dinheiro(d.total_geral.meses[m]!) : '-'}

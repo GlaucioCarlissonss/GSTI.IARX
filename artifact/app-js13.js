@@ -122,9 +122,10 @@ async function viewRelatorio() {
       <strong>+</strong> abre a categoria; abrir a categoria mostra os lançamentos, e clicar em um deles
       abre o registro inteiro.</p>
     ${linhas.length === 0 ? '<section class="bloco"><p class="vazio">Nenhum lançamento no recorte selecionado.</p></section>' : `
-    <section class="bloco"><header><h2>Relatório financeiro</h2>
-      <span class="nota">${inteiro(totalGeral.itens)} lançamento(s) · ${meses.length} mês(es)</span></header>
-      <div class="rol"><table class="pivot">
+    <section class="bloco" id="r-bloco"><header><h2>Relatório financeiro</h2>
+      <span class="nota">${inteiro(totalGeral.itens)} lançamento(s) · ${meses.length} mês(es)</span>
+      <button class="bt fant peq" id="r-tela" aria-pressed="false">Tela cheia</button></header>
+      <div class="rol rol-fixo"><table class="pivot">
         <thead><tr><th style="min-width:230px">Rótulos de linha</th>
           ${meses.map((m) => `<th class="n">${mesExib(m)}</th>`).join('')}
           <th class="n">Total Geral</th></tr></thead>
@@ -142,6 +143,18 @@ async function viewRelatorio() {
   el('#r-busca').addEventListener('change', (e) => aplicar('busca', e.target.value.trim()));
 
   if (!linhas.length) return;
+
+  // Tela cheia: 24 colunas de mês cabem mal em meia tela. Esc sai, porque é o
+  // que a mão já faz, e o estado fica no botão para leitor de tela.
+  const bloco = el('#r-bloco'), btTela = el('#r-tela');
+  const sair = (ev) => { if (ev.key === 'Escape') alternarTela(false); };
+  const alternarTela = (cheia) => {
+    bloco.classList.toggle('tela-cheia', cheia);
+    btTela.setAttribute('aria-pressed', String(cheia));
+    btTela.textContent = cheia ? 'Sair da tela cheia' : 'Tela cheia';
+    document[cheia ? 'addEventListener' : 'removeEventListener']('keydown', sair);
+  };
+  btTela.onclick = () => alternarTela(!bloco.classList.contains('tela-cheia'));
 
   const pintar = () => {
     el('#r-corpo').innerHTML = linhas.map((linha) => {

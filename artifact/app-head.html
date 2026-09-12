@@ -93,6 +93,40 @@ code{font-family:var(--mono);font-size:.92em;background:var(--sup2);padding:1px 
 .drill:hover::after,.drill:focus-visible::after{opacity:1}
 
 /* ------------------------------------------------------ tabela dinâmica */
+/* O relatório tem 24 colunas de mês e centenas de linhas: rolar a tela faz
+   perder de vista de que competência é a coluna e quanto dá o total. Cabeçalho,
+   rodapé e a coluna de rótulos ficam presos no lugar.
+
+   A caixa precisa de altura própria para rolar por dentro — sem isso quem rola
+   é a página, e não há de que grudar. */
+.rol-fixo{overflow:auto;max-height:calc(100vh - 300px);min-height:260px}
+.pivot thead th{position:sticky;top:0;z-index:3;background:var(--sup)}
+.pivot tfoot th, .pivot tfoot td{position:sticky;bottom:0;z-index:3}
+/* A primeira coluna diz de que filial ou categoria é a linha: some antes de
+   tudo quando se rola para o 12º mês. */
+.pivot thead th:first-child, .pivot tbody th:first-child, .pivot tbody td:first-child,
+.pivot tfoot th:first-child{position:sticky;left:0;background:var(--sup)}
+.pivot tbody tr.grupo-1 > th:first-child, .pivot tbody tr.grupo-1 > td:first-child{background:var(--sup2)}
+.pivot tbody tr:hover > th:first-child, .pivot tbody tr:hover > td:first-child{background:var(--sup2)}
+/* Os quatro cantos se cruzam: o canto superior e o inferior esquerdos precisam
+   ficar acima das duas faixas, ou um deles passa por baixo da outra. */
+.pivot thead th:first-child{z-index:4}
+.pivot tfoot th:first-child, .pivot tfoot td:first-child{z-index:4;background:var(--sup2)}
+/* `border-collapse: collapse` descola a borda da célula presa; a sombra faz o
+   papel da linha sem depender disso. */
+.pivot thead th{box-shadow:inset 0 -1px 0 var(--linha2)}
+.pivot tfoot th, .pivot tfoot td{box-shadow:inset 0 2px 0 var(--linha2)}
+.pivot thead th:first-child, .pivot tbody th:first-child, .pivot tbody td:first-child{
+  box-shadow:inset -1px 0 0 var(--linha)}
+.pivot thead th:first-child{box-shadow:inset -1px 0 0 var(--linha), inset 0 -1px 0 var(--linha2)}
+.pivot tfoot th:first-child{box-shadow:inset -1px 0 0 var(--linha), inset 0 2px 0 var(--linha2)}
+
+/* Tela cheia: a mesa inteira para analisar, sem o cabeçalho do sistema. */
+.bloco.tela-cheia{
+  position:fixed;inset:0;z-index:60;margin:0;border-radius:0;
+  display:flex;flex-direction:column;overflow:hidden}
+.bloco.tela-cheia .rol-fixo{max-height:none;flex:1 1 auto}
+
 /* Hierarquia por peso e fundo, não só por indentação. */
 .pivot tr.grupo-1 > th, .pivot tr.grupo-1 > td{background:var(--sup2)}
 .pivot tr.lancamento{cursor:pointer}
