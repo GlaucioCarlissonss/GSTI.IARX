@@ -83,10 +83,10 @@ tela. Quem trabalha com dinheiro não esbarra em chamado, e vice-versa.
 
 | módulo | telas |
 |---|---|
-| **Controle Financeiro** | Painel · Lançamentos · Conferência |
+| **Controle Financeiro** | Painel · Lançamentos · Relatório · Conferência |
 | **Gestão de Projetos** | Projetos |
-| **Gestão de Suporte TI** | Indicadores · Chamados |
-| **Sistema** | Dados · Cadastros · Auditoria |
+| **Gestão de Suporte TI** | Indicadores · Chamados · Sistema OStick · Sistema Bitrix24 · Integrações |
+| **Sistema** | Dados · Cadastros · Usuários e acessos · Auditoria |
 
 `Sistema` existe porque planilha, cadastro e auditoria atravessam os três
 módulos — não cabem dentro de nenhum. Entrar num módulo abre a primeira tela
@@ -215,23 +215,25 @@ vindos do Excel chegam comprimidos. Não há CDN envolvido.
 
 ### Verificação
 
-Treze suítes, todas contra um `window.claude` simulado num Chromium real:
+Quinze suítes, todas contra um `window.claude` simulado num Chromium real:
 
 | script | o que cobre |
 |---|---|
 | `testar.cjs` | fumaça: as abas montam, os seletores funcionam |
-| `testar-completo.cjs` | as 5 empresas × 8 abas, tempo de render, erro de console, rolagem horizontal a 400 px |
+| `testar-completo.cjs` | as 5 empresas × todas as abas, tempo de render, erro de console, rolagem horizontal a 400 px |
 | `testar-edicao.cjs` | criar, parcelar, reclassificar, excluir, fechar e reabrir competência, conferindo totais e trilha de auditoria |
 | `testar-coerencia.cjs` | os números de cada tela fecham entre si: KPI × rankings, conferência por origem × mês a mês, rodapé × linhas |
 | `testar-projetos-sla.cjs` | projetos (atraso e desvio derivados), SLA (percentual, recusa de `dentro > total`) e o ciclo de planilha do SLA |
 | `testar-isolamento.cjs` | nada atravessa a empresa, inclusive com as cinco carregadas em memória; cadastros não vazam |
 | `testar-multi.cjs` | filtros de múltipla escolha: somar meses, consolidar empresas, recortar por procedência, comparar cenários, fichas e mínimos |
 | `testar-dados.cjs` | exportar, reimportar sem duplicar, importar planilha quebrada sem derrubar o lote |
-| `testar-navegacao.cjs` | os quatro módulos e suas telas; o tema ciclando, persistindo e com contraste nas nove telas |
+| `testar-navegacao.cjs` | os quatro módulos e suas telas; o tema ciclando, persistindo e com contraste em todas as telas |
 | `testar-hierarquia.cjs` | o que a hierarquia de tarefas recusa (ciclo, 4º nível, si mesma) e o Gantt agrupado: teclado, `aria-expanded`, barra agregada e persistência |
 | `testar-suporte.cjs` | os dois sistemas de origem na mesma tabela, o recorte por sistema e por setor, e os indicadores acompanhando o recorte |
 | `testar-relatorio.cjs` | o relatório contra **os números do anexo do gestor**, filial a filial e categoria a categoria, mais os três níveis do drill-down |
 | `testar-drill.cjs` | tooltip em todo gráfico e drill-down em todo indicador: acessibilidade, teclado, e a soma do detalhe conferindo com o número clicado |
+| `testar-modais.cjs` | telas flutuantes: alças de redimensionar, tela cheia, cabeçalho e rodapé presos, coluna ajustável e tamanho que persiste |
+| `testar-acessos.cjs` | Integrações (contrato do payload, upsert por id externo, evento com erro e reprocessamento) e Acessos (perfis padrão, login separado do e-mail, matriz, pré-visualização de perfil) |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

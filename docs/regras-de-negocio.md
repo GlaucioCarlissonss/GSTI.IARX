@@ -350,6 +350,15 @@ duas chaves válidas ao mesmo tempo é o que se quer evitar ao girar.
 Sem segredo por empresa, vale o da **variável de ambiente** — é o que sustenta
 uma instalação de um tenant só, sem passar pela tela.
 
+**A versão hospedada não recebe o POST do N8N.** Nenhum endereço dela é
+chamável de fora: quem recebe webhook é o servidor local. A tela de Integrações
+dela faz o que dá para fazer sem servidor — cadastra a conexão de cada origem,
+publica o **contrato do payload** campo a campo, e passa o que for colado nela
+pelo mesmo tratamento do webhook de verdade: normaliza, valida e grava por
+`(empresa, sistema, id externo)`. É o que permite provar o contrato antes de o
+fluxo entrar no ar, com o erro aparecendo ali e não em produção. Segredo nenhum
+é guardado nela.
+
 **O payload de teste percorre exatamente o mesmo caminho** do webhook: mesmo
 pipeline, mesmo upsert, mesmo log. Um teste que seguisse caminho próprio
 deixaria de provar o que a produção faz. O chamado de teste entra marcado como
@@ -745,6 +754,33 @@ não é excluído em silêncio.
 **O gestor da empresa administra acessos por definição.** Fosse preciso um
 perfil para isso, uma configuração errada trancaria todo mundo para fora da
 própria tela de acessos.
+
+### Na versão hospedada, o cadastro existe; a barreira, não
+
+A versão hospedada roda **sem servidor próprio**: não há identidade de quem
+visualiza para autenticar contra. Fingir um login ali seria teatro — qualquer
+pessoa que abre a página lê a base de qualquer jeito.
+
+O que ela oferece é o que faz sentido sem servidor, e é onde está o trabalho do
+gestor: o **cadastro** de usuários, perfis e da matriz de permissões que governa
+o servidor local, e a **pré-visualização** — escolher um perfil e ver a
+navegação e os botões se comportarem como se comportam para quem o tem. A faixa
+no topo diz que é pré-visualização e sai num clique; nada no acesso de quem
+está usando muda.
+
+**Quem recusa requisição continua sendo o servidor local.** A tela diz isso em
+voz alta: prometer barreira onde não há seria pior do que não ter a tela.
+
+### O front pergunta ao servidor o que o perfil permite
+
+`GET /api/acesso/minhas-permissoes` é o que o app local consulta ao entrar e a
+cada troca de empresa — o perfil mora no vínculo com a empresa, e a resposta da
+empresa anterior não vale para a nova. O menu esconde o módulo que o perfil não
+vê e os botões de escrita olham a permissão do módulo, não o papel antigo.
+
+**Enquanto a resposta não chega, nada é escondido.** Esconder antes de saber
+deixaria o menu vazio por um instante para todo mundo, e quem recusa de verdade
+é o servidor — não a ausência do botão.
 
 ### Recuperação de senha
 
