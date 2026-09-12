@@ -206,6 +206,54 @@ osTicket exibe como Data de Vencimento: abertura + 48 h.
 A idempotência da carga vem da chave `ticket:<ticketId>`: reimportar o mesmo
 arquivo atualiza o chamado, nunca o duplica.
 
+### Sistemas de suporte (OStick e Bitrix24)
+
+Os dois sistemas descrevem a mesma coisa com nomes diferentes, e no SaaS viram
+**o mesmo registro**: um chamado é um registro de SLA com `total = 1`, o que faz
+toda a agregação existente valer sem uma linha de mudança. As duas telas do
+submenu *Sistemas de Suporte* são **a mesma tela**, mudando só o recorte por
+`source_system` — duplicar componente e consulta para dizer a mesma coisa duas
+vezes seria duplicar manutenção.
+
+**Identidade e idempotência.** A chave é `(empresa, source_system, external_id)`.
+A empresa entra porque o sistema é multi-tenant por regra: duas empresas podem
+usar instâncias separadas do mesmo helpdesk, cujos ids colidem sem nenhuma
+relação entre si. Reentregar o mesmo chamado — o que toda fila de integração
+pode fazer — **atualiza** o registro; nunca cria um segundo.
+
+**Normalização.** Status e prioridade de cada origem caem num vocabulário único
+(`open | in_progress | resolved | closed`, `low | medium | high | urgent`).
+Status que não casa com nada vira **`open`**: um chamado incompreensível está
+em aberto até prova em contrário, e tratá-lo como fechado esconderia trabalho
+pendente. Prioridade ausente vira `medium`.
+
+**Setor.** É a área da empresa que fez a solicitação, e é obrigatório. Quando a
+origem não informa, o chamado entra como **"Não classificado"** e o recebimento
+fica registrado em log para revisão — recusar o chamado na porta perderia
+justamente o registro que o webhook veio entregar. Setor novo entra no catálogo
+da empresa, como os demais cadastros.
+
+### Webhooks (N8N → SaaS)
+
+`POST /api/webhooks/ostick/tickets` e `POST /api/webhooks/bitrix24/tickets`,
+fora do router protegido por sessão: quem chama é uma automação, não um usuário
+logado.
+
+| aspecto | regra |
+| --- | --- |
+| Autenticação | header `X-Webhook-Secret`, valor em `WEBHOOK_SECRET`. Comparação em **tempo constante** — um `===` vaza o tamanho do prefixo correto pelo tempo de resposta |
+| Sem segredo configurado | **503**, não 200: um deploy que esqueceu a variável não pode virar uma porta sem tranca |
+| Empresa | header `X-Empresa-Id` (ou `empresa_id` no corpo). Adivinhar pelo conteúdo criaria vazamento entre empresas |
+| Tamanho | corpo acima de 256 KiB é recusado antes de ser interpretado |
+| Taxa | janela deslizante por IP, `WEBHOOK_RATE_LIMIT` por minuto (padrão 600) |
+| Lote | aceita um chamado ou uma lista; a linha inválida entra no relatório sem derrubar as boas |
+| Respostas | `200 { received: true, ticket_id, tickets[] }` · `422` com o motivo de cada recusa · `401` sem autenticação |
+| Observabilidade | uma linha JSON por recebimento, com origem, empresa, contagens e erros |
+
+O payload como chegou fica gravado no registro (`raw_payload`), junto do momento
+da sincronização: dá para reconferir contra a origem sem depender de log, que
+rotaciona.
+
 ## Navegação
 
 O sistema se apresenta pelos módulos do negócio, não pela lista de telas. São

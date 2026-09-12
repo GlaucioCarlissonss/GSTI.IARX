@@ -35,6 +35,17 @@ function migrar(db: Conexao): void {
     db.exec(`ALTER TABLE lancamentos ADD COLUMN origem TEXT NOT NULL DEFAULT 'manual'`);
   }
 
+  // Detalhamento do lançamento: de onde veio o custo, para onde foi o
+  // pagamento e o documento vinculado. Anuláveis — o lançamento antigo segue
+  // válido sem elas, e o relatório mostra travessão onde não há informação.
+  for (const [nome, tipo] of [
+    ['origem_custo', 'TEXT'],
+    ['destino_pagamento', 'TEXT'],
+    ['documento', 'TEXT'],
+  ] as Array<[string, string]>) {
+    if (!colunas.has(nome)) db.exec(`ALTER TABLE lancamentos ADD COLUMN ${nome} ${tipo}`);
+  }
+
   // Detalhe do chamado no SLA: todas as colunas são anuláveis, então o banco
   // existente ganha cada uma sem tocar nos registros agregados que já tem.
   const sla = new Set(

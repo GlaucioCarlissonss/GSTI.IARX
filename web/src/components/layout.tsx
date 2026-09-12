@@ -29,6 +29,11 @@ const NAVEGACAO = [
     itens: [
       { para: '/sla', glifo: '◷', rotulo: 'Indicadores de SLA' },
       { para: '/sla/registros', glifo: '≡', rotulo: 'Chamados' },
+      // Sistemas de suporte: as duas entradas usam a MESMA tela, mudando só a
+      // origem dos dados. A separação é do gestor, que pensa por sistema.
+      { subtitulo: 'Sistemas de Suporte' },
+      { para: '/suporte/ostick', glifo: '·', rotulo: 'Sistema OStick', sub: true },
+      { para: '/suporte/bitrix24', glifo: '·', rotulo: 'Sistema Bitrix24', sub: true },
     ],
   },
   {
@@ -62,19 +67,27 @@ export function Layout() {
           {NAVEGACAO.map((secao) => (
             <div key={secao.grupo}>
               <div className="menu-grupo">{secao.grupo}</div>
-              {secao.itens.map((item) => (
-                <NavLink
-                  key={item.para}
-                  to={item.para}
-                  end={'fim' in item ? item.fim : false}
-                  className={({ isActive }) => (isActive ? 'ativo' : '')}
-                >
-                  <span className="glifo" aria-hidden>
-                    {item.glifo}
-                  </span>
-                  {item.rotulo}
-                </NavLink>
-              ))}
+              {secao.itens.map((item) =>
+                'subtitulo' in item ? (
+                  // Submenu: um rótulo, não um link. As entradas abaixo dele
+                  // ficam indentadas para a relação ficar visível.
+                  <div key={item.subtitulo} className="menu-sub">
+                    {item.subtitulo}
+                  </div>
+                ) : (
+                  <NavLink
+                    key={item.para}
+                    to={item.para}
+                    end={'fim' in item ? item.fim : false}
+                    className={({ isActive }) => [isActive ? 'ativo' : '', 'sub' in item ? 'aninhado' : ''].join(' ').trim()}
+                  >
+                    <span className="glifo" aria-hidden>
+                      {item.glifo}
+                    </span>
+                    {item.rotulo}
+                  </NavLink>
+                ),
+              )}
             </div>
           ))}
         </nav>

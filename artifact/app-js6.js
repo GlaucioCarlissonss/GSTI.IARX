@@ -27,9 +27,12 @@ async function viewSla(secao = 'indicadores') {
     if (!passaNoFiltro(f.filas, r.fila)) return false;
     if (!passaNoFiltro(f.status, r.status || '(sem status)')) return false;
     if (!passaNoFiltro(f.niveis, r.nivel || '(sem nível)')) return false;
+    if (!passaNoFiltro(f.sistemas, sistemaDe(r))) return false;
+    if (!passaNoFiltro(f.setores, setorDe(r))) return false;
     if (f.sla.size && !f.sla.has(r.dentro >= (r.total || 1) ? 'dentro' : 'fora')) return false;
     if (f.busca) {
-      const alvo = [r.assunto, r.solicitante, r.atendente, r.topico, r.numero, r.ticketId].join(' ').toLowerCase();
+      const alvo = [r.assunto, r.descricao, r.solicitante, r.atendente, r.topico, setorDe(r), r.numero, r.ticketId]
+        .join(' ').toLowerCase();
       if (!alvo.includes(f.busca.toLowerCase())) return false;
     }
     return true;
@@ -71,6 +74,8 @@ async function viewSla(secao = 'indicadores') {
       <div class="campo" style="width:150px"><label for="s-fila">Fila</label><div data-sel="sfila"></div></div>
       <div class="campo" style="width:140px"><label for="s-status">Status</label><div data-sel="sstatus"></div></div>
       <div class="campo" style="width:130px"><label for="s-nivel">Nível</label><div data-sel="snivel"></div></div>
+      <div class="campo" style="width:160px"><label for="s-sistema">Sistema</label><div data-sel="ssistema"></div></div>
+      <div class="campo" style="width:160px"><label for="s-setor">Setor / área</label><div data-sel="ssetor"></div></div>
       <div class="campo" style="width:130px"><label for="s-sla">SLA</label><div data-sel="ssla"></div></div>
       <div class="campo" style="flex:1 1 150px"><label for="s-busca">Buscar</label>
         <input id="s-busca" placeholder="assunto, solicitante, nº…" value="${esc(f.busca)}"></div>
@@ -115,8 +120,8 @@ async function viewSla(secao = 'indicadores') {
     <section class="bloco" id="s-chamados">
       <header><h2>Chamados</h2><span class="nota">${inteiro(chamados.length)} no recorte${chamados.length > TETO ? ` · exibindo os ${TETO} mais recentes` : ''}</span></header>
       <div class="rol"><table>
-        <thead><tr><th>Chamado</th><th>Aberto em</th><th>Filial</th><th>Fila</th><th>Tópico</th>
-          <th>Assunto</th><th>Solicitante</th><th>Responsável</th><th>Status</th>
+        <thead><tr><th>Chamado</th><th>Sistema</th><th>Aberto em</th><th>Setor / área</th><th>Filial</th>
+          <th>Fila</th><th>Tópico</th><th>Assunto</th><th>Solicitante</th><th>Responsável</th><th>Status</th>
           <th class="n">Horas</th><th>SLA</th></tr></thead>
         <tbody>${chamados.slice(0, TETO).map((r) => {
           const url = urlDoChamado(r.ticketId);
@@ -125,7 +130,9 @@ async function viewSla(secao = 'indicadores') {
             <td style="white-space:nowrap">${url
               ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">#${esc(r.numero || r.ticketId)}</a>`
               : esc(r.numero || '—')}</td>
+            <td style="white-space:nowrap">${esc(SISTEMAS_SUPORTE[sistemaDe(r)])}</td>
             <td style="white-space:nowrap">${esc(hora(r.criadoEm))}</td>
+            <td>${esc(setorDe(r))}</td>
             <td>${r.filial ? esc(r.filial) : '<em style="color:var(--tinta3)">empresa</em>'}</td>
             <td>${esc(r.fila || '—')}</td>
             <td style="max-width:170px">${esc(r.topico || '—')}</td>
@@ -159,6 +166,12 @@ async function viewSla(secao = 'indicadores') {
       get sel() { return f.status; }, aplicar:(n) => { f.status = n; } },
     { chave:'snivel', id:'s-nivel', rotulo:'Nível', itens:itensDe('nivel', '(sem nível)'),
       get sel() { return f.niveis; }, aplicar:(n) => { f.niveis = n; } },
+    { chave:'ssistema', id:'s-sistema', rotulo:'Sistema',
+      itens:[...new Set(doMes.map(sistemaDe))].sort().map((v) => ({ valor:v, rotulo:SISTEMAS_SUPORTE[v] })),
+      get sel() { return f.sistemas; }, aplicar:(n) => { f.sistemas = n; } },
+    { chave:'ssetor', id:'s-setor', rotulo:'Setor / área',
+      itens:[...new Set(doMes.map(setorDe))].sort().map((v) => ({ valor:v, rotulo:v })),
+      get sel() { return f.setores; }, aplicar:(n) => { f.setores = n; } },
     { chave:'ssla', id:'s-sla', rotulo:'SLA',
       itens:[{ valor:'dentro', rotulo:'Dentro do SLA' }, { valor:'fora', rotulo:'Fora do SLA' }],
       get sel() { return f.sla; }, aplicar:(n) => { f.sla = n; } },

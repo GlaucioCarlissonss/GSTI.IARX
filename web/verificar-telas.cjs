@@ -12,6 +12,7 @@ const PAGINAS = [
   ['/', 'Painel executivo'], ['/financeiro', 'Dashboard financeiro'], ['/lancamentos', 'Lançamentos'],
   ['/fechamentos', 'Fechamento'], ['/conferencia', 'Conferência'], ['/projetos', 'Projetos'],
   ['/projetos/cadastro', 'Cadastro de projetos'], ['/sla', 'Indicadores de SLA'], ['/sla/registros', 'Chamados'],
+  ['/suporte/ostick', 'Sistema OStick'], ['/suporte/bitrix24', 'Sistema Bitrix24'],
   ['/planilhas', 'Planilhas'], ['/cadastros', 'Cadastros'], ['/auditoria', 'Auditoria'],
 ];
 

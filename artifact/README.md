@@ -147,6 +147,18 @@ tópico → fila, o que é descartado, e por que o SLA é `fechamento − abertu
 48h` em vez da coluna `est_duedate` da extração) está em
 [`docs/regras-de-negocio.md`](../docs/regras-de-negocio.md#carga-da-base-do-osticket).
 
+## Sistemas de suporte
+
+A tela de Chamados recorta por **sistema de origem** (Sistema OStick, Sistema
+Bitrix24) e por **setor / área** da solicitação, além dos filtros que já tinha.
+O chamado sem sistema informado é da carga original do osTicket, anterior à
+integração, e conta como OStick; o sem setor aparece como **"Não
+classificado"** em vez de ficar em branco.
+
+Na versão local existem ainda os webhooks que recebem os chamados da automação
+(N8N) — a versão hospedada não os tem, porque uma página no claude.ai não expõe
+endpoint HTTP. Aqui os chamados chegam pela aba **Dados**, na planilha padrão.
+
 ## Importar e exportar
 
 A aba **Dados** fecha o ciclo com o Excel, que é onde o gestor já trabalha.
@@ -174,7 +186,7 @@ vindos do Excel chegam comprimidos. Não há CDN envolvido.
 
 ### Verificação
 
-Dez suítes, todas contra um `window.claude` simulado num Chromium real:
+Onze suítes, todas contra um `window.claude` simulado num Chromium real:
 
 | script | o que cobre |
 |---|---|
@@ -188,6 +200,7 @@ Dez suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-dados.cjs` | exportar, reimportar sem duplicar, importar planilha quebrada sem derrubar o lote |
 | `testar-navegacao.cjs` | os quatro módulos e suas telas; o tema ciclando, persistindo e com contraste nas nove telas |
 | `testar-hierarquia.cjs` | o que a hierarquia de tarefas recusa (ciclo, 4º nível, si mesma) e o Gantt agrupado: teclado, `aria-expanded`, barra agregada e persistência |
+| `testar-suporte.cjs` | os dois sistemas de origem na mesma tabela, o recorte por sistema e por setor, e os indicadores acompanhando o recorte |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

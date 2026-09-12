@@ -14,7 +14,9 @@ export const inteiro = (valor: number) => valor.toLocaleString('pt-BR');
 export const percentual = (valor: number, casas = 1) =>
   `${valor.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`;
 
-export const dataHora = (iso: string) => {
+/** Data/hora legível. Ausência vira travessão: a tela não mostra "null". */
+export const dataHora = (iso: string | null | undefined) => {
+  if (!iso) return '—';
   const d = new Date(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 };

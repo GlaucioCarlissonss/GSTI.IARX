@@ -64,7 +64,8 @@ const E = {
   competencias: new Set(),
   cenarios: new Set(['oficial']),
   filtros: { tipos: new Set(), naturezas: new Set(), classificacoes: new Set(), busca:'', de:'', ate:'' },
-  filtrosSla: { filas: new Set(), status: new Set(), niveis: new Set(), sla: new Set(), busca:'' },
+  filtrosSla: { filas: new Set(), status: new Set(), niveis: new Set(), sla: new Set(),
+                sistemas: new Set(), setores: new Set(), busca:'' },
   config: null,             // preferências da empresa (endereço do osTicket, etc.)
 };
 
@@ -75,6 +76,13 @@ const E = {
  * registro basta para voltar ao chamado de origem. A base fica configurável
  * porque é a instalação do cliente, não um endereço fixo do sistema.
  */
+// Sistemas de suporte de onde os chamados vêm. O chamado sem `sistema` é da
+// carga original do osTicket, anterior à integração — daí o padrão.
+const SISTEMAS_SUPORTE = { OSTICK: 'Sistema OStick', BITRIX24: 'Sistema Bitrix24' };
+const sistemaDe = (r) => (SISTEMAS_SUPORTE[r && r.sistema] ? r.sistema : 'OSTICK');
+const SETOR_NAO_CLASSIFICADO = 'Não classificado';
+const setorDe = (r) => (r && r.setor ? r.setor : SETOR_NAO_CLASSIFICADO);
+
 const URL_OSTICKET_PADRAO = 'https://www.suportehr.com.br/scp/tickets.php?id=';
 function urlDoChamado(ticketId) {
   if (ticketId === null || ticketId === undefined || ticketId === '') return null;

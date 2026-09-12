@@ -187,6 +187,63 @@ export function resolverTopicoAjuda(
 // ------------------------------------------------------------ Filas SLA
 
 /** Filas padrão criadas junto com toda empresa nova. */
+// ------------------------------------------------------------------ Setores
+//
+// A área da empresa que fez a solicitação. Vem dos sistemas de suporte, que
+// nem sempre a informam — daí o destino abaixo.
+
+/** Destino do chamado cujo setor a origem não informou. */
+export const SETOR_NAO_CLASSIFICADO = 'Não classificado';
+
+export function listarSetores(ctx: Contexto, incluirInativos = false) {
+  return db()
+    .prepare(
+      `SELECT id, nome, ativo FROM setores
+        WHERE empresa_id = ? ${incluirInativos ? '' : 'AND ativo = 1'}
+        ORDER BY nome`,
+    )
+    .all(ctx.empresaId);
+}
+
+export function criarSetor(ctx: Contexto, nome: string) {
+  const limpo = nome.trim();
+  if (!limpo) throw erroValidacao('Nome do setor é obrigatório.');
+  const existente = db().prepare('SELECT id FROM setores WHERE empresa_id = ? AND nome = ?').get(ctx.empresaId, limpo);
+  if (existente) throw erroConflito(`O setor "${limpo}" já existe nesta empresa.`);
+  const info = db().prepare('INSERT INTO setores (empresa_id, nome) VALUES (?, ?)').run(ctx.empresaId, limpo);
+  const id = Number(info.lastInsertRowid);
+  auditar(ctx, { entidade: 'setor', entidadeId: id, acao: 'criar', depois: { nome: limpo } });
+  return { id, nome: limpo, ativo: 1 };
+}
+
+export function atualizarSetor(ctx: Contexto, id: number, dados: { nome?: string; ativo?: boolean }) {
+  const antes = db()
+    .prepare('SELECT id, nome, ativo FROM setores WHERE id = ? AND empresa_id = ?')
+    .get(id, ctx.empresaId) as { id: number; nome: string; ativo: number } | undefined;
+  if (!antes) throw erroNaoEncontrado(`Setor ${id} não encontrado nesta empresa.`);
+  db()
+    .prepare('UPDATE setores SET nome = ?, ativo = ? WHERE id = ? AND empresa_id = ?')
+    .run(dados.nome?.trim() || antes.nome, dados.ativo === undefined ? antes.ativo : dados.ativo ? 1 : 0, id, ctx.empresaId);
+  const depois = db().prepare('SELECT id, nome, ativo FROM setores WHERE id = ?').get(id);
+  auditar(ctx, { entidade: 'setor', entidadeId: id, acao: 'atualizar', antes, depois });
+  return depois;
+}
+
+/**
+ * Id do setor pelo nome, criando-o quando ainda não existe. A integração
+ * cria: recusar um chamado por causa de um setor novo perderia o chamado, e o
+ * setor é um cadastro livre como os demais.
+ */
+export function resolverSetor(empresaId: number, nome: string | null | undefined): number {
+  const limpo = (nome ?? '').trim() || SETOR_NAO_CLASSIFICADO;
+  const existente = db().prepare('SELECT id FROM setores WHERE empresa_id = ? AND nome = ?').get(empresaId, limpo) as
+    | { id: number }
+    | undefined;
+  if (existente) return existente.id;
+  const info = db().prepare('INSERT INTO setores (empresa_id, nome) VALUES (?, ?)').run(empresaId, limpo);
+  return Number(info.lastInsertRowid);
+}
+
 export const FILAS_PADRAO = ['Infraestrutura', 'Sistema', 'Dados'] as const;
 
 export function listarFilas(ctx: Contexto) {

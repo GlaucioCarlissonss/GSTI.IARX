@@ -71,6 +71,13 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   lancamento_origem_id INTEGER REFERENCES lancamentos(id) ON DELETE CASCADE,
   descricao           TEXT,
   observacoes         TEXT,
+  -- Origem do custo e destino do pagamento: de onde o custo veio (fornecedor,
+  -- setor, centro de custo) e para onde o pagamento foi (conta, beneficiário).
+  -- Não confundir com `origem` abaixo, que é a PROCEDÊNCIA DO DADO — de onde o
+  -- registro entrou no sistema, não de onde o dinheiro saiu.
+  origem_custo        TEXT,
+  destino_pagamento   TEXT,
+  documento           TEXT,
   -- 'oficial' é a projeção vigente; outros cenários convivem sem contaminar os totais
   cenario             TEXT NOT NULL DEFAULT 'oficial',
   -- procedência do dado: o total do sistema não é o total das planilhas enviadas,

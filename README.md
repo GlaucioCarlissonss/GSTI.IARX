@@ -133,9 +133,45 @@ Toda rota sob `/api` (exceto `/api/auth/*` e `/api/saude`) exige o cabeçalho
 | Fechamento | `/api/fechamentos` · `/api/fechamentos/reabrir` |
 | Projetos | `/api/projetos` · `/api/projetos/:id/tarefas` · `/api/projetos/:id/envolvidos` |
 | SLA | `/api/sla` |
+| Suporte (chamados) | `/api/suporte/chamados`, `/api/suporte/setores` |
+| Webhooks dos sistemas de suporte | `/api/webhooks/{ostick,bitrix24}/tickets` — **sem sessão**, autenticados por `X-Webhook-Secret` |
 | Dashboards | `/api/dashboards/{executivo,financeiro,projetos,sla}` |
 | Planilhas | `/api/planilhas/templates` · `/api/planilhas/importacao/:modulo` · `/api/planilhas/exportacao/:modulo.xlsx` |
 | Auditoria | `/api/auditoria` |
+
+### Integração com os sistemas de suporte
+
+A automação (N8N) entrega os chamados do **OStick** e do **Bitrix24** por
+webhook. Os dois caem no mesmo modelo — um chamado é um registro de SLA com
+`total = 1` —, e as duas telas do submenu *Sistemas de Suporte* são a mesma
+tela recortada por origem.
+
+```sh
+curl -X POST http://localhost:3333/api/webhooks/ostick/tickets \
+  -H 'Content-Type: application/json' \
+  -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+  -H 'X-Empresa-Id: 1' \
+  -d '{
+        "external_id": "12345",
+        "title": "Erro ao emitir nota",
+        "description": "Descrição do chamado",
+        "status": "in_progress",
+        "priority": "high",
+        "sector": "Financeiro",
+        "attendant_name": "João Silva",
+        "requester_name": "Maria Souza",
+        "requester_email": "maria@empresa.com"
+      }'
+```
+
+O corpo aceita um chamado ou uma lista (`{"tickets": [...]}`). A identidade é
+`(empresa, source_system, external_id)`: **reentregar o mesmo chamado atualiza,
+nunca duplica**. Sem `WEBHOOK_SECRET` configurado o endpoint responde `503` —
+um deploy que esqueceu a variável não vira uma porta sem tranca.
+
+As regras completas (normalização de status e prioridade, fallback de setor,
+limites de tamanho e taxa) estão em
+[`docs/regras-de-negocio.md`](docs/regras-de-negocio.md#webhooks-n8n--saas).
 
 Os dashboards aceitam `filial_id` (`nenhuma` para o nível empresa),
 `competencia` e, no financeiro, `cenario`.

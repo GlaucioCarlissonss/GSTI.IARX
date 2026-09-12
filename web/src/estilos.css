@@ -121,6 +121,9 @@ a { color: var(--serie-1); }
 .menu a:hover { background: var(--superficie-2); color: var(--tinta); }
 .menu a.ativo { background: var(--superficie-2); color: var(--tinta); font-weight: 550; }
 .menu a .glifo { width: 16px; text-align: center; opacity: 0.75; }
+/* Submenu: rótulo do agrupamento e as entradas indentadas sob ele. */
+.menu-sub { font-size: 11px; color: var(--tinta-fraca); padding: 8px 8px 2px 30px; }
+.menu a.aninhado { padding-left: 30px; font-size: 13px; }
 
 .conteudo { display: flex; flex-direction: column; min-width: 0; }
 
@@ -198,6 +201,15 @@ textarea { resize: vertical; min-height: 62px; }
 .seletor-multi .lista label .rot { overflow: hidden; text-overflow: ellipsis; }
 .seletor-multi .lista label .ap { margin-left: auto; font-size: 11.5px; color: var(--tinta-fraca); }
 .seletor-multi .nada { padding: 10px 8px; font-size: 12.5px; color: var(--tinta-fraca); text-align: center; }
+
+/* Ficha de detalhe: rótulo e valor em duas colunas, empilhando no estreito. */
+.ficha { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 4px 0; }
+.ficha dt { color: var(--tinta-fraca); font-size: 12.5px; }
+.ficha dd { margin: 0; font-size: 13.5px; }
+@media (max-width: 560px) {
+  .ficha { grid-template-columns: 1fr; gap: 0 0; }
+  .ficha dd { margin-bottom: 8px; }
+}
 
 .fichas { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .fichas .bloco-fichas { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }

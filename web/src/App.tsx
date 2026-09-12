@@ -8,6 +8,7 @@ import { PaginaLancamentos } from './pages/Lancamentos';
 import { PaginaProjetos } from './pages/Projetos';
 import { PaginaCadastroProjetos } from './pages/CadastroProjetos';
 import { PaginaRegistrosSla, PaginaSla } from './pages/Sla';
+import { PaginaBitrix24, PaginaOstick } from './pages/Suporte';
 import { PaginaPlanilhas } from './pages/Planilhas';
 import { PaginaConferencia } from './pages/Conferencia';
 import { PaginaAuditoria, PaginaCadastros, PaginaFechamentos } from './pages/Administracao';
@@ -32,6 +33,8 @@ function Rotas() {
         <Route path="projetos/cadastro" element={<PaginaCadastroProjetos />} />
         <Route path="sla" element={<PaginaSla />} />
         <Route path="sla/registros" element={<PaginaRegistrosSla />} />
+        <Route path="suporte/ostick" element={<PaginaOstick />} />
+        <Route path="suporte/bitrix24" element={<PaginaBitrix24 />} />
         <Route path="planilhas" element={<PaginaPlanilhas />} />
         <Route path="cadastros" element={<PaginaCadastros />} />
         <Route path="auditoria" element={<PaginaAuditoria />} />
