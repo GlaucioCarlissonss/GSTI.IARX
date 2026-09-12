@@ -94,6 +94,36 @@ por padrão, uma empresa pode manter projeções alternativas (por exemplo, um
 contrato com desconto condicionado). Os cenários convivem sem contaminar os
 totais oficiais e são comparáveis lado a lado no dashboard.
 
+### Relatório com drill-down
+
+Reproduz a tabela dinâmica que o gestor já monta no Excel: **meses nas
+colunas**, hierarquia nas linhas, **Total Geral** nas duas pontas. Três níveis:
+
+| nível | mostra | como |
+| --- | --- | --- |
+| 1 — macro | filiais e seus totais por mês | **padrão: recolhido**, como no anexo |
+| 2 — categoria | os tipos de despesa da filial | expandir a filial |
+| 3 — lançamento | os lançamentos daquele recorte | expandir o tipo; **carregados sob demanda** |
+
+O nível 3 é lazy porque trazer todos os lançamentos de todos os meses de todas
+as filiais junto do macro tornaria a primeira tela lenta pelo que quase nunca é
+olhado. Na versão hospedada a base já está em memória, mas as linhas só são
+montadas quando abertas, pelo mesmo motivo.
+
+**A soma do detalhe aparece ao lado do total da linha**, com um aviso explícito
+quando diverge. Não é decoração: é onde uma divergência entre macro e detalhe
+apareceria, em vez de passar despercebida.
+
+**Origem do custo e destino do pagamento** são campos do lançamento — de onde o
+custo veio (fornecedor, setor, centro de custo) e para onde o pagamento foi
+(conta, beneficiário), mais o documento vinculado. **Não confundir com
+`origem`**, que é a *procedência do dado*: de onde o registro entrou no sistema,
+não de onde o dinheiro saiu. Parcelas herdam os três do lançamento de origem —
+é o mesmo contrato, parcelado —, e corrigir o valor não apaga nenhum deles.
+
+O tooltip de cada lançamento traz a descrição completa com origem e destino; o
+clique abre o registro inteiro.
+
 ## Módulo de projetos
 
 Projeto tem nome, mês de início, fim planejado e fim real — este último só é

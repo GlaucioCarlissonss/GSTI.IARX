@@ -135,7 +135,8 @@ Toda rota sob `/api` (exceto `/api/auth/*` e `/api/saude`) exige o cabeçalho
 | SLA | `/api/sla` |
 | Suporte (chamados) | `/api/suporte/chamados`, `/api/suporte/setores` |
 | Webhooks dos sistemas de suporte | `/api/webhooks/{ostick,bitrix24}/tickets` — **sem sessão**, autenticados por `X-Webhook-Secret` |
-| Dashboards | `/api/dashboards/{executivo,financeiro,projetos,sla}` |
+| Dashboards | `/api/dashboards/{executivo,financeiro,projetos,sla,conferencia}` |
+| Relatório com drill-down | `/api/dashboards/relatorio` · `/api/dashboards/relatorio/lancamentos` |
 | Planilhas | `/api/planilhas/templates` · `/api/planilhas/importacao/:modulo` · `/api/planilhas/exportacao/:modulo.xlsx` |
 | Auditoria | `/api/auditoria` |
 

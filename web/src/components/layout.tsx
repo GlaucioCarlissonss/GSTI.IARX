@@ -15,6 +15,7 @@ const NAVEGACAO = [
       { para: '/lancamentos', glifo: '≡', rotulo: 'Lançamentos' },
       { para: '/fechamentos', glifo: '⊘', rotulo: 'Fechamento mensal' },
       { para: '/conferencia', glifo: '⚖', rotulo: 'Conferência de origem' },
+      { para: '/relatorio', glifo: '▦', rotulo: 'Relatório detalhado' },
     ],
   },
   {

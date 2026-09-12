@@ -7,7 +7,8 @@ import {
   visaoExecutiva,
 } from '../domain/dashboards.js';
 import { ctx } from '../middleware/index.js';
-import { filiaisDaQuery, listaDaQuery } from '../lib/consulta.js';
+import { lancamentosDoRelatorio, relatorioFinanceiro, type FiltroRelatorio } from '../domain/relatorio.js';
+import { filiaisDaQuery, listaDaQuery, numerosDaQuery } from '../lib/consulta.js';
 import type { EscopoDashboard } from '../domain/dashboards.js';
 
 export const rotasDashboards = Router();
@@ -20,6 +21,19 @@ function escopoDaQuery(query: Record<string, unknown>): EscopoDashboard {
     competenciaInicio: query.competencia_inicio ? String(query.competencia_inicio) : undefined,
     competenciaFim: query.competencia_fim ? String(query.competencia_fim) : undefined,
     cenarios: listaDaQuery(query.cenario),
+  };
+}
+
+/** O mesmo recorte alimenta o macro e o detalhe: se divergissem, os números não bateriam. */
+function filtroDoRelatorio(q: Record<string, unknown>): FiltroRelatorio {
+  return {
+    competenciaInicio: q.competencia_inicio ? String(q.competencia_inicio) : undefined,
+    competenciaFim: q.competencia_fim ? String(q.competencia_fim) : undefined,
+    filiais: filiaisDaQuery(q.filial_id),
+    cenarios: listaDaQuery(q.cenario),
+    tiposDespesa: numerosDaQuery(q.tipo_despesa_id),
+    origens: listaDaQuery(q.origem) as never,
+    classificacoes: listaDaQuery(q.classificacao),
   };
 }
 
@@ -37,6 +51,32 @@ rotasDashboards.get('/sla', (req, res) => {
 
 rotasDashboards.get('/executivo', (req, res) => {
   res.json(visaoExecutiva(ctx(req), escopoDaQuery(req.query as Record<string, unknown>)));
+});
+
+/**
+ * Relatório em tabela dinâmica: meses nas colunas, filial e tipo de despesa
+ * nas linhas. É a visão macro — o detalhe vem por `/relatorio/lancamentos`.
+ */
+rotasDashboards.get('/relatorio', (req, res) => {
+  res.json(relatorioFinanceiro(ctx(req), filtroDoRelatorio(req.query)));
+});
+
+/** Nível 3: os lançamentos de uma célula, sob demanda. */
+rotasDashboards.get('/relatorio/lancamentos', (req, res) => {
+  const q = req.query;
+  res.json(
+    lancamentosDoRelatorio(ctx(req), {
+      ...filtroDoRelatorio(q),
+      filialId:
+        q.filial_id === undefined || q.filial_id === ''
+          ? undefined
+          : q.filial_id === 'nenhuma' || q.filial_id === 'null'
+            ? null
+            : Number(q.filial_id),
+      tipoDespesaId: q.tipo_despesa_id ? Number(q.tipo_despesa_id) : undefined,
+      competencia: q.competencia ? String(q.competencia) : undefined,
+    }),
+  );
 });
 
 rotasDashboards.get('/conferencia', (req, res) => {

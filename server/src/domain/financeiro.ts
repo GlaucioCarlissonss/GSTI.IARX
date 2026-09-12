@@ -73,6 +73,16 @@ export interface EntradaLancamento {
   dedupHash?: string | null;
   /** Procedência do dado; ver docs/regras-de-negocio.md. Padrão: 'manual'. */
   origem?: Origem | null;
+  /**
+   * De onde o custo veio: fornecedor, setor, centro de custo. Não confundir
+   * com `origem`, que é a procedência do DADO — de onde o registro entrou no
+   * sistema, não de onde o dinheiro saiu.
+   */
+  origemCusto?: string | null;
+  /** Para onde o pagamento foi: conta, beneficiário. */
+  destinoPagamento?: string | null;
+  /** Documento vinculado: nota, contrato, ordem de compra. */
+  documento?: string | null;
 }
 
 interface LinhaLancamento extends Record<string, unknown> {
@@ -118,6 +128,9 @@ function apresentar(linha: LinhaLancamento & Record<string, unknown>) {
     cenario: linha.cenario,
     origem: linha.origem,
     origem_rotulo: ROTULO_ORIGEM[linha.origem] ?? linha.origem,
+    origem_custo: (linha.origem_custo as string | null) ?? null,
+    destino_pagamento: (linha.destino_pagamento as string | null) ?? null,
+    documento: (linha.documento as string | null) ?? null,
   };
 }
 
@@ -198,8 +211,9 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
     const inserir = db().prepare(
       `INSERT INTO lancamentos
          (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
-          qtd_parcelas, parcela_numero, lancamento_origem_id, descricao, observacoes, cenario, origem, dedup_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          qtd_parcelas, parcela_numero, lancamento_origem_id, descricao, observacoes, cenario, origem, dedup_hash,
+          origem_custo, destino_pagamento, documento)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
     const primeiro = valores[0]!;
@@ -219,6 +233,9 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
       cenario,
       entrada.origem ?? 'manual',
       entrada.dedupHash ?? null,
+      entrada.origemCusto ?? null,
+      entrada.destinoPagamento ?? null,
+      entrada.documento ?? null,
     );
     const origemId = Number(infoPrimeiro.lastInsertRowid);
 
@@ -240,6 +257,11 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
         cenario,
         entrada.origem ?? 'manual',
         null, // a chave de dedup pertence ao lançamento de origem, não às projeções
+        // As parcelas herdam origem, destino e documento do lançamento de
+        // origem: é o mesmo contrato, parcelado.
+        entrada.origemCusto ?? null,
+        entrada.destinoPagamento ?? null,
+        entrada.documento ?? null,
       );
       ids.push(Number(info.lastInsertRowid));
     }
@@ -412,6 +434,9 @@ export interface AtualizacaoLancamento {
   classificacao?: Classificacao;
   descricao?: string | null;
   observacoes?: string | null;
+  origemCusto?: string | null;
+  destinoPagamento?: string | null;
+  documento?: string | null;
   justificativa?: string | null;
 }
 
@@ -439,7 +464,8 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
     .prepare(
       `UPDATE lancamentos
           SET filial_id = ?, tipo_despesa_id = ?, competencia = ?, valor_centavos = ?, classificacao = ?,
-              descricao = ?, observacoes = ?, atualizado_em = datetime('now')
+              descricao = ?, observacoes = ?, origem_custo = ?, destino_pagamento = ?, documento = ?,
+              atualizado_em = datetime('now')
         WHERE id = ? AND empresa_id = ?`,
     )
     .run(
@@ -450,6 +476,11 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
       dados.classificacao ?? antes.classificacao,
       dados.descricao !== undefined ? dados.descricao : antes.descricao,
       dados.observacoes !== undefined ? dados.observacoes : antes.observacoes,
+      // Campo não enviado permanece: corrigir o valor não pode apagar de onde
+      // veio o custo nem para onde foi o pagamento.
+      dados.origemCusto !== undefined ? dados.origemCusto : antes.origem_custo,
+      dados.destinoPagamento !== undefined ? dados.destinoPagamento : antes.destino_pagamento,
+      dados.documento !== undefined ? dados.documento : antes.documento,
       id,
       ctx.empresaId,
     );

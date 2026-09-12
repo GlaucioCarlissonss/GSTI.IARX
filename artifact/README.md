@@ -31,6 +31,7 @@ seguintes ficam em TDZ quando ele executa.
 | `app-js6.js` | SLA, cadastros e trilha de auditoria |
 | `app-js8.js` | conferência: de onde vem cada real |
 | `app-js12.js` | seletor de múltipla escolha e as fichas do que está selecionado |
+| `app-js13.js` | relatório em tabela dinâmica, com drill-down em três níveis |
 | `app-js7.js` | abas, seletores globais e inicialização |
 
 ## Testar
@@ -46,6 +47,18 @@ node testar.cjs
 
 `dados/` fica fora do git: são os documentos reais do cliente (nomes de
 colaboradores nas descrições de folha, valores contratuais).
+
+## Relatório com drill-down
+
+`app-js13.js` monta a tabela dinâmica do anexo do gestor: meses nas colunas,
+filial e tipo de despesa nas linhas, Total Geral nas duas pontas. Abre
+**recolhido** — ao contrário do Gantt, que abre expandido —, e por isso o que
+fica em `localStorage` aqui são os **expandidos**. Guardar sempre a exceção ao
+padrão é o que faz uma linha nova nascer no padrão da tela.
+
+Expandir a categoria monta os lançamentos, com a **soma do detalhe ao lado do
+total da linha**: é onde uma divergência apareceria. O tooltip traz origem do
+custo e destino do pagamento; o clique abre o registro inteiro.
 
 ## Navegação por módulo
 
@@ -186,7 +199,7 @@ vindos do Excel chegam comprimidos. Não há CDN envolvido.
 
 ### Verificação
 
-Onze suítes, todas contra um `window.claude` simulado num Chromium real:
+Doze suítes, todas contra um `window.claude` simulado num Chromium real:
 
 | script | o que cobre |
 |---|---|
@@ -201,6 +214,7 @@ Onze suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-navegacao.cjs` | os quatro módulos e suas telas; o tema ciclando, persistindo e com contraste nas nove telas |
 | `testar-hierarquia.cjs` | o que a hierarquia de tarefas recusa (ciclo, 4º nível, si mesma) e o Gantt agrupado: teclado, `aria-expanded`, barra agregada e persistência |
 | `testar-suporte.cjs` | os dois sistemas de origem na mesma tabela, o recorte por sistema e por setor, e os indicadores acompanhando o recorte |
+| `testar-relatorio.cjs` | o relatório contra **os números do anexo do gestor**, filial a filial e categoria a categoria, mais os três níveis do drill-down |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

@@ -8,7 +8,7 @@ const ORDEM_BASE = ['planilha', 'folha_ti', 'projecao_spincare', 'manual'];
 // `sistema` guarda o que atravessa os três — planilha, cadastro e auditoria —
 // e por isso não cabe dentro de nenhum.
 const MODULOS_NAV = [
-  { id:'financeiro', rotulo:'Controle Financeiro',  abas:['painel', 'lancamentos', 'conferencia'] },
+  { id:'financeiro', rotulo:'Controle Financeiro',  abas:['painel', 'lancamentos', 'relatorio', 'conferencia'] },
   { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos'] },
   { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados'] },
   { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'cadastros', 'auditoria'] },
@@ -17,6 +17,7 @@ const MODULOS_NAV = [
 const ABAS = [
   { id:'painel',      rotulo:'Painel',       view: viewPainel },
   { id:'lancamentos', rotulo:'Lançamentos',  view: viewLancamentos },
+  { id:'relatorio',   rotulo:'Relatório',    view: viewRelatorio },
   { id:'conferencia', rotulo:'Conferência',  view: viewConferencia },
   { id:'projetos',    rotulo:'Projetos',     view: viewProjetos },
   { id:'sla',         rotulo:'Indicadores',  view: () => viewSla('indicadores') },

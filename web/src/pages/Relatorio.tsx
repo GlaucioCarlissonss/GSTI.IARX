@@ -1,0 +1,441 @@
+/**
+ * Relatório financeiro — tabela dinâmica com drill-down em três níveis.
+ *
+ * É o formato que o gestor já monta no Excel: meses nas colunas, hierarquia
+ * nas linhas, Total Geral nas duas pontas. A diferença é que aqui o detalhe
+ * está a um clique.
+ *
+ *   1. macro       — filiais e seus totais por mês (padrão: recolhido)
+ *   2. categoria   — expandir a filial mostra os tipos de despesa
+ *   3. lançamento  — expandir o tipo busca os lançamentos daquele recorte
+ *
+ * O nível 3 é carregado sob demanda: trazer todos os lançamentos junto do
+ * macro tornaria a primeira tela lenta pelo que quase nunca é olhado.
+ */
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { api } from '../lib/api';
+import { useDados, useSessao } from '../lib/sessao';
+import { Aviso, Campo, Carregando, Cartao, Etiqueta, Modal } from '../components/base';
+import { SeletorMulti } from '../components/seletor-multi';
+import { competenciaValida, inteiro, moeda } from '../lib/formato';
+import { useExpansao } from '../lib/expansao';
+
+/** Centavos → moeda. O relatório trabalha em centavos inteiros, como o banco. */
+const dinheiro = (centavos: number) => moeda(centavos / 100);
+
+interface LinhaRelatorio {
+  chave: string;
+  rotulo: string;
+  nivel: 1 | 2;
+  pai: string | null;
+  filial_id: number | null;
+  tipo_despesa_id: number | null;
+  meses: Record<string, number>;
+  total_centavos: number;
+  lancamentos: number;
+}
+
+interface Relatorio {
+  colunas: string[];
+  linhas: LinhaRelatorio[];
+  total_geral: { meses: Record<string, number>; total_centavos: number; lancamentos: number };
+}
+
+export interface Lancamento {
+  id: number;
+  competencia: string;
+  valor_centavos: number;
+  natureza: string;
+  classificacao: string;
+  parcela_numero: number | null;
+  qtd_parcelas: number | null;
+  descricao: string | null;
+  observacoes: string | null;
+  origem: string;
+  origem_rotulo: string;
+  origem_custo: string | null;
+  destino_pagamento: string | null;
+  documento: string | null;
+  cenario: string;
+  filial_nome: string;
+  tipo_despesa: string;
+}
+
+interface Detalhe {
+  itens: Lancamento[];
+  total_centavos: number;
+}
+
+/**
+ * Tooltip de um lançamento: a descrição completa, com de onde veio o custo e
+ * para onde foi o pagamento. É a pergunta que a linha da tabela não cabe
+ * responder e que o gestor faz antes de abrir o registro.
+ */
+export function resumoDoLancamento(l: Lancamento): string {
+  return [
+    l.descricao || l.tipo_despesa,
+    `\n\nOrigem do custo: ${l.origem_custo ?? 'não informada'}`,
+    `\nDestino do pagamento: ${l.destino_pagamento ?? 'não informado'}`,
+    `\nValor: ${dinheiro(l.valor_centavos)} · ${l.competencia}`,
+    l.documento ? `\nDocumento: ${l.documento}` : '',
+    l.parcela_numero && l.qtd_parcelas ? `\nParcela ${l.parcela_numero} de ${l.qtd_parcelas}` : '',
+    l.observacoes ? `\n\n${l.observacoes}` : '',
+    '\n\nClique para ver o detalhamento completo.',
+  ].join('');
+}
+
+export function PaginaRelatorio() {
+  const { empresa, filialId, paramFilial } = useSessao();
+  // Padrão recolhido, como na tabela dinâmica do anexo: a visão macro primeiro.
+  const grupos = useExpansao('gsti-relatorio-expandidos', 'recolhido');
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
+  const [classificacoes, setClassificacoes] = useState<string[]>([]);
+  const [aberto, setAberto] = useState<Lancamento | null>(null);
+
+  const consulta = useDados<Relatorio>(
+    () =>
+      api.get('/api/dashboards/relatorio', {
+        filial_id: paramFilial(),
+        competencia_inicio: competenciaValida(de) ? de : undefined,
+        competencia_fim: competenciaValida(ate) ? ate : undefined,
+        classificacao: classificacoes.join(','),
+      }),
+    [empresa?.id, filialId, de, ate, classificacoes],
+  );
+
+  // O detalhe de cada linha expandida, buscado sob demanda e mantido em cache
+  // enquanto o filtro não muda — reabrir o mesmo grupo não refaz a consulta.
+  const [detalhes, setDetalhes] = useState<Record<string, Detalhe | 'carregando' | 'erro'>>({});
+  useEffect(() => setDetalhes({}), [empresa?.id, filialId, de, ate, classificacoes]);
+
+  const buscarDetalhe = useCallback(
+    async (linha: LinhaRelatorio) => {
+      setDetalhes((d) => (d[linha.chave] ? d : { ...d, [linha.chave]: 'carregando' }));
+      try {
+        const r = await api.get<Detalhe>('/api/dashboards/relatorio/lancamentos', {
+          filial_id: linha.filial_id === null ? 'nenhuma' : linha.filial_id,
+          tipo_despesa_id: linha.tipo_despesa_id ?? undefined,
+          competencia_inicio: competenciaValida(de) ? de : undefined,
+          competencia_fim: competenciaValida(ate) ? ate : undefined,
+          classificacao: classificacoes.join(','),
+        });
+        setDetalhes((d) => ({ ...d, [linha.chave]: r }));
+      } catch {
+        setDetalhes((d) => ({ ...d, [linha.chave]: 'erro' }));
+      }
+    },
+    [de, ate, classificacoes],
+  );
+
+  // Só o nível 2 traz lançamentos; o nível 1 expande para os tipos, que já
+  // vieram no macro. A busca fica aqui, e não no clique, para cobrir também
+  // "Expandir tudo", que abre muitas linhas de uma vez.
+  useEffect(() => {
+    for (const linha of consulta.dados?.linhas ?? []) {
+      if (linha.nivel !== 2) continue;
+      if (!grupos.expandido(linha.chave) || !grupos.expandido(linha.pai!)) continue;
+      if (detalhes[linha.chave]) continue;
+      void buscarDetalhe(linha);
+    }
+  }, [consulta.dados, grupos, detalhes, buscarDetalhe]);
+
+  /**
+   * As linhas visíveis agora: filiais sempre, tipos quando a filial está
+   * aberta, e os lançamentos logo abaixo do tipo aberto.
+   */
+  const visiveis = useMemo(() => {
+    if (!consulta.dados) return [];
+    const saida: Array<
+      | { tipo: 'grupo'; linha: LinhaRelatorio }
+      | { tipo: 'lancamentos'; chave: string; pai: LinhaRelatorio }
+    > = [];
+    for (const linha of consulta.dados.linhas) {
+      if (linha.nivel === 2 && !grupos.expandido(linha.pai!)) continue;
+      saida.push({ tipo: 'grupo', linha });
+      if (linha.nivel === 2 && grupos.expandido(linha.chave)) {
+        saida.push({ tipo: 'lancamentos', chave: linha.chave, pai: linha });
+      }
+    }
+    return saida;
+  }, [consulta.dados, grupos]);
+
+  if (consulta.erro) return <Aviso tipo="erro">{consulta.erro}</Aviso>;
+  if (!consulta.dados) return <Carregando />;
+  const d = consulta.dados;
+  const colunas = d.colunas;
+
+  return (
+    <>
+      <div className="barra-filtros">
+        <Campo rotulo="De">
+          <input value={de} onChange={(e) => setDe(e.target.value)} placeholder="MM/AAAA" style={{ width: 100 }} />
+        </Campo>
+        <Campo rotulo="Até">
+          <input value={ate} onChange={(e) => setAte(e.target.value)} placeholder="MM/AAAA" style={{ width: 100 }} />
+        </Campo>
+        <Campo rotulo="Classificação">
+          <SeletorMulti
+            rotulo="Classificação"
+            largura={190}
+            itens={[
+              { valor: 'despesa', rotulo: 'Despesa' },
+              { valor: 'investimento', rotulo: 'Investimento' },
+            ]}
+            selecionados={classificacoes}
+            aoMudar={setClassificacoes}
+          />
+        </Campo>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+          <button
+            type="button"
+            className="botao discreto pequeno"
+            onClick={() => grupos.expandirTudo(d.linhas.map((l) => l.chave))}
+          >
+            Expandir tudo
+          </button>
+          <button type="button" className="botao discreto pequeno" onClick={() => grupos.comprimirTudo()}>
+            Recolher tudo
+          </button>
+        </div>
+      </div>
+
+      {d.linhas.length === 0 ? (
+        <Cartao titulo="Relatório financeiro">
+          <p className="vazio">Nenhum lançamento no recorte selecionado.</p>
+        </Cartao>
+      ) : (
+        <Cartao
+          titulo="Relatório financeiro"
+          descricao={`${inteiro(d.total_geral.lancamentos)} lançamento(s) · ${colunas.length} mês(es) · clique em + para abrir o detalhe`}
+        >
+          <div className="tabela-envolucro">
+            <table className="pivot">
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 240, position: 'sticky', left: 0, background: 'var(--superficie)' }}>
+                    Rótulos de linha
+                  </th>
+                  {colunas.map((m) => (
+                    <th key={m} className="num">
+                      {m}
+                    </th>
+                  ))}
+                  <th className="num">Total Geral</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visiveis.map((v) =>
+                  v.tipo === 'grupo' ? (
+                    <LinhaGrupo
+                      key={v.linha.chave}
+                      linha={v.linha}
+                      colunas={colunas}
+                      aberto={grupos.expandido(v.linha.chave)}
+                      aoAlternar={() => grupos.alternar(v.linha.chave)}
+                    />
+                  ) : (
+                    <LinhasDetalhe
+                      key={`d-${v.chave}`}
+                      estado={detalhes[v.chave]}
+                      pai={v.pai}
+                      colunas={colunas}
+                      aoAbrir={setAberto}
+                    />
+                  ),
+                )}
+              </tbody>
+              <tfoot>
+                <tr className="total-geral">
+                  <th style={{ position: 'sticky', left: 0, background: 'var(--superficie-2)' }}>Total Geral</th>
+                  {colunas.map((m) => (
+                    <td key={m} className="num">
+                      {d.total_geral.meses[m] ? dinheiro(d.total_geral.meses[m]!) : '-'}
+                    </td>
+                  ))}
+                  <td className="num">{dinheiro(d.total_geral.total_centavos)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </Cartao>
+      )}
+
+      {aberto && <DetalheLancamento lancamento={aberto} aoFechar={() => setAberto(null)} />}
+    </>
+  );
+}
+
+function LinhaGrupo({
+  linha,
+  colunas,
+  aberto,
+  aoAlternar,
+}: {
+  linha: LinhaRelatorio;
+  colunas: string[];
+  aberto: boolean;
+  aoAlternar: () => void;
+}) {
+  return (
+    <tr className={linha.nivel === 1 ? 'grupo-1' : 'grupo-2'}>
+      <th
+        scope="row"
+        style={{
+          position: 'sticky',
+          left: 0,
+          background: 'var(--superficie)',
+          paddingLeft: 8 + (linha.nivel - 1) * 18,
+          fontWeight: linha.nivel === 1 ? 600 : 500,
+        }}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+          <button
+            type="button"
+            className="pivot-grupo"
+            aria-expanded={aberto}
+            aria-label={`${aberto ? 'Recolher' : 'Expandir'} ${linha.rotulo}`}
+            title={aberto ? 'Recolher' : 'Expandir'}
+            onClick={aoAlternar}
+          >
+            <span aria-hidden>{aberto ? '−' : '+'}</span>
+          </button>
+          {linha.rotulo}
+          {linha.nivel === 2 && (
+            <span style={{ color: 'var(--tinta-fraca)', fontSize: 11.5 }}>
+              {inteiro(linha.lancamentos)} lanç.
+            </span>
+          )}
+        </span>
+      </th>
+      {colunas.map((m) => (
+        <td key={m} className="num">
+          {linha.meses[m] ? dinheiro(linha.meses[m]!) : '-'}
+        </td>
+      ))}
+      <td className="num">{dinheiro(linha.total_centavos)}</td>
+    </tr>
+  );
+}
+
+/** Nível 3: os lançamentos, com tooltip e clique para o registro inteiro. */
+function LinhasDetalhe({
+  estado,
+  pai,
+  colunas,
+  aoAbrir,
+}: {
+  estado: Detalhe | 'carregando' | 'erro' | undefined;
+  pai: LinhaRelatorio;
+  colunas: string[];
+  aoAbrir: (l: Lancamento) => void;
+}) {
+  const largura = colunas.length + 2;
+
+  if (estado === undefined || estado === 'carregando') {
+    return (
+      <tr>
+        <td colSpan={largura} style={{ paddingLeft: 54 }}>
+          <Carregando />
+        </td>
+      </tr>
+    );
+  }
+  if (estado === 'erro') {
+    return (
+      <tr>
+        <td colSpan={largura} style={{ paddingLeft: 54 }}>
+          <Aviso tipo="erro">Não foi possível carregar os lançamentos desta linha. Tente recolher e expandir de novo.</Aviso>
+        </td>
+      </tr>
+    );
+  }
+  if (estado.itens.length === 0) {
+    return (
+      <tr>
+        <td colSpan={largura} style={{ paddingLeft: 54, color: 'var(--tinta-fraca)' }}>
+          Nenhum lançamento nesta linha.
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {estado.itens.map((l) => (
+        <tr key={l.id} className="lancamento" onClick={() => aoAbrir(l)} title={resumoDoLancamento(l)}>
+          <th scope="row" style={{ position: 'sticky', left: 0, background: 'var(--superficie)', paddingLeft: 54, fontWeight: 400 }}>
+            <span style={{ color: 'var(--tinta-2)' }}>{l.descricao || l.tipo_despesa}</span>
+            {l.origem_custo && (
+              <div style={{ fontSize: 11, color: 'var(--tinta-fraca)' }}>
+                {l.origem_custo}
+                {l.destino_pagamento ? ` → ${l.destino_pagamento}` : ''}
+              </div>
+            )}
+          </th>
+          {colunas.map((m) => (
+            <td key={m} className="num" style={{ color: 'var(--tinta-2)' }}>
+              {l.competencia === m ? dinheiro(l.valor_centavos) : ''}
+            </td>
+          ))}
+          <td className="num" style={{ color: 'var(--tinta-2)' }}>
+            {dinheiro(l.valor_centavos)}
+          </td>
+        </tr>
+      ))}
+      {/* A soma do detalhe, ao lado do número que estava no macro: se
+          divergirem, a divergência aparece aqui e não num lugar qualquer. */}
+      <tr className="soma-detalhe">
+        <th scope="row" style={{ position: 'sticky', left: 0, background: 'var(--superficie)', paddingLeft: 54, fontWeight: 500 }}>
+          Soma dos {inteiro(estado.itens.length)} lançamento(s)
+        </th>
+        <td className="num" colSpan={colunas.length}>
+          {estado.total_centavos === pai.total_centavos ? (
+            <span style={{ color: 'var(--tinta-fraca)', fontSize: 11.5 }}>confere com o total da linha</span>
+          ) : (
+            <Etiqueta texto="diverge do total da linha" tom="critico" />
+          )}
+        </td>
+        <td className="num">{dinheiro(estado.total_centavos)}</td>
+      </tr>
+    </>
+  );
+}
+
+function DetalheLancamento({ lancamento: l, aoFechar }: { lancamento: Lancamento; aoFechar: () => void }) {
+  return (
+    <Modal titulo={l.descricao || l.tipo_despesa} aberto aoFechar={aoFechar}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <Etiqueta texto={dinheiro(l.valor_centavos)} />
+        <Etiqueta texto={l.competencia} />
+        <Etiqueta texto={l.classificacao === 'investimento' ? 'Investimento' : 'Despesa'} />
+        <Etiqueta texto={l.origem_rotulo} />
+        {l.cenario !== 'oficial' && <Etiqueta texto={`Cenário ${l.cenario}`} tom="atencao" />}
+      </div>
+
+      <dl className="ficha">
+        <dt>Descrição</dt>
+        <dd>{l.descricao ?? '—'}</dd>
+        <dt>Origem do custo</dt>
+        <dd>{l.origem_custo ?? 'não informada'}</dd>
+        <dt>Destino do pagamento</dt>
+        <dd>{l.destino_pagamento ?? 'não informado'}</dd>
+        <dt>Documento vinculado</dt>
+        <dd>{l.documento ?? '—'}</dd>
+        <dt>Filial</dt>
+        <dd>{l.filial_nome}</dd>
+        <dt>Tipo de despesa</dt>
+        <dd>{l.tipo_despesa}</dd>
+        <dt>Natureza</dt>
+        <dd>
+          {l.natureza === 'fixa' ? 'Fixa' : l.natureza === 'pontual_unica' ? 'Pontual única' : 'Pontual parcelada'}
+          {l.parcela_numero && l.qtd_parcelas ? ` · parcela ${l.parcela_numero} de ${l.qtd_parcelas}` : ''}
+        </dd>
+        <dt>Procedência do dado</dt>
+        <dd>{l.origem_rotulo}</dd>
+        <dt>Observações</dt>
+        <dd>{l.observacoes ?? '—'}</dd>
+      </dl>
+    </Modal>
+  );
+}

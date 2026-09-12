@@ -91,7 +91,7 @@ export function PaginaProjetos() {
   const { empresa, filialId, paramFilial } = useSessao();
   // Projeto e grupo de tarefas usam o mesmo estado persistido, com prefixo
   // diferente na chave: são dois níveis do mesmo cronograma.
-  const grupos = useExpansao('gsti-gantt-comprimidos');
+  const grupos = useExpansao('gsti-gantt-comprimidos', 'expandido');
   const [rolagem, setRolagem] = useState(0);
   const [alturaVisivel, setAlturaVisivel] = useState(640);
   const caixa = useRef<HTMLDivElement>(null);
@@ -206,7 +206,7 @@ export function PaginaProjetos() {
         descricao={`${d.escopo.linha_do_tempo.inicio} a ${d.escopo.linha_do_tempo.fim} · ${inteiro(linhas.length)} linha(s)`}
         acoes={
           <div style={{ display: 'flex', gap: 6 }}>
-            <button type="button" className="botao discreto pequeno" onClick={() => grupos.expandirTudo()}>
+            <button type="button" className="botao discreto pequeno" onClick={() => grupos.expandirTudo(todosOsGrupos)}>
               Expandir tudo
             </button>
             <button

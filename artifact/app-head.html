@@ -82,6 +82,30 @@ code{font-family:var(--mono);font-size:.92em;background:var(--sup2);padding:1px 
 }
 .bt-tema:hover{border-color:var(--linha2);color:var(--tinta)}
 
+/* ------------------------------------------------------ tabela dinâmica */
+/* Hierarquia por peso e fundo, não só por indentação. */
+.pivot tr.grupo-1 > th, .pivot tr.grupo-1 > td{background:var(--sup2)}
+.pivot tr.lancamento{cursor:pointer}
+.pivot tr.lancamento:hover > th, .pivot tr.lancamento:hover > td{background:var(--sup2)}
+.pivot tr.soma-detalhe > th, .pivot tr.soma-detalhe > td{border-top:1px solid var(--linha2);font-size:12.5px}
+.pivot tfoot tr.total-geral > th, .pivot tfoot tr.total-geral > td{
+  background:var(--sup2);font-weight:600;border-top:2px solid var(--linha2)}
+.pivot-grupo{
+  flex:none;width:18px;height:18px;padding:0;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;
+  font:600 14px/1 inherit;cursor:pointer;
+  color:var(--tinta2);background:var(--sup);
+  border:1px solid var(--linha2);border-radius:4px;
+}
+.pivot-grupo:hover{color:var(--tinta);border-color:var(--tinta3)}
+.pivot-grupo:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
+
+/* Ficha de detalhe: rótulo e valor em duas colunas, empilhando no estreito. */
+.ficha{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:6px 0}
+.ficha dt{color:var(--tinta3);font-size:12.5px}
+.ficha dd{margin:0;font-size:13.5px}
+@media (max-width:560px){.ficha{grid-template-columns:1fr;gap:0}.ficha dd{margin-bottom:8px}}
+
 /* Botão de expandir/comprimir grupo do Gantt: alvo de 20px, foco visível e
    contraste AA nos dois temas. */
 .gantt-grupo{

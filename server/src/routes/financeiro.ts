@@ -63,6 +63,9 @@ rotasFinanceiro.post('/', somenteGestor, (req, res) => {
       repetirAte: corpo.repetir_ate ?? null,
       descricao: corpo.descricao ?? null,
       observacoes: corpo.observacoes ?? null,
+      origemCusto: corpo.origem_custo ?? null,
+      destinoPagamento: corpo.destino_pagamento ?? null,
+      documento: corpo.documento ?? null,
       cenario: corpo.cenario ?? null,
       justificativa: corpo.justificativa ?? null,
     }),
@@ -90,6 +93,10 @@ rotasFinanceiro.patch('/:id', somenteGestor, (req, res) => {
       classificacao: corpo.classificacao,
       descricao: corpo.descricao,
       observacoes: corpo.observacoes,
+      // `undefined` mantém o valor atual; `null` limpa o campo.
+      origemCusto: corpo.origem_custo,
+      destinoPagamento: corpo.destino_pagamento,
+      documento: corpo.documento,
       justificativa: corpo.justificativa ?? null,
     }),
   );

@@ -9,6 +9,7 @@ import { PaginaProjetos } from './pages/Projetos';
 import { PaginaCadastroProjetos } from './pages/CadastroProjetos';
 import { PaginaRegistrosSla, PaginaSla } from './pages/Sla';
 import { PaginaBitrix24, PaginaOstick } from './pages/Suporte';
+import { PaginaRelatorio } from './pages/Relatorio';
 import { PaginaPlanilhas } from './pages/Planilhas';
 import { PaginaConferencia } from './pages/Conferencia';
 import { PaginaAuditoria, PaginaCadastros, PaginaFechamentos } from './pages/Administracao';
@@ -29,6 +30,7 @@ function Rotas() {
         <Route path="lancamentos" element={<PaginaLancamentos />} />
         <Route path="fechamentos" element={<PaginaFechamentos />} />
         <Route path="conferencia" element={<PaginaConferencia />} />
+        <Route path="relatorio" element={<PaginaRelatorio />} />
         <Route path="projetos" element={<PaginaProjetos />} />
         <Route path="projetos/cadastro" element={<PaginaCadastroProjetos />} />
         <Route path="sla" element={<PaginaSla />} />
