@@ -60,6 +60,7 @@ const E = {
   usuarios: new Map(),      // empresa -> [usuario]
   perfis: new Map(),        // empresa -> [perfil de acesso]
   previa: null,             // perfil em pré-visualização, ou null
+  somenteLeitura: false,    // o armazenamento recusou escrita: link compartilhado só para ver
 
   // Todo filtro é um conjunto. Vazio quer dizer "todos" onde isso faz sentido;
   // onde não faz (empresa, competência, cenário) o seletor impede esvaziar.

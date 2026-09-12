@@ -218,6 +218,9 @@ function semBanco(motivo) {
         <p style="color:var(--tinta2)">Nenhuma empresa cadastrada ainda nesta base.</p></section>`;
       return;
     }
+    // Antes de montar qualquer tela: saber se esta visualização escreve. A tela
+    // precisa disso para não oferecer um botão que o armazenamento vai recusar.
+    await apurarEscrita();
     E.empresasSel = new Set([E.empresas[0].id]);
     await garantirEscopo();
     E.cenariosSel = new Set(['oficial']);

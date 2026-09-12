@@ -304,6 +304,67 @@ const { irPara } = require('./ajuda-testes.cjs');
   ok('sair da pré-visualização tira a faixa', saiu.faixa === false && saiu.previa === null);
   ok('e devolve as telas administrativas', saiu.abasSistema.includes('acessos'));
 
+  // ------------------------------------------------- link só de leitura
+  // Quem recebe o link compartilhado como "pode ver" tem a escrita recusada
+  // pelo próprio armazenamento. A tela precisa perceber isso e dizer, em vez
+  // de oferecer um botão que falha ao ser clicado.
+  console.log('\n--- link compartilhado só para ver ---');
+  const leitura = await nav.newPage({ viewport: { width: 1500, height: 1000 } });
+  const errosLeitura = [];
+  leitura.on('pageerror', (e) => errosLeitura.push('pageerror: ' + e.message));
+  leitura.on('console', (m) => { if (m.type() === 'error' && !/ERR_|net::/.test(m.text())) errosLeitura.push(m.text()); });
+  await leitura.goto('file://' + __dirname + '/teste-local.html?somenteLeitura=1');
+  await leitura.waitForSelector('#modulos button', { timeout: 20000 });
+  await leitura.waitForTimeout(1500);
+
+  const estado = await leitura.evaluate(() => ({
+    detectou: E.somenteLeitura,
+    perfil: E.previa && E.previa.nome,
+    faixa: (document.querySelector('#faixa-previa') || {}).textContent || '',
+    temSair: !!document.querySelector('#previa-sair'),
+    modulos: [...document.querySelectorAll('#modulos button')].map((b) => b.textContent.trim()),
+  }));
+  ok('a página percebe que não escreve', estado.detectou === true);
+  ok('e diz que o acesso é de leitura', /Acesso de leitura/.test(estado.faixa), estado.faixa.trim().slice(0, 60));
+  ok('sem oferecer uma saída que não existe', estado.temSair === false);
+  ok('o recorte vira um perfil de leitura', /Somente leitura/.test(estado.perfil || ''), estado.perfil);
+
+  const naveg = await leitura.evaluate(async () => {
+    E.aba = 'sla'; await render();
+    const abas = [...document.querySelectorAll('#abas button')].map((b) => b.textContent.trim());
+    return { abas, sistema: MODULOS_NAV.find((m) => m.id === 'sistema').abas.filter((a) => abaVisivel(a)) };
+  });
+  ok('Integrações sai da navegação', !naveg.abas.includes('Integrações'), naveg.abas.join(' · '));
+  ok('e Usuários também', !naveg.sistema.includes('acessos'), naveg.sistema.join(' · '));
+
+  const botoes = await leitura.evaluate(async () => {
+    E.aba = 'lancamentos'; await render();
+    const bts = [...document.querySelectorAll('#pagina button')]
+      .filter((b) => /novo lançamento|adicionar|importar|exportar|gerar arquivo/i.test(b.textContent));
+    return { quantos: bts.length, travados: bts.filter((b) => b.disabled).length };
+  });
+  ok('os botões de escrita ficam travados', botoes.quantos > 0 && botoes.travados === botoes.quantos,
+    `${botoes.travados}/${botoes.quantos}`);
+
+  const dados = await leitura.evaluate(async () => {
+    E.aba = 'dados'; await render();
+    const bts = [...document.querySelectorAll('#pagina button')]
+      .filter((b) => /gerar arquivo|importar|exportar|baixar/i.test(b.textContent));
+    return { quantos: bts.length, travados: bts.filter((b) => b.disabled).length };
+  });
+  ok('e a exportação da base também', dados.quantos > 0 && dados.travados === dados.quantos,
+    `${dados.travados}/${dados.quantos}`);
+
+  const intacta = await leitura.evaluate(async () => {
+    E.aba = 'painel'; await render();
+    return { kpis: document.querySelectorAll('.kpi').length,
+      conteudo: document.querySelector('#pagina').textContent.trim().length };
+  });
+  ok('a consulta continua inteira', intacta.kpis > 0 && intacta.conteudo > 200,
+    `${intacta.kpis} indicadores`);
+  ok('e a recusa não vira erro de console', errosLeitura.length === 0, errosLeitura.slice(0, 2).join(' | '));
+  await leitura.close();
+
   console.log('\n--- sem erro de console no caminho todo ---');
   ok('nenhum erro de página', erros.length === 0, erros.slice(0, 3).join(' | '));
 

@@ -59,7 +59,9 @@ async function garantirPerfisPadrao(empresa) {
     { nome: PERFIL_LEITURA, tipo: 'VIEW_ONLY' },
     { nome: PERFIL_EDICAO,  tipo: 'EDIT' },
   ].filter((p) => !atuais.some((x) => x.nome === p.nome));
-  if (!falta.length) return atuais;
+  // Sem escrita, devolve o que existe: a tela é alcançável por quem edita, e
+  // insistir na gravação só trocaria a lista por um erro.
+  if (!falta.length || E.somenteLeitura) return atuais;
   const novos = falta.map((p) => ({ id: novoId(), nome: p.nome, tipo: p.tipo, padrao: true,
     permissoes: permissoesPadrao(p.tipo), criadoEm: new Date().toISOString() }));
   const lista = [...atuais, ...novos];
@@ -117,6 +119,16 @@ function pintarPrevia() {
   const faixa = document.createElement('div');
   faixa.id = 'faixa-previa';
   faixa.className = 'faixa-previa';
+  // Duas faixas parecidas, com naturezas opostas: a pré-visualização é uma
+  // escolha de quem administra, e sai num clique; o modo leitura é imposto de
+  // fora e não tem como sair — oferecer um botão de sair seria mentira.
+  if (E.somenteLeitura) {
+    faixa.innerHTML = `<span><strong>Acesso de leitura.</strong>
+      Este link foi compartilhado com você para consulta: os dados aparecem inteiros, e nada aqui altera a base.
+      Para lançar ou editar, peça a quem compartilhou o acesso de edição.</span>`;
+    el('#pagina').before(faixa);
+    return;
+  }
   faixa.innerHTML = `<span><strong>Pré-visualizando como “${esc(E.previa.nome)}”.</strong>
     A navegação e os botões seguem este perfil. Nada foi alterado no seu acesso.</span>
     <button type="button" class="bt peq" id="previa-sair">Sair da pré-visualização</button>`;
@@ -129,17 +141,57 @@ function pintarPrevia() {
   };
 }
 
-/** Desabilita, na tela já montada, o que o perfil pré-visualizado não faz. */
+/**
+ * O perfil sintético de quem abriu um link compartilhado só para ver. Não é
+ * cadastro: não fica na base, não aparece na lista de perfis, e ninguém o
+ * escolhe. É a tradução, para a linguagem de perfil que a tela já entende, do
+ * que o armazenamento decidiu lá atrás.
+ */
+const PERFIL_LEITURA_COMPARTILHADA = () => ({
+  id: '(leitura-compartilhada)', nome: 'Somente leitura (acesso compartilhado)',
+  tipo: 'VIEW_ONLY', padrao: false, permissoes: permissoesPadrao('VIEW_ONLY'),
+});
+
+/**
+ * Descobre se esta visualização pode escrever. Sem a capacidade de identidade
+ * do visualizador, não há a quem perguntar: a página descobre tentando, com
+ * uma gravação de sonda que o dono e os editores concluem e quem só vê tem
+ * recusada. É uma escrita por abertura, num documento que não é de negócio.
+ */
+async function apurarEscrita() {
+  try {
+    await E.db.doc('sonda/escrita').set({ quando: new Date().toISOString() });
+    E.somenteLeitura = false;
+  } catch (e) {
+    // Qualquer recusa vale como "não escreve": distinguir o motivo não mudaria
+    // o que a tela faz, e insistir só produziria o mesmo erro de novo.
+    E.somenteLeitura = true;
+    E.previa = PERFIL_LEITURA_COMPARTILHADA();
+  }
+}
+
+/**
+ * Desabilita, na tela já montada, o que o perfil não faz.
+ *
+ * Duas passagens, e a ordem importa. `data-escreve` é declaração de quem
+ * montou o controle e nomeia a AÇÃO — é o que vale onde a trava deixou de ser
+ * cosmética, como a exportação da base num link compartilhado só para ver. O
+ * rótulo é a rede embaixo, para o controle que ninguém marcou: adivinha, e
+ * adivinhar é melhor que deixar passar.
+ */
 function aplicarPreviaNaTela() {
   if (!E.previa) return;
-  const bloqueadas = ['create', 'edit', 'delete', 'export', 'import'].filter((a) => !podeNaAba(a));
-  if (!bloqueadas.length) return;
-  el('#pagina').querySelectorAll('button').forEach((b) => {
+  const bloqueadas = new Set(['create', 'edit', 'delete', 'export', 'import'].filter((a) => !podeNaAba(a)));
+  if (!bloqueadas.size) return;
+  const motivo = `O perfil “${E.previa.nome}” não tem esta permissão.`;
+  const travar = (c) => { c.disabled = true; c.title = motivo; };
+
+  el('#pagina').querySelectorAll('[data-escreve]').forEach((c) => {
+    if (bloqueadas.has(c.dataset.escreve)) travar(c);
+  });
+  el('#pagina').querySelectorAll('button:not([data-escreve])').forEach((b) => {
     const texto = (b.textContent || '').toLowerCase();
-    const escreve = /adicionar|novo|nova|salvar|lançar|registrar|importar|exportar|baixar|excluir|reabrir|fechar compet|processar|enviar|editar|duplicar|inativar|reativar/.test(texto);
-    if (!escreve) return;
-    b.disabled = true;
-    b.title = `O perfil “${E.previa.nome}” não tem esta permissão.`;
+    if (/adicionar|novo|nova|salvar|lançar|registrar|importar|exportar|baixar|gerar arquivo|gravar|excluir|reabrir|fechar compet|processar|enviar|editar|duplicar|inativar|reativar/.test(texto)) travar(b);
   });
 }
 
@@ -468,6 +520,9 @@ function formPermissoes(empresa, perfil) {
  * cadastro simplesmente não volta — e a marca é apagada, para não insistir.
  */
 async function restaurarPrevia() {
+  // O modo leitura vence a escolha guardada: quem só vê não escolhe perfil,
+  // e sobrepor aqui daria a ele um botão de sair que não sairia de nada.
+  if (E.somenteLeitura) return;
   let id = null;
   try { id = localStorage.getItem('iarx-previa'); } catch (e) { return; }
   if (!id) return;

@@ -6,8 +6,48 @@ sistema sem instalar nada** — sem `localhost`, sem Node, sem porta liberada.
 
 - **Onde roda:** https://claude.ai/code/artifact/decb67fb-6b2d-4869-9f53-8f39cb68e80f
 - **Quem enxerga:** privado à conta que publicou, até que seja compartilhado.
+  Por declarar a capacidade `db`, a página é **interna à organização** e não
+  pode ser tornada pública: todo leitor é um membro assinado da organização de
+  quem publicou.
 - **O que guarda:** as mesmas entidades da base local (lançamentos, projetos,
   SLA, catálogos, fechamentos, trilha de auditoria), em documentos JSON.
+
+## Compartilhar o link
+
+O compartilhamento é por pessoa, e o nível escolhido ali é o que decide o que
+ela pode fazer:
+
+| nível no compartilhamento | o que a pessoa faz |
+| --- | --- |
+| **pode ver** | consulta tudo; não cria, não altera, não exclui e **não exporta** a base |
+| **pode editar** | opera o sistema como quem publicou |
+
+Isso não é promessa da interface: a versão publicada declara
+`db: { rules: [{ path: "", read: "interact", write: "admin" }] }`, e é o
+**armazenamento** que recusa a escrita de quem só pode ver. Quem publicou
+atende a todo nível — para ele nada muda.
+
+Como não existe capacidade de identidade do visualizador nesta conta, a página
+não tem a quem perguntar em que nível está sendo aberta: ela **descobre
+tentando**, com uma gravação de sonda em `sonda/escrita` na inicialização
+(`apurarEscrita`, em `app-js16.js`). Recusada a sonda, a tela entra em modo
+leitura — faixa no topo dizendo que o acesso é de consulta, sem botão de sair
+que não sairia de nada, e os controles de escrita e de exportação
+desabilitados. É a mesma maquinaria da pré-visualização de perfil, com uma
+diferença que a faixa deixa clara: a pré-visualização é escolha de quem
+administra e sai num clique; o modo leitura é imposto de fora.
+
+Onde a trava deixou de ser cosmética, o controle se declara: `data-escreve`
+nomeia a ação do botão ou do campo, e é por ele que `aplicarPreviaNaTela`
+desabilita. O palpite pelo rótulo continua como rede embaixo, para o controle
+que ninguém marcou — foi assim que a exportação da base escapou na primeira
+tentativa, porque o botão se chama "Gerar arquivo".
+
+**O que o link carrega junto.** A base é a real: lançamentos, chamados e
+projetos das empresas, incluindo descrições de folha com nome de colaborador,
+históricos bancários de pagamento, e nome de solicitante, atendente e assunto
+de cada chamado. Compartilhar é dar acesso a isso — a decisão de com quem é de
+quem publica.
 
 ## Montar
 

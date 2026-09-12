@@ -32,7 +32,7 @@ function viewDados() {
         </div>
         <p class="nota" id="d-nota-csv" hidden style="margin:0 0 12px">
           CSV guarda uma aba só; para o módulo completo, prefira .xlsx.</p>
-        <button type="button" class="bt pri" id="d-exportar">Gerar arquivo</button>
+        <button type="button" class="bt pri" id="d-exportar" data-escreve="export">Gerar arquivo</button>
         <div class="msg" id="d-saida-exp" hidden style="margin-top:14px"></div>
       </section>
 
@@ -44,7 +44,7 @@ function viewDados() {
           <code>tipo de despesa</code>).</p>
         <div class="campo" style="margin-bottom:12px">
           <label for="d-arquivo">Arquivo .xlsx ou .csv</label>
-          <input type="file" id="d-arquivo" accept=".xlsx,.csv,.txt">
+          <input type="file" id="d-arquivo" accept=".xlsx,.csv,.txt" data-escreve="import">
         </div>
         <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;font-size:13px">
           <input type="checkbox" id="d-criar" checked style="margin-top:2px">
@@ -52,7 +52,7 @@ function viewDados() {
         <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;font-size:13px">
           <input type="checkbox" id="d-simular" checked style="margin-top:2px">
           <span><strong>Só conferir</strong> — mostra o que aconteceria, sem gravar nada</span></label>
-        <button type="button" class="bt pri" id="d-importar" disabled>Processar arquivo</button>
+        <button type="button" class="bt pri" id="d-importar" disabled data-escreve="import">Processar arquivo</button>
         <div id="d-saida-imp"></div>
       </section>
     </div>
@@ -198,5 +198,5 @@ function relatorioHtml(rel, simular, nomeArquivo) {
           <td class="n">${x.linha}</td><td>${esc(x.motivo)}</td></tr>`).join('')}</tbody></table></div>
         ${rel.invalidas.length > 200 ? `<p class="nota">Mostrando as 200 primeiras.</p>` : ''}
       </section>` : ''}
-    ${simular && criadas ? `<div style="margin-top:14px"><button type="button" class="bt pri" id="d-gravar">Confirmar e gravar ${inteiro(criadas)} registro(s)</button></div>` : ''}`;
+    ${simular && criadas ? `<div style="margin-top:14px"><button type="button" class="bt pri" id="d-gravar" data-escreve="import">Confirmar e gravar ${inteiro(criadas)} registro(s)</button></div>` : ''}`;
 }

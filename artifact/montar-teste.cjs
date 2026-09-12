@@ -13,12 +13,21 @@ for (const dir of ['dados']) {
 const mock = `<script>
 const BASE_TESTE = ${JSON.stringify(base)};
 const _mem = JSON.parse(JSON.stringify(BASE_TESTE));
+// A busca ?somenteLeitura=1 imita a recusa de escrita que o armazenamento aplica a
+// quem recebeu o link só para ver: o código de erro é o mesmo que o contrato do
+// db promete, para a tela ser exercitada pelo caminho de verdade.
+const _soLeitura = new URLSearchParams(location.search).get('somenteLeitura') === '1';
+function _recusar() {
+  const e = new Error('write denied by access rules');
+  e.code = 'invalid_argument';
+  throw e;
+}
 function _doc(p) {
   return {
     async get() { const d = _mem[p]; return { exists: !!d, id: p.split('/').pop(), data: () => d }; },
-    async set(v) { _mem[p] = JSON.parse(JSON.stringify(v)); },
-    async update(v) { _mem[p] = { ...(_mem[p]||{}), ...JSON.parse(JSON.stringify(v)) }; },
-    async delete() { delete _mem[p]; },
+    async set(v) { if (_soLeitura) _recusar(); _mem[p] = JSON.parse(JSON.stringify(v)); },
+    async update(v) { if (_soLeitura) _recusar(); _mem[p] = { ...(_mem[p]||{}), ...JSON.parse(JSON.stringify(v)) }; },
+    async delete() { if (_soLeitura) _recusar(); delete _mem[p]; },
   };
 }
 function _col(c) {

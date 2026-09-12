@@ -771,6 +771,33 @@ está usando muda.
 **Quem recusa requisição continua sendo o servidor local.** A tela diz isso em
 voz alta: prometer barreira onde não há seria pior do que não ter a tela.
 
+### Na versão hospedada há duas camadas, e só uma é real
+
+Elas se parecem na tela e não se parecem em nada no que sustentam:
+
+| camada | quem decide | dá para sair? |
+| --- | --- | --- |
+| **pré-visualização de perfil** | quem administra, escolhendo um perfil na tela de Acessos | sim, num clique |
+| **modo leitura** | o armazenamento, pelo nível com que o link foi compartilhado | não |
+
+O modo leitura é o que torna seguro compartilhar o link. A versão publicada
+declara `db: { rules: [{ path: "", read: "interact", write: "admin" }] }`:
+quem foi compartilhado como "pode ver" lê a base inteira e tem **toda escrita
+recusada pelo armazenamento**, não pela interface. Quem publicou atende a todo
+nível.
+
+Sem capacidade de identidade do visualizador, a página não tem a quem
+perguntar em que nível está sendo aberta — **descobre tentando**, com uma
+gravação de sonda na inicialização. Recusada, a tela veste um perfil sintético
+de leitura e diz isso na faixa do topo. Um botão que falha ao ser clicado seria
+pior que um botão ausente: quem só pode ver descobriria a recusa errando.
+
+A exportação da base entra na trava junto com a escrita. Exportar não grava
+nada, e por isso o armazenamento não a impede — mas é saída de dado, e é a
+mesma regra que o perfil *Somente Visualização* já aplica no servidor local.
+Por ser a única trava sem rede embaixo, os controles de escrita e exportação
+se declaram com `data-escreve` em vez de serem adivinhados pelo rótulo.
+
 ### O front pergunta ao servidor o que o perfil permite
 
 `GET /api/acesso/minhas-permissoes` é o que o app local consulta ao entrar e a
