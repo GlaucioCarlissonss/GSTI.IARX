@@ -34,10 +34,13 @@ const MODULOS_ESPERADOS = ['Controle Financeiro', 'Gestão de Projetos', 'Gestã
   conferir('financeiro reúne painel, lançamentos, relatório e conferência',
     JSON.stringify(por('Controle Financeiro')) === JSON.stringify(['Painel', 'Lançamentos', 'Relatório', 'Conferência']),
     por('Controle Financeiro').join(', '));
-  conferir('suporte reúne indicadores, chamados e as duas origens',
+  conferir('suporte reúne indicadores, chamados, as duas origens e as integrações',
     JSON.stringify(por('Gestão de Suporte TI'))
-      === JSON.stringify(['Indicadores', 'Chamados', 'Sistema OStick', 'Sistema Bitrix24']),
+      === JSON.stringify(['Indicadores', 'Chamados', 'Sistema OStick', 'Sistema Bitrix24', 'Integrações']),
     por('Gestão de Suporte TI').join(', '));
+  conferir('sistema reúne dados, cadastros, acessos e auditoria',
+    JSON.stringify(por('Sistema')) === JSON.stringify(['Dados', 'Cadastros', 'Usuários e acessos', 'Auditoria']),
+    por('Sistema').join(', '));
   conferir('nada de SLA ou chamado fora do módulo de suporte',
     !telas.some((t) => t.modulo !== 'Gestão de Suporte TI' && /chamad|sla|indicad|ostick|bitrix/i.test(t.aba)),
     telas.filter((t) => t.modulo !== 'Gestão de Suporte TI').map((t) => t.aba).join(', '));

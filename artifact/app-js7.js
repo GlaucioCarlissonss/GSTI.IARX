@@ -10,8 +10,8 @@ const ORDEM_BASE = ['planilha', 'folha_ti', 'projecao_spincare', 'manual'];
 const MODULOS_NAV = [
   { id:'financeiro', rotulo:'Controle Financeiro',  abas:['painel', 'lancamentos', 'relatorio', 'conferencia'] },
   { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos'] },
-  { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados', 'OSTICK', 'BITRIX24'] },
-  { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'cadastros', 'auditoria'] },
+  { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados', 'OSTICK', 'BITRIX24', 'integracoes'] },
+  { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'cadastros', 'acessos', 'auditoria'] },
 ];
 
 const ABAS = [
@@ -27,34 +27,40 @@ const ABAS = [
   // se fixar — assim um sistema novo vira aba sem uma segunda lista para manter.
   { id:'OSTICK',      rotulo:'Sistema OStick',   view: () => viewSla('OSTICK') },
   { id:'BITRIX24',    rotulo:'Sistema Bitrix24', view: () => viewSla('BITRIX24') },
+  { id:'integracoes', rotulo:'Integrações',  view: viewIntegracoes },
   { id:'dados',       rotulo:'Dados',        view: viewDados },
   { id:'cadastros',   rotulo:'Cadastros',    view: viewCadastros },
+  { id:'acessos',     rotulo:'Usuários e acessos', view: viewAcessos },
   { id:'auditoria',   rotulo:'Auditoria',    view: viewAuditoria },
 ];
 
 /** Módulo a que a aba pertence. */
 const moduloDaAba = (aba) => MODULOS_NAV.find((m) => m.abas.includes(aba)) || MODULOS_NAV[0];
 
+/** Abas do módulo que o recorte atual deixa ver. */
+const abasVisiveis = (m) => m.abas.filter((a) => abaVisivel(a));
+
 function pintarModulos() {
   const atual = moduloDaAba(E.aba);
-  el('#modulos').innerHTML = MODULOS_NAV.map((m) =>
+  el('#modulos').innerHTML = MODULOS_NAV.filter((m) => abasVisiveis(m).length).map((m) =>
     `<button type="button" data-mod="${m.id}"${m.id===atual.id?' aria-current="page"':''}>
        <span class="pt"></span>${m.rotulo}</button>`).join('');
   el('#modulos').querySelectorAll('button').forEach((b) => b.onclick = () => {
     const mod = MODULOS_NAV.find((m) => m.id === b.dataset.mod);
     // Entrar num módulo abre a primeira tela dele; voltar ao módulo em que já
     // se está não tira ninguém da tela em que estava.
-    if (mod && mod.id !== moduloDaAba(E.aba).id) { E.aba = mod.abas[0]; render(); }
+    if (mod && mod.id !== moduloDaAba(E.aba).id) { E.aba = abasVisiveis(mod)[0] || mod.abas[0]; render(); }
   });
 }
 
 function pintarAbas() {
   const mod = moduloDaAba(E.aba);
   const barra = el('#abas');
+  const visiveis = abasVisiveis(mod);
   // Módulo de uma tela só não ganha barra de abas: seria um botão sozinho.
-  barra.hidden = mod.abas.length < 2;
+  barra.hidden = visiveis.length < 2;
   if (barra.hidden) { barra.innerHTML = ''; return; }
-  barra.innerHTML = mod.abas.map((id) => {
+  barra.innerHTML = visiveis.map((id) => {
     const a = ABAS.find((x) => x.id === id);
     return `<button type="button" data-aba="${a.id}"${a.id===E.aba?' aria-current="page"':''}>${a.rotulo}</button>`;
   }).join('');
@@ -165,10 +171,15 @@ async function render() {
   renderizando = true;
   sumirDica();
   try {
+    // A pré-visualização pode ter tirado a tela atual do alcance do perfil:
+    // insistir nela mostraria o que o perfil não vê.
+    if (!abaVisivel(E.aba)) E.aba = (ABAS.find((a) => abaVisivel(a.id)) || ABAS[0]).id;
     const aba = ABAS.find((a)=>a.id===E.aba) || ABAS[0];
     pintarModulos();
     pintarAbas();
+    pintarPrevia();
     await aba.view();
+    aplicarPreviaNaTela();
   } catch (e) {
     el('#pagina').innerHTML = `<div class="msg erro"><strong>Falha ao montar a tela.</strong> ${esc(e.message||e)}</div>`;
   } finally { renderizando = false; }
@@ -212,6 +223,7 @@ function semBanco(motivo) {
     E.cenariosSel = new Set(['oficial']);
     E.competencias = new Set([competenciaPadrao()]);
     pintarSeletores();
+    await restaurarPrevia();
     await render();
   } catch (e) {
     semBanco('Erro ao carregar: ' + (e.message || e));

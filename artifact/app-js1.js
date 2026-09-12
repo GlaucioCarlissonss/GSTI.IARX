@@ -55,6 +55,11 @@ const E = {
   projetos: new Map(),      // empresa -> {itens:[...]}
   sla: new Map(),           // 'empresa__comp' -> {itens:[...]}
   fechamentos: new Map(),   // empresa -> [comp]
+  integracoes: new Map(),   // empresa -> [conexao]
+  eventos: new Map(),       // empresa -> [evento de integração]
+  usuarios: new Map(),      // empresa -> [usuario]
+  perfis: new Map(),        // empresa -> [perfil de acesso]
+  previa: null,             // perfil em pré-visualização, ou null
 
   // Todo filtro é um conjunto. Vazio quer dizer "todos" onde isso faz sentido;
   // onde não faz (empresa, competência, cenário) o seletor impede esvaziar.
@@ -191,6 +196,52 @@ const Loja = {
   async gravarSlaMes(empresa, comp, itens) {
     await E.db.doc('sla/' + Loja.chave(empresa, comp)).set({ empresa, competencia: comp, itens });
     E.sla.delete(empresa);
+  },
+  // ------------------------------------------------------------ integrações
+  async integracoesDa(empresa) {
+    if (E.integracoes.has(empresa)) return E.integracoes.get(empresa);
+    const s = await E.db.doc('integracoes/' + empresa).get();
+    const itens = s.exists ? (s.data().conexoes || []) : [];
+    E.integracoes.set(empresa, itens);
+    return itens;
+  },
+  async gravarIntegracoes(empresa, conexoes) {
+    await E.db.doc('integracoes/' + empresa).set({ conexoes });
+    E.integracoes.set(empresa, conexoes);
+  },
+  async eventosDa(empresa) {
+    if (E.eventos.has(empresa)) return E.eventos.get(empresa);
+    const s = await E.db.doc('eventos-integracao/' + empresa).get();
+    const itens = s.exists ? (s.data().itens || []) : [];
+    E.eventos.set(empresa, itens);
+    return itens;
+  },
+  async gravarEventos(empresa, itens) {
+    await E.db.doc('eventos-integracao/' + empresa).set({ itens });
+    E.eventos.set(empresa, itens);
+  },
+  // ----------------------------------------------------------------- acesso
+  async usuariosDa(empresa) {
+    if (E.usuarios.has(empresa)) return E.usuarios.get(empresa);
+    const s = await E.db.doc('usuarios/' + empresa).get();
+    const itens = s.exists ? (s.data().itens || []) : [];
+    E.usuarios.set(empresa, itens);
+    return itens;
+  },
+  async gravarUsuarios(empresa, itens) {
+    await E.db.doc('usuarios/' + empresa).set({ itens });
+    E.usuarios.set(empresa, itens);
+  },
+  async perfisDa(empresa) {
+    if (E.perfis.has(empresa)) return E.perfis.get(empresa);
+    const s = await E.db.doc('perfis/' + empresa).get();
+    const itens = s.exists ? (s.data().itens || []) : [];
+    E.perfis.set(empresa, itens);
+    return itens;
+  },
+  async gravarPerfis(empresa, itens) {
+    await E.db.doc('perfis/' + empresa).set({ itens });
+    E.perfis.set(empresa, itens);
   },
   async gravarCatalogo(nome, itens) {
     await E.db.doc('catalogo/' + nome).set({ itens });

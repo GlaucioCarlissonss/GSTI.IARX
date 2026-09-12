@@ -290,6 +290,19 @@ tr.tot td{border-top:1px solid var(--linha2);background:var(--sup2)}
 .tag.alerta{color:var(--alerta);border-color:color-mix(in srgb,var(--alerta) 50%,transparent)}
 
 .vazio{color:var(--tinta3);text-align:center;padding:26px 12px}
+/* Lista de pares rótulo/valor — o cartão de situação das integrações. */
+.par{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;align-items:baseline}
+.par dt{color:var(--tinta3);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono)}
+.par dd{color:var(--tinta2);min-width:0;overflow-wrap:anywhere}
+.par code{font-size:12px}
+.vazio2{color:var(--tinta3);font-style:italic}
+/* Faixa da pré-visualização de perfil: precisa ser impossível de não ver. */
+.faixa-previa{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 20px -6px;
+  padding:10px 14px;border-radius:9px;font-size:13px;color:var(--alerta);
+  border:1px solid color-mix(in srgb,var(--alerta) 55%,transparent);
+  background:color-mix(in srgb,var(--alerta) 10%,var(--sup))}
+.faixa-previa strong{color:var(--tinta)}
+.faixa-previa button{margin-left:auto}
 .msg{padding:11px 13px;border-radius:9px;font-size:13px;border:1px solid var(--linha2);background:var(--sup2);color:var(--tinta2)}
 .msg.erro{border-color:color-mix(in srgb,var(--crit) 50%,transparent);color:var(--crit)}
 .msg.ok{border-color:color-mix(in srgb,var(--bom) 50%,transparent);color:var(--bomtxt)}
