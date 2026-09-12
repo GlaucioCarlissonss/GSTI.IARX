@@ -17,7 +17,9 @@ interface Fechamento {
 }
 
 export function PaginaFechamentos() {
-  const { empresa, ehGestor } = useSessao();
+  const { empresa, pode } = useSessao();
+  // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
+  const podeEditar = pode('configuracoes', 'edit');
   const [competencia, setCompetencia] = useState(competenciaAtual());
   const [observacao, setObservacao] = useState('');
   const [erro, setErro] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export function PaginaFechamentos() {
           Uma competência fechada não aceita novos lançamentos nem alterações — inclusive por importação. Reabrir exige
           justificativa, que fica registrada na auditoria.
         </Aviso>
-        {ehGestor && (
+        {podeEditar && (
           <form onSubmit={fechar} className="barra-filtros" style={{ marginTop: 12 }}>
             <Campo rotulo="Competência (MM/AAAA)">
               <input value={competencia} onChange={(e) => setCompetencia(e.target.value)} style={{ width: 110 }} />
@@ -88,7 +90,7 @@ export function PaginaFechamentos() {
                     <td>{f.fechado_por ?? '—'}</td>
                     <td>{f.observacao ?? '—'}</td>
                     <td>
-                      {ehGestor && (
+                      {podeEditar && (
                         <button type="button" className="botao discreto pequeno" onClick={() => setReabrir(f)}>
                           Reabrir
                         </button>
@@ -134,7 +136,9 @@ interface FilialCadastro extends ItemCadastro {
 }
 
 export function PaginaCadastros() {
-  const { empresa, ehGestor, recarregarFiliais } = useSessao();
+  const { empresa, pode, recarregarFiliais } = useSessao();
+  // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
+  const podeEditar = pode('configuracoes', 'edit');
   const [erro, setErro] = useState<string | null>(null);
 
   const filiais = useDados<FilialCadastro[]>(() => api.get('/api/filiais'), [empresa?.id]);
@@ -173,10 +177,10 @@ export function PaginaCadastros() {
             ...f,
             complemento: [f.cidade, f.uf].filter(Boolean).join('/') || null,
           }))}
-          podeEditar={ehGestor}
+          podeEditar={podeEditar}
           aoAlternar={(item) => alternarAtivo('/api/filiais', item, filiais.recarregar)}
         />
-        {ehGestor && (
+        {podeEditar && (
           <FormularioNovo
             rotulo="Nova filial"
             campos={[
@@ -192,10 +196,10 @@ export function PaginaCadastros() {
       <Cartao titulo="Tipos de despesa" descricao="Cadastro livre — os padrões vêm criados com a empresa">
         <ListaCadastro
           itens={tipos.dados ?? []}
-          podeEditar={ehGestor}
+          podeEditar={podeEditar}
           aoAlternar={(item) => alternarAtivo('/api/tipos-despesa', item, tipos.recarregar)}
         />
-        {ehGestor && (
+        {podeEditar && (
           <FormularioNovo
             rotulo="Novo tipo de despesa"
             campos={[{ chave: 'nome', rotulo: 'Nome', obrigatorio: true }]}
@@ -208,10 +212,10 @@ export function PaginaCadastros() {
         <Cartao titulo="Tópicos de ajuda" descricao="Categorizam o atendimento dos tickets">
           <ListaCadastro
             itens={topicos.dados ?? []}
-            podeEditar={ehGestor}
+            podeEditar={podeEditar}
             aoAlternar={(item) => alternarAtivo('/api/topicos-ajuda', item, topicos.recarregar)}
           />
-          {ehGestor && (
+          {podeEditar && (
             <FormularioNovo
               rotulo="Novo tópico"
               campos={[{ chave: 'nome', rotulo: 'Nome', obrigatorio: true }]}
@@ -226,7 +230,7 @@ export function PaginaCadastros() {
               <Etiqueta key={f.id} texto={f.nome} />
             ))}
           </div>
-          {ehGestor && (
+          {podeEditar && (
             <FormularioNovo
               rotulo="Nova fila"
               campos={[{ chave: 'nome', rotulo: 'Nome', obrigatorio: true }]}
@@ -236,7 +240,7 @@ export function PaginaCadastros() {
         </Cartao>
       </div>
 
-      <EnderecoHelpdesk podeEditar={ehGestor} />
+      <EnderecoHelpdesk podeEditar={podeEditar} />
     </>
   );
 }

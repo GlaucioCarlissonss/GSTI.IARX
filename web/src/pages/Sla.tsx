@@ -262,7 +262,9 @@ interface Topico {
 }
 
 export function PaginaRegistrosSla() {
-  const { empresa, filialId, paramFilial, filiais, ehGestor } = useSessao();
+  const { empresa, filialId, paramFilial, filiais, pode } = useSessao();
+  // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
+  const podeEditar = pode('suporte_ostick', 'create');
   const [novo, setNovo] = useState(false);
   const [excluir, setExcluir] = useState<RegistroSla | null>(null);
   const [competencia, setCompetencia] = useState('');
@@ -300,7 +302,7 @@ export function PaginaRegistrosSla() {
             style={{ width: 110 }}
           />
         </Campo>
-        {ehGestor && (
+        {podeEditar && (
           <button type="button" className="botao primario" onClick={() => setNovo(true)} style={{ marginLeft: 'auto' }}>
             Registrar tickets do mês
           </button>
@@ -377,7 +379,7 @@ export function PaginaRegistrosSla() {
                       />
                     </td>
                     <td>
-                      {ehGestor && (
+                      {podeEditar && (
                         <button type="button" className="botao discreto pequeno" onClick={() => setExcluir(r)}>
                           Excluir
                         </button>

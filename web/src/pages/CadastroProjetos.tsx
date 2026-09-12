@@ -42,7 +42,9 @@ interface Envolvido {
 }
 
 export function PaginaCadastroProjetos() {
-  const { empresa, filialId, paramFilial, filiais, ehGestor } = useSessao();
+  const { empresa, filialId, paramFilial, filiais, pode } = useSessao();
+  // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
+  const podeEditar = pode('projetos', 'edit');
   const [novo, setNovo] = useState(false);
   const [selecionado, setSelecionado] = useState<Projeto | null>(null);
   const [excluir, setExcluir] = useState<Projeto | null>(null);
@@ -58,7 +60,7 @@ export function PaginaCadastroProjetos() {
         <div style={{ marginRight: 'auto', color: 'var(--tinta-fraca)', fontSize: 13 }}>
           Projetos do escopo selecionado. Clique em um projeto para gerenciar tarefas e envolvidos.
         </div>
-        {ehGestor && (
+        {podeEditar && (
           <button type="button" className="botao primario" onClick={() => setNovo(true)}>
             Novo projeto
           </button>
@@ -111,7 +113,7 @@ export function PaginaCadastroProjetos() {
                       {p.tarefas_concluidas}/{p.total_tarefas}
                     </td>
                     <td>
-                      {ehGestor && (
+                      {podeEditar && (
                         <button type="button" className="botao discreto pequeno" onClick={() => setExcluir(p)}>
                           Excluir
                         </button>
@@ -139,7 +141,7 @@ export function PaginaCadastroProjetos() {
             setSelecionado(null);
             consulta.recarregar();
           }}
-          podeEditar={ehGestor}
+          podeEditar={podeEditar}
         />
       )}
 

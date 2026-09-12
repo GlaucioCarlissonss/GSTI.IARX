@@ -72,7 +72,9 @@ function BotaoCopiar({ texto, rotulo }: { texto: string; rotulo: string }) {
 }
 
 export function PaginaIntegracoes() {
-  const { empresa, ehGestor } = useSessao();
+  const { empresa, pode } = useSessao();
+  // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
+  const podeEditar = pode('integracoes', 'edit');
   const configs = useDados<Config[]>(() => api.get('/api/integracoes'), [empresa?.id]);
 
   const [status, setStatus] = useState<string[]>([]);
@@ -188,7 +190,7 @@ export function PaginaIntegracoes() {
                 <button
                   type="button"
                   className="botao"
-                  disabled={!ehGestor}
+                  disabled={!podeEditar}
                   onClick={() =>
                     acao(async () => {
                       const r = await api.post<{ segredo: string }>(
@@ -205,7 +207,7 @@ export function PaginaIntegracoes() {
                 <button
                   type="button"
                   className="botao"
-                  disabled={!ehGestor}
+                  disabled={!podeEditar}
                   aria-pressed={c.ativo}
                   onClick={() =>
                     acao(
@@ -219,7 +221,7 @@ export function PaginaIntegracoes() {
                 <button
                   type="button"
                   className="botao primario"
-                  disabled={!ehGestor}
+                  disabled={!podeEditar}
                   onClick={() =>
                     acao(async () => {
                       const r = await api.post<{ external_id: string }>(
@@ -359,7 +361,7 @@ export function PaginaIntegracoes() {
                       <button type="button" className="botao discreto pequeno" onClick={() => setPayloadAberto(e)}>
                         Payload
                       </button>
-                      {e.status === 'error' && ehGestor && (
+                      {e.status === 'error' && podeEditar && (
                         <button
                           type="button"
                           className="botao discreto pequeno"

@@ -44,7 +44,9 @@ const MODULOS = [
 ];
 
 export function PaginaPlanilhas() {
-  const { empresa, ehGestor } = useSessao();
+  const { empresa, pode } = useSessao();
+  // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
+  const podeEditar = pode('configuracoes', 'import');
   const [modulo, setModulo] = useState('financeiro');
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [criarCadastros, setCriarCadastros] = useState(true);
@@ -83,7 +85,7 @@ export function PaginaPlanilhas() {
           titulo="Importar planilha"
           descricao={`Template versão ${templates.dados?.versao ?? '—'}`}
         >
-          {!ehGestor ? (
+          {!podeEditar ? (
             <Aviso>Somente gestores podem importar dados nesta empresa.</Aviso>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

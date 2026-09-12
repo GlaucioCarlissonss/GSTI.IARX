@@ -100,7 +100,9 @@ export function PaginaBitrix24() {
 const ABERTOS = ['open', 'in_progress'];
 
 function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
-  const { empresa, filialId, paramFilial, ehGestor } = useSessao();
+  const { empresa, filialId, paramFilial, pode } = useSessao();
+  // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
+  const podeEditar = pode('suporte_ostick', 'import');
   const [setores, setSetores] = useState<string[]>([]);
   const [atendentes, setAtendentes] = useState<string[]>([]);
   const [solicitantes, setSolicitantes] = useState<string[]>([]);
@@ -253,7 +255,7 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
       <PlanilhaDeChamados
         recorte={recorte()}
         totalNoRecorte={consulta.dados?.resumo.total ?? 0}
-        podeImportar={ehGestor}
+        podeImportar={podeEditar}
         aoImportar={() => consulta.recarregar()}
       />
 

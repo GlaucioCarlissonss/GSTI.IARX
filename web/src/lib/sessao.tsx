@@ -29,6 +29,21 @@ export interface Usuario {
  * Escopo organizacional da sessão. Nenhuma tela consulta dados sem uma empresa
  * definida; a filial é opcional e `undefined` significa "consolidado".
  */
+/**
+ * O que o perfil do usuário permite nesta empresa. Vem do servidor, que é quem
+ * recusa a requisição de verdade — o front usa a mesma resposta só para não
+ * oferecer o que vai ser recusado. Esconder botão não é segurança; a segurança
+ * é a recusa do servidor, e ela continua lá.
+ */
+export interface Permissoes {
+  papel: string | null;
+  perfil: { id: number; nome: string; tipo: 'VIEW_ONLY' | 'EDIT' } | null;
+  permissoes: Record<string, Partial<Record<string, boolean>>>;
+  campos_bloqueados: Record<string, string[]>;
+}
+
+export type Acao = 'view' | 'create' | 'edit' | 'delete' | 'export' | 'import';
+
 export interface EstadoInstalacao {
   registro_aberto: boolean;
   primeiro_acesso: boolean;
@@ -56,6 +71,12 @@ interface EstadoSessao {
   /** Parâmetro de filial pronto para a query da API. */
   paramFilial: () => string | undefined;
   ehGestor: boolean;
+  /** Permissões do perfil nesta empresa; `null` enquanto não chegaram. */
+  permissoes: Permissoes | null;
+  /** O perfil permite a ação no módulo? Antes de a resposta chegar, não. */
+  pode: (modulo: string, acao?: Acao) => boolean;
+  /** Campos que o perfil não enxerga na entidade. */
+  camposBloqueados: (entidade: string) => string[];
 }
 
 const Contexto = createContext<EstadoSessao | null>(null);
@@ -72,6 +93,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   const [filiais, setFiliais] = useState<Filial[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [instalacao, setInstalacao] = useState<EstadoInstalacao | null>(null);
+  const [permissoes, setPermissoes] = useState<Permissoes | null>(null);
 
   const aplicarEmpresa = useCallback((id: number | null) => {
     setEmpresaId(id);
@@ -119,6 +141,25 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   useEffect(() => {
     void recarregarFiliais();
   }, [recarregarFiliais]);
+
+  // O perfil é do vínculo com a EMPRESA, não do usuário: trocar de empresa
+  // troca o que se pode fazer, e a resposta antiga não vale para a nova.
+  useEffect(() => {
+    if (!usuario || !empresaId) return setPermissoes(null);
+    let valido = true;
+    setPermissoes(null);
+    api
+      .get<Permissoes>('/api/acesso/minhas-permissoes')
+      .then((p) => {
+        if (valido) setPermissoes(p);
+      })
+      .catch(() => {
+        if (valido) setPermissoes(null);
+      });
+    return () => {
+      valido = false;
+    };
+  }, [usuario, empresaId]);
 
   const entrar = useCallback(
     async (usuario: string, senha: string) => {
@@ -168,6 +209,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
     setUsuario(null);
     setEmpresas([]);
     setEmpresaId(null);
+    setPermissoes(null);
   }, []);
 
   const empresa = useMemo(() => empresas.find((e) => e.id === empresaId) ?? null, [empresas, empresaId]);
@@ -193,6 +235,19 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       // A API aceita lista separada por vírgula; vazio significa consolidado.
       paramFilial: () => (filiaisSel.length ? filiaisSel.map(String).join(',') : undefined),
       ehGestor: empresa?.papel === 'gestor',
+      permissoes,
+      // Enquanto a resposta não chega, nada é escondido. Esconder antes de
+      // saber deixaria o menu vazio por um instante para todo mundo, e quem
+      // recusa de verdade é o servidor — não a ausência do botão.
+      pode: (modulo: string, acao: Acao = 'view') => {
+        if (permissoes === null) return true;
+        // Mesma exceção do servidor: o gestor da empresa administra os acessos
+        // por definição. Fosse preciso um perfil para isso, uma configuração
+        // errada trancaria todo mundo para fora.
+        if (permissoes.papel === 'gestor' && modulo === 'usuarios') return true;
+        return !!permissoes.permissoes?.[modulo]?.[acao];
+      },
+      camposBloqueados: (entidade: string) => permissoes?.campos_bloqueados?.[entidade] ?? [],
     }),
     [
       usuario,
@@ -209,6 +264,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       sair,
       aplicarEmpresa,
       recarregarFiliais,
+      permissoes,
     ],
   );
 

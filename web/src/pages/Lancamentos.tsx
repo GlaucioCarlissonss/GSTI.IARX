@@ -62,7 +62,9 @@ const ORIGEM_CURTA: Record<string, string> = {
 };
 
 export function PaginaLancamentos() {
-  const { empresa, filialId, paramFilial, filiais, ehGestor } = useSessao();
+  const { empresa, filialId, paramFilial, filiais, pode } = useSessao();
+  // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
+  const podeEditar = pode('financeiro', 'create');
   // Cada dimensão guarda uma lista: a API aceita valores separados por vírgula.
   const [filtros, setFiltros] = useState<{
     competencia_inicio: string;
@@ -158,7 +160,7 @@ export function PaginaLancamentos() {
         <Campo rotulo="Buscar">
           <input value={filtros.busca} onChange={(e) => atualizar('busca', e.target.value)} placeholder="fornecedor, motivo…" />
         </Campo>
-        {ehGestor && (
+        {podeEditar && (
           <button type="button" className="botao primario" onClick={() => setNovoAberto(true)} style={{ marginLeft: 'auto' }}>
             Novo lançamento
           </button>
@@ -250,7 +252,7 @@ export function PaginaLancamentos() {
                       >
                         Série
                       </button>
-                      {ehGestor && (
+                      {podeEditar && (
                         <>
                           <button type="button" className="botao discreto pequeno" onClick={() => setReclassificar(l)}>
                             Reclassificar
