@@ -7,6 +7,7 @@ import type { Contexto } from './contexto.js';
 import { paraCentavos } from './dinheiro.js';
 import { criarLancamento, garantirCenario, interpretarOrigem, type Origem } from './financeiro.js';
 import { criarFilial, resolverFila, resolverTipoDespesa, resolverTopicoAjuda } from './cadastros.js';
+import { atualizarTarefa } from './projetos.js';
 import { competenciaEstaFechada } from './fechamento.js';
 import { lerCsv, lerXlsx, type Aba } from '../lib/planilha.js';
 import {
@@ -294,6 +295,9 @@ function processarAba(
 ): void {
   const criar = opcoes.criarCadastrosAusentes ?? true;
   const gruposFinanceiros = new Map<string, number>();
+  // A planilha pode citar a tarefa principal antes de a linha dela existir,
+  // ou até depois. O vínculo é resolvido numa segunda passada, ao fim da aba.
+  const vinculosDeTarefa: Array<{ projetoId: number; filha: string; pai: string; linha: number }> = [];
 
   dados.linhas.forEach((linha, indice) => {
     const numeroLinha = indice + 2; // linha 1 = cabeçalho
@@ -316,7 +320,7 @@ function processarAba(
           importarProjeto(ctx, ler, linha, criar, resultado);
           break;
         case 'Tarefas':
-          importarTarefa(ctx, ler, linha, resultado);
+          importarTarefa(ctx, ler, linha, resultado, vinculosDeTarefa, numeroLinha);
           break;
         case 'Envolvidos':
           importarEnvolvido(ctx, ler, linha, resultado);
@@ -338,6 +342,45 @@ function processarAba(
       });
     }
   });
+
+  if (aba === 'Tarefas') aplicarVinculosDeTarefa(ctx, vinculosDeTarefa, resultado);
+}
+
+/**
+ * Segunda passada da aba Tarefas: liga cada filha à sua tarefa principal,
+ * agora que todas as linhas existem. A linha inválida entra no relatório com
+ * o motivo, sem desfazer a tarefa em si — ela vale mesmo sem o agrupamento.
+ */
+function aplicarVinculosDeTarefa(
+  ctx: Contexto,
+  vinculos: Array<{ projetoId: number; filha: string; pai: string; linha: number }>,
+  resultado: ResultadoImportacao,
+) {
+  for (const v of vinculos) {
+    try {
+      const acharNoProjeto = (nome: string) =>
+        db()
+          .prepare(
+            'SELECT id FROM tarefas WHERE projeto_id = ? AND excluido_em IS NULL AND nome = ? COLLATE NOCASE ORDER BY id LIMIT 1',
+          )
+          .get(v.projetoId, nome) as { id: number } | undefined;
+      const filha = acharNoProjeto(v.filha);
+      const pai = acharNoProjeto(v.pai);
+      if (!filha) continue;
+      if (!pai) throw new Error(`Tarefa principal "${v.pai}" não existe neste projeto.`);
+      // Passa pelo domínio, para herdar as validações de ciclo e profundidade
+      // em vez de gravar direto e deixar a planilha criar uma árvore inválida.
+      atualizarTarefa(ctx, filha.id, { parentTaskId: pai.id });
+    } catch (erro) {
+      resultado.com_erro += 1;
+      resultado.erros.push({
+        aba: 'Tarefas',
+        linha: v.linha,
+        mensagem: erro instanceof Error ? erro.message : String(erro),
+        dados: { Tarefa: v.filha, 'Tarefa Principal': v.pai },
+      });
+    }
+  }
 }
 
 /**
@@ -709,7 +752,14 @@ function acharProjeto(ctx: Contexto, nome: string): number {
   return linha.id;
 }
 
-function importarTarefa(ctx: Contexto, ler: Leitor, linha: Record<string, unknown>, resultado: ResultadoImportacao) {
+function importarTarefa(
+  ctx: Contexto,
+  ler: Leitor,
+  linha: Record<string, unknown>,
+  resultado: ResultadoImportacao,
+  vinculos: Array<{ projetoId: number; filha: string; pai: string; linha: number }>,
+  numeroLinha: number,
+) {
   const projetoId = acharProjeto(ctx, ler(linha, 'Projeto'));
   const nome = ler(linha, 'Tarefa');
   if (!nome) throw new Error('Nome da tarefa é obrigatório.');
@@ -728,6 +778,12 @@ function importarTarefa(ctx: Contexto, ler: Leitor, linha: Record<string, unknow
   const fimReal = fimRealBruto ? paraInterno(fimRealBruto) : null;
 
   const dedup = chaveDedup(['tarefa', projetoId, nome, inicio]);
+  const pai = ler(linha, 'Tarefa Principal');
+  if (pai && pai.toLowerCase() === nome.toLowerCase()) {
+    throw new Error('Uma tarefa não pode ser a própria tarefa principal.');
+  }
+  if (pai) vinculos.push({ projetoId, filha: nome, pai, linha: numeroLinha });
+
   const jaExiste = db()
     .prepare(
       `SELECT id FROM tarefas

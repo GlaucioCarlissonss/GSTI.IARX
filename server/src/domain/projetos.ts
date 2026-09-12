@@ -29,7 +29,15 @@ interface LinhaTarefa {
   mes_fim_real: string | null;
   responsavel: string | null;
   status: StatusTarefa;
+  parent_task_id: number | null;
 }
+
+/**
+ * Profundidade máxima da hierarquia de tarefas: principal → subtarefa →
+ * subtarefa. Três níveis é o que um Gantt ainda mostra sem virar indentação
+ * ilegível; além disso, o cronograma já pede um projeto novo.
+ */
+export const PROFUNDIDADE_MAXIMA = 3;
 
 /**
  * Atraso é derivado, nunca digitado: existe quando o mês corrente ultrapassa
@@ -83,8 +91,79 @@ function apresentarTarefa(linha: LinhaTarefa) {
     mes_fim_real: linha.mes_fim_real ? paraExibicao(linha.mes_fim_real) : null,
     responsavel: linha.responsavel,
     status: linha.status,
+    parent_task_id: linha.parent_task_id ?? null,
     ...calcularAtraso(linha.mes_fim_planejado, linha.mes_fim_real, linha.status),
   };
+}
+
+/**
+ * Cadeia de ascendentes de uma tarefa, da mais próxima à raiz. O laço tem
+ * teto próprio: um banco com ciclo já gravado (importação antiga, escrita
+ * direta) não pode travar a aplicação num laço infinito.
+ */
+function ascendentes(tarefaId: number): number[] {
+  const cadeia: number[] = [];
+  const consulta = db().prepare('SELECT parent_task_id FROM tarefas WHERE id = ?');
+  let atual: number | null = tarefaId;
+  for (let i = 0; i < 64 && atual !== null; i++) {
+    const linha = consulta.get(atual) as { parent_task_id: number | null } | undefined;
+    atual = linha?.parent_task_id ?? null;
+    if (atual === null) break;
+    if (cadeia.includes(atual)) break;
+    cadeia.push(atual);
+  }
+  return cadeia;
+}
+
+/** Profundidade da subárvore abaixo da tarefa (0 = nenhum filho). */
+function alturaAbaixo(tarefaId: number): number {
+  const filhos = db()
+    .prepare('SELECT id FROM tarefas WHERE parent_task_id = ? AND excluido_em IS NULL')
+    .all(tarefaId) as Array<{ id: number }>;
+  if (!filhos.length) return 0;
+  return 1 + Math.max(...filhos.map((f) => alturaAbaixo(f.id)));
+}
+
+/**
+ * Valida a tarefa principal escolhida e devolve o id a gravar. Recusa, com o
+ * motivo, a tarefa que aponta para si mesma, para outro projeto, para uma
+ * descendente (o ciclo) ou que estouraria a profundidade máxima.
+ *
+ * `tarefaId` é a tarefa sendo editada; na criação, `null`.
+ */
+function validarTarefaPrincipal(
+  projetoId: number,
+  paiId: number | null | undefined,
+  tarefaId: number | null,
+): number | null {
+  if (paiId === null || paiId === undefined || paiId === 0) return null;
+  const pai = Number(paiId);
+  if (tarefaId !== null && pai === tarefaId) {
+    throw erroValidacao('Uma tarefa não pode ser a própria tarefa principal.');
+  }
+  const linha = db()
+    .prepare('SELECT id, projeto_id, nome FROM tarefas WHERE id = ? AND excluido_em IS NULL')
+    .get(pai) as { id: number; projeto_id: number; nome: string } | undefined;
+  if (!linha) throw erroValidacao(`Tarefa principal ${pai} não encontrada.`);
+  if (linha.projeto_id !== projetoId) {
+    throw erroValidacao('A tarefa principal precisa ser do mesmo projeto.');
+  }
+  if (tarefaId !== null && ascendentes(pai).includes(tarefaId)) {
+    throw erroValidacao(
+      `"${linha.nome}" já está abaixo desta tarefa: colocá-la como principal criaria um ciclo.`,
+    );
+  }
+  // O nível do pai (1 = raiz) mais o da subárvore que vem junto não pode
+  // passar do teto. Na criação a subárvore é vazia; na edição ela vem junto.
+  const nivelDoPai = ascendentes(pai).length + 1;
+  const alturaQueVem = tarefaId === null ? 0 : alturaAbaixo(tarefaId);
+  if (nivelDoPai + 1 + alturaQueVem > PROFUNDIDADE_MAXIMA) {
+    throw erroValidacao(
+      `A hierarquia de tarefas vai até ${PROFUNDIDADE_MAXIMA} níveis (tarefa principal → subtarefa → subtarefa). ` +
+        `"${linha.nome}" já está no nível ${nivelDoPai}.`,
+    );
+  }
+  return pai;
 }
 
 const SQL_PROJETO_BASE = `
@@ -255,16 +334,43 @@ export interface EntradaTarefa {
   mesFimReal?: string | null;
   responsavel?: string | null;
   status?: StatusTarefa;
+  parentTaskId?: number | null;
   dedupHash?: string | null;
 }
 
+/**
+ * Tarefas do projeto em ordem de leitura: cada tarefa principal seguida das
+ * suas subtarefas, e não a ordem plana do banco. É o que o Gantt desenha, e
+ * calcular isso aqui evita que cada tela reconstrua a árvore por conta.
+ *
+ * Cada item leva `nivel` (1 = principal) e `total_subtarefas`.
+ */
 export function listarTarefas(ctx: Contexto, projetoId: number) {
   garantirProjeto(ctx, projetoId);
-  return (
-    db()
-      .prepare('SELECT * FROM tarefas WHERE projeto_id = ? AND excluido_em IS NULL ORDER BY mes_inicio, id')
-      .all(projetoId) as LinhaTarefa[]
-  ).map(apresentarTarefa);
+  const linhas = db()
+    .prepare('SELECT * FROM tarefas WHERE projeto_id = ? AND excluido_em IS NULL ORDER BY mes_inicio, id')
+    .all(projetoId) as LinhaTarefa[];
+
+  const porPai = new Map<number | null, LinhaTarefa[]>();
+  const ids = new Set(linhas.map((l) => l.id));
+  for (const l of linhas) {
+    // Pai fora da lista (excluído logicamente) devolve o filho ao primeiro
+    // nível, em vez de sumir com ele da tela.
+    const chave = l.parent_task_id !== null && ids.has(l.parent_task_id) ? l.parent_task_id : null;
+    if (!porPai.has(chave)) porPai.set(chave, []);
+    porPai.get(chave)!.push(l);
+  }
+
+  const saida: Array<ReturnType<typeof apresentarTarefa> & { nivel: number; total_subtarefas: number }> = [];
+  const descer = (paiId: number | null, nivel: number) => {
+    for (const linha of porPai.get(paiId) ?? []) {
+      const filhos = porPai.get(linha.id) ?? [];
+      saida.push({ ...apresentarTarefa(linha), nivel, total_subtarefas: filhos.length });
+      if (nivel < PROFUNDIDADE_MAXIMA) descer(linha.id, nivel + 1);
+    }
+  };
+  descer(null, 1);
+  return saida;
 }
 
 export function criarTarefa(ctx: Contexto, projetoId: number, entrada: EntradaTarefa) {
@@ -276,12 +382,14 @@ export function criarTarefa(ctx: Contexto, projetoId: number, entrada: EntradaTa
   const fimReal = entrada.mesFimReal ? paraInterno(entrada.mesFimReal) : null;
   const status: StatusTarefa = entrada.status ?? (fimReal ? 'concluida' : 'pendente');
 
+  const paiId = validarTarefaPrincipal(projetoId, entrada.parentTaskId, null);
+
   const info = db()
     .prepare(
-      `INSERT INTO tarefas (projeto_id, nome, mes_inicio, mes_fim_planejado, mes_fim_real, responsavel, status, dedup_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tarefas (projeto_id, nome, mes_inicio, mes_fim_planejado, mes_fim_real, responsavel, status, parent_task_id, dedup_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(projetoId, entrada.nome.trim(), inicio, fimPlanejado, fimReal, entrada.responsavel ?? null, status, entrada.dedupHash ?? null);
+    .run(projetoId, entrada.nome.trim(), inicio, fimPlanejado, fimReal, entrada.responsavel ?? null, status, paiId, entrada.dedupHash ?? null);
   const id = Number(info.lastInsertRowid);
   auditar(ctx, { entidade: 'tarefa', entidadeId: id, acao: 'criar', depois: { projetoId, nome: entrada.nome } });
   return apresentarTarefa(db().prepare('SELECT * FROM tarefas WHERE id = ?').get(id) as LinhaTarefa);
@@ -305,10 +413,15 @@ export function atualizarTarefa(ctx: Contexto, tarefaId: number, dados: Partial<
   let status: StatusTarefa = dados.status ?? antes.status;
   if (fimReal && status !== 'cancelada') status = 'concluida';
 
+  const paiId =
+    dados.parentTaskId === undefined
+      ? antes.parent_task_id
+      : validarTarefaPrincipal(antes.projeto_id, dados.parentTaskId, tarefaId);
+
   db()
     .prepare(
       `UPDATE tarefas SET nome = ?, mes_inicio = ?, mes_fim_planejado = ?, mes_fim_real = ?, responsavel = ?,
-              status = ?, atualizado_em = datetime('now')
+              status = ?, parent_task_id = ?, atualizado_em = datetime('now')
         WHERE id = ?`,
     )
     .run(
@@ -318,6 +431,7 @@ export function atualizarTarefa(ctx: Contexto, tarefaId: number, dados: Partial<
       fimReal,
       dados.responsavel !== undefined ? dados.responsavel : antes.responsavel,
       status,
+      paiId,
       tarefaId,
     );
   const depois = apresentarTarefa(db().prepare('SELECT * FROM tarefas WHERE id = ?').get(tarefaId) as LinhaTarefa);
@@ -340,6 +454,22 @@ export function excluirTarefa(ctx: Contexto, tarefaId: number, justificativa?: s
     )
     .get(tarefaId, ctx.empresaId) as LinhaTarefa | undefined;
   if (!antes) throw erroNaoEncontrado(`Tarefa ${tarefaId} não encontrada nesta empresa.`);
+
+  // Excluir a tarefa principal é bloqueado, não cascateado: em cascata uma
+  // confirmação de "excluir 1 tarefa" apagaria silenciosamente a subárvore
+  // inteira, que é exatamente o que a regra de auditoria não admite. Quem
+  // quiser remover o grupo desvincula ou exclui as subtarefas antes.
+  const filhos = db()
+    .prepare('SELECT nome FROM tarefas WHERE parent_task_id = ? AND excluido_em IS NULL ORDER BY mes_inicio, id')
+    .all(tarefaId) as Array<{ nome: string }>;
+  if (filhos.length) {
+    throw erroValidacao(
+      `"${antes.nome}" tem ${filhos.length} subtarefa(s) e não pode ser excluída: ` +
+        `${filhos.map((f) => `"${f.nome}"`).join(', ')}. ` +
+        'Exclua ou desvincule as subtarefas primeiro.',
+    );
+  }
+
   db().prepare(`UPDATE tarefas SET excluido_em = datetime('now'), dedup_hash = NULL WHERE id = ?`).run(tarefaId);
   auditar(ctx, { entidade: 'tarefa', entidadeId: tarefaId, acao: 'excluir', justificativa: justificativa ?? null, antes });
   return { excluida: true };

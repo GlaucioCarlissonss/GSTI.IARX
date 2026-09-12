@@ -5,9 +5,12 @@ import {
   adicionarEnvolvido,
   atualizarProjeto,
   calcularAtraso,
+  atualizarTarefa,
   criarProjeto,
   criarTarefa,
+  excluirTarefa,
   listarProjetos,
+  listarTarefas,
 } from '../src/domain/projetos.js';
 import {
   atualizarTicketSla,
@@ -275,4 +278,67 @@ test('chamado é registro de SLA com detalhe e volta pela planilha sem duplicar'
 
   // O mesmo chamado com o fechamento preenchido atualiza, não cria um segundo.
   assert.equal(buscarPorTicketId(ctx, 21734)!.id, chamado.id);
+});
+
+test('hierarquia de tarefas: até 3 níveis, sem ciclo e sem tarefa órfã de pai excluído', () => {
+  const { ctx } = ambienteLimpo();
+  const projeto = criarProjeto(ctx, {
+    nome: 'Migração de ERP',
+    mesInicio: mesRelativo(-2),
+    mesFimPlanejado: mesRelativo(4),
+  });
+  const outro = criarProjeto(ctx, {
+    nome: 'Outro projeto',
+    mesInicio: mesRelativo(-1),
+    mesFimPlanejado: mesRelativo(2),
+  });
+  const tarefa = (nome: string, parentTaskId: number | null = null, projetoId = projeto.id) =>
+    criarTarefa(ctx, projetoId, {
+      nome,
+      mesInicio: mesRelativo(-1),
+      mesFimPlanejado: mesRelativo(1),
+      parentTaskId,
+    });
+
+  const n1 = tarefa('Levantamento');
+  const n2 = tarefa('Entrevistas', n1.id);
+  const n3 = tarefa('Roteiro', n2.id);
+  assert.equal(n2.parent_task_id, n1.id);
+  assert.equal(n3.parent_task_id, n2.id);
+
+  // 4º nível é recusado, com o motivo.
+  assert.throws(() => tarefa('Perguntas', n3.id), /até 3 níveis/);
+
+  // A própria tarefa como principal.
+  assert.throws(() => atualizarTarefa(ctx, n1.id, { parentTaskId: n1.id }), /não pode ser a própria/);
+
+  // Ciclo: colocar o avô abaixo do neto.
+  assert.throws(() => atualizarTarefa(ctx, n1.id, { parentTaskId: n3.id }), /ciclo/);
+
+  // Tarefa principal de outro projeto.
+  const alheia = tarefa('Tarefa de outro projeto', null, outro.id);
+  assert.throws(() => atualizarTarefa(ctx, n2.id, { parentTaskId: alheia.id }), /mesmo projeto/);
+
+  // Mover uma subárvore de 2 níveis para baixo de outra raiz estouraria o teto.
+  const raiz2 = tarefa('Piloto');
+  assert.throws(() => atualizarTarefa(ctx, n1.id, { parentTaskId: raiz2.id }), /até 3 níveis/);
+
+  // Excluir tarefa com filhas é bloqueado, e a mensagem diz quais são.
+  assert.throws(() => excluirTarefa(ctx, n1.id), /Entrevistas/);
+  assert.throws(() => excluirTarefa(ctx, n1.id), /subtarefa/);
+
+  // Desvincular libera a exclusão da folha, e o pai continua de pé.
+  atualizarTarefa(ctx, n3.id, { parentTaskId: null });
+  excluirTarefa(ctx, n2.id);
+  assert.equal(listarTarefas(ctx, projeto.id).find((t) => t.id === n1.id)!.total_subtarefas, 0);
+
+  // A ordem de leitura é hierárquica: pai antes das filhas, com o nível junto.
+  const filha = tarefa('Checklist', n1.id);
+  const lista = listarTarefas(ctx, projeto.id);
+  const posPai = lista.findIndex((t) => t.id === n1.id);
+  const posFilha = lista.findIndex((t) => t.id === filha.id);
+  assert.ok(posFilha === posPai + 1, 'a subtarefa vem logo abaixo da principal');
+  assert.equal(lista[posPai]!.nivel, 1);
+  assert.equal(lista[posFilha]!.nivel, 2);
+  assert.equal(lista[posPai]!.total_subtarefas, 1);
 });

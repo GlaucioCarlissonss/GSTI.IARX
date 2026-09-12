@@ -8,8 +8,9 @@
  */
 
 // 1.1 acrescentou a coluna Origem ao Financeiro;
-// 1.2 acrescentou à aba SLA o detalhe do chamado (Ticket, Número, Assunto…).
-export const TEMPLATE_VERSAO_ATUAL = '1.2';
+// 1.2 acrescentou à aba SLA o detalhe do chamado (Ticket, Número, Assunto…);
+// 1.3 acrescentou "Tarefa Principal" à aba Tarefas.
+export const TEMPLATE_VERSAO_ATUAL = '1.3';
 
 export type NomeAba =
   | 'Filiais'
@@ -94,10 +95,14 @@ export const ABAS: Record<NomeAba, DefinicaoAba> = {
     obrigatorias: ['Projeto', 'Mês Início', 'Mês Fim Planejado'],
   },
   Tarefas: {
-    colunas: ['Projeto', 'Tarefa', 'Mês Início', 'Mês Fim Planejado', 'Mês Fim Real', 'Responsável', 'Status'],
+    colunas: [
+      'Projeto', 'Tarefa', 'Tarefa Principal', 'Mês Início', 'Mês Fim Planejado', 'Mês Fim Real', 'Responsável', 'Status',
+    ],
     apelidos: {
       Projeto: ['projeto', 'nomeprojeto'],
       Tarefa: ['tarefa', 'nome', 'nometarefa'],
+      // Pelo nome, que é o que se lê na planilha — id interno não ajuda quem edita.
+      'Tarefa Principal': ['tarefaprincipal', 'tarefapai', 'pai', 'agrupadorpor', 'grupo'],
       'Mês Início': ['mesinicio', 'inicio'],
       'Mês Fim Planejado': ['mesfimplanejado', 'fimplanejado'],
       'Mês Fim Real': ['mesfimreal', 'fimreal'],

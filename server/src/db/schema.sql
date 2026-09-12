@@ -142,14 +142,22 @@ CREATE TABLE IF NOT EXISTS tarefas (
   mes_fim_real      TEXT CHECK (mes_fim_real IS NULL OR mes_fim_real GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'),
   responsavel       TEXT,
   status            TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','em_andamento','concluida','cancelada')),
+  -- Tarefa principal. Auto-relacionamento opcional, limitado ao mesmo projeto
+  -- e a 3 níveis (principal → subtarefa → subtarefa), verificado no domínio:
+  -- profundidade e ciclo o SQLite não expressa em CHECK.
+  parent_task_id    INTEGER REFERENCES tarefas(id) ON DELETE RESTRICT,
   excluido_em       TEXT,
   criado_em         TEXT NOT NULL DEFAULT (datetime('now')),
   atualizado_em     TEXT NOT NULL DEFAULT (datetime('now')),
   dedup_hash        TEXT,
-  CHECK (mes_fim_planejado >= mes_inicio)
+  CHECK (mes_fim_planejado >= mes_inicio),
+  CHECK (parent_task_id IS NULL OR parent_task_id <> id)
 );
 CREATE INDEX IF NOT EXISTS ix_tarefas_projeto ON tarefas(projeto_id, excluido_em);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_tarefa_dedup ON tarefas(dedup_hash) WHERE dedup_hash IS NOT NULL;
+
+-- O índice de filhos é criado em db/index.ts, junto das migrações: um banco
+-- anterior a esta coluna ainda não tem `parent_task_id` quando este arquivo roda.
 
 CREATE TABLE IF NOT EXISTS envolvidos (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,6 +172,19 @@ CREATE TABLE IF NOT EXISTS envolvidos (
 -- Módulo de SLA
 -- ============================================================
 CREATE TABLE IF NOT EXISTS topicos_ajuda (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  nome       TEXT NOT NULL,
+  ativo      INTEGER NOT NULL DEFAULT 1,
+  criado_em  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (empresa_id, nome)
+);
+
+-- Setor: a área da empresa que fez a solicitação. Catálogo por tenant, como os
+-- demais. "Não classificado" é o destino do chamado cuja origem o sistema de
+-- suporte não informou — o registro entra e fica visível para revisão, em vez
+-- de ser recusado na porta.
+CREATE TABLE IF NOT EXISTS setores (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   nome       TEXT NOT NULL,
@@ -209,6 +230,21 @@ CREATE TABLE IF NOT EXISTS tickets_sla (
   fechado_em      TEXT,
   prazo_em        TEXT,
   horas           REAL,
+  -- Sistema de suporte de origem e a identidade do chamado lá. Juntos com a
+  -- empresa formam a chave de idempotência da integração: reentrega do
+  -- webhook atualiza o mesmo registro, nunca cria um segundo.
+  source_system   TEXT,
+  external_id     TEXT,
+  descricao       TEXT,
+  prioridade      TEXT,
+  setor_id        INTEGER REFERENCES setores(id) ON DELETE RESTRICT,
+  solicitante_externo_id TEXT,
+  solicitante_email      TEXT,
+  atendente_externo_id   TEXT,
+  -- Momento da última sincronização e o payload como chegou, para o registro
+  -- poder ser reconferido contra a origem sem depender de log.
+  synced_at       TEXT,
+  raw_payload     TEXT,
   dedup_hash      TEXT,
   excluido_em     TEXT,
   criado_em       TEXT NOT NULL DEFAULT (datetime('now')),

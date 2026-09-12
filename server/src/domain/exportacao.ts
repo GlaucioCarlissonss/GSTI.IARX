@@ -114,8 +114,10 @@ function linhasTarefas(ctx: Contexto) {
   return (
     db()
       .prepare(
-        `SELECT p.nome AS projeto, t.nome, t.mes_inicio, t.mes_fim_planejado, t.mes_fim_real, t.responsavel, t.status
+        `SELECT p.nome AS projeto, t.nome, t.mes_inicio, t.mes_fim_planejado, t.mes_fim_real, t.responsavel, t.status,
+                pai.nome AS tarefa_principal
            FROM tarefas t JOIN projetos p ON p.id = t.projeto_id
+           LEFT JOIN tarefas pai ON pai.id = t.parent_task_id AND pai.excluido_em IS NULL
           WHERE p.empresa_id = ? AND t.excluido_em IS NULL AND p.excluido_em IS NULL
           ORDER BY p.nome, t.mes_inicio, t.id`,
       )
@@ -127,10 +129,12 @@ function linhasTarefas(ctx: Contexto) {
       mes_fim_real: string | null;
       responsavel: string | null;
       status: string;
+      tarefa_principal: string | null;
     }>
   ).map((l) => ({
     Projeto: l.projeto,
     Tarefa: l.nome,
+    'Tarefa Principal': l.tarefa_principal ?? '',
     'Mês Início': paraExibicao(l.mes_inicio),
     'Mês Fim Planejado': paraExibicao(l.mes_fim_planejado),
     'Mês Fim Real': l.mes_fim_real ? paraExibicao(l.mes_fim_real) : '',

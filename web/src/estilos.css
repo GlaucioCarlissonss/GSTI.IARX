@@ -339,7 +339,20 @@ tfoot td { padding: 8px 10px; font-weight: 600; border-top: 1px solid var(--eixo
 .gantt .barra { position: absolute; height: 9px; top: 5px; border-radius: 4px; }
 .gantt .barra.real { height: 6px; top: 16px; border-radius: 3px; }
 .gantt .nome { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
-.gantt .nome.tarefa { padding-left: 18px; color: var(--tinta-2); font-size: 12.5px; }
+.gantt .nome.tarefa { color: var(--tinta-2); font-size: 12.5px; }
+/* Botão de expandir/comprimir grupo: alvo de 20px, foco visível, contraste AA
+   sobre a superfície do cabeçalho fixo. */
+.gantt-grupo {
+  flex: none; width: 20px; height: 20px; padding: 0; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 600 15px/1 var(--fonte, inherit); cursor: pointer;
+  color: var(--tinta-2); background: var(--superficie-2);
+  border: 1px solid var(--borda-forte); border-radius: 5px;
+}
+.gantt-grupo:hover { color: var(--tinta); border-color: var(--tinta-fraca); }
+.gantt-grupo:focus-visible { outline: 2px solid var(--serie-1); outline-offset: 1px; }
+/* Reserva o mesmo espaço numa linha sem grupo, para os nomes alinharem. */
+.gantt-vazio { flex: none; width: 20px; height: 20px; display: inline-block; }
 .gantt .hoje { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--serie-2); opacity: 0.55; }
 
 @media (max-width: 900px) {

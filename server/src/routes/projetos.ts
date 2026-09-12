@@ -87,6 +87,7 @@ rotasProjetos.post('/:id/tarefas', somenteGestor, (req, res) => {
       mesFimReal: corpo.mes_fim_real ?? null,
       responsavel: corpo.responsavel ?? null,
       status: corpo.status,
+      parentTaskId: corpo.parent_task_id ?? null,
     }),
   );
 });
@@ -101,6 +102,8 @@ rotasProjetos.patch('/tarefas/:tarefaId', somenteGestor, (req, res) => {
       mesFimReal: corpo.mes_fim_real,
       responsavel: corpo.responsavel,
       status: corpo.status,
+      // `undefined` mantém o vínculo atual; `null` desvincula.
+      parentTaskId: corpo.parent_task_id,
       justificativa: corpo.justificativa,
     }),
   );

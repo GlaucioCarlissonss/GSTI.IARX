@@ -328,7 +328,8 @@ export function dashboardProjetos(ctx: Contexto, escopo: EscopoDashboard = {}) {
       ? []
       : (db()
           .prepare(
-            `SELECT t.id, t.projeto_id, t.nome, t.mes_inicio, t.mes_fim_planejado, t.mes_fim_real, t.responsavel, t.status
+            `SELECT t.id, t.projeto_id, t.nome, t.mes_inicio, t.mes_fim_planejado, t.mes_fim_real, t.responsavel, t.status,
+                    t.parent_task_id
                FROM tarefas t
               WHERE t.excluido_em IS NULL AND t.projeto_id IN (${idsProjetos.map(() => '?').join(',')})
               ORDER BY t.mes_inicio, t.id`,
@@ -342,7 +343,85 @@ export function dashboardProjetos(ctx: Contexto, escopo: EscopoDashboard = {}) {
           mes_fim_real: string | null;
           responsavel: string | null;
           status: string;
+          parent_task_id: number | null;
         }>);
+
+/**
+ * Tarefas de um projeto prontas para o Gantt: em ordem hierárquica (cada
+ * principal seguida das suas subtarefas) e com o intervalo agregado do grupo,
+ * que é a barra que a linha do pai mostra quando o grupo está comprimido.
+ *
+ * O agregado usa o menor início e o maior fim da subárvore, incluindo o
+ * próprio pai — comprimir o grupo não pode encolher o que ele representa.
+ */
+function tarefasDoGantt(
+  doProjeto: Array<{
+    id: number;
+    nome: string;
+    mes_inicio: string;
+    mes_fim_planejado: string;
+    mes_fim_real: string | null;
+    responsavel: string | null;
+    status: string;
+    parent_task_id: number | null;
+  }>,
+  inicioLinha: string,
+) {
+  const ids = new Set(doProjeto.map((t) => t.id));
+  const paiDe = (t: (typeof doProjeto)[number]) =>
+    t.parent_task_id !== null && ids.has(t.parent_task_id) ? t.parent_task_id : null;
+
+  const porPai = new Map<number | null, typeof doProjeto>();
+  for (const t of doProjeto) {
+    const chave = paiDe(t);
+    if (!porPai.has(chave)) porPai.set(chave, []);
+    porPai.get(chave)!.push(t);
+  }
+
+  /** A subárvore inteira a partir de uma tarefa, ela inclusive. */
+  const subarvore = (raiz: (typeof doProjeto)[number]): typeof doProjeto =>
+    [raiz, ...(porPai.get(raiz.id) ?? []).flatMap(subarvore)];
+
+  const saida: Array<Record<string, unknown>> = [];
+  const descer = (paiId: number | null, nivel: number) => {
+    for (const t of porPai.get(paiId) ?? []) {
+      const filhos = porPai.get(t.id) ?? [];
+      const grupo = subarvore(t);
+      const inicioGrupo = grupo.map((x) => x.mes_inicio).sort()[0]!;
+      const fimGrupo = grupo.map((x) => x.mes_fim_real ?? x.mes_fim_planejado).sort().pop()!;
+      // O realizado do grupo só existe quando a subárvore inteira terminou:
+      // um grupo com uma tarefa em aberto não está realizado.
+      const todasConcluidas = grupo.every((x) => x.mes_fim_real);
+      const fimRealGrupo = todasConcluidas ? grupo.map((x) => x.mes_fim_real!).sort().pop()! : null;
+
+      saida.push({
+        id: t.id,
+        nome: t.nome,
+        responsavel: t.responsavel,
+        status: t.status,
+        parent_task_id: paiId,
+        nivel,
+        total_subtarefas: filhos.length,
+        mes_inicio: paraExibicao(t.mes_inicio),
+        mes_fim_planejado: paraExibicao(t.mes_fim_planejado),
+        mes_fim_real: t.mes_fim_real ? paraExibicao(t.mes_fim_real) : null,
+        offset_meses: Math.max(diferencaEmMeses(inicioLinha, t.mes_inicio), 0),
+        duracao_meses: diferencaEmMeses(t.mes_inicio, t.mes_fim_planejado) + 1,
+        duracao_real_meses: t.mes_fim_real ? diferencaEmMeses(t.mes_inicio, t.mes_fim_real) + 1 : null,
+        // Intervalo agregado do grupo — o que a barra do pai mostra comprimida.
+        grupo_mes_inicio: paraExibicao(inicioGrupo),
+        grupo_mes_fim: paraExibicao(fimGrupo),
+        grupo_offset_meses: Math.max(diferencaEmMeses(inicioLinha, inicioGrupo), 0),
+        grupo_duracao_meses: diferencaEmMeses(inicioGrupo, fimGrupo) + 1,
+        grupo_duracao_real_meses: fimRealGrupo ? diferencaEmMeses(inicioGrupo, fimRealGrupo) + 1 : null,
+        ...calcularAtraso(t.mes_fim_planejado, t.mes_fim_real, t.status),
+      });
+      descer(t.id, nivel + 1);
+    }
+  };
+  descer(null, 1);
+  return saida;
+}
 
   const projetosComAtraso = projetos.map((p) => ({
     ...p,
@@ -374,21 +453,7 @@ export function dashboardProjetos(ctx: Contexto, escopo: EscopoDashboard = {}) {
     offset_meses: Math.max(diferencaEmMeses(inicioLinha, p.mes_inicio), 0),
     duracao_meses: diferencaEmMeses(p.mes_inicio, p.mes_fim_planejado) + 1,
     duracao_real_meses: p.mes_fim_real ? diferencaEmMeses(p.mes_inicio, p.mes_fim_real) + 1 : null,
-    tarefas: tarefas
-      .filter((t) => t.projeto_id === p.id)
-      .map((t) => ({
-        id: t.id,
-        nome: t.nome,
-        responsavel: t.responsavel,
-        status: t.status,
-        mes_inicio: paraExibicao(t.mes_inicio),
-        mes_fim_planejado: paraExibicao(t.mes_fim_planejado),
-        mes_fim_real: t.mes_fim_real ? paraExibicao(t.mes_fim_real) : null,
-        offset_meses: Math.max(diferencaEmMeses(inicioLinha, t.mes_inicio), 0),
-        duracao_meses: diferencaEmMeses(t.mes_inicio, t.mes_fim_planejado) + 1,
-        duracao_real_meses: t.mes_fim_real ? diferencaEmMeses(t.mes_inicio, t.mes_fim_real) + 1 : null,
-        ...calcularAtraso(t.mes_fim_planejado, t.mes_fim_real, t.status),
-      })),
+    tarefas: tarefasDoGantt(tarefas.filter((t) => t.projeto_id === p.id), inicioLinha),
   }));
 
   // --- Carga de trabalho por envolvido (tarefas atribuídas)

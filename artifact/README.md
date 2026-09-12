@@ -114,6 +114,21 @@ O seletor **Base considerada**, na barra do topo, recorta todos os números do
 sistema por esse campo. É o que permite responder à pergunta que motivou a
 aba: *por que o total do sistema não é o total da minha planilha?*
 
+## Gantt agrupável
+
+O cronograma tem dois níveis de grupo: o projeto e, dentro dele, a tarefa
+principal com as suas subtarefas (até 3 níveis). Cada grupo tem um botão
+**+ / −**; o padrão é expandido, e o que fica em `localStorage` é o conjunto dos
+**comprimidos** — assim um grupo novo nasce aberto.
+
+Comprimir um grupo faz a barra do pai passar a mostrar o **intervalo agregado**
+da subárvore: o que sumiu da tela não pode sumir do cronograma. Acima de 60
+linhas o Gantt virtualiza, com espaçadores no lugar do que está fora da janela.
+
+As regras da hierarquia (ciclo, profundidade, exclusão bloqueada) estão em
+[`docs/regras-de-negocio.md`](../docs/regras-de-negocio.md#tarefas-hierárquicas)
+e valem igual nas duas versões.
+
 ## Chamados (SLA)
 
 Um registro de SLA com `total = 1` e `dentro = 0|1` é **um chamado**. Como toda
@@ -159,7 +174,7 @@ vindos do Excel chegam comprimidos. Não há CDN envolvido.
 
 ### Verificação
 
-Nove suítes, todas contra um `window.claude` simulado num Chromium real:
+Dez suítes, todas contra um `window.claude` simulado num Chromium real:
 
 | script | o que cobre |
 |---|---|
@@ -172,6 +187,7 @@ Nove suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-multi.cjs` | filtros de múltipla escolha: somar meses, consolidar empresas, recortar por procedência, comparar cenários, fichas e mínimos |
 | `testar-dados.cjs` | exportar, reimportar sem duplicar, importar planilha quebrada sem derrubar o lote |
 | `testar-navegacao.cjs` | os quatro módulos e suas telas; o tema ciclando, persistindo e com contraste nas nove telas |
+| `testar-hierarquia.cjs` | o que a hierarquia de tarefas recusa (ciclo, 4º nível, si mesma) e o Gantt agrupado: teclado, `aria-expanded`, barra agregada e persistência |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

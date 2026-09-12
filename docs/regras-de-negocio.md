@@ -109,6 +109,51 @@ pode ser negativo (entrega adiantada). Itens cancelados não acusam atraso.
 O cronograma é um Gantt de granularidade mensal, com a barra planejada e, quando
 existe, a barra realizada logo abaixo, além do marcador do mês corrente.
 
+### Tarefas hierárquicas
+
+Uma tarefa pode ter uma **tarefa principal** (`parent_task_id`), sempre do mesmo
+projeto. Quatro regras sustentam a hierarquia, todas validadas no domínio e com
+mensagem que diz o motivo:
+
+| regra | por quê |
+| --- | --- |
+| Nenhuma tarefa é a própria principal | o caso trivial de ciclo |
+| Nenhuma tarefa é ascendente de si mesma | ciclo faz o Gantt entrar em laço infinito |
+| Mesmo projeto | um cronograma não agrupa por fora de si |
+| Até **3 níveis** (principal → subtarefa → subtarefa) | é o que o Gantt ainda mostra sem virar indentação ilegível; além disso, o caso já pede um projeto novo |
+
+A profundidade é verificada considerando a **subárvore que vem junto**: mover
+uma tarefa que já tem duas gerações abaixo dela para debaixo de outra raiz é
+recusado, mesmo que a tarefa em si caiba.
+
+**Excluir tarefa principal com subtarefas é bloqueado, não cascateado.** Em
+cascata, uma confirmação de "excluir 1 tarefa" apagaria a subárvore inteira em
+silêncio, que é exatamente o que a regra de auditoria não admite. A mensagem
+lista as subtarefas e pede que sejam desagrupadas ou excluídas antes.
+
+Tarefa cujo pai foi excluído logicamente volta ao primeiro nível na leitura, em
+vez de sumir da tela.
+
+### Gantt agrupável
+
+O Gantt mostra o projeto como linha de grupo e, abaixo, as tarefas em ordem de
+leitura — cada principal seguida das suas subtarefas, indentadas por nível.
+Cada linha de grupo tem um botão **+ / −**:
+
+- **Estado padrão: expandido.** O que fica guardado no navegador é o conjunto
+  dos **comprimidos**, não o dos expandidos — assim um grupo criado depois nasce
+  aberto, em vez de herdar o silêncio de uma lista que não o conhecia.
+- Comprimir esconde a **subárvore inteira**, não só as filhas diretas.
+- **A barra do grupo comprimido cobre o intervalo agregado** — do início mais
+  cedo ao fim mais tarde da subárvore, o próprio pai incluído. Esconder as
+  subtarefas não pode encolher o tempo que elas ocupam no cronograma. O
+  "realizado" do grupo só aparece quando a subárvore inteira terminou.
+- Acessibilidade: o controle é um `button` de verdade, com `aria-expanded`,
+  `aria-label` que diz o que será expandido ou comprimido, foco visível e
+  teclado (Enter/Espaço) de graça.
+- Acima de 60 linhas o Gantt **virtualiza**: só as linhas na janela visível vão
+  para o DOM, e espaçadores mantêm a barra de rolagem do tamanho da lista.
+
 ## Módulo de SLA
 
 Cada registro mensal traz total atendido, dentro e fora do SLA, por fila e

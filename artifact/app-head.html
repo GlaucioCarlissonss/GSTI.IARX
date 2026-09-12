@@ -82,6 +82,20 @@ code{font-family:var(--mono);font-size:.92em;background:var(--sup2);padding:1px 
 }
 .bt-tema:hover{border-color:var(--linha2);color:var(--tinta)}
 
+/* Botão de expandir/comprimir grupo do Gantt: alvo de 20px, foco visível e
+   contraste AA nos dois temas. */
+.gantt-grupo{
+  flex:none;width:20px;height:20px;padding:0;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;
+  font:600 15px/1 inherit;cursor:pointer;
+  color:var(--tinta2);background:var(--sup2);
+  border:1px solid var(--linha2);border-radius:5px;
+}
+.gantt-grupo:hover{color:var(--tinta);border-color:var(--tinta3)}
+.gantt-grupo:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
+/* Reserva o mesmo espaço numa linha sem grupo, para os nomes alinharem. */
+.gantt-vazio{flex:none;width:20px;height:20px;display:inline-block}
+
 .abas{display:flex;gap:2px;padding:8px 20px 0;overflow-x:auto}
 .abas button{
   font-family:inherit;font-size:13.5px;font-weight:500;padding:8px 14px;border:0;border-bottom:2px solid transparent;
@@ -239,7 +253,8 @@ svg{display:block;width:100%;height:auto}
 .gantt .barra{position:absolute;height:10px;top:6px;border-radius:5px;background:var(--s1)}
 .gantt .barra.real{height:6px;top:18px;background:var(--s3)}
 .gantt .hoje{position:absolute;top:0;bottom:0;width:2px;background:var(--s2);opacity:.6}
-.gantt .nome{white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+.gantt .nome{white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.gantt .nome.tarefa{color:var(--tinta2);font-size:12.5px}
 
 .dica{position:fixed;z-index:70;pointer-events:none;background:var(--sup);border:1px solid var(--linha2);border-radius:9px;padding:8px 10px;font-size:12.5px;box-shadow:0 8px 28px rgba(0,0,0,.18);opacity:0;transition:opacity .1s;min-width:140px}
 .dica.on{opacity:1}

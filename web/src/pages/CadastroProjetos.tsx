@@ -21,6 +21,9 @@ interface Projeto {
 }
 
 interface Tarefa {
+  parent_task_id?: number | null;
+  nivel?: number;
+  total_subtarefas?: number;
   id: number;
   nome: string;
   mes_inicio: string;
@@ -263,7 +266,8 @@ function DetalheProjeto({
 }) {
   const tarefas = useDados<Tarefa[]>(() => api.get(`/api/projetos/${projeto.id}/tarefas`), [projeto.id]);
   const envolvidos = useDados<Envolvido[]>(() => api.get(`/api/projetos/${projeto.id}/envolvidos`), [projeto.id]);
-  const [tarefa, setTarefa] = useState({ nome: '', mes_inicio: projeto.mes_inicio, mes_fim_planejado: '', responsavel: '' });
+  const tarefaVazia = { nome: '', mes_inicio: projeto.mes_inicio, mes_fim_planejado: '', responsavel: '', principal: '' };
+  const [tarefa, setTarefa] = useState(tarefaVazia);
   const [envolvido, setEnvolvido] = useState({ nome: '', papel: '' });
   const [erro, setErro] = useState<string | null>(null);
 
@@ -271,11 +275,54 @@ function DetalheProjeto({
     evento.preventDefault();
     setErro(null);
     try {
-      await api.post(`/api/projetos/${projeto.id}/tarefas`, tarefa);
-      setTarefa({ nome: '', mes_inicio: projeto.mes_inicio, mes_fim_planejado: '', responsavel: '' });
+      const { principal, ...campos } = tarefa;
+      await api.post(`/api/projetos/${projeto.id}/tarefas`, {
+        ...campos,
+        parent_task_id: idDaPrincipal(principal),
+      });
+      setTarefa(tarefaVazia);
       tarefas.recarregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao criar a tarefa.');
+    }
+  };
+
+  /**
+   * Só pode ser tarefa principal quem ainda cabe um nível abaixo — a
+   * hierarquia vai até 3. Oferecer as demais na lista seria oferecer um erro.
+   */
+  const candidatasAPrincipal = (tarefas.dados ?? []).filter((t) => (t.nivel ?? 1) < 3);
+
+  /** Id da tarefa cujo nome foi digitado; vazio significa sem agrupamento. */
+  const idDaPrincipal = (nome: string): number | null => {
+    const alvo = nome.trim().toLowerCase();
+    if (!alvo) return null;
+    return candidatasAPrincipal.find((t) => t.nome.toLowerCase() === alvo)?.id ?? null;
+  };
+
+  /** Vincula ou desvincula uma tarefa existente, pelo nome da principal. */
+  const vincular = async (t: Tarefa) => {
+    const atual = (tarefas.dados ?? []).find((x) => x.id === t.parent_task_id)?.nome ?? '';
+    const nome = window.prompt(
+      `Tarefa principal de "${t.nome}" (deixe em branco para desagrupar):\n\n` +
+        candidatasAPrincipal
+          .filter((c) => c.id !== t.id)
+          .map((c) => '· ' + c.nome)
+          .join('\n'),
+      atual,
+    );
+    if (nome === null) return;
+    const alvo = nome.trim();
+    if (alvo && !idDaPrincipal(alvo)) {
+      setErro(`Não existe uma tarefa "${alvo}" neste projeto que possa ser tarefa principal.`);
+      return;
+    }
+    setErro(null);
+    try {
+      await api.patch(`/api/projetos/tarefas/${t.id}`, { parent_task_id: idDaPrincipal(alvo) });
+      tarefas.recarregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao agrupar a tarefa.');
     }
   };
 
@@ -350,7 +397,17 @@ function DetalheProjeto({
               <tbody>
                 {tarefas.dados.map((t) => (
                   <tr key={t.id}>
-                    <td>{t.nome}</td>
+                    {/* A indentação é o que mostra a hierarquia aqui; o Gantt
+                        é quem traz os controles de expandir e comprimir. */}
+                    <td style={{ paddingLeft: 10 + ((t.nivel ?? 1) - 1) * 18 }}>
+                      {(t.nivel ?? 1) > 1 && <span style={{ color: 'var(--tinta-fraca)', marginRight: 6 }}>↳</span>}
+                      {t.nome}
+                      {(t.total_subtarefas ?? 0) > 0 && (
+                        <span style={{ color: 'var(--tinta-fraca)', fontSize: 11.5, marginLeft: 6 }}>
+                          {t.total_subtarefas} subtarefa(s)
+                        </span>
+                      )}
+                    </td>
                     <td>{t.responsavel ?? '—'}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {t.mes_inicio} → {t.mes_fim_real ?? t.mes_fim_planejado}
@@ -361,7 +418,12 @@ function DetalheProjeto({
                         tom={t.atrasado ? 'critico' : t.mes_fim_real ? 'bom' : 'neutro'}
                       />
                     </td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {podeEditar && (
+                        <button type="button" className="botao discreto pequeno" onClick={() => vincular(t)}>
+                          Agrupar
+                        </button>
+                      )}
                       {podeEditar && !t.mes_fim_real && (
                         <button type="button" className="botao discreto pequeno" onClick={() => concluirTarefa(t)}>
                           Concluir
@@ -382,6 +444,26 @@ function DetalheProjeto({
             </Campo>
             <Campo rotulo="Responsável">
               <input value={tarefa.responsavel} onChange={(e) => setTarefa({ ...tarefa, responsavel: e.target.value })} />
+            </Campo>
+            <Campo rotulo="Tarefa principal">
+              {/* `datalist` dá a busca com teclado e leitor de tela sem
+                  reimplementar combobox; vazio = tarefa de primeiro nível. */}
+              <input
+                list={`principais-${projeto.id}`}
+                value={tarefa.principal}
+                onChange={(e) => setTarefa({ ...tarefa, principal: e.target.value })}
+                placeholder="opcional — agrupa no Gantt"
+                aria-describedby={`ajuda-principal-${projeto.id}`}
+                style={{ minWidth: 180 }}
+              />
+              <datalist id={`principais-${projeto.id}`}>
+                {candidatasAPrincipal.map((c) => (
+                  <option key={c.id} value={c.nome} />
+                ))}
+              </datalist>
+              <small id={`ajuda-principal-${projeto.id}`} style={{ display: 'none' }}>
+                Tarefa deste projeto sob a qual esta ficará agrupada. Até 3 níveis.
+              </small>
             </Campo>
             <Campo rotulo="Início">
               <input

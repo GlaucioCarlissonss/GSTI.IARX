@@ -57,10 +57,54 @@ function migrar(db: Conexao): void {
   for (const [nome, tipo] of detalhe) {
     if (!sla.has(nome)) db.exec(`ALTER TABLE tickets_sla ADD COLUMN ${nome} ${tipo}`);
   }
+  // Tarefa principal: coluna anulável, então a tarefa existente continua
+  // sendo uma tarefa de primeiro nível sem nenhum ajuste.
+  const tarefas = new Set(
+    (db.prepare('PRAGMA table_info(tarefas)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!tarefas.has('parent_task_id')) {
+    // Sem REFERENCES: o SQLite não aceita chave estrangeira em ADD COLUMN.
+    // A integridade fica no domínio, que já valida projeto, ciclo e profundidade.
+    db.exec('ALTER TABLE tarefas ADD COLUMN parent_task_id INTEGER');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS ix_tarefas_pai ON tarefas(parent_task_id)');
+
+  // Integração com os sistemas de suporte: origem, identidade lá, e o resto do
+  // modelo unificado. Tudo anulável, então o registro agregado mensal e o
+  // chamado já importado do osTicket continuam válidos sem nenhum ajuste.
+  const integracao: Array<[string, string]> = [
+    ['source_system', 'TEXT'],
+    ['external_id', 'TEXT'],
+    ['descricao', 'TEXT'],
+    ['prioridade', 'TEXT'],
+    ['setor_id', 'INTEGER'],
+    ['solicitante_externo_id', 'TEXT'],
+    ['solicitante_email', 'TEXT'],
+    ['atendente_externo_id', 'TEXT'],
+    ['synced_at', 'TEXT'],
+    ['raw_payload', 'TEXT'],
+  ];
+  for (const [nome, tipo] of integracao) {
+    if (!sla.has(nome)) db.exec(`ALTER TABLE tickets_sla ADD COLUMN ${nome} ${tipo}`);
+  }
+
+  // Os chamados carregados da extração do osTicket nasceram antes de existir
+  // `source_system`: são todos OSTICK, e o `external_id` é o próprio ticket_id.
+  db.exec(`UPDATE tickets_sla SET source_system = 'OSTICK', external_id = CAST(ticket_id AS TEXT)
+            WHERE ticket_id IS NOT NULL AND source_system IS NULL`);
+
   // O índice único vive no schema, mas um banco anterior às colunas não pôde
   // criá-lo: só agora `ticket_id` existe.
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_sla_ticket ON tickets_sla(empresa_id, ticket_id)
              WHERE ticket_id IS NOT NULL AND excluido_em IS NULL`);
+
+  // Idempotência da integração. A chave inclui a empresa porque o sistema é
+  // multi-tenant por regra: duas empresas podem usar instâncias separadas do
+  // mesmo helpdesk, cujos ids colidem sem nenhuma relação entre si.
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_sla_origem
+             ON tickets_sla(empresa_id, source_system, external_id)
+             WHERE external_id IS NOT NULL AND excluido_em IS NULL`);
+  db.exec('CREATE INDEX IF NOT EXISTS ix_sla_setor ON tickets_sla(setor_id)');
 }
 
 export function db(): Conexao {

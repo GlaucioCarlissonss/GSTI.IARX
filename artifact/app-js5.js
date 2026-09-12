@@ -1,12 +1,235 @@
 // ===========================================================================
 // Projetos — cadastro, tarefas, envolvidos e Gantt mensal
 // ===========================================================================
+
+// ------------------------------------------------------- hierarquia de tarefas
+//
+// Uma tarefa pode ter uma tarefa principal (`paiId`), sempre do mesmo projeto,
+// porque as tarefas vivem dentro do documento do projeto. A profundidade vai
+// até 3 níveis — principal → subtarefa → subtarefa —, que é o que um Gantt
+// ainda mostra sem virar indentação ilegível.
+const PROFUNDIDADE_MAXIMA = 3;
+
+/** Cadeia de ascendentes, da mais próxima à raiz. Teto próprio contra ciclo. */
+function ascendentesDe(tarefas, id) {
+  const cadeia = [];
+  let atual = (tarefas.find((t) => t.id === id) || {}).paiId || null;
+  for (let i = 0; i < 64 && atual; i++) {
+    if (cadeia.includes(atual)) break;
+    cadeia.push(atual);
+    atual = (tarefas.find((t) => t.id === atual) || {}).paiId || null;
+  }
+  return cadeia;
+}
+
+/** Profundidade da subárvore abaixo da tarefa (0 = sem filhas). */
+function alturaAbaixoDe(tarefas, id) {
+  const filhas = tarefas.filter((t) => t.paiId === id);
+  return filhas.length ? 1 + Math.max(...filhas.map((f) => alturaAbaixoDe(tarefas, f.id))) : 0;
+}
+
+/**
+ * Valida a tarefa principal escolhida. Devolve `null` (sem agrupamento) ou o
+ * id; lança com o motivo quando a escolha é impossível.
+ *
+ * `id` é a tarefa sendo editada; ao criar, `null`.
+ */
+function validarPrincipal(tarefas, paiId, id) {
+  if (!paiId) return null;
+  if (id && paiId === id) throw new Error('Uma tarefa não pode ser a própria tarefa principal.');
+  const pai = tarefas.find((t) => t.id === paiId);
+  if (!pai) throw new Error('Tarefa principal não encontrada neste projeto.');
+  if (id && ascendentesDe(tarefas, paiId).includes(id)) {
+    throw new Error(`"${pai.nome}" já está abaixo desta tarefa: colocá-la como principal criaria um ciclo.`);
+  }
+  const nivelDoPai = ascendentesDe(tarefas, paiId).length + 1;
+  const alturaQueVem = id ? alturaAbaixoDe(tarefas, id) : 0;
+  if (nivelDoPai + 1 + alturaQueVem > PROFUNDIDADE_MAXIMA) {
+    throw new Error(
+      `A hierarquia vai até ${PROFUNDIDADE_MAXIMA} níveis (tarefa principal → subtarefa → subtarefa). ` +
+      `"${pai.nome}" já está no nível ${nivelDoPai}.`);
+  }
+  return paiId;
+}
+
+/**
+ * Tarefas em ordem de leitura — cada principal seguida das suas subtarefas —,
+ * com o nível e o intervalo agregado do grupo. O agregado é o que a barra do
+ * pai mostra quando o grupo está comprimido: esconder as subtarefas não pode
+ * encolher o tempo que elas ocupam no cronograma.
+ */
+function tarefasEmOrdem(tarefas) {
+  const ids = new Set(tarefas.map((t) => t.id));
+  const paiDe = (t) => (t.paiId && ids.has(t.paiId) ? t.paiId : null);
+  const porPai = new Map();
+  for (const t of tarefas) {
+    const k = paiDe(t);
+    if (!porPai.has(k)) porPai.set(k, []);
+    porPai.get(k).push(t);
+  }
+  const subarvore = (t) => [t, ...(porPai.get(t.id) || []).flatMap(subarvore)];
+
+  const saida = [];
+  const descer = (paiId, nivel) => {
+    for (const t of porPai.get(paiId) || []) {
+      const grupo = subarvore(t);
+      const fins = grupo.map((x) => x.fimReal || x.fimPlanejado).sort();
+      const todasFeitas = grupo.every((x) => x.fimReal);
+      saida.push({
+        ...t,
+        nivel,
+        filhas: (porPai.get(t.id) || []).length,
+        grupoInicio: grupo.map((x) => x.inicio).sort()[0],
+        grupoFim: fins[fins.length - 1],
+        grupoFimReal: todasFeitas ? grupo.map((x) => x.fimReal).sort().pop() : null,
+      });
+      descer(t.id, nivel + 1);
+    }
+  };
+  descer(null, 1);
+  return saida;
+}
+
 /** Atraso é derivado: mês corrente além do fim planejado, sem fim real. */
 function atrasoDe(fimPlan, fimReal, status) {
   if (status === 'cancelado' || status === 'cancelada') return { atrasado:false, meses:0, desvio:0 };
   if (fimReal) return { atrasado:false, meses:0, desvio: mesIdx(fimReal) - mesIdx(fimPlan) };
   const d = mesIdx(mesHoje()) - mesIdx(fimPlan);
   return { atrasado: d > 0, meses: Math.max(d,0), desvio: Math.max(d,0) };
+}
+
+/**
+ * Estado de expansão dos grupos do Gantt, por usuário, no navegador.
+ * Guarda os **comprimidos**: o padrão é expandido, e um grupo criado depois
+ * precisa nascer aberto em vez de herdar o silêncio de uma lista antiga.
+ */
+const CHAVE_GANTT = 'iarx-gantt-comprimidos';
+function gruposComprimidos() {
+  try { return new Set(JSON.parse(localStorage.getItem(CHAVE_GANTT) || '[]')); }
+  catch (e) { return new Set(); }
+}
+function gravarComprimidos(conjunto) {
+  try { localStorage.setItem(CHAVE_GANTT, JSON.stringify([...conjunto])); }
+  catch (e) { /* sem armazenamento: vale só nesta sessão */ }
+}
+const grupoExpandido = (chave) => !gruposComprimidos().has(chave);
+function alternarGrupo(chave) {
+  const atual = gruposComprimidos();
+  if (atual.has(chave)) atual.delete(chave); else atual.add(chave);
+  gravarComprimidos(atual);
+}
+
+/** A quantidade de linhas a partir da qual o Gantt passa a virtualizar. */
+const TETO_GANTT = 60;
+const ALTURA_LINHA_GANTT = 31;  // 30px de `td.faixa` + 1px de borda
+
+/**
+ * Lista achatada do que o Gantt mostra agora: projetos e, dentro dos abertos,
+ * as tarefas cujas ascendentes estão todas expandidas. Achatar aqui é o que
+ * permite virtualizar por índice e o que mantém uma única regra de "aparece".
+ */
+function montarLinhasGantt(projetos) {
+  const linhas = [];
+  for (const p of projetos) {
+    linhas.push({ tipo: 'projeto', chave: 'p' + p.id, projeto: p });
+    if (!p.ordenadas.length || !grupoExpandido('p' + p.id)) continue;
+    const escondidas = new Set();
+    for (const t of p.ordenadas) {
+      if (t.paiId && (escondidas.has(t.paiId) || !grupoExpandido('t' + t.paiId))) {
+        escondidas.add(t.id);
+        continue;
+      }
+      linhas.push({
+        tipo: 'tarefa', chave: 't' + t.id, projeto: p, tarefa: t,
+        comprimida: t.filhas > 0 && !grupoExpandido('t' + t.id),
+      });
+    }
+  }
+  return linhas;
+}
+
+/**
+ * Desenha o corpo do Gantt. Só as linhas na janela visível vão para o DOM
+ * quando a lista é grande; o resto vira espaçador, para a barra de rolagem
+ * continuar do tamanho da lista inteira.
+ */
+function pintarGantt(linhas, meses, larg, iHoje) {
+  const caixa = el('#p-gantt');
+  const corpo = el('#p-gantt-corpo');
+  if (!caixa || !corpo) return;
+
+  const virtualizar = linhas.length > TETO_GANTT;
+  const margem = 8;
+  const primeira = virtualizar ? Math.max(Math.floor(caixa.scrollTop / ALTURA_LINHA_GANTT) - margem, 0) : 0;
+  const ultima = virtualizar
+    ? Math.min(primeira + Math.ceil((caixa.clientHeight || 620) / ALTURA_LINHA_GANTT) + margem * 2, linhas.length)
+    : linhas.length;
+
+  const marcaHoje = iHoje >= 0 ? `<div class="hoje" style="left:${iHoje * larg + larg / 2}px"></div>` : '';
+  const espaco = (n) => (n > 0
+    ? `<tr aria-hidden="true"><td colspan="${meses.length + 1}" style="height:${n * ALTURA_LINHA_GANTT}px;padding:0;border:0"></td></tr>`
+    : '');
+
+  /** Botão de grupo: `button` de verdade, com teclado e estado anunciados. */
+  const botao = (chave, aberto, oQue) =>
+    `<button type="button" class="gantt-grupo" data-grupo="${esc(chave)}" aria-expanded="${aberto}"
+       aria-label="${aberto ? 'Comprimir' : 'Expandir'} ${esc(oQue)}" title="${aberto ? 'Comprimir' : 'Expandir'}"
+       >${aberto ? '−' : '+'}</button>`;
+  const semBotao = '<span class="gantt-vazio" aria-hidden="true"></span>';
+
+  const barra = (inicio, fim, extra) => {
+    const off = (mesIdx(inicio) - mesIdx(meses[0])) * larg;
+    const dur = (mesIdx(fim) - mesIdx(inicio) + 1) * larg;
+    return { left: off + 2, width: Math.max(dur - 4, 6), extra };
+  };
+
+  corpo.innerHTML = espaco(primeira) + linhas.slice(primeira, ultima).map((linha) => {
+    if (linha.tipo === 'projeto') {
+      const p = linha.projeto;
+      const aberto = grupoExpandido(linha.chave);
+      const b = barra(p.inicio, p.fimPlanejado);
+      const r = p.fimReal ? barra(p.inicio, p.fimReal) : null;
+      return `<tr><td class="nome" title="${esc(p.nome)}">
+          <div style="display:flex;align-items:center;gap:6px">
+            ${p.ordenadas.length ? botao(linha.chave, aberto, 'as tarefas de ' + p.nome) : semBotao}
+            <strong>${esc(p.nome)}</strong>
+            ${p.atrasado ? `<span class="tag crit">${p.meses} mês(es) de atraso</span>` : ''}
+          </div>
+          <div style="font-size:11.5px;color:var(--tinta3);padding-left:26px">${p.filial ? esc(p.filial) : 'empresa'}
+            · ${esc(STATUS_PROJ[p.status] || p.status)}${p.ordenadas.length ? ` · ${inteiro(p.ordenadas.length)} tarefa(s)` : ''}</div></td>
+        <td class="faixa" colspan="${meses.length}">${marcaHoje}
+          <div class="barra" style="left:${b.left}px;width:${b.width}px;${p.atrasado ? 'background:var(--crit)' : ''}"></div>
+          ${r ? `<div class="barra real" style="left:${r.left}px;width:${r.width}px"></div>` : ''}</td></tr>`;
+    }
+
+    const t = linha.tarefa;
+    const atraso = atrasoDe(t.fimPlanejado, t.fimReal, 'x');
+    // Comprimida, a barra cobre o intervalo inteiro da subárvore: esconder as
+    // subtarefas não encolhe o tempo que elas ocupam.
+    const usaGrupo = t.filhas > 0 && linha.comprimida;
+    const b = usaGrupo ? barra(t.grupoInicio, t.grupoFim) : barra(t.inicio, t.fimPlanejado);
+    const fimR = usaGrupo ? t.grupoFimReal : t.fimReal;
+    const r = fimR ? barra(usaGrupo ? t.grupoInicio : t.inicio, fimR) : null;
+    const titulo = usaGrupo
+      ? `Grupo "${t.nome}": ${mesExib(t.grupoInicio)} → ${mesExib(t.grupoFim)} (${inteiro(t.filhas)} subtarefa(s))`
+      : `${mesExib(t.inicio)} → ${mesExib(t.fimPlanejado)}`;
+
+    return `<tr><td class="nome tarefa" title="${esc(t.nome)}" style="padding-left:${10 + t.nivel * 14}px">
+        <div style="display:flex;align-items:center;gap:6px">
+          ${t.filhas ? botao(linha.chave, !linha.comprimida, 'as subtarefas de ' + t.nome) : semBotao}
+          <span${t.filhas ? ' style="font-weight:600;color:var(--tinta)"' : ''}>${esc(t.nome)}</span>
+        </div>
+        <div style="font-size:11px;color:var(--tinta3);padding-left:26px">${esc(t.responsavel || 'sem responsável')}${
+          t.filhas ? ` · ${inteiro(t.filhas)} subtarefa(s)` : ''}</div></td>
+      <td class="faixa" colspan="${meses.length}">${marcaHoje}
+        <div class="barra" title="${esc(titulo)}" style="left:${b.left}px;width:${b.width}px;height:${usaGrupo ? 9 : 7}px;top:${usaGrupo ? 5 : 7}px;${
+          atraso.atrasado ? 'background:var(--crit);' : ''}opacity:${usaGrupo ? 1 : 0.75}"></div>
+        ${r ? `<div class="barra real" style="left:${r.left}px;width:${r.width}px;opacity:${usaGrupo ? 1 : 0.75}"></div>` : ''}</td></tr>`;
+  }).join('') + espaco(linhas.length - ultima);
+
+  corpo.querySelectorAll('[data-grupo]').forEach((b) => {
+    b.onclick = () => { alternarGrupo(b.dataset.grupo); render(); };
+  });
 }
 
 async function viewProjetos() {
@@ -32,6 +255,15 @@ async function viewProjetos() {
     : [];
   const iHoje = meses.indexOf(mesHoje()), larg = 38;
 
+  // Cada projeto vira uma linha de grupo, e as suas tarefas vêm abaixo em
+  // ordem hierárquica. O que aparece depende do que está comprimido.
+  const comTarefas = comAtraso.map((p) => ({ ...p, ordenadas: tarefasEmOrdem(p.tarefas || []) }));
+  const linhasGantt = montarLinhasGantt(comTarefas);
+  const todosOsGrupos = [
+    ...comTarefas.filter((p) => p.ordenadas.length).map((p) => 'p' + p.id),
+    ...comTarefas.flatMap((p) => p.ordenadas.filter((t) => t.filhas).map((t) => 't' + t.id)),
+  ];
+
   el('#pagina').innerHTML = `
     <div class="filtros">
       <div style="margin-right:auto;color:var(--tinta3);font-size:13px">
@@ -47,24 +279,16 @@ async function viewProjetos() {
     </div>
     ${comAtraso.length === 0 ? '<section class="bloco"><p class="vazio">Nenhum projeto cadastrado nesta empresa.</p></section>' : `
     <section class="bloco"><header><h2>Cronograma</h2>
-      <span class="nota">${mesExib(meses[0])} a ${mesExib(meses[meses.length-1])}</span></header>
+      <span class="nota">${mesExib(meses[0])} a ${mesExib(meses[meses.length-1])} · ${inteiro(linhasGantt.length)} linha(s)</span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button type="button" class="bt fant peq" id="p-abrir">Expandir tudo</button>
+        <button type="button" class="bt fant peq" id="p-fechar">Comprimir tudo</button></span></header>
       <div class="leg"><span><i style="background:var(--s1)"></i>Planejado</span>
         <span><i style="background:var(--s3)"></i>Realizado</span><span><i style="background:var(--crit)"></i>Em atraso</span></div>
-      <div class="gantt"><table><thead><tr><th style="min-width:210px">Projeto</th>
+      <div class="gantt" id="p-gantt"${linhasGantt.length > TETO_GANTT ? ' style="max-height:620px;overflow-y:auto"' : ''}>
+        <table><thead><tr><th style="min-width:230px">Projeto / tarefa</th>
         ${meses.map((m,i)=>`<th class="m">${meses.length<=18||i%3===0?mesCurto(m):''}</th>`).join('')}</tr></thead>
-        <tbody>${comAtraso.map((p) => {
-          const off = (mesIdx(p.inicio)-mesIdx(meses[0]))*larg;
-          const dur = (mesIdx(p.fimPlanejado)-mesIdx(p.inicio)+1)*larg;
-          const dReal = p.fimReal ? (mesIdx(p.fimReal)-mesIdx(p.inicio)+1)*larg : 0;
-          return `<tr><td class="nome">${esc(p.nome)}
-            <div style="font-size:11.5px;color:var(--tinta3)">${p.filial?esc(p.filial):'empresa'} ·
-              ${p.atrasado?`<span class="tag crit">${p.meses} mês(es) de atraso</span>`:(STATUS_PROJ[p.status]||p.status)}</div></td>
-            <td class="faixa" colspan="${meses.length}">
-              ${iHoje>=0?`<div class="hoje" style="left:${iHoje*larg+larg/2}px"></div>`:''}
-              <div class="barra" style="left:${off+2}px;width:${Math.max(dur-4,6)}px;${p.atrasado?'background:var(--crit)':''}"></div>
-              ${dReal?`<div class="barra real" style="left:${off+2}px;width:${Math.max(dReal-4,6)}px"></div>`:''}
-            </td></tr>`;
-        }).join('')}</tbody></table></div></section>`}
+        <tbody id="p-gantt-corpo"></tbody></table></div></section>`}
 
     <section class="bloco"><header><h2>Projetos e tarefas</h2></header>
       ${comAtraso.length===0 ? '<p class="vazio">Cadastre o primeiro projeto.</p>' : `
@@ -93,6 +317,15 @@ async function viewProjetos() {
         </tbody></table></div>`}</section></div>` : ''}`;
 
   el('#p-novo').onclick = () => formProjeto(null);
+
+  if (el('#p-gantt-corpo')) {
+    const repintar = () => pintarGantt(montarLinhasGantt(comTarefas), meses, larg, iHoje);
+    repintar();
+    el('#p-gantt').addEventListener('scroll', repintar);
+    el('#p-abrir').onclick = () => { gravarComprimidos(new Set()); render(); };
+    el('#p-fechar').onclick = () => { gravarComprimidos(new Set(todosOsGrupos)); render(); };
+  }
+
   if (Object.keys(carga).length) {
     ranking(el('#p-carga'), Object.entries(carga).map(([k,c])=>({ rotulo:k, valor:c.total })),
       (v)=>inteiro(v)+' tarefa(s)', 'var(--s3)');
@@ -180,6 +413,11 @@ function abrirProjeto(p) {
       <form class="filtros" data-formtar style="margin-top:4px">
         <div class="campo" style="flex:1 1 150px"><label for="t-nome">Nova tarefa</label><input id="t-nome" name="tnome" required></div>
         <div class="campo" style="width:140px"><label for="t-resp">Responsável</label><input id="t-resp" name="tresp"></div>
+        <div class="campo" style="width:170px"><label for="t-pai">Tarefa principal</label>
+          <input id="t-pai" name="tpai" list="t-principais" placeholder="opcional — agrupa no Gantt"
+                 aria-describedby="t-pai-ajuda"></div>
+        <datalist id="t-principais"></datalist>
+        <span id="t-pai-ajuda" hidden>Tarefa deste projeto sob a qual esta ficará agrupada. Até 3 níveis.</span>
         <div class="campo" style="width:104px"><label for="t-ini">Início</label><input id="t-ini" name="tini" value="${mesExib(p.inicio)}" required></div>
         <div class="campo" style="width:104px"><label for="t-fim">Fim planejado</label><input id="t-fim" name="tfim" placeholder="MM/AAAA" required></div>
         <button class="bt pri" type="submit">Adicionar</button>
@@ -195,13 +433,23 @@ function abrirProjeto(p) {
     aoMontar({ raiz, fechar, erro }) {
       const pintar = () => {
         const t = raiz.querySelector('[data-tar]');
+        const emOrdem = tarefasEmOrdem(tarefas);
+        // Só pode ser principal quem ainda cabe um nível abaixo; oferecer as
+        // demais na lista seria oferecer um erro.
+        const candidatas = emOrdem.filter((x) => x.nivel < PROFUNDIDADE_MAXIMA);
+        raiz.querySelector('#t-principais').innerHTML =
+          candidatas.map((x) => `<option value="${esc(x.nome)}"></option>`).join('');
+
         t.innerHTML = tarefas.length === 0 ? '<p class="vazio">Nenhuma tarefa.</p>' : `
           <table><thead><tr><th>Tarefa</th><th>Responsável</th><th>Período</th><th>Situação</th><th></th></tr></thead>
-          <tbody>${tarefas.map((x)=>{ const a = atrasoDe(x.fimPlanejado, x.fimReal, 'x'); return `<tr data-t="${esc(x.id)}">
-            <td>${esc(x.nome)}</td><td>${esc(x.responsavel||'—')}</td>
+          <tbody>${emOrdem.map((x)=>{ const a = atrasoDe(x.fimPlanejado, x.fimReal, 'x'); return `<tr data-t="${esc(x.id)}">
+            <td style="padding-left:${10 + (x.nivel - 1) * 18}px">${x.nivel > 1 ? '<span style="color:var(--tinta3)">↳</span> ' : ''}${esc(x.nome)}${
+              x.filhas ? `<span style="color:var(--tinta3);font-size:11.5px"> · ${inteiro(x.filhas)} subtarefa(s)</span>` : ''}</td>
+            <td>${esc(x.responsavel||'—')}</td>
             <td style="white-space:nowrap">${mesExib(x.inicio)} → ${mesExib(x.fimReal||x.fimPlanejado)}</td>
             <td>${x.fimReal?'<span class="tag bom">Concluída</span>':a.atrasado?`<span class="tag crit">Atrasada (${a.meses}m)</span>`:'<span class="tag">Pendente</span>'}</td>
-            <td style="white-space:nowrap">${x.fimReal?'':'<button type="button" class="bt fant peq" data-ok>Concluir</button>'}
+            <td style="white-space:nowrap"><button type="button" class="bt fant peq" data-grp>Agrupar</button>
+              ${x.fimReal?'':'<button type="button" class="bt fant peq" data-ok>Concluir</button>'}
               <button type="button" class="bt fant peq" data-del>Remover</button></td></tr>`; }).join('')}</tbody></table>`;
         raiz.querySelector('[data-env]').innerHTML = envolvidos.length === 0
           ? '<span class="vazio" style="padding:6px">Nenhum envolvido.</span>'
@@ -215,7 +463,31 @@ function abrirProjeto(p) {
             const c = mesInterno(m); if (!c) return erro('Mês inválido.');
             tar.fimReal = c; await persistir(); pintar();
           });
+          tr.querySelector('[data-grp]').addEventListener('click', async () => {
+            const atual = (tarefas.find((x) => x.id === tar.paiId) || {}).nome || '';
+            const escolha = prompt(
+              `Tarefa principal de "${tar.nome}" (deixe em branco para desagrupar):\n\n` +
+              candidatas.filter((c) => c.id !== tar.id).map((c) => '· ' + c.nome).join('\n'),
+              atual);
+            if (escolha === null) return;
+            const alvo = escolha.trim().toLowerCase();
+            const pai = alvo ? candidatas.find((c) => c.nome.toLowerCase() === alvo) : null;
+            if (alvo && !pai) return erro(`Não existe uma tarefa "${escolha.trim()}" neste projeto que possa ser principal.`);
+            try {
+              tar.paiId = validarPrincipal(tarefas, pai ? pai.id : null, tar.id);
+            } catch (e) { return erro(e.message); }
+            erro(''); await persistir(); pintar();
+          });
           tr.querySelector('[data-del]').addEventListener('click', async () => {
+            // Bloqueio, não cascata: em cascata um "Remover" apagaria em
+            // silêncio a subárvore inteira, que é o oposto da regra de
+            // auditoria. Quem quer remover o grupo desagrupa as filhas antes.
+            const filhas = tarefas.filter((x) => x.paiId === tar.id);
+            if (filhas.length) {
+              return erro(`"${tar.nome}" tem ${filhas.length} subtarefa(s) e não pode ser removida: ` +
+                filhas.map((f) => `"${f.nome}"`).join(', ') + '. Desagrupe ou remova as subtarefas primeiro.');
+            }
+            erro('');
             tarefas.splice(tarefas.findIndex((x)=>x.id===tar.id), 1); await persistir(); pintar();
           });
         });
@@ -236,8 +508,14 @@ function abrirProjeto(p) {
         const ini = mesInterno(f.tini.value), fim = mesInterno(f.tfim.value);
         if (!ini || !fim) return erro('Início e fim da tarefa precisam estar em MM/AAAA.');
         if (fim < ini) return erro('O fim planejado da tarefa não pode ser anterior ao início.');
+        const nomePai = f.tpai.value.trim().toLowerCase();
+        const pai = nomePai ? tarefas.find((x) => x.nome.toLowerCase() === nomePai) : null;
+        if (nomePai && !pai) return erro(`Não existe uma tarefa "${f.tpai.value.trim()}" neste projeto.`);
+        let paiId = null;
+        try { paiId = validarPrincipal(tarefas, pai ? pai.id : null, null); }
+        catch (e) { return erro(e.message); }
         tarefas.push({ id: novoId(), nome: f.tnome.value.trim(), inicio: ini, fimPlanejado: fim,
-          fimReal: null, responsavel: f.tresp.value.trim() || null });
+          fimReal: null, responsavel: f.tresp.value.trim() || null, paiId });
         await persistir(); f.reset(); f.tini.value = mesExib(p.inicio); pintar();
       });
       raiz.querySelector('[data-formenv]').addEventListener('submit', async (ev) => {
