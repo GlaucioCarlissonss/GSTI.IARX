@@ -4,6 +4,7 @@ import { useDados, useSessao } from '../lib/sessao';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal } from '../components/base';
 import { SeletorMulti } from '../components/seletor-multi';
 import { GraficoBarras, GraficoLinhas, GraficoRanking, Indicador } from '../components/graficos';
+import { Detalhamento, detalheDeRegistrosSla, type PedidoDetalhe } from '../components/detalhamento';
 import { competenciaAtual, competenciaValida, inteiro, mesCurto, percentual } from '../lib/formato';
 
 interface DashboardSla {
@@ -15,8 +16,8 @@ interface DashboardSla {
     pct_dentro_sla: number;
     pct_fora_sla: number;
   };
-  por_fila: Array<{ fila: string; total_atendidos: number; dentro_sla: number; fora_sla: number; pct_dentro_sla: number }>;
-  por_topico: Array<{ topico: string; total_atendidos: number; dentro_sla: number; fora_sla: number; pct_dentro_sla: number }>;
+  por_fila: Array<{ fila_id: number; fila: string; total_atendidos: number; dentro_sla: number; fora_sla: number; pct_dentro_sla: number }>;
+  por_topico: Array<{ topico_ajuda_id: number | null; topico: string; total_atendidos: number; dentro_sla: number; fora_sla: number; pct_dentro_sla: number }>;
   por_filial: Array<{ filial: string; total_atendidos: number; dentro_sla: number; fora_sla: number; pct_dentro_sla: number }>;
   tendencia_mensal: Array<{ competencia: string; total_atendidos: number; dentro_sla: number; fora_sla: number; pct_dentro_sla: number }>;
 }
@@ -31,6 +32,7 @@ const SERIES_SLA = [
 export function PaginaSla() {
   const { empresa, filialId, paramFilial } = useSessao();
   const [competencias, setCompetencias] = useState<string[]>([]);
+  const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
 
   const consulta = useDados<DashboardSla>(
     () =>
@@ -44,6 +46,16 @@ export function PaginaSla() {
   if (consulta.erro) return <Aviso tipo="erro">{consulta.erro}</Aviso>;
   if (!consulta.dados) return <Carregando />;
   const d = consulta.dados;
+
+  /**
+   * Recorte do mês em foco, repassado a todo drill-down desta tela. É o que
+   * garante que os chamados abertos são os mesmos que formaram o número.
+   */
+  const doMes = (extra: Record<string, unknown> = {}) => ({
+    filial_id: paramFilial(),
+    competencia: d.escopo.competencia,
+    ...extra,
+  });
 
   // Os meses com registro vêm da própria tendência, que já é a série do SLA.
   const itensMes = d.tendencia_mensal
@@ -75,21 +87,36 @@ export function PaginaSla() {
       </div>
 
       <div className="grade c4">
-        <Indicador rotulo="Tickets atendidos" valor={inteiro(d.totais_mes.total_atendidos)} />
+        <Indicador
+          rotulo="Tickets atendidos"
+          valor={inteiro(d.totais_mes.total_atendidos)}
+          dica={`Chamados com registro na competência ${d.escopo.competencia}.`}
+          aoDetalhar={() => setDetalhe(detalheDeRegistrosSla(`Chamados de ${d.escopo.competencia}`, doMes(), d.totais_mes.total_atendidos))}
+        />
         <Indicador
           rotulo="Dentro do SLA"
           valor={percentual(d.totais_mes.pct_dentro_sla)}
           apoio={`${inteiro(d.totais_mes.dentro_sla)} tickets`}
+          dica="Chamados atendidos dentro do prazo."
+          aoDetalhar={() =>
+            setDetalhe(detalheDeRegistrosSla(`Dentro do SLA — ${d.escopo.competencia}`, doMes({ sla: 'dentro' }), d.totais_mes.dentro_sla))
+          }
         />
         <Indicador
           rotulo="Fora do SLA"
           valor={percentual(d.totais_mes.pct_fora_sla)}
           apoio={`${inteiro(d.totais_mes.fora_sla)} tickets`}
+          dica="Chamados que ultrapassaram o prazo."
+          aoDetalhar={() =>
+            setDetalhe(detalheDeRegistrosSla(`Fora do SLA — ${d.escopo.competencia}`, doMes({ sla: 'fora' }), d.totais_mes.fora_sla))
+          }
         />
+        {/* Contagem de filas não tem registros por trás — é um cadastro. */}
         <Indicador
           rotulo="Filas monitoradas"
           valor={inteiro(d.por_fila.length)}
           apoio={d.por_fila.map((f) => f.fila).join(' · ')}
+          dica="Filas com atendimento registrado na competência."
         />
       </div>
 
@@ -104,6 +131,12 @@ export function PaginaSla() {
             modo="empilhado"
             formatar={inteiro}
             rotuloCategoria="Fila"
+            aoClicar={(_, i) => {
+              const f = d.por_fila[i]!;
+              setDetalhe(
+                detalheDeRegistrosSla(`Fila ${f.fila} — ${d.escopo.competencia}`, doMes({ fila_id: f.fila_id }), f.total_atendidos),
+              );
+            }}
           />
         </Cartao>
 
@@ -117,6 +150,13 @@ export function PaginaSla() {
             formatar={(v) => percentual(v)}
             formatarEixo={(v) => String(Math.round(v))}
             sufixoEixo="%"
+            aoClicar={(_, i) => {
+              const m = d.tendencia_mensal[i]!;
+              setDetalhe(
+                detalheDeRegistrosSla(`Conformidade de ${m.competencia}`,
+                  { filial_id: paramFilial(), competencia: m.competencia }, m.total_atendidos),
+              );
+            }}
           />
         </Cartao>
       </div>
@@ -132,6 +172,13 @@ export function PaginaSla() {
             formatar={(v) => `${inteiro(v)} tickets`}
             rotuloCategoria="Tópico de ajuda"
             rotuloValor="Tickets"
+            aoClicar={(item) => {
+              const t = d.por_topico.find((x) => x.topico === item.rotulo);
+              setDetalhe(
+                detalheDeRegistrosSla(`Tópico ${item.rotulo} — ${d.escopo.competencia}`,
+                  doMes({ topico_ajuda_id: t?.topico_ajuda_id ?? 'sem' }), item.valor),
+              );
+            }}
           />
         </Cartao>
 
@@ -171,6 +218,8 @@ export function PaginaSla() {
           )}
         </Cartao>
       </div>
+
+      {detalhe && <Detalhamento pedido={detalhe} aoFechar={() => setDetalhe(null)} />}
     </>
   );
 }

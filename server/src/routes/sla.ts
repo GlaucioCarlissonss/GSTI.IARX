@@ -38,7 +38,14 @@ rotasSla.get('/', (req, res) => {
             ? null
             : Number(q.filial_id),
       filaId: q.fila_id ? Number(q.fila_id) : undefined,
-      topicoAjudaId: q.topico_ajuda_id ? Number(q.topico_ajuda_id) : undefined,
+      // `sem` representa o tópico ausente, que `=` não alcança.
+      topicoAjudaId:
+        q.topico_ajuda_id === undefined || q.topico_ajuda_id === ''
+          ? undefined
+          : q.topico_ajuda_id === 'sem' || q.topico_ajuda_id === 'null'
+            ? null
+            : Number(q.topico_ajuda_id),
+      sla: q.sla ? String(q.sla) : undefined,
       competencia: q.competencia ? String(q.competencia) : undefined,
       competenciaInicio: q.competencia_inicio ? String(q.competencia_inicio) : undefined,
       competenciaFim: q.competencia_fim ? String(q.competencia_fim) : undefined,

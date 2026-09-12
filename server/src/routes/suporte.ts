@@ -37,6 +37,10 @@ rotasSuporte.get('/chamados', (req, res) => {
       solicitantes: listaDaQuery(q.solicitante),
       status: listaDaQuery(q.status) as never,
       prioridades: listaDaQuery(q.prioridade) as never,
+      filaIds: numerosDaQuery(q.fila_id),
+      // `sem` representa o tópico ausente, que `IN` não alcança.
+      topicoIds: listaDaQuery(q.topico_ajuda_id)?.map((v) => (v === 'sem' || v === 'null' ? null : Number(v))),
+      sla: listaDaQuery(q.sla),
       filialId:
         q.filial_id === undefined || q.filial_id === ''
           ? undefined

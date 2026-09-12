@@ -17,6 +17,11 @@ grupo, *Sistema*, guarda o que atravessa os três — planilha, cadastros e
 auditoria. Em qualquer tela, o botão no cabeçalho alterna entre **tema do
 sistema, claro e escuro**, e a escolha fica guardada no navegador.
 
+**Todo gráfico e todo indicador respondem ao ponteiro com o contexto do ponto**
+e, quando há registros por trás do número, **abrem esses registros ao clique** —
+com o mesmo recorte que produziu o número, e com a soma do detalhe conferida
+contra o indicador na própria tela.
+
 ## Duas formas de usar
 
 **Hospedada, sem instalar nada.** O mesmo sistema roda como página no

@@ -144,7 +144,7 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
   const porTipo = (
     db()
       .prepare(
-        `SELECT t.nome AS tipo,
+        `SELECT t.id AS tipo_despesa_id, t.nome AS tipo,
                 COALESCE(SUM(l.valor_centavos), 0) AS total,
                 COALESCE(SUM(CASE WHEN l.classificacao = 'despesa' THEN l.valor_centavos ELSE 0 END), 0) AS despesa,
                 COALESCE(SUM(CASE WHEN l.classificacao = 'investimento' THEN l.valor_centavos ELSE 0 END), 0) AS investimento
@@ -152,8 +152,11 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
           WHERE ${nosMeses}
           GROUP BY t.id ORDER BY total DESC`,
       )
-      .all(...paramsMeses) as Array<{ tipo: string; total: number; despesa: number; investimento: number }>
+      .all(...paramsMeses) as Array<{ tipo_despesa_id: number; tipo: string; total: number; despesa: number; investimento: number }>
   ).map((l) => ({
+    // O id vai junto para o drill-down pedir exatamente este tipo, sem depender
+    // de casar pelo nome.
+    tipo_despesa_id: l.tipo_despesa_id,
     tipo: l.tipo,
     total: paraReais(l.total),
     despesa: paraReais(l.despesa),
@@ -549,13 +552,15 @@ export function dashboardSla(ctx: Contexto, escopo: EscopoDashboard = {}) {
   const porFila = (
     db()
       .prepare(
-        `SELECT q.nome AS fila, COALESCE(SUM(s.total_atendidos), 0) AS total, COALESCE(SUM(s.dentro_sla), 0) AS dentro
+        `SELECT q.id AS fila_id, q.nome AS fila, COALESCE(SUM(s.total_atendidos), 0) AS total, COALESCE(SUM(s.dentro_sla), 0) AS dentro
            FROM tickets_sla s JOIN filas_ticket q ON q.id = s.fila_id
           WHERE ${where} AND s.competencia = ?
           GROUP BY q.id ORDER BY q.ordem, q.nome`,
       )
-      .all(...params, mesRef) as Array<{ fila: string; total: number; dentro: number }>
+      .all(...params, mesRef) as Array<{ fila_id: number; fila: string; total: number; dentro: number }>
   ).map((l) => ({
+    // O id vai junto para o drill-down pedir exatamente esta fila.
+    fila_id: l.fila_id,
     fila: l.fila,
     total_atendidos: l.total,
     dentro_sla: l.dentro,
@@ -567,14 +572,15 @@ export function dashboardSla(ctx: Contexto, escopo: EscopoDashboard = {}) {
   const porTopico = (
     db()
       .prepare(
-        `SELECT COALESCE(ta.nome, '(sem tópico)') AS topico, COALESCE(SUM(s.total_atendidos), 0) AS total,
+        `SELECT s.topico_ajuda_id, COALESCE(ta.nome, '(sem tópico)') AS topico, COALESCE(SUM(s.total_atendidos), 0) AS total,
                 COALESCE(SUM(s.dentro_sla), 0) AS dentro
            FROM tickets_sla s LEFT JOIN topicos_ajuda ta ON ta.id = s.topico_ajuda_id
           WHERE ${where} AND s.competencia = ?
           GROUP BY s.topico_ajuda_id ORDER BY total DESC`,
       )
-      .all(...params, mesRef) as Array<{ topico: string; total: number; dentro: number }>
+      .all(...params, mesRef) as Array<{ topico_ajuda_id: number | null; topico: string; total: number; dentro: number }>
   ).map((l) => ({
+    topico_ajuda_id: l.topico_ajuda_id,
     topico: l.topico,
     total_atendidos: l.total,
     dentro_sla: l.dentro,

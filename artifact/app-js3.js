@@ -221,24 +221,98 @@ function viewPainel() {
   ]);
 
   const CORES = ['var(--s1)', 'var(--s2)', 'var(--s3)'];
+
+  // O drill-down recorta a MESMA lista que produziu o número clicado. Se
+  // viesse de outra consulta, poderia divergir do que está na tela.
+  const mesDaJanela = (i) => janela[i];
+  const dosMeses = (m, extra = () => true) => noMes(m, extra);
+
   if (comparando) {
     // Agrupado, não empilhado: cenários alternativos ficam lado a lado.
     barras(el('#g1'), serieCenarios,
       cenarios.map((c, i) => ({ k: c, nome: (cenariosDoEscopo().find((x) => x.chave === c) || {}).nome || c, cor: CORES[i % 3] })),
-      'agrupado');
+      'agrupado', brl, curto,
+      (p, i) => {
+        const m = mesDaJanela(i);
+        const lista = base.filter((l) => l.competencia === m && cenarios.includes(l.cenario));
+        detalharLancamentos(`Comparação de cenários — ${mesExib(m)}`, lista, somaDe(lista),
+          'Cenários são alternativas: cada lançamento aparece uma vez por cenário.');
+      });
   } else {
-    barras(el('#g1'), serie, [{k:'d',nome:'Despesa',cor:'var(--s1)'},{k:'i',nome:'Investimento',cor:'var(--s2)'}], 'empilhado');
+    barras(el('#g1'), serie, [{k:'d',nome:'Despesa',cor:'var(--s1)'},{k:'i',nome:'Investimento',cor:'var(--s2)'}],
+      'empilhado', brl, curto,
+      (p, i) => {
+        const m = mesDaJanela(i);
+        const lista = dosMeses(m);
+        detalharLancamentos(`Despesa e investimento — ${mesExib(m)}`, lista, somaDe(lista));
+      });
   }
-  barras(el('#g2'), proj, [{k:'f',nome:'Fixo',cor:'var(--s1)'},{k:'p',nome:'Parcelas',cor:'var(--s2)'},{k:'u',nome:'Pontual',cor:'var(--s3)'}], 'empilhado');
+
+  const mesesProjecao = intervalo(mesSoma(ultimo, 1), mesSoma(ultimo, 12));
+  barras(el('#g2'), proj, [{k:'f',nome:'Fixo',cor:'var(--s1)'},{k:'p',nome:'Parcelas',cor:'var(--s2)'},{k:'u',nome:'Pontual',cor:'var(--s3)'}],
+    'empilhado', brl, curto,
+    (p, i) => {
+      const m = mesesProjecao[i];
+      const lista = dosMeses(m);
+      detalharLancamentos(`Compromisso projetado — ${mesExib(m)}`, lista, somaDe(lista));
+    });
 
   if (!comparando) {
-    ranking(el('#r1'), agrupar(doPeriodo, (l) => l.tipo));
-    ranking(el('#r2'), agrupar(doPeriodo, (l) => NATUREZAS[l.natureza] || l.natureza), brl, 'var(--s3)');
-    ranking(el('#r3'), porFilial, brl, 'var(--s2)');
-    if (E.empresasSel.size > 1) ranking(el('#r4'), agrupar(doPeriodo, (l) => nomeEmpresa(l.empresa)), brl, 'var(--s1)');
+    // Cada ranking abre os lançamentos do item clicado, pelo mesmo critério
+    // que formou a barra.
+    ranking(el('#r1'), agrupar(doPeriodo, (l) => l.tipo), brl, 'var(--s1)',
+      (it) => {
+        const lista = doPeriodo.filter((l) => l.tipo === it.rotulo);
+        detalharLancamentos(`${it.rotulo} — ${periodo}`, lista, it.valor);
+      });
+    ranking(el('#r2'), agrupar(doPeriodo, (l) => NATUREZAS[l.natureza] || l.natureza), brl, 'var(--s3)',
+      (it) => {
+        const lista = doPeriodo.filter((l) => (NATUREZAS[l.natureza] || l.natureza) === it.rotulo);
+        detalharLancamentos(`Natureza ${it.rotulo} — ${periodo}`, lista, it.valor);
+      });
+    ranking(el('#r3'), porFilial, brl, 'var(--s2)',
+      (it) => {
+        // Este ranking ignora o filtro de filial de propósito (existe para
+        // comparar filiais), então o detalhe usa a mesma base dele.
+        const lista = base.filter((l) => E.competencias.has(l.competencia) && noCenario(l) && naOrigem(l)
+          && (l.filial || '(empresa)') === it.rotulo);
+        detalharLancamentos(`Filial ${it.rotulo} — ${periodo}`, lista, it.valor,
+          'O ranking por filial compara as filiais entre si e por isso ignora o filtro de filial.');
+      });
+    if (E.empresasSel.size > 1) {
+      ranking(el('#r4'), agrupar(doPeriodo, (l) => nomeEmpresa(l.empresa)), brl, 'var(--s1)',
+        (it) => {
+          const lista = doPeriodo.filter((l) => nomeEmpresa(l.empresa) === it.rotulo);
+          detalharLancamentos(`${it.rotulo} — ${periodo}`, lista, it.valor);
+        });
+    }
     linhas(el('#g3'), serie.map((p) => ({ rot: p.rot, v: { t: p.v.d + p.v.i } })),
-      [{ k:'t', nome:'Total mensal', cor:'var(--s1)' }]);
+      [{ k:'t', nome:'Total mensal', cor:'var(--s1)' }], brl, curto, '',
+      (p, i) => {
+        const m = mesDaJanela(i);
+        const lista = dosMeses(m);
+        detalharLancamentos(`Total de ${mesExib(m)}`, lista, somaDe(lista));
+      });
   }
+
+  // Os indicadores: cada um abre os lançamentos que o compõem. O de variação
+  // percentual e o de compromisso projetado saem de recortes próprios.
+  ligarKpis(comparando ? {} : {
+    0: () => detalharLancamentos(`Total do período — ${periodo}`, doPeriodo, somaDe(doPeriodo)),
+    1: () => {
+      const lista = doPeriodo.filter((l) => l.classificacao === 'despesa');
+      detalharLancamentos(`Despesa — ${periodo}`, lista, somaDe(lista));
+    },
+    2: () => {
+      const lista = doPeriodo.filter((l) => l.classificacao === 'investimento');
+      detalharLancamentos(`Investimento — ${periodo}`, lista, somaDe(lista));
+    },
+    3: () => {
+      const lista = mesesProjecao.flatMap((m) => dosMeses(m));
+      detalharLancamentos('Compromisso dos próximos 12 meses', lista, somaDe(lista),
+        `${mesExib(mesesProjecao[0])} a ${mesExib(mesesProjecao[mesesProjecao.length - 1])}`);
+    },
+  });
 }
 
 /** Texto curto do recorte em foco, para o cabeçalho das telas. */

@@ -34,6 +34,7 @@ function filtroDoRelatorio(q: Record<string, unknown>): FiltroRelatorio {
     tiposDespesa: numerosDaQuery(q.tipo_despesa_id),
     origens: listaDaQuery(q.origem) as never,
     classificacoes: listaDaQuery(q.classificacao),
+    naturezas: listaDaQuery(q.natureza),
   };
 }
 

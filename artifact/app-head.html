@@ -82,6 +82,16 @@ code{font-family:var(--mono);font-size:.92em;background:var(--sup2);padding:1px 
 }
 .bt-tema:hover{border-color:var(--linha2);color:var(--tinta)}
 
+/* Gatilho de drill-down: qualquer indicador ou item que abre os registros por
+   trás do número. Afordância visível, foco de teclado e alvo inteiro. */
+.drill{cursor:pointer;position:relative}
+.drill:hover{border-color:var(--linha2)}
+.kpi.drill:hover{background:var(--sup2)}
+.drill:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+.drill::after{
+  content:'↗';position:absolute;top:6px;right:8px;font-size:11px;color:var(--tinta3);opacity:0;transition:opacity .12s}
+.drill:hover::after,.drill:focus-visible::after{opacity:1}
+
 /* ------------------------------------------------------ tabela dinâmica */
 /* Hierarquia por peso e fundo, não só por indentação. */
 .pivot tr.grupo-1 > th, .pivot tr.grupo-1 > td{background:var(--sup2)}

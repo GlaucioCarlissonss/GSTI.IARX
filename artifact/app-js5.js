@@ -318,6 +318,24 @@ async function viewProjetos() {
 
   el('#p-novo').onclick = () => formProjeto(null);
 
+  // Cada indicador abre os projetos ou as tarefas que o compõem.
+  ligarKpis({
+    0: () => detalharProjetos('Projetos no recorte', comAtraso, comAtraso.length),
+    1: () => {
+      const lista = comAtraso.filter((p) => p.status === 'em_andamento');
+      detalharProjetos('Projetos em andamento', lista, lista.length);
+    },
+    2: () => {
+      const lista = comAtraso.filter((p) => p.status === 'concluido');
+      detalharProjetos('Projetos concluídos', lista, lista.length);
+    },
+    3: () => {
+      const lista = comAtraso.filter((p) => p.atrasado);
+      detalharProjetos('Projetos atrasados', lista, lista.length,
+        'Atraso é derivado: o mês corrente passou do fim planejado sem fim real.');
+    },
+  });
+
   if (el('#p-gantt-corpo')) {
     const repintar = () => pintarGantt(montarLinhasGantt(comTarefas), meses, larg, iHoje);
     repintar();
@@ -327,8 +345,13 @@ async function viewProjetos() {
   }
 
   if (Object.keys(carga).length) {
-    ranking(el('#p-carga'), Object.entries(carga).map(([k,c])=>({ rotulo:k, valor:c.total })),
-      (v)=>inteiro(v)+' tarefa(s)', 'var(--s3)');
+    ranking(el('#p-carga'), Object.entries(carga).map(([k,c])=>({
+        rotulo:k, valor:c.total, apoio:`${c.abertas} em aberto${c.atrasadas ? ` · ${c.atrasadas} atrasadas` : ''}` })),
+      (v)=>inteiro(v)+' tarefa(s)', 'var(--s3)',
+      (it) => {
+        const lista = tarefas.filter((t) => (t.responsavel?.trim() || '(não atribuído)') === it.rotulo);
+        detalharTarefas(`Tarefas de ${it.rotulo}`, lista, it.valor);
+      });
   }
   el('#pagina').querySelectorAll('tbody tr[data-id]').forEach((tr) => {
     const p = projetos.find((x)=>x.id===tr.dataset.id);

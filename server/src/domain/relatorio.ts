@@ -30,6 +30,7 @@ export interface FiltroRelatorio {
   tiposDespesa?: number[];
   origens?: Origem[];
   classificacoes?: string[];
+  naturezas?: string[];
 }
 
 /** Condições e parâmetros comuns ao macro e ao detalhe: o mesmo recorte. */
@@ -69,6 +70,7 @@ function recorte(ctx: Contexto, f: FiltroRelatorio) {
     ['l.tipo_despesa_id', f.tiposDespesa],
     ['l.origem', f.origens],
     ['l.classificacao', f.classificacoes],
+    ['l.natureza', f.naturezas],
   ] as Array<[string, unknown[] | undefined]>) {
     const c = clausulaEm(coluna, valores);
     if (c) {

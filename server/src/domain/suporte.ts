@@ -326,6 +326,10 @@ export interface FiltroChamados {
   solicitantes?: string[];
   status?: StatusChamado[];
   prioridades?: Prioridade[];
+  filaIds?: number[];
+  topicoIds?: Array<number | null>;
+  /** 'dentro' | 'fora' — o recorte que os gráficos de SLA usam. */
+  sla?: string[];
   filialId?: number | null;
   competenciaInicio?: string;
   competenciaFim?: string;
@@ -364,6 +368,24 @@ function montarFiltro(empresaId: number, f: FiltroChamados) {
   emLista('s.solicitante', f.solicitantes);
   emLista('s.status', f.status);
   emLista('s.prioridade', f.prioridades);
+  emLista('s.fila_id', f.filaIds);
+
+  if (f.topicoIds?.length) {
+    // "(sem tópico)" é `NULL`, que `IN` não alcança sozinho.
+    const ids = f.topicoIds.filter((v): v is number => v !== null);
+    const partes: string[] = [];
+    if (ids.length) {
+      partes.push(`s.topico_ajuda_id IN (${ids.map(() => '?').join(',')})`);
+      params.push(...ids);
+    }
+    if (f.topicoIds.includes(null)) partes.push('s.topico_ajuda_id IS NULL');
+    condicoes.push(`(${partes.join(' OR ')})`);
+  }
+
+  if (f.sla?.length && f.sla.length < 2) {
+    // Dentro do SLA é `dentro_sla >= total_atendidos`; o chamado tem total 1.
+    condicoes.push(f.sla[0] === 'dentro' ? 's.dentro_sla >= s.total_atendidos' : 's.dentro_sla < s.total_atendidos');
+  }
 
   if (f.filialId === null) condicoes.push('s.filial_id IS NULL');
   else if (f.filialId !== undefined) {

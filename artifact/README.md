@@ -32,6 +32,7 @@ seguintes ficam em TDZ quando ele executa.
 | `app-js8.js` | conferência: de onde vem cada real |
 | `app-js12.js` | seletor de múltipla escolha e as fichas do que está selecionado |
 | `app-js13.js` | relatório em tabela dinâmica, com drill-down em três níveis |
+| `app-js14.js` | detalhamento padrão: tooltip, drill-down e gatilho acessível |
 | `app-js7.js` | abas, seletores globais e inicialização |
 
 ## Testar
@@ -47,6 +48,21 @@ node testar.cjs
 
 `dados/` fica fora do git: são os documentos reais do cliente (nomes de
 colaboradores nas descrições de folha, valores contratuais).
+
+## Tooltips e drill-down
+
+`app-js14.js` concentra as três peças do padrão: o texto do tooltip, a abertura
+do detalhamento e `comDrill()`, que torna um elemento gatilho acessível
+(`role`, `tabindex`, `aria-label`, Enter/Espaço).
+
+Todo indicador e todo item de gráfico que tem registros por trás abre esses
+registros — **com o mesmo recorte que produziu o número**. O detalhamento
+mostra a contagem, a soma, o recorte aplicado e a marca *confere com o
+indicador* (ou *diverge*, em vermelho). Número sem registros por trás — uma
+mediana, um percentual isolado — não vira botão: continua só com tooltip.
+
+`barras()`, `linhas()` e `ranking()` ganharam um parâmetro `aoClicar` opcional;
+sem ele, o gráfico segue apenas informativo, como antes.
 
 ## Relatório com drill-down
 
@@ -199,7 +215,7 @@ vindos do Excel chegam comprimidos. Não há CDN envolvido.
 
 ### Verificação
 
-Doze suítes, todas contra um `window.claude` simulado num Chromium real:
+Treze suítes, todas contra um `window.claude` simulado num Chromium real:
 
 | script | o que cobre |
 |---|---|
@@ -215,6 +231,7 @@ Doze suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-hierarquia.cjs` | o que a hierarquia de tarefas recusa (ciclo, 4º nível, si mesma) e o Gantt agrupado: teclado, `aria-expanded`, barra agregada e persistência |
 | `testar-suporte.cjs` | os dois sistemas de origem na mesma tabela, o recorte por sistema e por setor, e os indicadores acompanhando o recorte |
 | `testar-relatorio.cjs` | o relatório contra **os números do anexo do gestor**, filial a filial e categoria a categoria, mais os três níveis do drill-down |
+| `testar-drill.cjs` | tooltip em todo gráfico e drill-down em todo indicador: acessibilidade, teclado, e a soma do detalhe conferindo com o número clicado |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

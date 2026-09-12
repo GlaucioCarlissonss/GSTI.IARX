@@ -144,6 +144,7 @@ export function GraficoBarras({
   modo = 'agrupado',
   altura = 240,
   rotuloCategoria = 'Competência',
+  aoClicar,
 }: {
   dados: PontoCategoria[];
   series: Serie[];
@@ -152,6 +153,8 @@ export function GraficoBarras({
   modo?: 'agrupado' | 'empilhado';
   altura?: number;
   rotuloCategoria?: string;
+  /** Com isto, cada barra vira gatilho de drill-down. */
+  aoClicar?: (ponto: PontoCategoria, indice: number) => void;
 }) {
   const [dica, setDica] = useState<DicaEstado | null>(null);
   const [tabela, setTabela] = useState(false);
@@ -214,6 +217,30 @@ export function GraficoBarras({
         <g clipPath={`url(#${idClip})`}>
           {dados.map((d, i) => {
             const centro = margem.esquerda + passoCategoria * (i + 0.5);
+            /**
+             * Atributos que tornam a barra um gatilho acessível. Um `<g>` com
+             * `onClick` não é alcançável por teclado nem anunciado como botão.
+             */
+            const gatilho = (ponto: PontoCategoria, indice: number) =>
+              aoClicar
+                ? {
+                    role: 'button',
+                    tabIndex: 0,
+                    'aria-label': `${ponto.rotulo} — abrir os registros deste ponto`,
+                    style: { cursor: 'pointer' },
+                    onClick: () => {
+                      setDica(null);
+                      aoClicar(ponto, indice);
+                    },
+                    onKeyDown: (e: React.KeyboardEvent) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setDica(null);
+                        aoClicar(ponto, indice);
+                      }
+                    },
+                  }
+                : {};
             const total = series.reduce((s, serie) => s + (d.valores[serie.chave] ?? 0), 0);
             const aoEntrar = (evento: React.MouseEvent) =>
               setDica({
@@ -229,7 +256,7 @@ export function GraficoBarras({
             if (modo === 'empilhado') {
               let acumulado = 0;
               return (
-                <g key={d.rotulo} onMouseMove={aoEntrar}>
+                <g key={d.rotulo} onMouseMove={aoEntrar} {...gatilho(d, i)}>
                   <rect
                     x={centro - passoCategoria / 2}
                     y={margem.topo}
@@ -259,7 +286,7 @@ export function GraficoBarras({
 
             const larguraBarra = Math.max((larguraGrupo - 2 * (series.length - 1)) / series.length, 3);
             return (
-              <g key={d.rotulo} onMouseMove={aoEntrar}>
+              <g key={d.rotulo} onMouseMove={aoEntrar} {...gatilho(d, i)}>
                 <rect
                   x={centro - passoCategoria / 2}
                   y={margem.topo}
@@ -311,6 +338,7 @@ export function GraficoLinhas({
   altura = 240,
   rotuloCategoria = 'Competência',
   sufixoEixo,
+  aoClicar,
 }: {
   dados: PontoCategoria[];
   series: Serie[];
@@ -319,6 +347,8 @@ export function GraficoLinhas({
   altura?: number;
   rotuloCategoria?: string;
   sufixoEixo?: string;
+  /** Com isto, clicar no gráfico abre os registros do ponto mais próximo. */
+  aoClicar?: (ponto: PontoCategoria, indice: number) => void;
 }) {
   const [indice, setIndice] = useState<number | null>(null);
   const [dica, setDica] = useState<DicaEstado | null>(null);
@@ -360,7 +390,7 @@ export function GraficoLinhas({
       <svg
         ref={svgRef}
         viewBox={`0 0 ${largura} ${altura}`}
-        style={{ width: '100%', height: 'auto', display: 'block', marginTop: 8 }}
+        style={{ width: '100%', height: 'auto', display: 'block', marginTop: 8, cursor: aoClicar ? 'pointer' : undefined }}
         role="img"
         aria-label={`Série temporal por ${rotuloCategoria.toLowerCase()}`}
         onMouseMove={aoMover}
@@ -368,6 +398,9 @@ export function GraficoLinhas({
           setIndice(null);
           setDica(null);
         }}
+        // Clica no ponto que o cursor já destacou: é o mesmo que o tooltip
+        // está mostrando, então não há surpresa entre o que se vê e o que abre.
+        onClick={aoClicar && indice !== null ? () => { setDica(null); aoClicar(dados[indice]!, indice); } : undefined}
       >
         {marcas.map((m) => (
           <g key={m}>
@@ -444,6 +477,7 @@ export function GraficoRanking({
   maximoItens = 10,
   rotuloCategoria = 'Categoria',
   rotuloValor = 'Valor',
+  aoClicar,
 }: {
   itens: Array<{ rotulo: string; valor: number; apoio?: string }>;
   formatar: (v: number) => string;
@@ -451,6 +485,8 @@ export function GraficoRanking({
   maximoItens?: number;
   rotuloCategoria?: string;
   rotuloValor?: string;
+  /** Com isto, cada item vira gatilho de drill-down. */
+  aoClicar?: (item: { rotulo: string; valor: number; apoio?: string }) => void;
 }) {
   const [tabela, setTabela] = useState(false);
   if (itens.length === 0) return <p className="vazio">Sem dados no período consultado.</p>;
@@ -468,27 +504,54 @@ export function GraficoRanking({
   return (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-        {lista.map((item) => (
-          <div key={item.rotulo} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 4 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, gridColumn: '1 / -1' }}>
-              <span style={{ fontSize: 12.5, color: 'var(--tinta-2)' }}>{item.rotulo}</span>
-              <span style={{ fontSize: 12.5, fontVariantNumeric: 'tabular-nums', fontWeight: 550 }}>
-                {formatar(item.valor)}
-                {item.apoio && <em style={{ color: 'var(--tinta-fraca)', fontStyle: 'normal' }}> · {item.apoio}</em>}
-              </span>
+        {lista.map((item) => {
+          // "Outros" é a cauda agregada: não tem um recorte próprio para abrir.
+          const clicavel = aoClicar && !item.rotulo.startsWith('Outros (');
+          const dica =
+            `${item.rotulo}\n${formatar(item.valor)} · ${((item.valor / (lista.reduce((s, i) => s + i.valor, 0) || 1)) * 100).toFixed(1)}% do exibido` +
+            (item.apoio ? `\n${item.apoio}` : '') +
+            (clicavel ? '\n\nClique para ver os registros que compõem este número.' : '');
+          return (
+            <div
+              key={item.rotulo}
+              className={clicavel ? 'drill' : undefined}
+              title={dica}
+              role={clicavel ? 'button' : undefined}
+              tabIndex={clicavel ? 0 : undefined}
+              aria-label={clicavel ? `${item.rotulo} — abrir os registros que compõem este número` : undefined}
+              onClick={clicavel ? () => aoClicar!(item) : undefined}
+              onKeyDown={
+                clicavel
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        aoClicar!(item);
+                      }
+                    }
+                  : undefined
+              }
+              style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 4, padding: clicavel ? '2px 4px' : undefined, borderRadius: 6 }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, gridColumn: '1 / -1' }}>
+                <span style={{ fontSize: 12.5, color: 'var(--tinta-2)' }}>{item.rotulo}</span>
+                <span style={{ fontSize: 12.5, fontVariantNumeric: 'tabular-nums', fontWeight: 550 }}>
+                  {formatar(item.valor)}
+                  {item.apoio && <em style={{ color: 'var(--tinta-fraca)', fontStyle: 'normal' }}> · {item.apoio}</em>}
+                </span>
+              </div>
+              <div style={{ gridColumn: '1 / -1', height: 8, background: 'var(--superficie-2)', borderRadius: 4 }}>
+                <div
+                  style={{
+                    width: `${Math.max((item.valor / maximo) * 100, 1)}%`,
+                    height: '100%',
+                    background: cor,
+                    borderRadius: 4,
+                  }}
+                />
+              </div>
             </div>
-            <div style={{ gridColumn: '1 / -1', height: 8, background: 'var(--superficie-2)', borderRadius: 4 }}>
-              <div
-                style={{
-                  width: `${Math.max((item.valor / maximo) * 100, 1)}%`,
-                  height: '100%',
-                  background: cor,
-                  borderRadius: 4,
-                }}
-              />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <AlternarTabela aberta={tabela} alternar={() => setTabela((v) => !v)} />
       {tabela && (
@@ -525,12 +588,22 @@ export function Indicador({
   apoio,
   delta,
   deltaBomQuandoCai = true,
+  dica,
+  aoDetalhar,
 }: {
   rotulo: string;
   valor: ReactNode;
   apoio?: ReactNode;
   delta?: number | null;
   deltaBomQuandoCai?: boolean;
+  /** Contexto no hover: o que o número significa, de onde sai. */
+  dica?: string;
+  /**
+   * Abre os registros que compõem o número. Sem isto o indicador segue só
+   * informativo — nem todo número tem registros por trás (uma mediana, um
+   * percentual isolado), e fingir que tem seria pior do que não oferecer.
+   */
+  aoDetalhar?: () => void;
 }) {
   const classe =
     delta === null || delta === undefined || Math.abs(delta) < 0.05
@@ -539,8 +612,8 @@ export function Indicador({
         ? 'sobe'
         : 'desce';
   const simbolo = delta === null || delta === undefined ? '' : delta > 0 ? '▲' : delta < 0 ? '▼' : '■';
-  return (
-    <div className="cartao indicador">
+  const conteudo = (
+    <>
       <span className="rotulo">{rotulo}</span>
       <span className="numero">{valor}</span>
       {delta !== null && delta !== undefined && (
@@ -549,6 +622,34 @@ export function Indicador({
         </span>
       )}
       {apoio && <span className="apoio">{apoio}</span>}
+    </>
+  );
+
+  if (!aoDetalhar) {
+    return (
+      <div className="cartao indicador" title={dica}>
+        {conteudo}
+      </div>
+    );
+  }
+  // Um `button` de verdade traria estilo e semântica de formulário no meio de
+  // um cartão; `role`/`tabIndex`/teclado dão o mesmo comportamento sem isso.
+  return (
+    <div
+      className="cartao indicador drill"
+      role="button"
+      tabIndex={0}
+      title={dica ? `${dica}\n\nClique para ver os registros que compõem este número.` : 'Clique para ver os registros que compõem este número.'}
+      aria-label={`${rotulo} — abrir os registros que compõem este número`}
+      onClick={aoDetalhar}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          aoDetalhar();
+        }
+      }}
+    >
+      {conteudo}
     </div>
   );
 }

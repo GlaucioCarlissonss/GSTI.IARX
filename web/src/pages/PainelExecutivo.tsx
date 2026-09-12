@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { Aviso, Carregando, Cartao } from '../components/base';
 import { GraficoBarras, Indicador } from '../components/graficos';
+import { Detalhamento, detalheDeLancamentos, detalheDeRegistrosSla, type PedidoDetalhe } from '../components/detalhamento';
 import { inteiro, mesCurto, moeda, moedaCurta, percentual } from '../lib/formato';
 import type { DashboardFinanceiro } from './Financeiro';
 
@@ -24,8 +26,16 @@ const SERIES = [
   { chave: 'investimento', nome: 'Investimento', cor: 'var(--serie-2)' },
 ];
 
+/** Mês seguinte a uma competência MM/AAAA — o início da janela de projeção. */
+function mesSeguinte(competencia: string): string {
+  const [m, a] = competencia.split('/').map(Number);
+  const d = new Date(Date.UTC(a!, m!, 1));
+  return `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+}
+
 export function PaginaPainelExecutivo() {
   const { empresa, filialId, paramFilial } = useSessao();
+  const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
 
   const visao = useDados<VisaoExecutiva>(
     () => api.get('/api/dashboards/executivo', { filial_id: paramFilial() }),
@@ -85,16 +95,39 @@ export function PaginaPainelExecutivo() {
           valor={moeda(v.financeiro.total_mes)}
           delta={v.financeiro.variacao_mes_anterior_pct}
           apoio={`${moedaCurta(v.financeiro.despesa)} despesa · ${moedaCurta(v.financeiro.investimento)} investimento`}
+          dica={`Soma dos lançamentos de ${v.escopo.competencia} no recorte atual.`}
+          aoDetalhar={() =>
+            setDetalhe(
+              detalheDeLancamentos(
+                `Gasto de TI — ${v.escopo.competencia}`,
+                { filial_id: paramFilial(), competencia_inicio: v.escopo.competencia, competencia_fim: v.escopo.competencia },
+                v.financeiro.total_mes,
+              ),
+            )
+          }
         />
         <Indicador
           rotulo="Compromisso — 12 meses"
           valor={moedaCurta(v.financeiro.compromisso_proximos_12_meses)}
           apoio="Parcelas e recorrências já lançadas"
+          dica="Soma dos 12 meses seguintes ao mês em foco, com o que já está lançado."
+          aoDetalhar={() =>
+            setDetalhe(
+              detalheDeLancamentos(
+                'Compromisso dos próximos 12 meses',
+                { filial_id: paramFilial(), competencia_inicio: mesSeguinte(v.escopo.competencia) },
+                v.financeiro.compromisso_proximos_12_meses,
+              ),
+            )
+          }
         />
+        {/* Projetos atrasados não tem detalhamento aqui: a tela de projetos é
+            que mostra o cronograma, que é a resposta útil. O link leva lá. */}
         <Indicador
           rotulo="Projetos atrasados"
           valor={inteiro(v.projetos.atrasados)}
           apoio={`${inteiro(v.projetos.em_andamento)} em andamento · ${inteiro(v.projetos.total)} no total`}
+          dica="Atraso é derivado: o mês corrente passou do fim planejado sem fim real registrado."
         />
         <Indicador
           rotulo="Conformidade de SLA"
@@ -103,6 +136,19 @@ export function PaginaPainelExecutivo() {
             v.sla.total_atendidos > 0
               ? `${inteiro(v.sla.total_atendidos)} tickets · ${inteiro(v.sla.fora_sla)} fora do SLA`
               : 'Sem tickets registrados na competência'
+          }
+          dica="Percentual de chamados atendidos dentro do prazo na competência."
+          aoDetalhar={
+            v.sla.total_atendidos > 0
+              ? () =>
+                  setDetalhe(
+                    detalheDeRegistrosSla(
+                      `Atendimento de ${v.escopo.competencia}`,
+                      { filial_id: paramFilial(), competencia: v.escopo.competencia },
+                      v.sla.total_atendidos,
+                    ),
+                  )
+              : undefined
           }
         />
       </div>
@@ -127,6 +173,16 @@ export function PaginaPainelExecutivo() {
             formatar={moeda}
             formatarEixo={moedaCurta}
             altura={260}
+            aoClicar={(_, i) => {
+              const m = financeiro.dados!.evolucao_mensal[i]!;
+              setDetalhe(
+                detalheDeLancamentos(
+                  `Gasto de ${m.competencia}`,
+                  { filial_id: paramFilial(), competencia_inicio: m.competencia, competencia_fim: m.competencia },
+                  m.total,
+                ),
+              );
+            }}
           />
         </Cartao>
       )}
@@ -152,6 +208,8 @@ export function PaginaPainelExecutivo() {
           <Link to="/sla">Ver desempenho →</Link>
         </Cartao>
       </div>
+
+      {detalhe && <Detalhamento pedido={detalhe} aoFechar={() => setDetalhe(null)} />}
     </>
   );
 }

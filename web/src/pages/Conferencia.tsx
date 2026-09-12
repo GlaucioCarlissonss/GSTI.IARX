@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Aviso, Campo, Carregando, Cartao, Etiqueta } from '../components/base';
 import { SeletorMulti } from '../components/seletor-multi';
 import { GraficoBarras, Indicador } from '../components/graficos';
+import { Detalhamento, detalheDeLancamentos, type PedidoDetalhe } from '../components/detalhamento';
 import { inteiro, mesCurto, moeda, moedaCurta, percentual } from '../lib/formato';
 
 /**
@@ -53,6 +54,7 @@ const CURTO_ORIGEM: Record<string, string> = {
 };
 
 export function PaginaConferencia() {
+  const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
   const { empresa } = useSessao();
   const [cenariosSel, setCenariosSel] = useState<string[]>(['oficial']);
   const cenarios = useDados<Array<{ chave: string; nome: string }>>(
@@ -65,7 +67,6 @@ export function PaginaConferencia() {
   if (consulta.erro) return <Aviso tipo="erro">{consulta.erro}</Aviso>;
   if (!consulta.dados) return <Carregando />;
   const c = consulta.dados;
-
   const usadas = c.por_origem.filter((o) => o.lancamentos > 0);
   const series = usadas.map((o) => ({ chave: o.origem, nome: CURTO_ORIGEM[o.origem] ?? o.rotulo, cor: COR_ORIGEM[o.origem]! }));
   const pontos = c.por_competencia.map((m) => ({
@@ -102,10 +103,41 @@ export function PaginaConferencia() {
           rotulo="Base enviada por você"
           valor={moeda(c.base_enviada)}
           apoio={`${inteiro(c.por_origem.find((o) => o.origem === 'planilha')?.lancamentos ?? 0)} linhas das planilhas`}
+          dica="Linhas importadas das suas planilhas, com o valor intocado."
+          aoDetalhar={() =>
+            setDetalhe(
+              detalheDeLancamentos('Base enviada por você', { cenario: c.cenario, origem: 'planilha' }, c.base_enviada,
+                'Linhas importadas das planilhas do gestor, com o valor intocado.'),
+            )
+          }
         />
-        <Indicador rotulo="Acrescentado pelo sistema" valor={moeda(c.acrescentado)} apoio="folha rateada + projeção" />
-        <Indicador rotulo="Total exibido nos painéis" valor={moeda(c.total)} apoio={`cenário ${c.cenario}`} />
-        <Indicador rotulo="Peso do acréscimo" valor={percentual(c.peso_do_acrescimo)} apoio="do total consolidado" />
+        <Indicador
+          rotulo="Acrescentado pelo sistema"
+          valor={moeda(c.acrescentado)}
+          apoio="folha rateada + projeção"
+          dica="Rateio da folha de TI, projeções e lançamentos criados no sistema."
+          aoDetalhar={() =>
+            setDetalhe(
+              detalheDeLancamentos('Acrescentado pelo sistema',
+                { cenario: c.cenario, origem: 'folha_ti,projecao_spincare,manual' }, c.acrescentado,
+                'O que não veio das planilhas: rateio da folha, projeções e lançamentos feitos aqui dentro.'),
+            )
+          }
+        />
+        <Indicador
+          rotulo="Total exibido nos painéis"
+          valor={moeda(c.total)}
+          apoio={`cenário ${c.cenario}`}
+          dica="Soma de todas as procedências — é o número que os painéis mostram."
+          aoDetalhar={() => setDetalhe(detalheDeLancamentos('Total exibido nos painéis', { cenario: c.cenario }, c.total))}
+        />
+        {/* Percentual não tem registros por trás: é a razão entre dois números. */}
+        <Indicador
+          rotulo="Peso do acréscimo"
+          valor={percentual(c.peso_do_acrescimo)}
+          apoio="do total consolidado"
+          dica="Quanto do total consolidado não veio das suas planilhas."
+        />
       </div>
 
       <Cartao titulo="Composição por origem" descricao={`Cenário ${c.cenario}, consolidado da empresa.`}>
@@ -151,13 +183,28 @@ export function PaginaConferencia() {
       </Cartao>
 
       <Cartao titulo="Mês a mês, por origem" descricao={`${inteiro(c.por_competencia.length)} competências.`}>
-        <GraficoBarras dados={pontos} series={series} formatar={moeda} formatarEixo={moedaCurta} modo="empilhado" />
+        <GraficoBarras
+          dados={pontos}
+          series={series}
+          formatar={moeda}
+          formatarEixo={moedaCurta}
+          modo="empilhado"
+          aoClicar={(_, i) => {
+            const m = c.por_competencia[i]!;
+            setDetalhe(
+              detalheDeLancamentos(`Composição de ${m.competencia}`,
+                { cenario: c.cenario, competencia_inicio: m.competencia, competencia_fim: m.competencia }, m.total),
+            );
+          }}
+        />
       </Cartao>
 
       <Aviso tipo="info">
         Discorda de alguma dessas parcelas? Em <Link to="/lancamentos">Lançamentos</Link> cada linha traz sua
         origem e pode ser editada ou excluída — toda alteração fica na trilha de auditoria.
       </Aviso>
+
+      {detalhe && <Detalhamento pedido={detalhe} aoFechar={() => setDetalhe(null)} />}
     </>
   );
 }

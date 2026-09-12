@@ -31,7 +31,11 @@ const pathBarra = (x, y, l, a, r=3) => {
 };
 
 /** pontos: [{rot, v:{chave:valor}}]; series: [{k,nome,cor}] */
-function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = curto) {
+/**
+ * `aoClicar(ponto, indice)` transforma cada barra em gatilho de drill-down.
+ * Sem ele o gráfico segue só informativo, como antes.
+ */
+function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = curto, aoClicar = null) {
   alvo.replaceChildren();
   if (!pontos.length) { alvo.innerHTML = '<p class="vazio">Sem dados no período.</p>'; return; }
   const L=700, A=230, m={t:10,d:12,b:24,e:80}, ap=A-m.t-m.b, lp=L-m.e-m.d;
@@ -65,6 +69,16 @@ function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = c
       ...(series.length>1 && modo==='empilhado' ? [{ nome:'Total', valor: fmt(series.reduce((a,s)=>a+(p.v[s.k]||0),0)) }] : []),
     ]));
     g.addEventListener('mouseleave', sumirDica);
+    if (aoClicar) {
+      g.style.cursor = 'pointer';
+      g.setAttribute('role', 'button');
+      g.setAttribute('tabindex', '0');
+      g.setAttribute('aria-label', `${p.rot} — abrir os registros deste ponto`);
+      g.addEventListener('click', () => { sumirDica(); aoClicar(p, i); });
+      g.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); sumirDica(); aoClicar(p, i); }
+      });
+    }
     svg.appendChild(g);
     if (pontos.length <= 13 || i % 2 === 0) {
       const t = svgEl('text', { x:cx, y:A-7, 'text-anchor':'middle', class:'eixo' }); t.textContent = p.rot; svg.appendChild(t);
@@ -73,7 +87,8 @@ function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = c
   alvo.appendChild(svg);
 }
 
-function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '') {
+/** `aoClicar(ponto, indice)` liga o drill-down ao ponto mais próximo do cursor. */
+function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '', aoClicar = null) {
   alvo.replaceChildren();
   if (!pontos.length) { alvo.innerHTML = '<p class="vazio">Sem dados no período.</p>'; return; }
   const L=700, A=230, m={t:10,d:34,b:24,e:80}, ap=A-m.t-m.b, lp=L-m.e-m.d;
@@ -92,13 +107,20 @@ function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '') {
     pontos.forEach((p,i) => svg.appendChild(svgEl('circle', { cx:x(i), cy:y(p.v[s.k]||0), r:3.5, fill:s.cor, stroke:'var(--sup)', 'stroke-width':2 })));
   }
   const captura = svgEl('rect', { x:m.e, y:m.t, width:lp, height:ap, fill:'transparent' });
-  captura.addEventListener('mousemove', (ev) => {
+  const maisProximo = (ev) => {
     const cx = svg.getBoundingClientRect();
     const rel = ((ev.clientX-cx.left)/cx.width)*L;
-    const i = Math.max(0, Math.min(pontos.length-1, Math.round((rel-m.e)/(lp||1)*Math.max(pontos.length-1,1))));
+    return Math.max(0, Math.min(pontos.length-1, Math.round((rel-m.e)/(lp||1)*Math.max(pontos.length-1,1))));
+  };
+  captura.addEventListener('mousemove', (ev) => {
+    const i = maisProximo(ev);
     mostrarDica(ev, pontos[i].rot, series.map((s)=>({ nome:s.nome, cor:s.cor, valor: fmt(pontos[i].v[s.k]||0) })));
   });
   captura.addEventListener('mouseleave', sumirDica);
+  if (aoClicar) {
+    captura.style.cursor = 'pointer';
+    captura.addEventListener('click', (ev) => { const i = maisProximo(ev); sumirDica(); aoClicar(pontos[i], i); });
+  }
   svg.appendChild(captura);
   pontos.forEach((p,i) => {
     if (pontos.length > 13 && i % 2) return;
@@ -109,14 +131,29 @@ function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '') {
   alvo.appendChild(svg);
 }
 
-function ranking(alvo, itens, fmt = brl, cor = 'var(--s1)') {
+/**
+ * Ranking com tooltip em todo item e, com `aoClicar`, drill-down por item —
+ * o mesmo padrão dos demais gráficos.
+ */
+function ranking(alvo, itens, fmt = brl, cor = 'var(--s1)', aoClicar = null) {
   if (!itens.length) { alvo.innerHTML = '<p class="vazio">Sem dados no período.</p>'; return; }
   const ord = [...itens].sort((a,b)=>b.valor-a.valor), max = Math.max(...ord.map((i)=>i.valor), 1);
   const total = ord.reduce((s,i)=>s+i.valor, 0);
-  alvo.innerHTML = ord.map((i) => `
-    <div class="it">
+  alvo.innerHTML = ord.map((i, idx) => `
+    <div class="it" data-rk="${idx}">
       <div class="tp"><span class="nm">${esc(i.rotulo)}</span>
         <span class="vl">${fmt(i.valor)} <em>· ${pctTxt(pct(i.valor,total))}</em></span></div>
       <div class="trilho"><div style="width:${Math.max(i.valor/max*100,1)}%;background:${cor}"></div></div>
     </div>`).join('');
+
+  alvo.querySelectorAll('[data-rk]').forEach((no) => {
+    const item = ord[+no.dataset.rk];
+    no.addEventListener('mousemove', (ev) => mostrarDica(ev, item.rotulo, [
+      { nome: 'Valor', cor, valor: fmt(item.valor) },
+      { nome: 'Participação', valor: pctTxt(pct(item.valor, total)) },
+      ...(item.apoio ? [{ nome: 'Detalhe', valor: item.apoio }] : []),
+    ]));
+    no.addEventListener('mouseleave', sumirDica);
+    if (aoClicar) comDrill(no, item.rotulo, () => { sumirDica(); aoClicar(item); });
+  });
 }

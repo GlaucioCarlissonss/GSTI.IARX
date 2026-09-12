@@ -110,7 +110,7 @@ async function viewSla(secao = 'indicadores') {
       <section class="bloco"><header><h2>Por tópico de ajuda</h2></header><div class="rank" id="s-r1"></div></section>
       <section class="bloco"><header><h2>Por filial</h2></header>
         <div class="rol"><table><thead><tr><th>Filial</th><th class="n">Atendidos</th><th class="n">Dentro</th><th class="n">Fora</th><th class="n">% no SLA</th></tr></thead>
-        <tbody>${porFilial.map((x)=>`<tr><td>${esc(x.nome)}</td><td class="n">${inteiro(x.total)}</td>
+        <tbody>${porFilial.map((x)=>`<tr data-sfilial="${esc(x.nome)}"><td>${esc(x.nome)}</td><td class="n">${inteiro(x.total)}</td>
           <td class="n">${inteiro(x.dentro)}</td><td class="n">${inteiro(x.fora)}</td>
           <td class="n"><span class="tag ${x.pct>=90?'bom':x.pct>=75?'alerta':'crit'}">${pctTxt(x.pct)}</span></td></tr>`).join('')}
         </tbody></table></div></section>
@@ -197,11 +197,49 @@ async function viewSla(secao = 'indicadores') {
   // Os gráficos só existem na tela de indicadores; a tabela de registros, na
   // de chamados. Cada bloco é ligado onde o seu destino está montado.
   if (regs.length && secao === 'indicadores') {
+    // Cada gráfico abre os chamados que formaram a barra, pelo mesmo recorte.
     barras(el('#s-g1'), porFila.map((x)=>({ rot:x.nome, v:{ d:x.dentro, f:x.fora } })),
-      [{k:'d',nome:'Dentro do SLA',cor:'var(--bom)'},{k:'f',nome:'Fora do SLA',cor:'var(--crit)'}], 'empilhado', inteiro, inteiro);
-    linhas(el('#s-g2'), tendencia, [{k:'p',nome:'% dentro do SLA',cor:'var(--s1)'}], pctTxt, (v)=>String(Math.round(v)), '%');
-    ranking(el('#s-r1'), porTopico.slice(0, 14).map((t)=>({ rotulo:t.nome+' — '+pctTxt(t.pct)+' no SLA', valor:t.total })),
-      (v)=>inteiro(v)+' tickets', 'var(--s3)');
+      [{k:'d',nome:'Dentro do SLA',cor:'var(--bom)'},{k:'f',nome:'Fora do SLA',cor:'var(--crit)'}], 'empilhado', inteiro, inteiro,
+      (p) => {
+        const lista = filtrado.filter((r) => r.fila === p.rot);
+        detalharChamados(`Fila ${p.rot} — ${periodo}`, lista, lista.reduce((s, r) => s + (r.total || 0), 0));
+      });
+
+    linhas(el('#s-g2'), tendencia, [{k:'p',nome:'% dentro do SLA',cor:'var(--s1)'}], pctTxt, (v)=>String(Math.round(v)), '%',
+      (p) => {
+        // A tendência percorre as competências com registro, não só as em foco.
+        const comp = comps[comps.length - tendencia.length + tendencia.indexOf(p)];
+        const lista = regs.filter((r) => r.competencia === comp);
+        detalharChamados(`Conformidade de ${mesExib(comp)}`, lista, lista.reduce((s, r) => s + (r.total || 0), 0));
+      });
+
+    ranking(el('#s-r1'), porTopico.slice(0, 14).map((t)=>({ rotulo:t.nome+' — '+pctTxt(t.pct)+' no SLA', valor:t.total, topico:t.nome })),
+      (v)=>inteiro(v)+' tickets', 'var(--s3)',
+      (it) => {
+        const lista = filtrado.filter((r) => (r.topico || '(sem tópico)') === it.topico);
+        detalharChamados(`Tópico ${it.topico} — ${periodo}`, lista, it.valor);
+      });
+
+    // A tabela por filial também abre o detalhe de cada linha.
+    el('#pagina').querySelectorAll('tr[data-sfilial]').forEach((tr) => {
+      const nome = tr.dataset.sfilial;
+      comDrill(tr, nome, () => {
+        const lista = filtrado.filter((r) => (r.filial || VAZIO.filial) === nome);
+        detalharChamados(`Filial ${nome} — ${periodo}`, lista, lista.reduce((s, r) => s + (r.total || 0), 0));
+      });
+    });
+
+    ligarKpis({
+      0: () => detalharChamados(`Chamados de ${periodo}`, filtrado, T),
+      1: () => {
+        const lista = filtrado.filter((r) => (r.dentro || 0) >= (r.total || 1));
+        detalharChamados(`Dentro do SLA — ${periodo}`, lista, D);
+      },
+      2: () => {
+        const lista = filtrado.filter((r) => (r.dentro || 0) < (r.total || 1));
+        detalharChamados(`Fora do SLA — ${periodo}`, lista, T - D);
+      },
+    });
   }
   if (regs.length) {
     el('#pagina').querySelectorAll('tr[data-sid]').forEach((tr) => {

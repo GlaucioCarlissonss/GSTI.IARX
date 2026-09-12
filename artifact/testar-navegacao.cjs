@@ -31,8 +31,8 @@ const MODULOS_ESPERADOS = ['Controle Financeiro', 'Gestão de Projetos', 'Gestã
 
   const telas = await todasAsAbas(pag);
   const por = (m) => telas.filter((t) => t.modulo === m).map((t) => t.aba);
-  conferir('financeiro reúne painel, lançamentos e conferência',
-    JSON.stringify(por('Controle Financeiro')) === JSON.stringify(['Painel', 'Lançamentos', 'Conferência']),
+  conferir('financeiro reúne painel, lançamentos, relatório e conferência',
+    JSON.stringify(por('Controle Financeiro')) === JSON.stringify(['Painel', 'Lançamentos', 'Relatório', 'Conferência']),
     por('Controle Financeiro').join(', '));
   conferir('suporte reúne indicadores e chamados',
     JSON.stringify(por('Gestão de Suporte TI')) === JSON.stringify(['Indicadores', 'Chamados']),

@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
   cat app-head.html
   cat app-body.html
   echo '<script>'
-  cat app-js1.js app-js12.js app-js2.js app-js3.js app-js4.js app-js5.js app-js6.js app-js8.js app-js9.js app-js10.js app-js11.js app-js13.js app-js7.js
+  cat app-js1.js app-js12.js app-js2.js app-js3.js app-js4.js app-js5.js app-js6.js app-js8.js app-js9.js app-js10.js app-js11.js app-js13.js app-js14.js app-js7.js
   echo '</script>'
 } > sistema.html
 node -e '

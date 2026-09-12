@@ -284,6 +284,41 @@ O payload como chegou fica gravado no registro (`raw_payload`), junto do momento
 da sincronização: dá para reconferir contra a origem sem depender de log, que
 rotaciona.
 
+## Tooltips e drill-down
+
+Vale para **todo gráfico e todo indicador**, nos dois aplicativos.
+
+**Tooltip.** Passar o ponteiro mostra o contexto do ponto: período, valor,
+categoria, série e a participação no total. Nos elementos que não são SVG (as
+barras do Gantt, as linhas do relatório) o mesmo papel cabe ao `title` nativo,
+que ainda funciona com leitor de tela.
+
+**Drill-down.** Clicar abre os registros que compõem aquele número — **com o
+mesmo recorte que o produziu**. Essa é a garantia que faz o detalhamento valer:
+se ele viesse de outra consulta, poderia divergir do que está na tela, e o
+gestor não teria como saber qual dos dois está certo. Por isso o detalhamento
+mostra, junto:
+
+- a contagem de registros;
+- a **soma**, calculada sobre os registros exibidos;
+- a marca **"confere com o indicador"** — ou, em vermelho, **"diverge do
+  indicador"**, com o valor esperado;
+- o **recorte aplicado** (empresa, filial, competência, cenário, base).
+
+**Nem todo número vira botão.** Uma mediana, um percentual isolado ou uma
+contagem de cadastro não tem registros por trás; oferecer drill-down neles
+seria prometer o que não existe. O indicador sem detalhamento continua com
+tooltip.
+
+**Acessibilidade.** O gatilho é sempre `role="button"` com `tabindex="0"`,
+`aria-label` que diz o que vai abrir, foco visível e Enter/Espaço. Um `div` com
+`onclick` não é nada disso.
+
+**Carga sob demanda.** Na versão local o detalhamento só consulta o servidor
+quando abre, com estados de carregando, vazio e erro. Na versão hospedada os
+registros já estão em memória, e o recorte é aplicado sobre a mesma lista que
+produziu o número.
+
 ## Navegação
 
 O sistema se apresenta pelos módulos do negócio, não pela lista de telas. São

@@ -209,10 +209,12 @@ export function buscarPorTicketId(ctx: Contexto, ticketId: number) {
 export interface FiltroSla {
   filialId?: number | null;
   filaId?: number;
-  topicoAjudaId?: number;
+  topicoAjudaId?: number | null;
   competencia?: string;
   competenciaInicio?: string;
   competenciaFim?: string;
+  /** 'dentro' | 'fora' — o recorte que os gráficos de conformidade usam. */
+  sla?: string;
 }
 
 export function montarFiltroSla(ctx: Contexto, filtro: FiltroSla) {
@@ -227,10 +229,13 @@ export function montarFiltroSla(ctx: Contexto, filtro: FiltroSla) {
     condicoes.push('s.fila_id = ?');
     params.push(filtro.filaId);
   }
-  if (filtro.topicoAjudaId !== undefined) {
+  if (filtro.topicoAjudaId === null) condicoes.push('s.topico_ajuda_id IS NULL');
+  else if (filtro.topicoAjudaId !== undefined) {
     condicoes.push('s.topico_ajuda_id = ?');
     params.push(filtro.topicoAjudaId);
   }
+  if (filtro.sla === 'dentro') condicoes.push('s.dentro_sla >= s.total_atendidos');
+  else if (filtro.sla === 'fora') condicoes.push('s.dentro_sla < s.total_atendidos');
   if (filtro.competencia) {
     condicoes.push('s.competencia = ?');
     params.push(paraInterno(filtro.competencia));

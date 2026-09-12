@@ -81,7 +81,7 @@ function viewConferencia() {
           <th class="n">% do total</th><th>Período</th></tr></thead>
         <tbody>${ORDEM_ORIGEM.map((o) => {
           const a = res[o], d = ORIGENS[o];
-          return `<tr${a.n ? '' : ' style="opacity:.45"'}>
+          return `<tr${a.n ? ` data-origem="${esc(o)}"` : ' style="opacity:.45"'}>
             <td><span class="pastilha" style="background:${COR_ORIGEM[o]}"></span>${esc(d.rotulo)}</td>
             <td style="max-width:360px;font-size:12px;color:var(--tinta2)">${esc(d.nota)}</td>
             <td class="n">${inteiro(a.n)}</td>
@@ -144,7 +144,37 @@ function viewConferencia() {
     aoMudar: (novo) => { E.cenariosSel = novo; ajustarCompetencias(); render(); },
   });
 
-  barras(el('#gc'), serie, usadas.map((o) => ({ k:o, nome:ORIGENS[o].curto, cor:COR_ORIGEM[o] })), 'empilhado');
+  barras(el('#gc'), serie, usadas.map((o) => ({ k:o, nome:ORIGENS[o].curto, cor:COR_ORIGEM[o] })), 'empilhado', brl, curto,
+    (p, i) => {
+      const m = meses[i];
+      const lista = todos.filter((l) => l.competencia === m);
+      detalharLancamentos(`Composição de ${mesExib(m)}`, lista, reais(somaC(lista.map((l) => l.valor))));
+    });
+
+  // Os quatro indicadores desta tela existem para responder "de onde vem cada
+  // real": clicar abre exatamente os lançamentos de cada procedência.
+  ligarKpis({
+    0: () => {
+      const lista = todos.filter((l) => origemDe(l) === 'planilha');
+      detalharLancamentos('Base enviada por você', lista, reais(baseC),
+        'Linhas importadas das planilhas do gestor, com o valor intocado.');
+    },
+    1: () => {
+      const lista = todos.filter((l) => origemDe(l) !== 'planilha');
+      detalharLancamentos('Acrescentado pelo sistema', lista, reais(acrescC),
+        'Rateio da folha de TI, projeções e lançamentos criados aqui dentro.');
+    },
+    2: () => detalharLancamentos('Total exibido no painel', todos, reais(totalC)),
+  });
+
+  // Cada linha da composição por procedência abre os seus lançamentos.
+  el('#pagina').querySelectorAll('tr[data-origem]').forEach((tr) => {
+    const o = tr.dataset.origem;
+    comDrill(tr, ORIGENS[o].rotulo, () => {
+      const lista = todos.filter((l) => origemDe(l) === o);
+      detalharLancamentos(ORIGENS[o].rotulo, lista, reais(res[o].c), ORIGENS[o].nota);
+    });
+  });
 
   el('#c-carregar')?.addEventListener('click', async (ev) => {
     ev.target.disabled = true; ev.target.textContent = 'Carregando…';
