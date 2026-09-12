@@ -11,8 +11,9 @@ import { useDados, useSessao } from '../lib/sessao';
 import { Aviso, Campo, Carregando, Cartao, Etiqueta, Modal } from '../components/base';
 import { SeletorMulti, FichasSelecao } from '../components/seletor-multi';
 import { Indicador } from '../components/graficos';
-import { competenciaValida, dataHora, inteiro, percentual } from '../lib/formato';
+import { competenciaExib, competenciaValida, dataHora, inteiro, percentual } from '../lib/formato';
 import { Detalhamento, detalheDeChamados, type PedidoDetalhe } from '../components/detalhamento';
+import { PlanilhaDeChamados } from '../components/planilha-chamados';
 
 export type SistemaOrigem = 'OSTICK' | 'BITRIX24';
 
@@ -99,7 +100,7 @@ export function PaginaBitrix24() {
 const ABERTOS = ['open', 'in_progress'];
 
 function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
-  const { empresa, filialId, paramFilial } = useSessao();
+  const { empresa, filialId, paramFilial, ehGestor } = useSessao();
   const [setores, setSetores] = useState<string[]>([]);
   const [atendentes, setAtendentes] = useState<string[]>([]);
   const [solicitantes, setSolicitantes] = useState<string[]>([]);
@@ -249,6 +250,13 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
 
       {consulta.erro && <Aviso tipo="erro">{consulta.erro}</Aviso>}
 
+      <PlanilhaDeChamados
+        recorte={recorte()}
+        totalNoRecorte={consulta.dados?.resumo.total ?? 0}
+        podeImportar={ehGestor}
+        aoImportar={() => consulta.recarregar()}
+      />
+
       {consulta.dados && consulta.dados.resumo.total > 0 && (
         <div className="grade c3">
           <Indicador
@@ -326,8 +334,12 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
                 <thead>
                   <tr>
                     <th>Chamado</th>
+                    <th>Sistema</th>
+                    <th>Competência</th>
                     <th>Aberto em</th>
                     <th>Setor / área</th>
+                    <th>Filial</th>
+                    <th>Fila</th>
                     <th>Assunto</th>
                     <th>Solicitante</th>
                     <th>Atendente</th>
@@ -355,8 +367,12 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
                           `#${c.numero ?? c.external_id}`
                         )}
                       </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{ROTULO_SISTEMA[c.source_system]}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{competenciaExib(c.competencia)}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>{dataHora(c.aberto_em)}</td>
                       <td>{c.setor ?? '—'}</td>
+                      <td>{c.filial_nome ?? <em style={{ color: 'var(--tinta-fraca)' }}>empresa</em>}</td>
+                      <td>{c.fila ?? '—'}</td>
                       <td style={{ maxWidth: 260 }}>{c.assunto ?? '—'}</td>
                       <td>{c.solicitante ?? '—'}</td>
                       <td>{c.responsavel ?? '—'}</td>

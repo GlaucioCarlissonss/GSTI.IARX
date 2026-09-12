@@ -607,6 +607,49 @@ Sem competência informada, o painel abre no **último mês encerrado com
 movimento**, e não no mês corrente: comparar um mês em curso com um mês completo
 produziria variações enganosas.
 
+### Planilha de chamados
+
+Fluxo próprio, separado do template geral, porque o chamado tem outra
+identidade: a chave é `(source_system, external_id)` — a **mesma** do webhook.
+Um único mecanismo serve aos dois caminhos, e é isso que faz reimportar um
+arquivo já importado **atualizar** em vez de duplicar.
+
+O arquivo tem duas abas. `Tickets` carrega os dados, com as treze colunas do
+contrato; `Instruções` explica cada coluna, os valores aceitos e um exemplo —
+sem ela, quem preenche à mão descobre as regras errando, uma linha por vez.
+Cabeçalho congelado e filtro nativo do Excel vêm do escritor compartilhado.
+
+**A exportação leva o recorte da tela.** Um arquivo com a base inteira, quando
+a tela mostrava um recorte, não é o que o gestor pediu ao clicar em exportar.
+
+**A importação nunca grava direto: primeiro mostra a prévia.** Linha a linha,
+com o que é válido, o motivo de cada recusa e o efeito de cada linha boa —
+*criar* ou *atualizar*. É a diferença entre um relatório do que aconteceu e um
+aviso do que vai acontecer; só depois de ver isso é que o gestor confirma.
+
+| regra | recusa quando |
+| --- | --- |
+| `external_id`, `source_system`, `title` | vazios |
+| `source_system` | fora de OSTICK / BITRIX24 |
+| `status` | fora de open, in_progress, resolved, closed |
+| `priority` | fora de low, medium, high, urgent |
+| `requester_email` | preenchido e sem formato de e-mail |
+| `created_at` | preenchido e ilegível (aceita ISO 8601 e dd/mm/aaaa hh:mm) |
+| `external_id` repetido **no arquivo** | a segunda ocorrência, apontando a linha da primeira |
+
+A duplicata dentro do arquivo é erro, e não upsert: das duas linhas, o sistema
+não tem como saber qual é a boa.
+
+**Linha inválida é rejeitada sem derrubar as boas.** Recusar o arquivo inteiro
+por um erro de digitação faria o gestor refazer o trabalho todo. O relatório
+final diz quantas foram criadas, atualizadas e rejeitadas, e oferece um arquivo
+só com as recusadas — para corrigir e reenviar apenas elas.
+
+Campo em branco cai no padrão em vez de recusar: `status` vira `open`,
+`priority` vira `medium`, `sector` vira "Não classificado". `synced_at` e
+`last_sync_status` são de leitura: saem preenchidos na exportação e são
+ignorados na importação.
+
 ## Importação e exportação
 
 **Um único template** serve para importar e exportar, o que garante backup,

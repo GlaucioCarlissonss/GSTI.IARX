@@ -56,3 +56,15 @@ export const competenciaAtual = () => {
 };
 
 export const competenciaValida = (valor: string) => /^(0[1-9]|1[0-2])\/\d{4}$/.test(valor.trim());
+
+/**
+ * Competência para exibição. A maioria das consultas já devolve MM/AAAA, mas a
+ * listagem de chamados devolve o formato interno `AAAA-MM` — o que é gravado, e
+ * o que ordena. Esta função aceita os dois e sempre mostra MM/AAAA.
+ */
+export const competenciaExib = (valor: string | null | undefined) => {
+  const texto = String(valor ?? '').trim();
+  if (!texto) return '—';
+  const interno = texto.match(/^(\d{4})-(\d{2})$/);
+  return interno ? `${interno[2]}/${interno[1]}` : texto;
+};

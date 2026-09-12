@@ -64,6 +64,29 @@ export const api = {
     for (const [k, v] of Object.entries(campos)) dados.append(k, v);
     return fetch(caminho, { method: 'POST', headers: cabecalhos(false), body: dados }).then(tratar<T>);
   },
+  /**
+   * Download de um arquivo montado a partir de dados que só existem no
+   * navegador — o relatório de erros da importação que acabou de rodar.
+   * Guardá-lo no servidor para poder baixar por GET seria estado sem dono.
+   */
+  baixarComCorpo: async (caminho: string, corpo: unknown, nomeSugerido: string) => {
+    const resposta = await fetch(caminho, {
+      method: 'POST',
+      headers: cabecalhos(true),
+      body: JSON.stringify(corpo ?? {}),
+    });
+    if (!resposta.ok) throw new ErroApi(resposta.status, 'Não foi possível gerar o arquivo.');
+    const blob = await resposta.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = nomeSugerido;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
+
   baixar: async (caminho: string, nomeSugerido: string) => {
     const resposta = await fetch(caminho, { headers: cabecalhos(false) });
     if (!resposta.ok) throw new ErroApi(resposta.status, 'Não foi possível gerar o arquivo.');
