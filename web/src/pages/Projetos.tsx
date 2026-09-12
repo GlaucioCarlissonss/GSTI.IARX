@@ -5,6 +5,7 @@ import { Aviso, Carregando, Cartao, Etiqueta } from '../components/base';
 import { GraficoRanking, Indicador, Legenda } from '../components/graficos';
 import { competenciaAtual, inteiro, mesCurto, ROTULO_STATUS_PROJETO } from '../lib/formato';
 import { useExpansao } from '../lib/expansao';
+import { Detalhamento, detalheDeProjetos, detalheDeTarefas, type PedidoDetalhe } from '../components/detalhamento';
 
 interface ItemGantt {
   id: number;
@@ -87,11 +88,15 @@ const SERIES_GANTT = [
   { chave: 'atraso', nome: 'Em atraso', cor: 'var(--critico)' },
 ];
 
+/** Rótulo que o dashboard dá às tarefas sem responsável no ranking de carga. */
+const SEM_RESPONSAVEL = '(não atribuído)';
+
 export function PaginaProjetos() {
   const { empresa, filialId, paramFilial } = useSessao();
   // Projeto e grupo de tarefas usam o mesmo estado persistido, com prefixo
   // diferente na chave: são dois níveis do mesmo cronograma.
   const grupos = useExpansao('gsti-gantt-comprimidos', 'expandido');
+  const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
   const [rolagem, setRolagem] = useState(0);
   const [alturaVisivel, setAlturaVisivel] = useState(640);
   const caixa = useRef<HTMLDivElement>(null);
@@ -100,6 +105,12 @@ export function PaginaProjetos() {
     () => api.get('/api/dashboards/projetos', { filial_id: paramFilial() }),
     [empresa?.id, filialId],
   );
+
+  /**
+   * O recorte em vigor na tela, repassado a todo detalhamento. É o que garante
+   * que a lista aberta some exatamente o número que estava no indicador.
+   */
+  const recorte = (extra: Record<string, unknown> = {}) => ({ filial_id: paramFilial(), ...extra });
 
   const indiceHoje = useMemo(() => {
     if (!consulta.dados) return -1;
@@ -183,21 +194,44 @@ export function PaginaProjetos() {
   return (
     <>
       <div className="grade c4">
-        <Indicador rotulo="Projetos" valor={inteiro(d.indicadores.total)} apoio={`${inteiro(d.indicadores.total_tarefas)} tarefas`} />
+        <Indicador
+          rotulo="Projetos"
+          valor={inteiro(d.indicadores.total)}
+          apoio={`${inteiro(d.indicadores.total_tarefas)} tarefas`}
+          dica="Projetos ativos no recorte, com o total de tarefas que eles somam."
+          aoDetalhar={() => setDetalhe(detalheDeProjetos('Projetos no recorte', recorte(), d.indicadores.total))}
+        />
         <Indicador
           rotulo="Em andamento"
           valor={inteiro(d.indicadores.em_andamento)}
           apoio={`${inteiro(d.indicadores.planejados)} planejados`}
+          dica="Projetos já iniciados e ainda não concluídos."
+          aoDetalhar={() =>
+            setDetalhe(
+              detalheDeProjetos('Projetos em andamento', recorte({ status: 'em_andamento' }), d.indicadores.em_andamento),
+            )
+          }
         />
         <Indicador
           rotulo="Concluídos"
           valor={inteiro(d.indicadores.concluidos)}
           apoio={`desvio médio de ${d.indicadores.desvio_medio_meses} mês(es)`}
+          dica="Projetos com mês de fim real registrado."
+          aoDetalhar={() =>
+            setDetalhe(detalheDeProjetos('Projetos concluídos', recorte({ status: 'concluido' }), d.indicadores.concluidos))
+          }
         />
         <Indicador
           rotulo="Atrasados"
           valor={inteiro(d.indicadores.atrasados)}
           apoio={`${inteiro(d.indicadores.tarefas_atrasadas)} tarefas em atraso`}
+          dica="Atraso é derivado: o mês corrente passou do fim planejado sem fim real."
+          aoDetalhar={() =>
+            setDetalhe(
+              detalheDeProjetos('Projetos atrasados', recorte({ atrasados: 'true' }), d.indicadores.atrasados,
+                'Atraso é derivado: o mês corrente passou do fim planejado sem fim real registrado.'),
+            )
+          }
         />
       </div>
 
@@ -297,6 +331,17 @@ export function PaginaProjetos() {
             formatar={(v) => `${inteiro(v)} tarefa(s)`}
             rotuloCategoria="Envolvido"
             rotuloValor="Tarefas"
+            aoClicar={(item) =>
+              setDetalhe(
+                detalheDeTarefas(
+                  `Tarefas de ${item.rotulo}`,
+                  // O ranking agrupa as tarefas sem responsável sob um rótulo
+                  // próprio; `sem` é como a consulta pede justamente essas.
+                  recorte({ responsavel: item.rotulo === SEM_RESPONSAVEL ? 'sem' : item.rotulo }),
+                  item.valor,
+                ),
+              )
+            }
           />
         </Cartao>
 
@@ -334,6 +379,8 @@ export function PaginaProjetos() {
           )}
         </Cartao>
       </div>
+
+      {detalhe && <Detalhamento pedido={detalhe} aoFechar={() => setDetalhe(null)} />}
     </>
   );
 }

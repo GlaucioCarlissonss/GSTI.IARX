@@ -230,15 +230,24 @@ async function viewSla(secao = 'indicadores') {
     });
 
     ligarKpis({
-      0: () => detalharChamados(`Chamados de ${periodo}`, filtrado, T),
-      1: () => {
-        const lista = filtrado.filter((r) => (r.dentro || 0) >= (r.total || 1));
-        detalharChamados(`Dentro do SLA — ${periodo}`, lista, D);
-      },
-      2: () => {
-        const lista = filtrado.filter((r) => (r.dentro || 0) < (r.total || 1));
-        detalharChamados(`Fora do SLA — ${periodo}`, lista, T - D);
-      },
+      0: { dica: 'Chamados com registro na competência em foco.',
+           abrir: () => detalharChamados(`Chamados de ${periodo}`, filtrado, T) },
+      1: { dica: 'Chamados atendidos dentro do prazo acordado.',
+           abrir: () => {
+             const lista = filtrado.filter((r) => (r.dentro || 0) >= (r.total || 1));
+             detalharChamados(`Dentro do SLA — ${periodo}`, lista, D);
+           } },
+      2: { dica: 'Chamados que ultrapassaram o prazo acordado.',
+           abrir: () => {
+             const lista = filtrado.filter((r) => (r.dentro || 0) < (r.total || 1));
+             detalharChamados(`Fora do SLA — ${periodo}`, lista, T - D);
+           } },
+      // O quarto indicador muda com a base: contagem de filas (um cadastro) ou
+      // mediana de horas. Nenhum dos dois é a soma de registros, então ganham
+      // o tooltip mas não o detalhamento.
+      3: { dica: medianaHoras === null
+             ? 'Filas com atendimento registrado na competência.'
+             : 'Tempo mediano entre a abertura e o encerramento do chamado.' },
     });
   }
   if (regs.length) {

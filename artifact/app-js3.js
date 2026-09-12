@@ -298,20 +298,24 @@ function viewPainel() {
   // Os indicadores: cada um abre os lançamentos que o compõem. O de variação
   // percentual e o de compromisso projetado saem de recortes próprios.
   ligarKpis(comparando ? {} : {
-    0: () => detalharLancamentos(`Total do período — ${periodo}`, doPeriodo, somaDe(doPeriodo)),
-    1: () => {
-      const lista = doPeriodo.filter((l) => l.classificacao === 'despesa');
-      detalharLancamentos(`Despesa — ${periodo}`, lista, somaDe(lista));
-    },
-    2: () => {
-      const lista = doPeriodo.filter((l) => l.classificacao === 'investimento');
-      detalharLancamentos(`Investimento — ${periodo}`, lista, somaDe(lista));
-    },
-    3: () => {
-      const lista = mesesProjecao.flatMap((m) => dosMeses(m));
-      detalharLancamentos('Compromisso dos próximos 12 meses', lista, somaDe(lista),
-        `${mesExib(mesesProjecao[0])} a ${mesExib(mesesProjecao[mesesProjecao.length - 1])}`);
-    },
+    0: { dica: 'Soma de todos os lançamentos do recorte, despesa e investimento juntos.',
+         abrir: () => detalharLancamentos(`Total do período — ${periodo}`, doPeriodo, somaDe(doPeriodo)) },
+    1: { dica: 'Gasto que se consome no próprio mês: licenças, serviços, folha rateada.',
+         abrir: () => {
+           const lista = doPeriodo.filter((l) => l.classificacao === 'despesa');
+           detalharLancamentos(`Despesa — ${periodo}`, lista, somaDe(lista));
+         } },
+    2: { dica: 'Gasto que vira patrimônio ou capacidade: equipamento, obra, implantação.',
+         abrir: () => {
+           const lista = doPeriodo.filter((l) => l.classificacao === 'investimento');
+           detalharLancamentos(`Investimento — ${periodo}`, lista, somaDe(lista));
+         } },
+    3: { dica: 'O que já está comprometido nos próximos 12 meses, incluindo parcelas e recorrências.',
+         abrir: () => {
+           const lista = mesesProjecao.flatMap((m) => dosMeses(m));
+           detalharLancamentos('Compromisso dos próximos 12 meses', lista, somaDe(lista),
+             `${mesExib(mesesProjecao[0])} a ${mesExib(mesesProjecao[mesesProjecao.length - 1])}`);
+         } },
   });
 }
 

@@ -11,7 +11,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { api } from '../lib/api';
 import { Aviso, Carregando, Etiqueta, Modal } from './base';
-import { inteiro, moeda } from '../lib/formato';
+import { inteiro, moeda, ROTULO_STATUS_PROJETO, ROTULO_STATUS_TAREFA } from '../lib/formato';
 
 /** Coluna do detalhamento. `n` alinha à direita, para números. */
 export interface ColunaDetalhe<T> {
@@ -30,6 +30,18 @@ export interface PedidoDetalhe<T = Record<string, unknown>> {
   params?: Record<string, unknown>;
   /** Lê os registros da resposta (formatos variam por módulo). */
   extrair?: (resposta: unknown) => T[];
+  /**
+   * Quantos registros existem no recorte, quando a resposta é paginada e traz
+   * menos linhas do que o total. Sem isto, uma lista cortada somaria menos que
+   * o indicador e a tela acusaria uma divergência que não existe.
+   */
+  contarNaResposta?: (resposta: unknown) => number;
+  /**
+   * A soma do recorte inteiro, calculada pelo servidor. Só é necessária quando
+   * a lista pode vir cortada: aí a soma das linhas visíveis não serve de
+   * conferência, mas a do servidor sim.
+   */
+  somaNaResposta?: (resposta: unknown) => number;
   /** O número que estava na tela, para a conferência ficar explícita. */
   total?: number | null;
   /** Como somar cada registro, para conferir com o total. */
@@ -42,7 +54,7 @@ export interface PedidoDetalhe<T = Record<string, unknown>> {
 const TETO = 300;
 
 export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>; aoFechar: () => void }) {
-  const [estado, setEstado] = useState<{ itens: T[] } | { erro: string } | null>(null);
+  const [estado, setEstado] = useState<{ itens: T[]; total: number; soma: number | null } | { erro: string } | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -52,7 +64,12 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
       .then((r) => {
         if (!vivo) return;
         const extrair = pedido.extrair ?? ((x: unknown) => (x as { itens?: T[] }).itens ?? (x as T[]));
-        setEstado({ itens: extrair(r) ?? [] });
+        const itens = extrair(r) ?? [];
+        setEstado({
+          itens,
+          total: pedido.contarNaResposta ? pedido.contarNaResposta(r) : itens.length,
+          soma: pedido.somaNaResposta ? pedido.somaNaResposta(r) : null,
+        });
       })
       .catch((e) => {
         if (vivo) setEstado({ erro: e instanceof Error ? e.message : 'Não foi possível carregar os registros.' });
@@ -63,8 +80,14 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
   }, [pedido]);
 
   const itens = estado && 'itens' in estado ? estado.itens : [];
+  const totalDeRegistros = estado && 'itens' in estado ? estado.total : 0;
+  // A resposta veio cortada: a lista tem menos linhas do que o recorte inteiro.
+  const cortada = totalDeRegistros > itens.length;
   const formatar = pedido.formatarTotal ?? ((v: number) => moeda(v));
-  const soma = pedido.somar ? itens.reduce((s, l) => s + pedido.somar!(l), 0) : null;
+  const somaDoServidor = estado && 'itens' in estado ? estado.soma : null;
+  // Com a lista cortada, somar o que está à vista mediria a página, não o
+  // recorte — a conferência então só vale com a soma vinda do servidor.
+  const soma = cortada ? somaDoServidor : (pedido.somar ? itens.reduce((s, l) => s + pedido.somar!(l), 0) : somaDoServidor);
   const bate =
     pedido.total === null || pedido.total === undefined || soma === null ? null : Math.abs(soma - pedido.total) < 0.005;
 
@@ -79,7 +102,13 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Etiqueta texto={`${inteiro(itens.length)} registro(s)`} />
+            <Etiqueta
+              texto={
+                cortada
+                  ? `${inteiro(itens.length)} de ${inteiro(totalDeRegistros)} registro(s)`
+                  : `${inteiro(itens.length)} registro(s)`
+              }
+            />
             {soma !== null && <Etiqueta texto={`Soma: ${formatar(soma)}`} />}
             {bate !== null && (
               <Etiqueta
@@ -117,9 +146,10 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
                   </tbody>
                 </table>
               </div>
-              {itens.length > TETO && (
+              {(itens.length > TETO || cortada) && (
                 <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
-                  Exibindo os {TETO} primeiros de {inteiro(itens.length)}. Estreite o recorte para ver o resto.
+                  Exibindo {inteiro(Math.min(itens.length, TETO))} de {inteiro(totalDeRegistros)} registro(s). Estreite o
+                  recorte para ver o resto.
                 </p>
               )}
             </>
@@ -241,6 +271,10 @@ export function detalheDeChamados(
     params: { limite: 500, ...params },
     formatarTotal: inteiro,
     somar: () => 1,
+    // A listagem é paginada; a contagem honesta é a do servidor, não a da
+    // página que coube no modal.
+    contarNaResposta: (r) => Number((r as { paginacao?: { total?: number } }).paginacao?.total ?? 0),
+    somaNaResposta: (r) => Number((r as { paginacao?: { total?: number } }).paginacao?.total ?? 0),
     colunas: [
       { rotulo: 'Chamado', valor: (c) => `#${c.numero ?? c.external_id}` },
       { rotulo: 'Sistema', valor: (c) => (c.source_system === 'BITRIX24' ? 'Bitrix24' : 'OStick') },
@@ -249,6 +283,66 @@ export function detalheDeChamados(
       { rotulo: 'Solicitante', valor: (c) => (c.solicitante as string) ?? '—' },
       { rotulo: 'Atendente', valor: (c) => (c.responsavel as string) ?? '—' },
       { rotulo: 'SLA', valor: (c) => (c.dentro_sla ? 'Dentro' : 'Fora') },
+    ],
+  };
+}
+
+/**
+ * Projetos por trás de um indicador de contagem. Some 1 por projeto: o número
+ * na tela é uma contagem, e é com ela que a conferência do modal tem de bater.
+ */
+export function detalheDeProjetos(
+  titulo: string,
+  params: Record<string, unknown>,
+  total?: number | null,
+  subtitulo?: string,
+): PedidoDetalhe<Record<string, unknown>> {
+  return {
+    titulo,
+    subtitulo,
+    total,
+    caminho: '/api/projetos',
+    params,
+    formatarTotal: inteiro,
+    somar: () => 1,
+    colunas: [
+      { rotulo: 'Projeto', valor: (p) => String(p.nome) },
+      { rotulo: 'Filial', valor: (p) => (p.filial_nome as string) ?? 'Nível empresa' },
+      { rotulo: 'Situação', valor: (p) => ROTULO_STATUS_PROJETO[String(p.status)] ?? String(p.status) },
+      { rotulo: 'Início', valor: (p) => String(p.mes_inicio) },
+      { rotulo: 'Fim planejado', valor: (p) => String(p.mes_fim_planejado) },
+      { rotulo: 'Fim real', valor: (p) => (p.mes_fim_real as string) ?? '—' },
+      { rotulo: 'Tarefas', valor: (p) => `${inteiro(Number(p.tarefas_concluidas))}/${inteiro(Number(p.total_tarefas))}`, n: true },
+      { rotulo: 'Atraso', valor: (p) => (p.atrasado ? `${inteiro(Number(p.meses_atraso))} mês(es)` : '—') },
+    ],
+  };
+}
+
+/** Tarefas por trás de um indicador ou de um item do ranking de carga. */
+export function detalheDeTarefas(
+  titulo: string,
+  params: Record<string, unknown>,
+  total?: number | null,
+  subtitulo?: string,
+): PedidoDetalhe<Record<string, unknown>> {
+  return {
+    titulo,
+    subtitulo,
+    total,
+    caminho: '/api/projetos/tarefas',
+    params,
+    formatarTotal: inteiro,
+    somar: () => 1,
+    colunas: [
+      { rotulo: 'Tarefa', valor: (t) => String(t.nome) },
+      { rotulo: 'Projeto', valor: (t) => String(t.projeto_nome) },
+      { rotulo: 'Filial', valor: (t) => (t.filial_nome as string) ?? 'Nível empresa' },
+      { rotulo: 'Responsável', valor: (t) => (t.responsavel as string) || 'Não atribuído' },
+      { rotulo: 'Situação', valor: (t) => ROTULO_STATUS_TAREFA[String(t.status)] ?? String(t.status) },
+      { rotulo: 'Início', valor: (t) => String(t.mes_inicio) },
+      { rotulo: 'Fim planejado', valor: (t) => String(t.mes_fim_planejado) },
+      { rotulo: 'Fim real', valor: (t) => (t.mes_fim_real as string) ?? '—' },
+      { rotulo: 'Atraso', valor: (t) => (t.atrasado ? `${inteiro(Number(t.meses_atraso))} mês(es)` : '—') },
     ],
   };
 }

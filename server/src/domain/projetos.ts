@@ -373,6 +373,68 @@ export function listarTarefas(ctx: Contexto, projetoId: number) {
   return saida;
 }
 
+export interface FiltroTarefas {
+  projetoId?: number;
+  filialId?: number | null;
+  responsavel?: string;
+  status?: StatusTarefa;
+  apenasAtrasadas?: boolean;
+}
+
+/**
+ * Tarefas de toda a empresa, não de um projeto só. É o que o detalhamento de
+ * Projetos abre: os indicadores da tela contam tarefas atravessando projetos,
+ * e listar projeto a projeto não reproduziria o mesmo recorte.
+ *
+ * Diferente de `listarTarefas`, aqui não há hierarquia: a lista é plana e cada
+ * tarefa traz o projeto a que pertence, porque o recorte pode misturar pais de
+ * um projeto com filhas de outro e uma árvore ficaria sem raiz.
+ */
+export function listarTarefasDaEmpresa(ctx: Contexto, filtro: FiltroTarefas = {}) {
+  const condicoes = ['p.empresa_id = ?', 'p.excluido_em IS NULL', 't.excluido_em IS NULL'];
+  const params: unknown[] = [ctx.empresaId];
+  if (filtro.projetoId !== undefined) {
+    condicoes.push('t.projeto_id = ?');
+    params.push(filtro.projetoId);
+  }
+  if (filtro.filialId === null) condicoes.push('p.filial_id IS NULL');
+  else if (filtro.filialId !== undefined) {
+    condicoes.push('p.filial_id = ?');
+    params.push(filtro.filialId);
+  }
+  if (filtro.responsavel !== undefined) {
+    // Tarefa sem responsável aparece no ranking como "Não atribuído"; o
+    // detalhamento desse item precisa encontrar exatamente essas linhas.
+    if (filtro.responsavel === '') condicoes.push("(t.responsavel IS NULL OR TRIM(t.responsavel) = '')");
+    else {
+      condicoes.push('t.responsavel = ?');
+      params.push(filtro.responsavel);
+    }
+  }
+  if (filtro.status) {
+    condicoes.push('t.status = ?');
+    params.push(filtro.status);
+  }
+
+  const linhas = db()
+    .prepare(
+      `SELECT t.*, p.nome AS projeto_nome, f.nome AS filial_nome
+         FROM tarefas t
+         JOIN projetos p ON p.id = t.projeto_id
+         LEFT JOIN filiais f ON f.id = p.filial_id
+        WHERE ${condicoes.join(' AND ')}
+        ORDER BY t.mes_inicio, p.nome, t.id`,
+    )
+    .all(...params) as Array<LinhaTarefa & { projeto_nome: string; filial_nome: string | null }>;
+
+  const itens = linhas.map((l) => ({
+    ...apresentarTarefa(l),
+    projeto_nome: l.projeto_nome,
+    filial_nome: l.filial_nome,
+  }));
+  return filtro.apenasAtrasadas ? itens.filter((t) => t.atrasado) : itens;
+}
+
 export function criarTarefa(ctx: Contexto, projetoId: number, entrada: EntradaTarefa) {
   garantirProjeto(ctx, projetoId);
   if (!entrada.nome?.trim()) throw erroValidacao('O nome da tarefa é obrigatório.');

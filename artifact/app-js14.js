@@ -186,9 +186,40 @@ function detalharProjetos(titulo, lista, total, subtitulo) {
  */
 function ligarKpis(mapa) {
   el('#pagina').querySelectorAll('.kpi').forEach((kpi, i) => {
-    const abrir = mapa[i];
-    if (!abrir) return;
+    const entrada = mapa[i];
+    if (!entrada) return;
+    // Uma função sozinha é só o drill-down; o objeto permite dizer também o que
+    // o número significa, que é o que o tooltip mostra.
+    const abrir = typeof entrada === 'function' ? entrada : entrada.abrir;
+    const texto = typeof entrada === 'function' ? null : entrada.dica;
     const rotulo = (kpi.querySelector('.r') || {}).textContent || 'indicador';
-    comDrill(kpi, rotulo, abrir);
+
+    if (texto) {
+      // O mesmo balão dos gráficos, e não o `title` do navegador: o `title`
+      // demora a aparecer, não segue o tema e some no toque.
+      const linhas = [{ nome: texto, valor: '' }];
+      kpi.addEventListener('mousemove', (ev) => mostrarDica(ev, rotulo, linhas));
+      kpi.addEventListener('mouseleave', sumirDica);
+      // Quem navega por teclado não passa o mouse: o balão acompanha o foco.
+      kpi.addEventListener('focus', () => {
+        const c = kpi.getBoundingClientRect();
+        mostrarDica({ clientX: c.left + c.width / 2, clientY: c.top + c.height }, rotulo, linhas);
+      });
+      kpi.addEventListener('blur', sumirDica);
+      // Sem drill-down o indicador não recebe foco por si: o tooltip ainda
+      // precisa ser alcançável, então ele entra na ordem de tabulação.
+      if (!abrir) kpi.setAttribute('tabindex', '0');
+      // O balão é visual; o `title` é o que o leitor de tela encontra.
+      kpi.setAttribute('title', texto);
+    }
+
+    if (abrir) {
+      comDrill(kpi, rotulo, () => { sumirDica(); abrir(); });
+      // `comDrill` põe um aria-label, que substitui o conteúdo lido. O
+      // significado do número entra nele, ou se perderia para quem não vê.
+      if (texto) {
+        kpi.setAttribute('aria-label', rotulo + ' — ' + texto + ' Abrir os registros que compõem este número.');
+      }
+    }
   });
 }

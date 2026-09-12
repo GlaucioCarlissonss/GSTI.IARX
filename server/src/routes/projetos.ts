@@ -10,6 +10,7 @@ import {
   listarEnvolvidos,
   listarProjetos,
   listarTarefas,
+  listarTarefasDaEmpresa,
   obterProjeto,
   removerEnvolvido,
 } from '../domain/projetos.js';
@@ -42,6 +43,25 @@ rotasProjetos.get('/', (req, res) => {
       status: req.query.status ? (String(req.query.status) as never) : undefined,
       apenasAtrasados: req.query.atrasados === 'true',
       busca: req.query.busca ? String(req.query.busca) : undefined,
+    }),
+  );
+});
+
+// Antes de `/:id`, e não depois: Express casa na ordem de declaração, e
+// `/:id` engoliria "tarefas" como se fosse o identificador de um projeto.
+rotasProjetos.get('/tarefas', (req, res) => {
+  res.json(
+    listarTarefasDaEmpresa(ctx(req), {
+      projetoId: req.query.projeto_id ? Number(req.query.projeto_id) : undefined,
+      filialId: filialDaQuery(req.query.filial_id),
+      // `sem` representa a tarefa sem responsável. Um parâmetro vazio não
+      // serve: o cliente descarta string vazia, e ela chegaria como ausente —
+      // o que significaria "sem filtro" e devolveria todas as tarefas.
+      responsavel: req.query.responsavel === undefined ? undefined : (
+        req.query.responsavel === 'sem' ? '' : String(req.query.responsavel)
+      ),
+      status: req.query.status ? (String(req.query.status) as never) : undefined,
+      apenasAtrasadas: req.query.atrasadas === 'true',
     }),
   );
 });

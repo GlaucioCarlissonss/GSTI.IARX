@@ -4,7 +4,13 @@ import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { Aviso, Carregando, Cartao } from '../components/base';
 import { GraficoBarras, Indicador } from '../components/graficos';
-import { Detalhamento, detalheDeLancamentos, detalheDeRegistrosSla, type PedidoDetalhe } from '../components/detalhamento';
+import {
+  Detalhamento,
+  detalheDeLancamentos,
+  detalheDeProjetos,
+  detalheDeRegistrosSla,
+  type PedidoDetalhe,
+} from '../components/detalhamento';
 import { inteiro, mesCurto, moeda, moedaCurta, percentual } from '../lib/formato';
 import type { DashboardFinanceiro } from './Financeiro';
 
@@ -121,13 +127,21 @@ export function PaginaPainelExecutivo() {
             )
           }
         />
-        {/* Projetos atrasados não tem detalhamento aqui: a tela de projetos é
-            que mostra o cronograma, que é a resposta útil. O link leva lá. */}
         <Indicador
           rotulo="Projetos atrasados"
           valor={inteiro(v.projetos.atrasados)}
           apoio={`${inteiro(v.projetos.em_andamento)} em andamento · ${inteiro(v.projetos.total)} no total`}
           dica="Atraso é derivado: o mês corrente passou do fim planejado sem fim real registrado."
+          aoDetalhar={() =>
+            setDetalhe(
+              detalheDeProjetos(
+                'Projetos atrasados',
+                { filial_id: paramFilial(), atrasados: 'true' },
+                v.projetos.atrasados,
+                'O cronograma completo está na Gestão de Projetos; aqui ficam os projetos que compõem o número.',
+              ),
+            )
+          }
         />
         <Indicador
           rotulo="Conformidade de SLA"

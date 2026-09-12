@@ -320,20 +320,24 @@ async function viewProjetos() {
 
   // Cada indicador abre os projetos ou as tarefas que o compõem.
   ligarKpis({
-    0: () => detalharProjetos('Projetos no recorte', comAtraso, comAtraso.length),
-    1: () => {
-      const lista = comAtraso.filter((p) => p.status === 'em_andamento');
-      detalharProjetos('Projetos em andamento', lista, lista.length);
-    },
-    2: () => {
-      const lista = comAtraso.filter((p) => p.status === 'concluido');
-      detalharProjetos('Projetos concluídos', lista, lista.length);
-    },
-    3: () => {
-      const lista = comAtraso.filter((p) => p.atrasado);
-      detalharProjetos('Projetos atrasados', lista, lista.length,
-        'Atraso é derivado: o mês corrente passou do fim planejado sem fim real.');
-    },
+    0: { dica: 'Projetos ativos no recorte, com o total de tarefas que eles somam.',
+         abrir: () => detalharProjetos('Projetos no recorte', comAtraso, comAtraso.length) },
+    1: { dica: 'Projetos já iniciados e ainda não concluídos.',
+         abrir: () => {
+           const lista = comAtraso.filter((p) => p.status === 'em_andamento');
+           detalharProjetos('Projetos em andamento', lista, lista.length);
+         } },
+    2: { dica: 'Projetos com mês de fim real registrado.',
+         abrir: () => {
+           const lista = comAtraso.filter((p) => p.status === 'concluido');
+           detalharProjetos('Projetos concluídos', lista, lista.length);
+         } },
+    3: { dica: 'Atraso é derivado: o mês corrente passou do fim planejado sem fim real.',
+         abrir: () => {
+           const lista = comAtraso.filter((p) => p.atrasado);
+           detalharProjetos('Projetos atrasados', lista, lista.length,
+             'Atraso é derivado: o mês corrente passou do fim planejado sem fim real.');
+         } },
   });
 
   if (el('#p-gantt-corpo')) {

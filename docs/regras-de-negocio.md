@@ -293,6 +293,13 @@ categoria, série e a participação no total. Nos elementos que não são SVG (
 barras do Gantt, as linhas do relatório) o mesmo papel cabe ao `title` nativo,
 que ainda funciona com leitor de tela.
 
+Nos **indicadores** o tooltip diz o que o número mede — de onde ele sai e o que
+entra na conta. Na versão hospedada é o mesmo balão dos gráficos, e não o
+`title` do navegador: o `title` demora a aparecer, não segue o tema e some no
+toque. O balão acompanha também o **foco do teclado**, porque quem navega por
+teclado não passa o ponteiro; o `title` permanece no elemento como a descrição
+que o leitor de tela encontra.
+
 **Drill-down.** Clicar abre os registros que compõem aquele número — **com o
 mesmo recorte que o produziu**. Essa é a garantia que faz o detalhamento valer:
 se ele viesse de outra consulta, poderia divergir do que está na tela, e o
@@ -308,7 +315,31 @@ mostra, junto:
 **Nem todo número vira botão.** Uma mediana, um percentual isolado ou uma
 contagem de cadastro não tem registros por trás; oferecer drill-down neles
 seria prometer o que não existe. O indicador sem detalhamento continua com
-tooltip.
+tooltip. Hoje são quatro, e por estes motivos:
+
+| indicador | por que não abre |
+| --- | --- |
+| Peso do acréscimo (Conferência) | razão entre dois números que já têm o próprio detalhamento |
+| Filas monitoradas (SLA) | contagem de cadastro, e o apoio já nomeia as filas |
+| Mediana de atendimento (SLA) | mediana não é soma de registros |
+| Conformidade de SLA sem tickets (Painel executivo) | abre só quando há chamado na competência; sem nenhum, não há o que listar |
+
+**Indicador cujo número é zero não abre.** Um detalhamento vazio faria o gestor
+duvidar do número em vez de esclarecê-lo.
+
+**Lista cortada não acusa divergência.** A listagem de chamados é paginada, e o
+recorte pode ter mais linhas do que cabe no detalhamento. Nesse caso a
+conferência passa a usar a contagem que o **servidor** informa para o recorte
+inteiro, e não a soma das linhas visíveis — somar o que está à vista mediria a
+página, não o número clicado, e a tela acusaria uma divergência que não existe.
+O rodapé então diz quantos de quantos estão à mostra.
+
+**Tarefa sem responsável.** O ranking de carga agrupa essas tarefas sob um
+rótulo próprio, e o detalhamento as pede com o sentinela `sem`. Um parâmetro
+vazio não serviria: o cliente descarta string vazia por convenção, e o filtro
+chegaria ausente — o que significa "sem filtro" e devolveria **todas** as
+tarefas. É o mesmo padrão do filtro de tópico de ajuda, que usa `sem` para o
+tópico ausente.
 
 **Acessibilidade.** O gatilho é sempre `role="button"` com `tabindex="0"`,
 `aria-label` que diz o que vai abrir, foco visível e Enter/Espaço. Um `div` com

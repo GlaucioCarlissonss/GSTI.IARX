@@ -11,6 +11,7 @@ import {
   excluirTarefa,
   listarProjetos,
   listarTarefas,
+  listarTarefasDaEmpresa,
 } from '../src/domain/projetos.js';
 import {
   atualizarTicketSla,
@@ -341,4 +342,150 @@ test('hierarquia de tarefas: até 3 níveis, sem ciclo e sem tarefa órfã de pa
   assert.equal(lista[posPai]!.nivel, 1);
   assert.equal(lista[posFilha]!.nivel, 2);
   assert.equal(lista[posPai]!.total_subtarefas, 1);
+});
+
+test('tarefas da empresa atravessam projetos e respeitam o recorte', () => {
+  const { ctx } = ambienteLimpo();
+  const filial = criarFilial(ctx, { nome: 'Matriz' }) as { id: number };
+
+  const a = criarProjeto(ctx, {
+    nome: 'Troca de ERP',
+    filialId: filial.id,
+    mesInicio: mesRelativo(-2),
+    mesFimPlanejado: mesRelativo(2),
+  }) as { id: number };
+  const b = criarProjeto(ctx, {
+    nome: 'Rede nova',
+    mesInicio: mesRelativo(-1),
+    mesFimPlanejado: mesRelativo(3),
+  }) as { id: number };
+
+  criarTarefa(ctx, a.id, {
+    nome: 'Levantar processos',
+    mesInicio: mesRelativo(-2),
+    mesFimPlanejado: mesRelativo(-1),
+    responsavel: 'Ana',
+    status: 'em_andamento',
+  });
+  criarTarefa(ctx, a.id, {
+    nome: 'Migrar cadastros',
+    mesInicio: mesRelativo(-1),
+    mesFimPlanejado: mesRelativo(1),
+    responsavel: 'Bruno',
+  });
+  criarTarefa(ctx, b.id, {
+    nome: 'Passar cabeamento',
+    mesInicio: mesRelativo(-1),
+    mesFimPlanejado: mesRelativo(1),
+    responsavel: 'Ana',
+  });
+  criarTarefa(ctx, b.id, { nome: 'Sem dono', mesInicio: mesRelativo(-1), mesFimPlanejado: mesRelativo(1) });
+
+  const todas = listarTarefasDaEmpresa(ctx);
+  assert.equal(todas.length, 4);
+  // Cada tarefa sabe dizer de que projeto veio: sem isso a lista misturada
+  // não seria legível.
+  assert.deepEqual(
+    [...new Set(todas.map((t) => t.projeto_nome))].sort(),
+    ['Rede nova', 'Troca de ERP'],
+  );
+
+  const daAna = listarTarefasDaEmpresa(ctx, { responsavel: 'Ana' });
+  assert.equal(daAna.length, 2);
+  assert.deepEqual(daAna.map((t) => t.nome).sort(), ['Levantar processos', 'Passar cabeamento']);
+
+  // String vazia é como o ranking pede as tarefas sem responsável — e não pode
+  // virar "sem filtro", que devolveria todas.
+  const semDono = listarTarefasDaEmpresa(ctx, { responsavel: '' });
+  assert.deepEqual(semDono.map((t) => t.nome), ['Sem dono']);
+
+  const daFilial = listarTarefasDaEmpresa(ctx, { filialId: filial.id });
+  assert.equal(daFilial.length, 2);
+  assert.equal(daFilial.every((t) => t.projeto_nome === 'Troca de ERP'), true);
+
+  const nivelEmpresa = listarTarefasDaEmpresa(ctx, { filialId: null });
+  assert.equal(nivelEmpresa.every((t) => t.projeto_nome === 'Rede nova'), true);
+
+  assert.deepEqual(
+    listarTarefasDaEmpresa(ctx, { status: 'em_andamento' }).map((t) => t.nome),
+    ['Levantar processos'],
+  );
+  assert.deepEqual(listarTarefasDaEmpresa(ctx, { projetoId: b.id }).length, 2);
+});
+
+test('a contagem do ranking de carga bate com o detalhamento de tarefas', () => {
+  const { ctx } = ambienteLimpo();
+  const p = criarProjeto(ctx, {
+    nome: 'Projeto',
+    mesInicio: mesRelativo(-1),
+    mesFimPlanejado: mesRelativo(2),
+  }) as { id: number };
+
+  for (const [nome, dono] of [
+    ['T1', 'Ana'],
+    ['T2', 'Ana'],
+    ['T3', 'Bruno'],
+    ['T4', null],
+  ] as Array<[string, string | null]>) {
+    criarTarefa(ctx, p.id, {
+      nome,
+      mesInicio: mesRelativo(-1),
+      mesFimPlanejado: mesRelativo(1),
+      responsavel: dono,
+    });
+  }
+
+  const carga = (dashboardProjetos(ctx, {}) as { carga_por_envolvido: Array<{ responsavel: string; total: number }> })
+    .carga_por_envolvido;
+
+  // É a garantia que o drill-down promete: clicar num item do ranking abre
+  // exatamente as tarefas que ele conta.
+  for (const item of carga) {
+    const detalhe = listarTarefasDaEmpresa(ctx, {
+      responsavel: item.responsavel === '(não atribuído)' ? '' : item.responsavel,
+    });
+    assert.equal(detalhe.length, item.total, `carga de ${item.responsavel}`);
+  }
+});
+
+test('o sentinela "sem" chega à consulta como filtro de tarefa sem responsável', async () => {
+  const { ctx } = ambienteLimpo();
+  const p = criarProjeto(ctx, {
+    nome: 'Projeto',
+    mesInicio: mesRelativo(0),
+    mesFimPlanejado: mesRelativo(2),
+  }) as { id: number };
+  criarTarefa(ctx, p.id, { nome: 'Com dono', responsavel: 'Ana', mesInicio: mesRelativo(0), mesFimPlanejado: mesRelativo(1) });
+  criarTarefa(ctx, p.id, { nome: 'Sem dono', mesInicio: mesRelativo(0), mesFimPlanejado: mesRelativo(1) });
+
+  // A tradução mora na rota porque o cliente descarta parâmetro vazio: se o
+  // sentinela se perder, o filtro vira "sem filtro" e a tela mente.
+  const traduzir = (v: string | undefined) => (v === undefined ? undefined : v === 'sem' ? '' : v);
+  assert.deepEqual(
+    listarTarefasDaEmpresa(ctx, { responsavel: traduzir('sem') }).map((t) => t.nome),
+    ['Sem dono'],
+  );
+  assert.deepEqual(
+    listarTarefasDaEmpresa(ctx, { responsavel: traduzir('Ana') }).map((t) => t.nome),
+    ['Com dono'],
+  );
+  assert.equal(listarTarefasDaEmpresa(ctx, { responsavel: traduzir(undefined) }).length, 2);
+});
+
+test('tarefa de outra empresa não aparece na listagem', () => {
+  const { ctx } = ambienteLimpo();
+  const outra = criarEmpresa(ctx.usuarioId, { nome: 'Outra empresa' }) as { id: number };
+  const ctxOutra: Contexto = { ...ctx, empresaId: outra.id };
+
+  const meu = criarProjeto(ctx, { nome: 'Meu', mesInicio: mesRelativo(0), mesFimPlanejado: mesRelativo(1) }) as {
+    id: number;
+  };
+  const dela = criarProjeto(ctxOutra, { nome: 'Dela', mesInicio: mesRelativo(0), mesFimPlanejado: mesRelativo(1) }) as {
+    id: number;
+  };
+  criarTarefa(ctx, meu.id, { nome: 'Minha tarefa', mesInicio: mesRelativo(0), mesFimPlanejado: mesRelativo(1) });
+  criarTarefa(ctxOutra, dela.id, { nome: 'Tarefa dela', mesInicio: mesRelativo(0), mesFimPlanejado: mesRelativo(1) });
+
+  assert.deepEqual(listarTarefasDaEmpresa(ctx).map((t) => t.nome), ['Minha tarefa']);
+  assert.deepEqual(listarTarefasDaEmpresa(ctxOutra).map((t) => t.nome), ['Tarefa dela']);
 });

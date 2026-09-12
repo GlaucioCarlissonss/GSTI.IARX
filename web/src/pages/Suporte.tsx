@@ -12,6 +12,7 @@ import { Aviso, Campo, Carregando, Cartao, Etiqueta, Modal } from '../components
 import { SeletorMulti, FichasSelecao } from '../components/seletor-multi';
 import { Indicador } from '../components/graficos';
 import { competenciaValida, dataHora, inteiro, percentual } from '../lib/formato';
+import { Detalhamento, detalheDeChamados, type PedidoDetalhe } from '../components/detalhamento';
 
 export type SistemaOrigem = 'OSTICK' | 'BITRIX24';
 
@@ -92,6 +93,9 @@ export function PaginaBitrix24() {
   return <PaginaChamados sistema="BITRIX24" />;
 }
 
+/** Status que o resumo conta como chamado ainda em aberto. */
+const ABERTOS = ['open', 'in_progress'];
+
 function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
   const { empresa, filialId, paramFilial } = useSessao();
   const [setores, setSetores] = useState<string[]>([]);
@@ -103,6 +107,7 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
   const [ate, setAte] = useState('');
   const [pagina, setPagina] = useState(1);
   const [aberto, setAberto] = useState<Chamado | null>(null);
+  const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
 
   const opcoes = useDados<Opcoes>(
     () => api.get('/api/suporte/chamados/opcoes', { sistema }),
@@ -125,6 +130,30 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
       }),
     [empresa?.id, filialId, sistema, setores, atendentes, solicitantes, status, busca, de, ate, pagina],
   );
+
+  /**
+   * Os mesmos filtros da tela, sem a paginação: o indicador conta o recorte
+   * inteiro, não a página em foco, e o detalhamento tem de contar o mesmo.
+   */
+  const recorte = (extra: Record<string, unknown> = {}) => ({
+    sistema,
+    filial_id: paramFilial(),
+    setor_id: setores.join(','),
+    atendente: atendentes.join(','),
+    solicitante: solicitantes.join(','),
+    status: status.join(','),
+    busca: busca.trim() || undefined,
+    competencia_inicio: competenciaValida(de) ? de : undefined,
+    competencia_fim: competenciaValida(ate) ? ate : undefined,
+    ...extra,
+  });
+
+  /**
+   * "Em aberto" cruza com o filtro de status que o gestor já tenha marcado —
+   * o indicador conta dentro desse recorte, e o detalhamento precisa do mesmo
+   * cruzamento para não abrir mais chamados do que o número mostra.
+   */
+  const statusEmAberto = (status.length ? status.filter((s) => ABERTOS.includes(s)) : ABERTOS).join(',');
 
   // Trocar um filtro volta para a primeira página: continuar na 3ª de um
   // recorte que agora tem uma página só mostraria uma tela vazia.
@@ -220,16 +249,53 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
 
       {consulta.dados && consulta.dados.resumo.total > 0 && (
         <div className="grade c3">
-          <Indicador rotulo="Chamados no recorte" valor={inteiro(consulta.dados.resumo.total)} />
+          <Indicador
+            rotulo="Chamados no recorte"
+            valor={inteiro(consulta.dados.resumo.total)}
+            dica="Todos os chamados que atendem aos filtros acima, e não só os da página em foco."
+            aoDetalhar={() =>
+              setDetalhe(
+                detalheDeChamados(`Chamados — ${ROTULO_SISTEMA[sistema]}`, recorte(), consulta.dados!.resumo.total),
+              )
+            }
+          />
           <Indicador
             rotulo="Em aberto"
             valor={inteiro(consulta.dados.resumo.em_aberto)}
             apoio={`${inteiro(consulta.dados.resumo.total - consulta.dados.resumo.em_aberto)} encerrados`}
+            dica="Chamados ainda sem encerramento: em aberto ou em atendimento."
+            aoDetalhar={
+              // Sem chamados em aberto não há o que abrir, e um detalhamento
+              // vazio só faria o gestor duvidar do número.
+              consulta.dados.resumo.em_aberto > 0
+                ? () =>
+                    setDetalhe(
+                      detalheDeChamados(
+                        'Chamados em aberto',
+                        recorte({ status: statusEmAberto }),
+                        consulta.dados!.resumo.em_aberto,
+                      ),
+                    )
+                : undefined
+            }
           />
           <Indicador
             rotulo="Dentro do SLA"
             valor={percentual(consulta.dados.resumo.pct_dentro_sla)}
             apoio={`${inteiro(consulta.dados.resumo.dentro_sla)} de ${inteiro(consulta.dados.resumo.total)}`}
+            dica="Chamados atendidos dentro do prazo, sobre o total do recorte."
+            aoDetalhar={
+              consulta.dados.resumo.dentro_sla > 0
+                ? () =>
+                    setDetalhe(
+                      detalheDeChamados(
+                        'Chamados dentro do SLA',
+                        recorte({ sla: 'dentro' }),
+                        consulta.dados!.resumo.dentro_sla,
+                      ),
+                    )
+                : undefined
+            }
           />
         </div>
       )}
@@ -331,6 +397,7 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
       </Cartao>
 
       {aberto && <DetalheChamado id={aberto.id} aoFechar={() => setAberto(null)} />}
+      {detalhe && <Detalhamento pedido={detalhe} aoFechar={() => setDetalhe(null)} />}
     </>
   );
 }

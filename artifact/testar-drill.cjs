@@ -64,7 +64,22 @@ const TELAS = ['Painel', 'Conferência', 'Projetos', 'Indicadores'];
       rotulo: k.getAttribute('aria-label'),
     }));
     confere(`${tela}: o indicador é um gatilho acessível`,
-      [acesso.papel, acesso.foco, /abrir os registros/.test(acesso.rotulo)], ['button', '0', true]);
+      [acesso.papel, acesso.foco, /abrir os registros/i.test(acesso.rotulo)], ['button', '0', true]);
+
+    // Tooltip em TODO indicador, com ou sem drill-down: é o pedido do gestor,
+    // e sem ele o número fica sem explicar o que mede.
+    const semDica = await pag.$$eval('.kpi', (ks) =>
+      ks.filter((k) => !k.getAttribute('title')).map((k) => (k.querySelector('.r') || {}).textContent || '?'));
+    confere(`${tela}: todo indicador explica o que mede`, semDica, []);
+
+    // O balão é o mesmo dos gráficos, e aparece também pelo teclado.
+    await pag.$eval('.kpi', (k) => k.dispatchEvent(new FocusEvent('focus')));
+    await pag.waitForTimeout(250);
+    const balao = await pag.evaluate(() => {
+      const d = document.querySelector('#dica');
+      return { visivel: !!d && d.classList.contains('on'), texto: d ? d.textContent.trim().slice(0, 60) : '' };
+    });
+    confere(`${tela}: o tooltip aparece pelo foco do teclado`, balao.visivel, true);
   }
 
   // ------------------------------------------------ os números têm de bater

@@ -154,17 +154,23 @@ function viewConferencia() {
   // Os quatro indicadores desta tela existem para responder "de onde vem cada
   // real": clicar abre exatamente os lançamentos de cada procedência.
   ligarKpis({
-    0: () => {
-      const lista = todos.filter((l) => origemDe(l) === 'planilha');
-      detalharLancamentos('Base enviada por você', lista, reais(baseC),
-        'Linhas importadas das planilhas do gestor, com o valor intocado.');
-    },
-    1: () => {
-      const lista = todos.filter((l) => origemDe(l) !== 'planilha');
-      detalharLancamentos('Acrescentado pelo sistema', lista, reais(acrescC),
-        'Rateio da folha de TI, projeções e lançamentos criados aqui dentro.');
-    },
-    2: () => detalharLancamentos('Total exibido no painel', todos, reais(totalC)),
+    0: { dica: 'Linhas importadas das suas planilhas, com o valor exatamente como veio.',
+         abrir: () => {
+           const lista = todos.filter((l) => origemDe(l) === 'planilha');
+           detalharLancamentos('Base enviada por você', lista, reais(baseC),
+             'Linhas importadas das planilhas do gestor, com o valor intocado.');
+         } },
+    1: { dica: 'Rateio da folha de TI, projeções e lançamentos criados aqui dentro.',
+         abrir: () => {
+           const lista = todos.filter((l) => origemDe(l) !== 'planilha');
+           detalharLancamentos('Acrescentado pelo sistema', lista, reais(acrescC),
+             'Rateio da folha de TI, projeções e lançamentos criados aqui dentro.');
+         } },
+    2: { dica: 'Soma de todas as procedências — é o número que os painéis mostram.',
+         abrir: () => detalharLancamentos('Total exibido no painel', todos, reais(totalC)) },
+    // Percentual não tem registros por trás: é a razão entre dois números que
+    // já têm o seu próprio detalhamento.
+    3: { dica: 'Quanto do total consolidado não veio das suas planilhas.' },
   });
 
   // Cada linha da composição por procedência abre os seus lançamentos.
