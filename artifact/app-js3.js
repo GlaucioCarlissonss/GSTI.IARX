@@ -1,15 +1,51 @@
 // ===========================================================================
 // Modal genérico
 // ===========================================================================
-function abrirModal({ titulo, corpo, acoes, aoMontar }) {
+/** Tamanho mínimo útil de uma tela flutuante: abaixo disto ela não serve. */
+const MODAL_MINIMO = { largura: 320, altura: 240 };
+
+/** Chave de persistência do tamanho. Sem `tipo`, cai no título. */
+const chaveDoModal = (tipo, titulo) =>
+  'iarx-modal-' + String(tipo || titulo || 'padrao').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+
+function lerTamanhoDoModal(chave) {
+  try { return JSON.parse(localStorage.getItem(chave) || 'null'); } catch (e) { return null; }
+}
+function gravarTamanhoDoModal(chave, dados) {
+  try { localStorage.setItem(chave, JSON.stringify(dados)); } catch (e) { /* modo privado */ }
+}
+
+/**
+ * Tela flutuante. Cabeçalho e rodapé presos, miolo rolando, e o tamanho fica
+ * na mão de quem usa: arrastar as bordas, ou tela cheia de uma vez.
+ *
+ * `tipo` separa o tamanho guardado por espécie de tela — o detalhamento de um
+ * indicador quer largura, um formulário de cadastro não.
+ */
+function abrirModal({ titulo, corpo, acoes, aoMontar, tipo }) {
+  const chave = chaveDoModal(tipo, titulo);
+  const guardado = lerTamanhoDoModal(chave) || {};
+
   const fundo = document.createElement('div');
   fundo.className = 'fundo';
   fundo.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(titulo)}">
-      <header><h2>${esc(titulo)}</h2><button type="button" class="bt fant" data-x aria-label="Fechar">✕</button></header>
+      <header><h2>${esc(titulo)}</h2>
+        <button type="button" class="bt fant" data-cheia aria-pressed="false"
+          aria-label="Expandir para tela cheia" title="Tela cheia">⛶</button>
+        <button type="button" class="bt fant" data-x aria-label="Fechar">✕</button></header>
       <div data-corpo>${corpo}</div>
       <div class="msg erro" data-erro hidden></div>
       <div class="acoes">${acoes}</div>
+      <div class="puxador dir" data-puxa="dir" role="separator" aria-orientation="vertical"
+        aria-label="Arraste para mudar a largura"></div>
+      <div class="puxador baixo" data-puxa="baixo" role="separator" aria-orientation="horizontal"
+        aria-label="Arraste para mudar a altura"></div>
+      <div class="puxador canto" data-puxa="canto" role="separator"
+        aria-label="Arraste para mudar largura e altura"></div>
     </div>`;
+
+  const caixa = fundo.querySelector('.modal');
   const fechar = () => { fundo.remove(); document.removeEventListener('keydown', tecla); };
   // Com modais empilhados, Escape fecha só o de cima: fechar os dois faria o
   // gestor perder também a tela de onde abriu o segundo.
@@ -18,10 +54,123 @@ function abrirModal({ titulo, corpo, acoes, aoMontar }) {
   fundo.addEventListener('mousedown', (e) => { if (e.target === fundo) fechar(); });
   fundo.querySelector('[data-x]').addEventListener('click', fechar);
   el('#modais').appendChild(fundo);
+
+  // ------------------------------------------------------- tamanho e tela cheia
+  const tetoLargura = () => Math.max(window.innerWidth - 28, MODAL_MINIMO.largura);
+  const tetoAltura = () => Math.max(window.innerHeight - 72, MODAL_MINIMO.altura);
+  const limitar = (v, min, max) => Math.min(Math.max(v, min), max);
+
+  const aplicar = (largura, altura) => {
+    if (largura) caixa.style.width = limitar(largura, MODAL_MINIMO.largura, tetoLargura()) + 'px';
+    if (altura) caixa.style.height = limitar(altura, MODAL_MINIMO.altura, tetoAltura()) + 'px';
+  };
+  aplicar(guardado.largura, guardado.altura);
+
+  const btCheia = fundo.querySelector('[data-cheia]');
+  const alternarCheia = (cheia) => {
+    caixa.classList.toggle('cheia', cheia);
+    btCheia.setAttribute('aria-pressed', String(cheia));
+    btCheia.setAttribute('aria-label', cheia ? 'Restaurar o tamanho anterior' : 'Expandir para tela cheia');
+    btCheia.title = cheia ? 'Restaurar' : 'Tela cheia';
+    btCheia.textContent = cheia ? '⤡' : '⛶';
+    gravarTamanhoDoModal(chave, { ...lerTamanhoDoModal(chave), cheia });
+  };
+  btCheia.addEventListener('click', () => alternarCheia(!caixa.classList.contains('cheia')));
+  if (guardado.cheia) alternarCheia(true);
+
+  // Arrastar as bordas. `setPointerCapture` mantém o arrasto mesmo quando o
+  // ponteiro sai da alça, que é o que acontece na primeira puxada forte.
+  fundo.querySelectorAll('[data-puxa]').forEach((alca) => {
+    alca.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      const lado = alca.dataset.puxa;
+      const inicio = { x: ev.clientX, y: ev.clientY, l: caixa.offsetWidth, a: caixa.offsetHeight };
+      alca.classList.add('arrastando');
+      alca.setPointerCapture(ev.pointerId);
+
+      const mover = (e) => {
+        // A tela é centralizada: cresce para os dois lados, e o ponteiro só
+        // anda de um. Daí o dobro na largura.
+        if (lado !== 'baixo') aplicar(inicio.l + (e.clientX - inicio.x) * 2, null);
+        if (lado !== 'dir') aplicar(null, inicio.a + (e.clientY - inicio.y));
+      };
+      const soltar = () => {
+        alca.classList.remove('arrastando');
+        alca.removeEventListener('pointermove', mover);
+        alca.removeEventListener('pointerup', soltar);
+        alca.removeEventListener('pointercancel', soltar);
+        gravarTamanhoDoModal(chave, { largura: caixa.offsetWidth, altura: caixa.offsetHeight, cheia: false });
+      };
+      alca.addEventListener('pointermove', mover);
+      alca.addEventListener('pointerup', soltar);
+      alca.addEventListener('pointercancel', soltar);
+    });
+  });
+
   const erro = (m) => { const b = fundo.querySelector('[data-erro]'); b.textContent = m; b.hidden = !m; };
   aoMontar?.({ raiz: fundo, fechar, erro, campo: (n) => fundo.querySelector('[name="'+n+'"]') });
+  // Toda tabela dentro da tela flutuante ganha coluna ajustável.
+  fundo.querySelectorAll('[data-corpo] table').forEach(colunasAjustaveis);
   fundo.querySelector('input,select,textarea')?.focus();
   return { fechar, erro };
+}
+
+/**
+ * Dá alça de largura a cada coluna, menos a última — arrastar a última só
+ * empurraria a borda da tabela, sem redistribuir nada.
+ *
+ * Mexe só no `width` do `th`: ordenação, filtro e o conteúdo das células
+ * seguem intactos, porque nada aqui repinta a tabela.
+ */
+function colunasAjustaveis(tabela) {
+  const cabecalhos = [...tabela.querySelectorAll('thead th')];
+  if (cabecalhos.length < 2) return;
+  tabela.style.tableLayout = 'fixed';
+  cabecalhos.forEach((th) => { if (!th.style.width) th.style.width = th.offsetWidth + 'px'; });
+
+  /**
+   * A tabela passa a valer a soma das colunas, e não 100% da caixa. Com
+   * `width: 100%` e `table-layout: fixed`, alargar uma coluna fazia o navegador
+   * devolver o ganho encolhendo as outras — a coluna não crescia de fato. Quem
+   * absorve o excesso é a rolagem horizontal da caixa, como deve ser.
+   */
+  const somarLargura = () => {
+    const soma = cabecalhos.reduce((s, th) => s + (parseFloat(th.style.width) || th.offsetWidth), 0);
+    // Largura exata, sem `min-width: 100%`: esticar a tabela até a caixa faria
+    // o navegador reescalar as colunas, e a que foi arrastada voltaria ao que era.
+    tabela.style.width = Math.round(soma) + 'px';
+  };
+  somarLargura();
+
+  cabecalhos.forEach((th, i) => {
+    if (i === cabecalhos.length - 1 || th.querySelector('.puxa-col')) return;
+    th.classList.add('ajustavel');
+    const alca = document.createElement('div');
+    alca.className = 'puxa-col';
+    alca.setAttribute('role', 'separator');
+    alca.setAttribute('aria-orientation', 'vertical');
+    alca.setAttribute('aria-label', `Ajustar a largura da coluna ${th.textContent.trim()}`);
+    alca.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      // A largura de referência é a do estilo, que é a que manda sob
+      // `table-layout: fixed`; `offsetWidth` pode já vir reescalado.
+      const x0 = ev.clientX, l0 = parseFloat(th.style.width) || th.offsetWidth;
+      alca.classList.add('arrastando');
+      alca.setPointerCapture(ev.pointerId);
+      const mover = (e) => {
+        th.style.width = Math.max(l0 + (e.clientX - x0), 48) + 'px';
+        somarLargura();
+      };
+      const soltar = () => {
+        alca.classList.remove('arrastando');
+        alca.removeEventListener('pointermove', mover);
+        alca.removeEventListener('pointerup', soltar);
+      };
+      alca.addEventListener('pointermove', mover);
+      alca.addEventListener('pointerup', soltar);
+    });
+    th.appendChild(alca);
+  });
 }
 
 function confirmar({ titulo, mensagem, rotulo = 'Confirmar', exigeJustificativa, aoConfirmar }) {

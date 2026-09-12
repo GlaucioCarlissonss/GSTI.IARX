@@ -301,11 +301,70 @@ input[type=checkbox]{width:auto;accent-color:var(--s1)}
 .msg strong{color:var(--tinta)}
 
 /* --------------------------------------------------------------- modal */
-.fundo{position:fixed;inset:0;z-index:60;background:rgba(11,14,20,.5);display:flex;align-items:flex-start;justify-content:center;padding:36px 14px;overflow-y:auto}
-.modal{background:var(--sup);border:1px solid var(--linha);border-radius:14px;width:min(680px,100%);padding:20px 22px;box-shadow:0 16px 56px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:14px}
-.modal>header{display:flex;align-items:center;gap:10px}
+/* ------------------------------------------------------- telas flutuantes */
+/* Toda tela flutuante é a mesma peça: cabeçalho preso em cima, rodapé preso
+   embaixo e só o miolo rolando. Quem rola é o miolo justamente para que o
+   título — que carrega o recorte — e o botão de fechar nunca saiam de vista. */
+.fundo{position:fixed;inset:0;z-index:60;background:rgba(11,14,20,.5);
+  display:flex;align-items:flex-start;justify-content:center;padding:36px 14px;overflow:hidden}
+.modal{position:relative;background:var(--sup);border:1px solid var(--linha);border-radius:14px;
+  width:min(680px,100%);max-width:100%;max-height:calc(100vh - 72px);
+  padding:20px 22px;box-shadow:0 16px 56px rgba(0,0,0,.3);
+  display:flex;flex-direction:column;gap:14px}
+.modal>header{display:flex;align-items:center;gap:10px;flex:none}
 .modal>header h2{margin-right:auto;font-size:17px}
-.acoes{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.modal>[data-corpo]{flex:1 1 auto;min-height:0;overflow:auto;
+  display:flex;flex-direction:column;gap:14px}
+.modal>[data-erro]{flex:none}
+.acoes{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;flex:none}
+
+/* Redimensionar: borda direita, borda de baixo e o canto entre as duas. A
+   esquerda e o topo ficam de fora de propósito — a tela é centralizada, e
+   arrastar por lá a faria andar em vez de crescer. */
+.puxador{position:absolute;z-index:2;touch-action:none}
+.puxador.dir{top:10px;right:-3px;width:8px;bottom:14px;cursor:ew-resize}
+.puxador.baixo{left:10px;right:14px;bottom:-3px;height:8px;cursor:ns-resize}
+.puxador.canto{right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize}
+/* O canto ganha a marca de três riscos: sem ela ninguém descobre que arrasta. */
+.puxador.canto::after{content:'';position:absolute;right:3px;bottom:3px;width:9px;height:9px;
+  background:linear-gradient(135deg,transparent 42%,var(--tinta3) 42%,var(--tinta3) 52%,transparent 52%,
+    transparent 68%,var(--tinta3) 68%,var(--tinta3) 78%,transparent 78%)}
+.puxador:hover, .puxador.arrastando{background:color-mix(in srgb,var(--s1) 35%,transparent);border-radius:4px}
+.modal.cheia{width:100%!important;height:100%!important;max-height:100%;border-radius:0}
+/* Ações dentro de um formulário não podem sair dele — o submit depende disso.
+   Em vez de movê-las para o rodapé, grudam no fundo da área de dados: mesmo
+   resultado, ficam sempre à vista. */
+.modal [data-corpo] .acoes{position:sticky;bottom:0;z-index:2;
+  background:var(--sup);padding:10px 0;box-shadow:inset 0 1px 0 var(--linha)}
+.modal.cheia .puxador{display:none}
+
+/* Barra de rolagem no tom do tema: a do navegador entra branca no escuro e
+   corta o fundo da tela flutuante. */
+.modal [data-corpo], .modal .rol, .rol-fixo{scrollbar-width:thin;scrollbar-color:var(--linha2) transparent}
+.modal [data-corpo]::-webkit-scrollbar, .modal .rol::-webkit-scrollbar,
+.rol-fixo::-webkit-scrollbar{width:11px;height:11px}
+.modal [data-corpo]::-webkit-scrollbar-track, .modal .rol::-webkit-scrollbar-track,
+.rol-fixo::-webkit-scrollbar-track{background:transparent}
+.modal [data-corpo]::-webkit-scrollbar-thumb, .modal .rol::-webkit-scrollbar-thumb,
+.rol-fixo::-webkit-scrollbar-thumb{background:var(--linha2);border-radius:6px;
+  border:3px solid transparent;background-clip:content-box}
+.modal [data-corpo]::-webkit-scrollbar-thumb:hover, .modal .rol::-webkit-scrollbar-thumb:hover,
+.rol-fixo::-webkit-scrollbar-thumb:hover{background:var(--tinta3);background-clip:content-box}
+
+/* Dentro da tela flutuante, o cabeçalho da tabela também fica preso: rolar
+   centenas de registros sem os nomes das colunas é ler número sem rótulo. */
+.modal .rol thead th{position:sticky;top:0;z-index:2;background:var(--sup);
+  box-shadow:inset 0 -1px 0 var(--linha2)}
+
+/* Coluna ajustável: a alça fica na divisa, dentro do cabeçalho. */
+th.ajustavel{position:relative}
+/* Dentro da célula, não sobre a divisa: a caixa de rolagem da tabela recorta
+   o que passa da borda, e a alça ficava inalcançável pelo ponteiro. */
+th .puxa-col{position:absolute;top:0;right:0;width:9px;height:100%;cursor:col-resize;touch-action:none}
+th .puxa-col:hover, th .puxa-col.arrastando{background:color-mix(in srgb,var(--s1) 45%,transparent)}
+/* Texto longo deixa de ser cortado quando a tela cresce: em vez de reticências
+   numa largura fixa, a célula quebra em linha e usa o espaço que houver. */
+.modal table.larga td.texto{white-space:normal;word-break:break-word;min-width:150px}
 
 /* ------------------------------------------------------------ gráficos */
 svg{display:block;width:100%;height:auto}

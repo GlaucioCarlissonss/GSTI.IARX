@@ -48,8 +48,9 @@ const TETO_DETALHE = 300;
  * Abre o detalhamento de um número: os registros que o compõem, o recorte que
  * os produziu, e a soma — que tem de bater com o número clicado.
  *
- * `colunas`: `[{ rotulo, campo | valor(linha), n, link(linha) }]` — `n` alinha
- * à direita, `link` transforma a célula em link para o sistema de origem.
+ * `colunas`: `[{ rotulo, campo | valor(linha), n, texto, link(linha) }]` — `n` alinha
+ * à direita, `texto` deixa a célula quebrar linha em vez de cortar, e `link`
+ * transforma a célula em link para o sistema de origem.
  * `total`: o número que estava na tela, para a conferência ficar explícita.
  */
 function abrirDetalhamento({ titulo, subtitulo, colunas, linhas, total, formatarTotal = brl, somar }) {
@@ -61,6 +62,9 @@ function abrirDetalhamento({ titulo, subtitulo, colunas, linhas, total, formatar
   const exibidas = linhas.slice(0, TETO_DETALHE);
 
   abrirModal({
+    // Todo detalhamento guarda o mesmo tamanho: é sempre a mesma leitura —
+    // muitos registros, colunas de texto longo — e o gestor ajusta uma vez.
+    tipo: 'detalhamento',
     titulo: 'Detalhamento — ' + titulo,
     corpo: `
       ${subtitulo ? `<p class="nota" style="margin:0">${esc(subtitulo)}</p>` : ''}
@@ -74,7 +78,7 @@ function abrirDetalhamento({ titulo, subtitulo, colunas, linhas, total, formatar
       ${recorte.length ? `<p class="nota" style="margin:2px 0 0">Recorte aplicado — ${esc(recorte.join(' · '))}</p>` : ''}
       ${linhas.length === 0
         ? '<p class="vazio">Nenhum registro compõe este número no recorte atual.</p>'
-        : `<div class="rol" style="max-height:52vh"><table>
+        : `<div class="rol"><table class="larga">
             <thead><tr>${colunas.map((c) => `<th${c.n ? ' class="n"' : ''}>${esc(c.rotulo)}</th>`).join('')}</tr></thead>
             <tbody>${exibidas.map((l) => `<tr>${colunas.map((c) => {
               const v = c.valor ? c.valor(l) : l[c.campo];
@@ -83,7 +87,10 @@ function abrirDetalhamento({ titulo, subtitulo, colunas, linhas, total, formatar
               const conteudo = href
                 ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(String(v))}</a>`
                 : esc(String(v));
-              return `<td${c.n ? ' class="n"' : ''}>${conteudo}</td>`;
+              // Coluna de texto longo quebra em linha em vez de cortar: ao
+              // esticar a tela flutuante, ela usa o espaço que apareceu.
+              const classe = c.n ? ' class="n"' : c.texto ? ' class="texto"' : '';
+              return `<td${classe}>${conteudo}</td>`;
             }).join('')}</tr>`).join('')}</tbody></table></div>
           ${linhas.length > TETO_DETALHE
             ? `<p class="nota">Exibindo os ${TETO_DETALHE} primeiros de ${inteiro(linhas.length)}. Estreite o recorte para ver o resto.</p>`
@@ -110,9 +117,9 @@ function detalharLancamentos(titulo, lista, total, subtitulo) {
       { rotulo: 'Competência', valor: (l) => mesExib(l.competencia) },
       { rotulo: 'Filial', valor: (l) => l.filial || 'Nível empresa' },
       { rotulo: 'Tipo', campo: 'tipo' },
-      { rotulo: 'Descrição', valor: (l) => l.descricao || '—' },
-      { rotulo: 'Origem do custo', valor: (l) => l.origemCusto || '—' },
-      { rotulo: 'Destino', valor: (l) => l.destinoPagamento || '—' },
+      { rotulo: 'Descrição', valor: (l) => l.descricao || '—', texto: true },
+      { rotulo: 'Origem do custo', valor: (l) => l.origemCusto || '—', texto: true },
+      { rotulo: 'Destino', valor: (l) => l.destinoPagamento || '—', texto: true },
       { rotulo: 'Procedência', valor: (l) => ORIGENS[origemDe(l)].rotulo },
       { rotulo: 'Valor', valor: (l) => brl(l.valor), n: true },
     ],
@@ -136,7 +143,7 @@ function detalharChamados(titulo, lista, total, subtitulo) {
       { rotulo: 'Setor', valor: (r) => setorDe(r) },
       { rotulo: 'Filial', valor: (r) => r.filial || 'Nível empresa' },
       { rotulo: 'Fila', campo: 'fila' },
-      { rotulo: 'Assunto', valor: (r) => r.assunto || '—' },
+      { rotulo: 'Assunto', valor: (r) => r.assunto || '—', texto: true },
       { rotulo: 'Solicitante', valor: (r) => r.solicitante || '—' },
       { rotulo: 'Responsável', valor: (r) => r.atendente || '—' },
       { rotulo: 'SLA', valor: (r) => ((r.dentro || 0) >= (r.total || 1) ? 'Dentro' : 'Fora') },
@@ -152,8 +159,8 @@ function detalharTarefas(titulo, lista, total, subtitulo) {
     somar: () => 1,
     linhas: lista,
     colunas: [
-      { rotulo: 'Projeto', valor: (t) => t.projeto || '—' },
-      { rotulo: 'Tarefa', campo: 'nome' },
+      { rotulo: 'Projeto', valor: (t) => t.projeto || '—', texto: true },
+      { rotulo: 'Tarefa', campo: 'nome', texto: true },
       { rotulo: 'Responsável', valor: (t) => t.responsavel || 'sem responsável' },
       { rotulo: 'Início', valor: (t) => mesExib(t.inicio) },
       { rotulo: 'Fim planejado', valor: (t) => mesExib(t.fimPlanejado) },
@@ -174,7 +181,7 @@ function detalharProjetos(titulo, lista, total, subtitulo) {
     somar: () => 1,
     linhas: lista,
     colunas: [
-      { rotulo: 'Projeto', campo: 'nome' },
+      { rotulo: 'Projeto', campo: 'nome', texto: true },
       { rotulo: 'Filial', valor: (p) => p.filial || 'Nível empresa' },
       { rotulo: 'Início', valor: (p) => mesExib(p.inicio) },
       { rotulo: 'Fim planejado', valor: (p) => mesExib(p.fimPlanejado) },

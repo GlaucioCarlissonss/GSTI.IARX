@@ -369,20 +369,89 @@ tfoot td { padding: 8px 10px; font-weight: 600; border-top: 1px solid var(--eixo
 .vazio { color: var(--tinta-fraca); font-size: 13px; padding: 22px; text-align: center; }
 
 /* -------------------------------------------------------------------- modal */
+/* --------------------------------------------------------- telas flutuantes */
+/* Toda tela flutuante é a mesma peça: cabeçalho preso em cima, rodapé preso
+   embaixo e só a área de dados rolando. Quem rola é o miolo justamente para
+   que o título — que carrega o recorte — e as ações nunca saiam de vista. */
 .sobreposicao {
   position: fixed; inset: 0; z-index: 50;
   background: rgba(11, 11, 11, 0.45);
   display: flex; align-items: flex-start; justify-content: center;
-  padding: 40px 16px; overflow-y: auto;
+  padding: 40px 16px; overflow: hidden;
 }
 .modal {
+  position: relative;
   background: var(--superficie); border-radius: 12px; border: 1px solid var(--borda);
-  width: min(660px, 100%); padding: 20px 22px; box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
+  width: min(660px, 100%); max-width: 100%; max-height: calc(100vh - 80px);
+  padding: 20px 22px; box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
   display: flex; flex-direction: column; gap: 16px;
 }
-.modal > header { display: flex; align-items: center; gap: 10px; }
+.modal > header { display: flex; align-items: center; gap: 10px; flex: none; }
 .modal > header h2 { margin-right: auto; }
 .modal .acoes { display: flex; gap: 8px; justify-content: flex-end; }
+.modal > .modal-corpo {
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.modal > .modal-acoes { flex: none; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.modal.cheia { width: 100% !important; height: 100% !important; max-height: 100%; border-radius: 0; }
+/* Ações que vivem dentro de um `<form>` não podem sair dele — o submit
+   depende disso. Em vez de movê-las para o rodapé, elas grudam no fundo da
+   área de dados, o que dá o mesmo resultado: ficam sempre à vista. */
+.modal-corpo .acoes {
+  position: sticky; bottom: 0; z-index: 2;
+  background: var(--superficie); padding: 10px 0;
+  box-shadow: inset 0 1px 0 var(--grade);
+}
+
+/* Redimensionar: borda direita, borda de baixo e o canto entre as duas. A
+   esquerda e o topo ficam de fora de propósito — a tela é centralizada, e
+   arrastar por lá a faria andar em vez de crescer. */
+.puxador { position: absolute; z-index: 2; touch-action: none; }
+.puxador.dir { top: 10px; right: -3px; width: 8px; bottom: 14px; cursor: ew-resize; }
+.puxador.baixo { left: 10px; right: 14px; bottom: -3px; height: 8px; cursor: ns-resize; }
+.puxador.canto { right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; }
+/* O canto ganha a marca de riscos: sem ela ninguém descobre que arrasta. */
+.puxador.canto::after {
+  content: ''; position: absolute; right: 3px; bottom: 3px; width: 9px; height: 9px;
+  background: linear-gradient(135deg, transparent 42%, var(--tinta-fraca) 42%, var(--tinta-fraca) 52%,
+    transparent 52%, transparent 68%, var(--tinta-fraca) 68%, var(--tinta-fraca) 78%, transparent 78%);
+}
+.puxador:hover, .puxador.arrastando { background: color-mix(in srgb, var(--serie-1) 35%, transparent); border-radius: 4px; }
+
+/* Dentro da tela flutuante, o cabeçalho da tabela também fica preso: rolar
+   centenas de registros sem os nomes das colunas é ler número sem rótulo. */
+.modal .tabela-envolucro thead th {
+  position: sticky; top: 0; z-index: 2; background: var(--superficie);
+  box-shadow: inset 0 -1px 0 var(--eixo);
+}
+
+/* Barra de rolagem no tom do tema: a do navegador entra branca no escuro e
+   corta o fundo da tela flutuante. */
+.modal-corpo, .modal .tabela-envolucro, .tabela-envolucro.rol-fixo {
+  scrollbar-width: thin; scrollbar-color: var(--eixo) transparent;
+}
+.modal-corpo::-webkit-scrollbar, .modal .tabela-envolucro::-webkit-scrollbar,
+.tabela-envolucro.rol-fixo::-webkit-scrollbar { width: 11px; height: 11px; }
+.modal-corpo::-webkit-scrollbar-track, .modal .tabela-envolucro::-webkit-scrollbar-track,
+.tabela-envolucro.rol-fixo::-webkit-scrollbar-track { background: transparent; }
+.modal-corpo::-webkit-scrollbar-thumb, .modal .tabela-envolucro::-webkit-scrollbar-thumb,
+.tabela-envolucro.rol-fixo::-webkit-scrollbar-thumb {
+  background: var(--eixo); border-radius: 6px; border: 3px solid transparent; background-clip: content-box;
+}
+.modal-corpo::-webkit-scrollbar-thumb:hover, .modal .tabela-envolucro::-webkit-scrollbar-thumb:hover,
+.tabela-envolucro.rol-fixo::-webkit-scrollbar-thumb:hover {
+  background: var(--tinta-fraca); background-clip: content-box;
+}
+
+/* Coluna ajustável: a alça fica dentro da célula, não sobre a divisa — a caixa
+   de rolagem recorta o que passa da borda e a deixaria inalcançável. */
+th.ajustavel { position: relative; }
+th .puxa-col { position: absolute; top: 0; right: 0; width: 9px; height: 100%; cursor: col-resize; touch-action: none; }
+th .puxa-col:hover, th .puxa-col.arrastando { background: color-mix(in srgb, var(--serie-1) 45%, transparent); }
+/* Texto longo deixa de ser cortado quando a tela cresce: em vez de reticências
+   numa largura fixa, a célula quebra em linha e usa o espaço que houver. */
+.modal table td.texto { white-space: normal; word-break: break-word; min-width: 150px; }
 
 /* -------------------------------------------------------------------- login */
 .login { min-height: 100vh; display: grid; place-items: center; padding: 24px; }

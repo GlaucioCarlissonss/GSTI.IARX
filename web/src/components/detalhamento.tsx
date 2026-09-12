@@ -8,16 +8,20 @@
  *
  * Os dados vêm sob demanda: a tela só busca quando o detalhamento abre.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../lib/api';
 import { Aviso, Carregando, Etiqueta, Modal } from './base';
 import { inteiro, moeda, ROTULO_STATUS_PROJETO, ROTULO_STATUS_TAREFA } from '../lib/formato';
+import { ligarColunasAjustaveis } from '../lib/colunas';
 
 /** Coluna do detalhamento. `n` alinha à direita, para números. */
 export interface ColunaDetalhe<T> {
   rotulo: string;
   valor: (linha: T) => ReactNode;
+  /** Alinha à direita, para números. */
   n?: boolean;
+  /** Texto longo: quebra em linha em vez de cortar, e usa o espaço que houver. */
+  texto?: boolean;
 }
 
 export interface PedidoDetalhe<T = Record<string, unknown>> {
@@ -55,6 +59,7 @@ const TETO = 300;
 
 export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>; aoFechar: () => void }) {
   const [estado, setEstado] = useState<{ itens: T[]; total: number; soma: number | null } | { erro: string } | null>(null);
+  const tabela = useRef<HTMLTableElement>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -79,6 +84,9 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
     };
   }, [pedido]);
 
+  // As alças só existem depois de a tabela ser pintada, e mudam com as colunas.
+  useEffect(() => ligarColunasAjustaveis(tabela.current), [estado, pedido.colunas]);
+
   const itens = estado && 'itens' in estado ? estado.itens : [];
   const totalDeRegistros = estado && 'itens' in estado ? estado.total : 0;
   // A resposta veio cortada: a lista tem menos linhas do que o recorte inteiro.
@@ -92,7 +100,19 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
     pedido.total === null || pedido.total === undefined || soma === null ? null : Math.abs(soma - pedido.total) < 0.005;
 
   return (
-    <Modal titulo={`Detalhamento — ${pedido.titulo}`} aberto aoFechar={aoFechar}>
+    <Modal
+      titulo={`Detalhamento — ${pedido.titulo}`}
+      aberto
+      aoFechar={aoFechar}
+      // Todo detalhamento guarda o mesmo tamanho: é sempre a mesma leitura —
+      // muitos registros, colunas de texto longo — e o gestor ajusta uma vez.
+      tipo="detalhamento"
+      acoes={
+        <button type="button" className="botao" onClick={aoFechar}>
+          Fechar
+        </button>
+      }
+    >
       {pedido.subtitulo && <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>{pedido.subtitulo}</p>}
 
       {estado === null ? (
@@ -122,8 +142,10 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
             <p className="vazio">Nenhum registro compõe este número no recorte atual.</p>
           ) : (
             <>
-              <div className="tabela-envolucro" style={{ maxHeight: '52vh', overflowY: 'auto' }}>
-                <table>
+              {/* A altura vem da tela flutuante, não de um teto fixo: esticar a
+                  janela precisa dar espaço à tabela. */}
+              <div className="tabela-envolucro">
+                <table ref={tabela}>
                   <thead>
                     <tr>
                       {pedido.colunas.map((c) => (
@@ -137,7 +159,7 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
                     {itens.slice(0, TETO).map((l, i) => (
                       <tr key={i}>
                         {pedido.colunas.map((c) => (
-                          <td key={c.rotulo} className={c.n ? 'num' : undefined}>
+                          <td key={c.rotulo} className={c.n ? 'num' : c.texto ? 'texto' : undefined}>
                             {c.valor(l) ?? '—'}
                           </td>
                         ))}
@@ -231,9 +253,9 @@ export function detalheDeLancamentos(
       { rotulo: 'Competência', valor: (l) => String(l.competencia) },
       { rotulo: 'Filial', valor: (l) => String(l.filial_nome ?? 'Nível empresa') },
       { rotulo: 'Tipo', valor: (l) => String(l.tipo_despesa) },
-      { rotulo: 'Descrição', valor: (l) => (l.descricao as string) ?? '—' },
-      { rotulo: 'Origem do custo', valor: (l) => (l.origem_custo as string) ?? '—' },
-      { rotulo: 'Destino', valor: (l) => (l.destino_pagamento as string) ?? '—' },
+      { rotulo: 'Descrição', valor: (l) => (l.descricao as string) ?? '—', texto: true },
+      { rotulo: 'Origem do custo', valor: (l) => (l.origem_custo as string) ?? '—', texto: true },
+      { rotulo: 'Destino', valor: (l) => (l.destino_pagamento as string) ?? '—', texto: true },
       { rotulo: 'Procedência', valor: (l) => String(l.origem_rotulo) },
       { rotulo: 'Valor', valor: (l) => moeda(Number(l.valor_centavos) / 100), n: true },
     ],
@@ -267,7 +289,7 @@ export function detalheDeRegistrosSla(
       // O número abre o chamado no sistema de origem — é o caminho para quem
       // quer ver o atendimento inteiro, e não só a linha do relatório.
       { rotulo: 'Chamado', valor: (r) => linkDoChamado(r, r.ticket_id ? `#${r.numero ?? r.ticket_id}` : null) },
-      { rotulo: 'Assunto', valor: (r) => (r.assunto as string) ?? '—' },
+      { rotulo: 'Assunto', valor: (r) => (r.assunto as string) ?? '—', texto: true },
       { rotulo: 'Atendidos', valor: (r) => inteiro(Number(r.total_atendidos)), n: true },
       { rotulo: 'Dentro', valor: (r) => inteiro(Number(r.dentro_sla)), n: true },
       { rotulo: 'Fora', valor: (r) => inteiro(Number(r.fora_sla)), n: true },
@@ -297,7 +319,7 @@ export function detalheDeChamados(
       { rotulo: 'Chamado', valor: (c) => linkDoChamado(c, `#${c.numero ?? c.external_id}`) },
       { rotulo: 'Sistema', valor: (c) => (c.source_system === 'BITRIX24' ? 'Bitrix24' : 'OStick') },
       { rotulo: 'Setor', valor: (c) => (c.setor as string) ?? 'Não classificado' },
-      { rotulo: 'Assunto', valor: (c) => (c.assunto as string) ?? '—' },
+      { rotulo: 'Assunto', valor: (c) => (c.assunto as string) ?? '—', texto: true },
       { rotulo: 'Solicitante', valor: (c) => (c.solicitante as string) ?? '—' },
       { rotulo: 'Atendente', valor: (c) => (c.responsavel as string) ?? '—' },
       { rotulo: 'SLA', valor: (c) => (c.dentro_sla ? 'Dentro' : 'Fora') },
@@ -324,7 +346,7 @@ export function detalheDeProjetos(
     formatarTotal: inteiro,
     somar: () => 1,
     colunas: [
-      { rotulo: 'Projeto', valor: (p) => String(p.nome) },
+      { rotulo: 'Projeto', valor: (p) => String(p.nome), texto: true },
       { rotulo: 'Filial', valor: (p) => (p.filial_nome as string) ?? 'Nível empresa' },
       { rotulo: 'Situação', valor: (p) => ROTULO_STATUS_PROJETO[String(p.status)] ?? String(p.status) },
       { rotulo: 'Início', valor: (p) => String(p.mes_inicio) },
@@ -352,8 +374,8 @@ export function detalheDeTarefas(
     formatarTotal: inteiro,
     somar: () => 1,
     colunas: [
-      { rotulo: 'Tarefa', valor: (t) => String(t.nome) },
-      { rotulo: 'Projeto', valor: (t) => String(t.projeto_nome) },
+      { rotulo: 'Tarefa', valor: (t) => String(t.nome), texto: true },
+      { rotulo: 'Projeto', valor: (t) => String(t.projeto_nome), texto: true },
       { rotulo: 'Filial', valor: (t) => (t.filial_nome as string) ?? 'Nível empresa' },
       { rotulo: 'Responsável', valor: (t) => (t.responsavel as string) || 'Não atribuído' },
       { rotulo: 'Situação', valor: (t) => ROTULO_STATUS_TAREFA[String(t.status)] ?? String(t.status) },

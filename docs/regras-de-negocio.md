@@ -407,6 +407,55 @@ quando abre, com estados de carregando, vazio e erro. Na versão hospedada os
 registros já estão em memória, e o recorte é aplicado sobre a mesma lista que
 produziu o número.
 
+## Telas flutuantes
+
+Toda tela flutuante — modal de detalhe, formulário, detalhamento de indicador —
+é a mesma peça, e obedece às mesmas regras.
+
+**Cabeçalho preso em cima, rodapé preso embaixo, só os dados rolando.** O
+título carrega o recorte (*"Detalhamento — Despesa · 08/2026"*) e as ações
+levam a fechar ou salvar: nenhum dos dois pode sair de vista enquanto se
+percorre trezentos registros. As ações que vivem dentro de um `<form>` não
+podem sair dele — o `submit` depende disso —, então em vez de mudarem de lugar
+elas grudam no fundo da área de dados, com o mesmo efeito.
+
+**O tamanho fica na mão de quem usa.** Arrastar a borda direita, a de baixo ou
+o canto entre as duas; ou tela cheia de uma vez, pelo botão do cabeçalho. A
+esquerda e o topo ficam de fora de propósito: a tela é centralizada, e arrastar
+por lá a faria andar em vez de crescer. Mínimo de 320×240 — abaixo disso ela não
+serve para nada — e máximo na janela.
+
+**O tamanho escolhido persiste, por espécie de tela.** O detalhamento de um
+indicador quer largura; um formulário de cadastro, não. A chave é o `tipo`
+declarado por quem abre a tela, e a escolha vai para o navegador de quem usa —
+é preferência de quem olha, não dado do sistema.
+
+**Coluna ajustável, e texto longo que deixa de ser cortado.** Cada cabeçalho
+tem alça de largura, e as colunas de texto (Assunto, Descrição, Origem do
+custo) quebram em linha em vez de cortar: esticar a tela dá espaço a elas.
+
+Dois detalhes que só aparecem ao fazer:
+
+- A alça da coluna fica **dentro** da célula, não sobre a divisa. A caixa de
+  rolagem recorta o que passa da borda, e a alça ficava inalcançável pelo
+  ponteiro — existia no HTML e não dava para pegar.
+- A tabela passa a valer **a soma das suas colunas**, e não 100% da caixa. Com
+  `width: 100%` e `table-layout: fixed`, alargar uma coluna faz o navegador
+  devolver o ganho encolhendo as outras, e a coluna não cresce de fato. Quem
+  absorve o excesso é a rolagem horizontal, como deve ser.
+
+**O cabeçalho da tabela também fica preso** dentro da tela flutuante: rolar
+centenas de registros sem os nomes das colunas é ler número sem rótulo.
+
+**Barra de rolagem no tom do tema.** A do navegador entra branca no escuro e
+corta o fundo da tela flutuante.
+
+**Acessibilidade.** `Esc` fecha (e com telas empilhadas, só a de cima); o botão
+de tela cheia é um `aria-pressed` que diz se vai expandir ou restaurar; cada
+alça é um `separator` com `aria-label` dizendo o que arrastar muda. O arrasto
+mexe em estilo, fora do ciclo de repintura, justamente para não perder o foco
+do teclado no meio do movimento.
+
 ## Navegação
 
 O sistema se apresenta pelos módulos do negócio, não pela lista de telas. São
