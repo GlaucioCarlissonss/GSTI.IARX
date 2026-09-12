@@ -41,7 +41,7 @@ export function percentual(parte: number, total: number): number {
   return Math.round((parte / total) * 1000) / 10;
 }
 
-function apresentar(linha: LinhaTicket & Record<string, unknown>) {
+function apresentar(linha: LinhaTicket & Record<string, unknown>, empresaId: number) {
   return {
     id: linha.id,
     filial_id: linha.filial_id,
@@ -69,7 +69,44 @@ function apresentar(linha: LinhaTicket & Record<string, unknown>) {
     fechado_em: linha.fechado_em,
     prazo_em: linha.prazo_em,
     horas: linha.horas,
+    source_system: (linha.source_system as string | null) ?? null,
+    external_id: (linha.external_id as string | null) ?? null,
+    // O endereço sai daqui, e não de cada tela: assim a listagem, o detalhe e
+    // o detalhamento de qualquer indicador apontam para o mesmo lugar, e um
+    // helpdesk novo não exige mexer em cada consumidor.
+    // `external_id` é o id no sistema de origem, e é o que completa a URL. O
+    // chamado que chega por webhook grava só ele; `ticket_id` cobre a carga
+    // antiga do osTicket, importada antes do campo existir.
+    url_externa: urlDoChamado(
+      empresaId,
+      (linha.external_id as string | null) ?? linha.ticket_id,
+      (linha.source_system as string | null) ?? null,
+    ),
   };
+}
+
+const CHAVE_URL_POR_SISTEMA: Record<string, string> = {
+  OSTICK: 'url_helpdesk',
+  BITRIX24: 'url_bitrix24',
+};
+
+/**
+ * Endereço do chamado no sistema de origem. Sem base configurada não há link:
+ * um endereço adivinhado levaria o gestor a uma página que não existe.
+ */
+export function urlDoChamado(
+  empresaId: number,
+  idExterno: string | number | null,
+  sistema: string | null,
+): string | null {
+  if (idExterno === null || idExterno === undefined || idExterno === '') return null;
+  const chave = CHAVE_URL_POR_SISTEMA[sistema ?? 'OSTICK'] ?? 'url_helpdesk';
+  const linha = db()
+    .prepare('SELECT valor FROM configuracoes WHERE empresa_id = ? AND chave = ?')
+    .get(empresaId, chave) as { valor: string | null } | undefined;
+  // Só o osTicket tem endereço padrão: é o helpdesk em uso hoje.
+  const base = linha?.valor || (chave === 'url_helpdesk' ? URL_HELPDESK_PADRAO : null);
+  return base ? base + encodeURIComponent(String(idExterno)) : null;
 }
 
 const SQL_BASE = `
@@ -193,7 +230,7 @@ export function obterTicketSla(ctx: Contexto, id: number) {
     .prepare(`${SQL_BASE} WHERE s.id = ? AND s.empresa_id = ? AND s.excluido_em IS NULL`)
     .get(id, ctx.empresaId) as (LinhaTicket & Record<string, unknown>) | undefined;
   if (!linha) throw erroNaoEncontrado(`Registro de SLA ${id} não encontrado nesta empresa.`);
-  return apresentar(linha);
+  return apresentar(linha, ctx.empresaId);
 }
 
 /**
@@ -256,7 +293,7 @@ export function listarTicketsSla(ctx: Contexto, filtro: FiltroSla = {}) {
   const linhas = db()
     .prepare(`${SQL_BASE} WHERE ${where} ORDER BY s.competencia DESC, q.ordem, ta.nome`)
     .all(...params) as Array<LinhaTicket & Record<string, unknown>>;
-  const itens = linhas.map(apresentar);
+  const itens = linhas.map((l) => apresentar(l, ctx.empresaId));
   const total = itens.reduce((s, i) => s + i.total_atendidos, 0);
   const dentro = itens.reduce((s, i) => s + i.dentro_sla, 0);
   return {

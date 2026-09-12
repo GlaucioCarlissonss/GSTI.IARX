@@ -46,6 +46,8 @@ interface Chamado {
   id: number;
   source_system: SistemaOrigem;
   external_id: string;
+  /** Endereço do chamado no sistema de origem, montado pelo servidor. */
+  url_externa: string | null;
   numero: string | null;
   assunto: string | null;
   descricao: string | null;
@@ -342,7 +344,17 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
                       style={{ cursor: 'pointer' }}
                       title={resumoDoChamado(c)}
                     >
-                      <td style={{ whiteSpace: 'nowrap' }}>#{c.numero ?? c.external_id}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {/* O número abre o chamado no sistema de origem: é o
+                            caminho para ver o atendimento inteiro. */}
+                        {c.url_externa ? (
+                          <a href={c.url_externa} target="_blank" rel="noopener noreferrer">
+                            #{c.numero ?? c.external_id}
+                          </a>
+                        ) : (
+                          `#${c.numero ?? c.external_id}`
+                        )}
+                      </td>
                       <td style={{ whiteSpace: 'nowrap' }}>{dataHora(c.aberto_em)}</td>
                       <td>{c.setor ?? '—'}</td>
                       <td style={{ maxWidth: 260 }}>{c.assunto ?? '—'}</td>
@@ -359,6 +371,11 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
                           texto={ROTULO_STATUS_CHAMADO[c.status ?? ''] ?? c.status ?? '—'}
                           tom={c.status === 'closed' || c.status === 'resolved' ? 'bom' : 'neutro'}
                         />
+            {c.url_externa && (
+              <a href={c.url_externa} target="_blank" rel="noopener noreferrer">
+                Abrir no {ROTULO_SISTEMA[c.source_system]} ↗
+              </a>
+            )}
                       </td>
                       <td>
                         <Etiqueta texto={c.dentro_sla ? 'Dentro' : 'Fora'} tom={c.dentro_sla ? 'bom' : 'critico'} />
@@ -431,7 +448,7 @@ function DetalheChamado({ id, aoFechar }: { id: number; aoFechar: () => void }) 
         <Carregando />
       ) : (
         <>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <Etiqueta texto={ROTULO_SISTEMA[c.source_system]} />
             <Etiqueta
               texto={ROTULO_STATUS_CHAMADO[c.status ?? ''] ?? c.status ?? '—'}

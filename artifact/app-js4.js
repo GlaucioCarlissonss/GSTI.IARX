@@ -39,7 +39,7 @@ function viewLancamentos() {
       <div class="campo" style="width:150px"><label for="l-cls">Classificação</label><div data-sel="cls"></div></div>
       <div class="campo" style="width:160px"><label for="l-cen">Cenário</label><div data-sel="cen"></div></div>
       <div class="campo" style="flex:1 1 160px"><label for="l-busca">Buscar</label><input id="l-busca" placeholder="fornecedor, motivo…" value="${esc(f.busca)}"></div>
-      <button class="bt pri" id="l-novo"${empresaAtiva() ? '' : ' disabled title="Deixe uma só empresa marcada para lançar"'}>Novo lançamento</button>
+      <button class="bt pri" id="l-novo">Novo lançamento</button>
     </div>
     <div class="fichas" id="l-fichas" hidden></div>
 
@@ -111,8 +111,11 @@ function viewLancamentos() {
 // --------------------------------------------------------------- formulário
 function formLancamento(existente) {
   const ed = !!existente;
-  // Editar segue a empresa do próprio registro; criar exige uma só selecionada.
-  const emp = existente ? existente.empresa : exigirEmpresaUnica();
+  // Editar segue a empresa do próprio registro. Criar escolhe aqui dentro, e
+  // não pelo filtro do topo: o filtro é o recorte que o gestor está olhando, e
+  // não deveria decidir se ele consegue ou não lançar.
+  let emp = existente ? existente.empresa : (empresaAtiva() || escopoEmpresas()[0] || E.empresas[0]?.id);
+  if (!emp) throw new Error('Cadastre uma empresa antes de lançar.');
   const tipos = tiposDa(emp), fils = filiaisDa(emp), cens = cenariosDa(emp);
   const v = existente || { filial:null, tipo: tipos[0]?.nome || '', competencia: ordenado(E.competencias).pop() || mesHoje(),
     valor:'', natureza:'pontual_unica', classificacao:'despesa', cenario:'oficial', descricao:'', obs:'' };
@@ -120,12 +123,13 @@ function formLancamento(existente) {
   abrirModal({
     titulo: ed ? 'Editar lançamento' : 'Novo lançamento',
     corpo: `
+      ${ed ? '' : `
+      <div class="campo"><label for="c-empresa">Empresa</label><select id="c-empresa" name="empresa">
+        ${E.empresas.map((e)=>`<option value="${esc(e.id)}"${e.id===emp?' selected':''}>${esc(e.nome)}</option>`).join('')}
+      </select></div>`}
       <div class="grade g3">
-        <div class="campo"><label for="c-filial">Filial</label><select id="c-filial" name="filial">
-          <option value="">— nível empresa —</option>
-          ${fils.map((f)=>`<option${f.nome===v.filial?' selected':''}>${esc(f.nome)}</option>`).join('')}</select></div>
-        <div class="campo"><label for="c-tipo">Tipo de despesa</label><select id="c-tipo" name="tipo">
-          ${tipos.map((t)=>`<option${t.nome===v.tipo?' selected':''}>${esc(t.nome)}</option>`).join('')}</select></div>
+        <div class="campo"><label for="c-filial">Filial</label><div id="c-filiais"></div></div>
+        <div class="campo"><label for="c-tipo">Tipo de despesa</label><select id="c-tipo" name="tipo"></select></div>
         <div class="campo"><label for="c-comp">Competência (MM/AAAA)</label>
           <input id="c-comp" name="competencia" value="${mesExib(v.competencia)}" inputmode="numeric"></div>
       </div>
@@ -139,8 +143,7 @@ function formLancamento(existente) {
           <option value="investimento"${v.classificacao==='investimento'?' selected':''}>Investimento</option></select></div>
       </div>
       <div id="c-extra"></div>
-      <div class="campo"><label for="c-cen">Cenário</label><select id="c-cen" name="cenario"${ed?' disabled':''}>
-        ${cens.map((c)=>`<option value="${esc(c.chave)}"${c.chave===v.cenario?' selected':''}>${esc(c.nome)}</option>`).join('')}</select></div>
+      <div class="campo"><label for="c-cen">Cenário</label><select id="c-cen" name="cenario"${ed?' disabled':''}></select></div>
       <div class="campo"><label for="c-desc">Descrição</label>
         <input id="c-desc" name="descricao" value="${esc(v.descricao||'')}" placeholder="fornecedor, contrato"></div>
       <div class="campo"><label for="c-obs">Observações</label><textarea id="c-obs" name="obs">${esc(v.obs||'')}</textarea></div>
@@ -149,6 +152,61 @@ function formLancamento(existente) {
     acoes: `<button type="button" class="bt" data-c>Cancelar</button>
             <button type="button" class="bt pri" data-s>${ed?'Salvar alterações':'Criar lançamento'}</button>`,
     aoMontar({ raiz, fechar, erro, campo }) {
+      // Filial, tipo de despesa e cenário são cadastros de cada empresa: trocar
+      // a empresa tem de repintar os três, ou o formulário ofereceria a filial
+      // de uma empresa para um lançamento de outra.
+      const pintarDaEmpresa = () => {
+        const fs = filiaisDa(emp), ts = tiposDa(emp), cs = cenariosDa(emp);
+        raiz.querySelector('#c-tipo').innerHTML =
+          ts.map((x) => `<option${x.nome === v.tipo ? ' selected' : ''}>${esc(x.nome)}</option>`).join('');
+        raiz.querySelector('#c-cen').innerHTML =
+          cs.map((c) => `<option value="${esc(c.chave)}"${c.chave === v.cenario ? ' selected' : ''}>${esc(c.nome)}</option>`).join('');
+
+        // Editar mexe num registro só, que tem uma filial. Criar pode lançar a
+        // mesma despesa em várias de uma vez — é o caso comum de um contrato
+        // que atende mais de uma unidade.
+        raiz.querySelector('#c-filiais').innerHTML = ed
+          ? `<select id="c-filial" name="filial">
+               <option value="">— nível empresa —</option>
+               ${fs.map((f) => `<option${f.nome === v.filial ? ' selected' : ''}>${esc(f.nome)}</option>`).join('')}
+             </select>`
+          : `<div class="multi-caixas" role="group" aria-label="Filiais">
+               <label><input type="checkbox" value="" checked> nível empresa</label>
+               ${fs.map((f) => `<label><input type="checkbox" value="${esc(f.nome)}"> ${esc(f.nome)}</label>`).join('')}
+             </div>
+             <p class="nota" data-resumo style="margin:4px 0 0"></p>`;
+        if (!ed) ligarFiliais();
+      };
+
+      /** Quais filiais receberão o lançamento, e o que isso significa em total. */
+      const filiaisEscolhidas = () =>
+        [...raiz.querySelectorAll('#c-filiais input:checked')].map((c) => c.value || null);
+
+      const ligarFiliais = () => {
+        const resumo = raiz.querySelector('[data-resumo]');
+        const atualizar = () => {
+          const n = filiaisEscolhidas().length;
+          if (n === 0) { resumo.textContent = 'Marque ao menos uma filial, ou o nível empresa.'; return; }
+          if (n === 1) { resumo.textContent = 'Um lançamento.'; return; }
+          // O valor NÃO é dividido: cada filial recebe o lançamento cheio. Dizer
+          // o total evita a leitura oposta, que seria um rateio.
+          let bruto = 0;
+          try { bruto = lerValor(campo('valor').value); } catch { bruto = 0; }
+          resumo.textContent = bruto
+            ? `${n} lançamentos, um por filial, de ${brl(bruto)} cada — ${brl(bruto * n)} no total.`
+            : `${n} lançamentos, um por filial, cada um com o valor informado.`;
+        };
+        raiz.querySelectorAll('#c-filiais input').forEach((c) => c.addEventListener('change', atualizar));
+        campo('valor').addEventListener('input', atualizar);
+        atualizar();
+      };
+
+      pintarDaEmpresa();
+      raiz.querySelector('#c-empresa')?.addEventListener('change', (ev) => {
+        emp = ev.target.value;
+        pintarDaEmpresa();
+      });
+
       const extra = raiz.querySelector('#c-extra');
       const pintarExtra = () => {
         const nat = campo('natureza').value;
@@ -170,7 +228,12 @@ function formLancamento(existente) {
       raiz.querySelector('[data-s]').addEventListener('click', async (ev) => {
         ev.target.disabled = true; erro('');
         try {
-          await salvarLancamento(existente, campo, emp);
+          if (ed) await salvarLancamento(existente, campo, emp);
+          else {
+            const escolhidas = filiaisEscolhidas();
+            if (escolhidas.length === 0) throw new Error('Marque ao menos uma filial, ou o nível empresa.');
+            for (const filial of escolhidas) await salvarLancamento(null, campo, emp, filial);
+          }
           fechar(); render();
         } catch (e) { erro(e.message || 'Não foi possível salvar.'); ev.target.disabled = false; }
       });
@@ -188,14 +251,18 @@ function lerValor(t) {
   return Number(s);
 }
 
-async function salvarLancamento(existente, campo, empresa) {
+/**
+ * `filial` vem de fora quando o formulário está criando em várias de uma vez;
+ * ao editar, o campo do formulário é que manda — o registro tem uma filial só.
+ */
+async function salvarLancamento(existente, campo, empresa, filial) {
   const emp = empresa || exigirEmpresaUnica();
   const comp = mesInterno(campo('competencia').value);
   if (!comp) throw new Error('Competência inválida: use MM/AAAA.');
   const valor = lerValor(campo('valor').value);
   const just = campo('just').value.trim();
   const base = {
-    filial: campo('filial').value || null,
+    filial: filial !== undefined ? filial : (campo('filial')?.value || null),
     tipo: campo('tipo').value,
     classificacao: campo('classificacao').value,
     descricao: campo('descricao').value.trim() || null,

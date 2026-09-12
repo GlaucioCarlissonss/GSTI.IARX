@@ -240,6 +240,10 @@ interface RegistroSla {
   pct_dentro_sla: number;
   // Preenchido quando o registro é UM chamado do helpdesk, e não o agregado.
   ticket_id: number | null;
+  /** Id no sistema de origem. O chamado que chega por webhook grava só este. */
+  external_id: string | null;
+  /** Endereço do chamado no helpdesk, montado pelo servidor. */
+  url_externa: string | null;
   numero: string | null;
   assunto: string | null;
   solicitante: string | null;
@@ -263,7 +267,6 @@ export function PaginaRegistrosSla() {
   const [excluir, setExcluir] = useState<RegistroSla | null>(null);
   const [competencia, setCompetencia] = useState('');
 
-  const configuracao = useDados<{ url_helpdesk: string }>(() => api.get('/api/sla/configuracao'), [empresa?.id]);
   const filas = useDados<Fila[]>(() => api.get('/api/filas'), []);
   const topicos = useDados<Topico[]>(() => api.get('/api/topicos-ajuda'), [empresa?.id]);
   const consulta = useDados<{ itens: RegistroSla[]; resumo: DashboardSla['totais_mes'] }>(
@@ -277,8 +280,14 @@ export function PaginaRegistrosSla() {
 
   // As colunas do chamado só aparecem quando há chamado no recorte: num
   // registro agregado mensal elas seriam uma fileira de travessões.
-  const temChamados = (consulta.dados?.itens ?? []).some((r) => r.ticket_id !== null);
-  const urlHelpdesk = configuracao.dados?.url_helpdesk ?? '';
+  /**
+   * O registro é um chamado, e não o agregado do mês. Vale pelos dois campos:
+   * a carga antiga do osTicket gravou `ticket_id`, e o chamado que chega por
+   * webhook grava `external_id`.
+   */
+  const ehChamado = (r: RegistroSla) => r.ticket_id !== null || r.external_id !== null;
+  const numeroDoChamado = (r: RegistroSla) => r.numero ?? r.external_id ?? r.ticket_id;
+  const temChamados = (consulta.dados?.itens ?? []).some(ehChamado);
 
   return (
     <>
@@ -337,12 +346,17 @@ export function PaginaRegistrosSla() {
                   <tr key={r.id}>
                     {temChamados && (
                       <td>
-                        {r.ticket_id === null ? (
+                        {!ehChamado(r) ? (
                           '—'
-                        ) : (
-                          <a href={urlHelpdesk + r.ticket_id} target="_blank" rel="noopener noreferrer">
-                            {r.numero ?? r.ticket_id}
+                        ) : r.url_externa ? (
+                          // O endereço vem pronto do servidor, que conhece a
+                          // base de cada helpdesk; montá-lo aqui faria esta
+                          // tela divergir do detalhamento e da listagem.
+                          <a href={r.url_externa} target="_blank" rel="noopener noreferrer">
+                            {numeroDoChamado(r)}
                           </a>
+                        ) : (
+                          numeroDoChamado(r)
                         )}
                       </td>
                     )}

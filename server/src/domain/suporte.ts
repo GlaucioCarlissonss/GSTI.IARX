@@ -10,6 +10,7 @@
 import { db } from '../db/index.js';
 import { erroValidacao } from '../lib/erros.js';
 import { resolverFila, resolverSetor, resolverTopicoAjuda, SETOR_NAO_CLASSIFICADO } from './cadastros.js';
+import { urlDoChamado } from './sla.js';
 
 export type SistemaOrigem = 'OSTICK' | 'BITRIX24';
 export const SISTEMAS: SistemaOrigem[] = ['OSTICK', 'BITRIX24'];
@@ -339,7 +340,7 @@ export interface FiltroChamados {
 }
 
 const SQL_CHAMADO = `
-  SELECT s.id, s.source_system, s.external_id, s.numero, s.assunto, s.descricao, s.status, s.prioridade,
+  SELECT s.id, s.source_system, s.external_id, s.ticket_id, s.numero, s.assunto, s.descricao, s.status, s.prioridade,
          s.setor_id, st.nome AS setor, s.solicitante, s.solicitante_email, s.solicitante_externo_id,
          s.responsavel, s.atendente_externo_id, s.filial_id, f.nome AS filial_nome,
          s.fila_id, q.nome AS fila, ta.nome AS topico_ajuda,
@@ -350,6 +351,20 @@ const SQL_CHAMADO = `
     LEFT JOIN filiais f ON f.id = s.filial_id
     LEFT JOIN filas_ticket q ON q.id = s.fila_id
     LEFT JOIN topicos_ajuda ta ON ta.id = s.topico_ajuda_id`;
+
+/**
+ * Acrescenta ao chamado o endereço dele no sistema de origem. O link sai do
+ * servidor, e não de cada tela: assim a listagem, o detalhe e o detalhamento
+ * de qualquer indicador apontam para o mesmo lugar.
+ */
+const comEndereco = (empresaId: number) => (linha: Record<string, unknown>) => ({
+  ...linha,
+  url_externa: urlDoChamado(
+    empresaId,
+    (linha.external_id as string | null) ?? (linha.ticket_id as number | null),
+    linha.source_system as string | null,
+  ),
+});
 
 function montarFiltro(empresaId: number, f: FiltroChamados) {
   // Só o que veio de um sistema de suporte: o registro agregado mensal, sem
@@ -423,9 +438,11 @@ export function listarChamados(empresaId: number, f: FiltroChamados = {}) {
   const total = (
     db().prepare(`SELECT COUNT(*) AS n FROM tickets_sla s WHERE ${where}`).get(...params) as { n: number }
   ).n;
-  const itens = db()
-    .prepare(`${SQL_CHAMADO} WHERE ${where} ORDER BY s.aberto_em DESC, s.id DESC LIMIT ? OFFSET ?`)
-    .all(...params, limite, (pagina - 1) * limite);
+  const itens = (
+    db()
+      .prepare(`${SQL_CHAMADO} WHERE ${where} ORDER BY s.aberto_em DESC, s.id DESC LIMIT ? OFFSET ?`)
+      .all(...params, limite, (pagina - 1) * limite) as Array<Record<string, unknown>>
+  ).map(comEndereco(empresaId));
 
   return {
     itens,
@@ -461,6 +478,7 @@ export function obterChamado(empresaId: number, id: number) {
     .prepare(`${SQL_CHAMADO} WHERE s.id = ? AND s.empresa_id = ? AND s.excluido_em IS NULL`)
     .get(id, empresaId) as Record<string, unknown> | undefined;
   if (!linha) throw erroValidacao(`Chamado ${id} não encontrado nesta empresa.`);
+  const chamado = comEndereco(empresaId)(linha);
   const bruto = db().prepare('SELECT raw_payload FROM tickets_sla WHERE id = ?').get(id) as
     | { raw_payload: string | null }
     | undefined;
@@ -471,7 +489,7 @@ export function obterChamado(empresaId: number, id: number) {
     // Payload ilegível não derruba a tela: o campo bruto ainda vale como texto.
     payload = bruto?.raw_payload ?? null;
   }
-  return { ...linha, raw_payload: payload };
+  return { ...chamado, raw_payload: payload };
 }
 
 /** Valores presentes no recorte, para montar os filtros sem inventar opções. */

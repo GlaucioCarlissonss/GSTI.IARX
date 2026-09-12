@@ -165,6 +165,14 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .filtros .campo{flex:0 1 auto}
 
 /* ------------------------------------------------- seletor de múltipla escolha */
+/* Caixas de seleção em formulário: lançar a mesma despesa em várias filiais
+   de uma vez. Rola quando a empresa tem muitas unidades, em vez de esticar o
+   modal até o campo seguinte sumir da tela. */
+.multi-caixas{display:flex;flex-direction:column;gap:3px;max-height:132px;overflow-y:auto;
+  border:1px solid var(--borda);border-radius:7px;padding:6px 8px;background-color:var(--sup)}
+.multi-caixas label{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap}
+.multi-caixas input{margin:0;flex:none}
+
 .multi{position:relative;min-width:0}
 .multi>button{
   font-family:var(--sans);font-size:13.5px;padding:8px 28px 8px 10px;border:1px solid var(--linha2);

@@ -84,11 +84,18 @@ const SETOR_NAO_CLASSIFICADO = 'Não classificado';
 const setorDe = (r) => (r && r.setor ? r.setor : SETOR_NAO_CLASSIFICADO);
 
 const URL_OSTICKET_PADRAO = 'https://www.suportehr.com.br/scp/tickets.php?id=';
-function urlDoChamado(ticketId) {
+function urlDoChamado(ticketId, sistema = 'OSTICK') {
   if (ticketId === null || ticketId === undefined || ticketId === '') return null;
-  const base = (E.config && E.config.urlOsTicket) || URL_OSTICKET_PADRAO;
-  return base + encodeURIComponent(ticketId);
+  // Cada helpdesk tem o seu endereço. Sem base configurada não há link: um
+  // endereço adivinhado levaria o gestor a uma página que não existe.
+  const base = sistema === 'BITRIX24'
+    ? (E.config && E.config.urlBitrix24) || null
+    : (E.config && E.config.urlOsTicket) || URL_OSTICKET_PADRAO;
+  return base ? base + encodeURIComponent(ticketId) : null;
 }
+
+/** O endereço do chamado a partir do próprio registro. */
+const urlDoRegistro = (r) => (r && r.ticketId ? urlDoChamado(r.ticketId, sistemaDe(r)) : null);
 
 /**
  * Empresa em que se escreve. Criar, editar e excluir precisam de uma só — com

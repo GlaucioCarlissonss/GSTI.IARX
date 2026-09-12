@@ -48,7 +48,8 @@ const TETO_DETALHE = 300;
  * Abre o detalhamento de um número: os registros que o compõem, o recorte que
  * os produziu, e a soma — que tem de bater com o número clicado.
  *
- * `colunas`: `[{ rotulo, campo | valor(linha), n }]` — `n` alinha à direita.
+ * `colunas`: `[{ rotulo, campo | valor(linha), n, link(linha) }]` — `n` alinha
+ * à direita, `link` transforma a célula em link para o sistema de origem.
  * `total`: o número que estava na tela, para a conferência ficar explícita.
  */
 function abrirDetalhamento({ titulo, subtitulo, colunas, linhas, total, formatarTotal = brl, somar }) {
@@ -77,7 +78,12 @@ function abrirDetalhamento({ titulo, subtitulo, colunas, linhas, total, formatar
             <thead><tr>${colunas.map((c) => `<th${c.n ? ' class="n"' : ''}>${esc(c.rotulo)}</th>`).join('')}</tr></thead>
             <tbody>${exibidas.map((l) => `<tr>${colunas.map((c) => {
               const v = c.valor ? c.valor(l) : l[c.campo];
-              return `<td${c.n ? ' class="n"' : ''}>${v === null || v === undefined || v === '' ? '—' : esc(String(v))}</td>`;
+              if (v === null || v === undefined || v === '') return `<td${c.n ? ' class="n"' : ''}>—</td>`;
+              const href = c.link ? c.link(l) : null;
+              const conteudo = href
+                ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(String(v))}</a>`
+                : esc(String(v));
+              return `<td${c.n ? ' class="n"' : ''}>${conteudo}</td>`;
             }).join('')}</tr>`).join('')}</tbody></table></div>
           ${linhas.length > TETO_DETALHE
             ? `<p class="nota">Exibindo os ${TETO_DETALHE} primeiros de ${inteiro(linhas.length)}. Estreite o recorte para ver o resto.</p>`
@@ -121,7 +127,10 @@ function detalharChamados(titulo, lista, total, subtitulo) {
     somar: (r) => r.total || 0,
     linhas: [...lista].sort((a, b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || ''))),
     colunas: [
-      { rotulo: 'Chamado', valor: (r) => (r.numero ? '#' + r.numero : r.ticketId ? '#' + r.ticketId : '—') },
+      // O número abre o chamado no sistema de origem — é o caminho para quem
+      // quer ver o atendimento inteiro, e não só a linha do relatório.
+      { rotulo: 'Chamado', valor: (r) => (r.numero ? '#' + r.numero : r.ticketId ? '#' + r.ticketId : '—'),
+        link: urlDoRegistro },
       { rotulo: 'Sistema', valor: (r) => SISTEMAS_SUPORTE[sistemaDe(r)] },
       { rotulo: 'Competência', valor: (r) => mesExib(r.competencia) },
       { rotulo: 'Setor', valor: (r) => setorDe(r) },

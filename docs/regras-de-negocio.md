@@ -230,6 +230,21 @@ vira **link de volta para o osTicket**. O endereço base é configurável em
 `https://www.suportehr.com.br/scp/tickets.php?id=`), porque o id compõe a URL do
 chamado no sistema de origem.
 
+### O registro agregado é editável, e não some atrás dos chamados
+
+O total digitado à mão para o mês é um registro como outro qualquer: dá para
+**editar** e não só excluir. Sem edição, corrigir um número significava excluir
+e recriar — o que a trilha de auditoria registra como duas operações, quando
+foi uma correção.
+
+Mudar a competência de um registro é tirá-lo de um mês e pô-lo em outro: os
+**dois** meses precisam estar abertos, e a checagem vale para os dois.
+
+A tela de chamados mostra **as duas listas**: os chamados importados e os
+registros agregados. Antes mostrava uma ou outra, e o registro digitado à mão
+desaparecia sempre que houvesse um único chamado importado no recorte — o
+gestor registrava o mês e não via o que havia acabado de gravar.
+
 ### Carga da base do osTicket
 
 `scripts/gerar-sla.cjs <csv> <pasta-de-saída>` converte a extração do osTicket
@@ -359,6 +374,14 @@ chegaria ausente — o que significa "sem filtro" e devolveria **todas** as
 tarefas. É o mesmo padrão do filtro de tópico de ajuda, que usa `sem` para o
 tópico ausente.
 
+**O número do chamado é link para o sistema de origem**, também dentro do
+detalhamento — é o caminho para quem quer ver o atendimento inteiro, e não só a
+linha do relatório. O endereço é montado **no servidor**, a partir da base
+configurada de cada helpdesk, e vai pronto no registro (`url_externa`). Antes
+cada tela remontava a URL por conta própria, e o detalhamento simplesmente não
+trazia link nenhum. Sem base configurada não há link: um endereço adivinhado
+levaria o gestor a uma página que não existe.
+
 **Acessibilidade.** O gatilho é sempre `role="button"` com `tabindex="0"`,
 `aria-label` que diz o que vai abrir, foco visível e Enter/Espaço. Um `div` com
 `onclick` não é nada disso.
@@ -434,6 +457,31 @@ avisa. Na versão hospedada o painel troca para comparação em vez de somar.
 O nível empresa (lançamento sem filial) entra na lista de filiais como
 `nenhuma` — em SQL é `IS NULL`, que não casa com `IN`, e por isso a cláusula é
 montada em separado (`lib/consulta.ts`).
+
+### O filtro não decide se dá para registrar
+
+Botão de criar registro **nunca** fica desabilitado por causa do recorte em
+tela. O filtro do topo diz o que o gestor está **olhando**; se ele pode ou não
+lançar é outra pergunta, e trancar o botão por causa da primeira é responder a
+errada — o gestor via o botão cinza sem saber o que fazer para destravá-lo.
+
+A empresa do registro se escolhe **dentro do formulário**, já sugerida pela do
+recorte quando há uma só. Quem decide é o formulário, que é onde o registro
+ganha dono.
+
+**Uma despesa pode nascer em várias filiais de uma vez.** Ao criar, o campo
+Filial aceita marcar mais de uma, e cada filial recebe um lançamento. O valor
+**não é dividido**: cada uma recebe o lançamento cheio, e o formulário mostra a
+conta em voz alta — *"3 lançamentos, um por filial, de R$ 1.000,00 cada — R$
+3.000,00 no total"*. Sem essa linha, a leitura oposta (um rateio) seria igual
+de plausível, e o gestor só descobriria a diferença depois de gravar.
+
+Ao **editar**, a filial volta a ser uma só: o registro tem uma filial, e
+transformá-lo em vários na edição seria criar registros no lugar de alterar um.
+
+Trocar a empresa no formulário repinta filial, tipo de despesa, fila e cenário:
+são cadastros de cada empresa, e oferecer o de uma para o registro de outra
+gravaria um vínculo que não existe.
 
 ## Dashboards
 

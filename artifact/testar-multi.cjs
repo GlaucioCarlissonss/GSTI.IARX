@@ -83,9 +83,21 @@ const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||''));
   confere('consolidado maior que uma só', consolidado > so08, true);
   confere('ranking por empresa aparece', await pag.$$eval('#r4 .it', (i) => i.length), 2);
 
-  // escrita exige empresa única
+  // O recorte diz o que se está olhando, não se dá para registrar: com duas
+  // empresas marcadas o botão continua valendo, e quem resolve a empresa do
+  // registro é o formulário.
   await ir('Lançamentos');
-  confere('botão de lançar desabilitado', await pag.$eval('#l-novo', (b) => b.disabled), true);
+  confere('botão de lançar não fica preso ao recorte',
+    await pag.$eval('#l-novo', (b) => b.disabled), false);
+  await pag.click('#l-novo');
+  await pag.waitForTimeout(700);
+  confere('o formulário é que pergunta a empresa',
+    await pag.evaluate(() => {
+      const s = document.querySelector('#c-empresa');
+      return s ? s.options.length : 0;
+    }), 5);
+  await pag.keyboard.press('Escape');
+  await pag.waitForTimeout(400);
   await ir('Cadastros');
   confere('cadastros explicam a restrição',
     /uma empresa por vez/.test(await pag.$eval('#pagina', (e) => e.textContent)), true);

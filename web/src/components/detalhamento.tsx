@@ -193,6 +193,22 @@ export function Detalhavel({
   );
 }
 
+/**
+ * Número do chamado como link para o sistema de origem. O endereço vem pronto
+ * do servidor (`url_externa`), que conhece a base configurada de cada
+ * helpdesk — remontá-lo aqui faria a tela divergir da listagem.
+ */
+function linkDoChamado(registro: Record<string, unknown>, rotulo: string | null): ReactNode {
+  if (!rotulo) return '—';
+  const url = registro.url_externa as string | null;
+  if (!url) return rotulo;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer">
+      {rotulo}
+    </a>
+  );
+}
+
 // ------------------------------------------------- detalhamentos por domínio
 //
 // Cada um monta o pedido de um módulo. Os parâmetros vêm de quem chama, que é
@@ -248,7 +264,9 @@ export function detalheDeRegistrosSla(
       { rotulo: 'Filial', valor: (r) => (r.filial_nome as string) ?? 'Nível empresa' },
       { rotulo: 'Fila', valor: (r) => String(r.fila) },
       { rotulo: 'Tópico', valor: (r) => (r.topico_ajuda as string) ?? '—' },
-      { rotulo: 'Chamado', valor: (r) => (r.ticket_id ? `#${r.numero ?? r.ticket_id}` : '—') },
+      // O número abre o chamado no sistema de origem — é o caminho para quem
+      // quer ver o atendimento inteiro, e não só a linha do relatório.
+      { rotulo: 'Chamado', valor: (r) => linkDoChamado(r, r.ticket_id ? `#${r.numero ?? r.ticket_id}` : null) },
       { rotulo: 'Assunto', valor: (r) => (r.assunto as string) ?? '—' },
       { rotulo: 'Atendidos', valor: (r) => inteiro(Number(r.total_atendidos)), n: true },
       { rotulo: 'Dentro', valor: (r) => inteiro(Number(r.dentro_sla)), n: true },
@@ -276,7 +294,7 @@ export function detalheDeChamados(
     contarNaResposta: (r) => Number((r as { paginacao?: { total?: number } }).paginacao?.total ?? 0),
     somaNaResposta: (r) => Number((r as { paginacao?: { total?: number } }).paginacao?.total ?? 0),
     colunas: [
-      { rotulo: 'Chamado', valor: (c) => `#${c.numero ?? c.external_id}` },
+      { rotulo: 'Chamado', valor: (c) => linkDoChamado(c, `#${c.numero ?? c.external_id}`) },
       { rotulo: 'Sistema', valor: (c) => (c.source_system === 'BITRIX24' ? 'Bitrix24' : 'OStick') },
       { rotulo: 'Setor', valor: (c) => (c.setor as string) ?? 'Não classificado' },
       { rotulo: 'Assunto', valor: (c) => (c.assunto as string) ?? '—' },

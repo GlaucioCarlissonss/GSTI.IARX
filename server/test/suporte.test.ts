@@ -13,6 +13,7 @@ import {
 } from '../src/domain/suporte.js';
 import { listarSetores, SETOR_NAO_CLASSIFICADO } from '../src/domain/cadastros.js';
 import { criarEmpresa } from '../src/domain/empresas.js';
+import { gravarUrlHelpdesk, listarTicketsSla } from '../src/domain/sla.js';
 
 test('OStick e Bitrix24 caem no mesmo modelo, apesar dos nomes diferentes', () => {
   const ostick = normalizarOstick({
@@ -186,4 +187,52 @@ test('chamado de uma empresa não aparece na outra', () => {
   // E o setor criado numa empresa não aparece no catálogo da outra.
   const setoresB = listarSetores({ ...ctx, empresaId: empresaB }) as Array<{ nome: string }>;
   assert.equal(setoresB.length, 1);
+});
+
+test('o endereço do chamado sai do servidor, pronto e igual em toda tela', () => {
+  const { ctx } = ambienteLimpo();
+  const bruto = {
+    ticket_id: '21734', number: '21734', subject: 'Impressora sem toner', status: 'closed',
+    created: '2026-08-01T09:00:00Z', closed: '2026-08-01T11:00:00Z',
+    name: 'Maria', staff: 'Carlos', department: 'Enfermagem',
+  };
+  gravarChamado(ctx.empresaId, normalizarOstick(bruto), bruto);
+
+  const daListagem = listarChamados(ctx.empresaId, {}).itens[0] as Record<string, unknown>;
+  const url = daListagem.url_externa as string;
+  assert.match(url, /21734$/);
+
+  // Listagem, detalhe e o registro visto pelo módulo de SLA têm de apontar
+  // para o mesmo lugar: telas que remontam a URL por conta própria divergem.
+  const doDetalhe = obterChamado(ctx.empresaId, daListagem.id as number) as Record<string, unknown>;
+  assert.equal(doDetalhe.url_externa, url);
+  const doSla = listarTicketsSla(ctx).itens.find((r) => r.external_id === '21734');
+  assert.equal(doSla?.url_externa, url);
+});
+
+test('chamado sem ticket_id ainda ganha endereço, pelo id de origem', () => {
+  const { ctx } = ambienteLimpo();
+  const bruto = { ticket_id: '900', subject: 'Chegou por webhook', status: 'open', created: '2026-08-02T09:00:00Z' };
+  gravarChamado(ctx.empresaId, normalizarOstick(bruto), bruto);
+  // O chamado que chega por webhook grava `external_id` e deixa `ticket_id`
+  // nulo; usar só `ticket_id` deixava esses registros sem link nenhum.
+  const linha = listarTicketsSla(ctx).itens.find((r) => r.external_id === '900');
+  assert.equal(linha?.ticket_id, null);
+  assert.match(String(linha?.url_externa), /id=900$/);
+});
+
+test('sem base configurada para a origem, não há link adivinhado', () => {
+  const { ctx } = ambienteLimpo();
+  const doBitrixBruto = { ID: '55', TITLE: 'Chamado do Bitrix', STAGE_ID: 'NEW', CREATED_TIME: '2026-08-03T09:00:00Z' };
+  gravarChamado(ctx.empresaId, normalizarBitrix24(doBitrixBruto), doBitrixBruto);
+  const doBitrix = listarChamados(ctx.empresaId, {}).itens[0] as Record<string, unknown>;
+  // Só o osTicket tem endereço padrão. Um endereço inventado para o Bitrix24
+  // levaria o gestor a uma página que não existe.
+  assert.equal(doBitrix.url_externa, null);
+
+  gravarUrlHelpdesk(ctx, 'https://helpdesk.exemplo.com/t/');
+  const outroBruto = { ticket_id: '77', subject: 'x', status: 'open', created: '2026-08-04T09:00:00Z' };
+  gravarChamado(ctx.empresaId, normalizarOstick(outroBruto), outroBruto);
+  const comBaseTrocada = listarChamados(ctx.empresaId, { busca: 'x' }).itens[0] as Record<string, unknown>;
+  assert.equal(comBaseTrocada.url_externa, 'https://helpdesk.exemplo.com/t/77');
 });

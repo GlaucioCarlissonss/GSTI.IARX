@@ -69,6 +69,10 @@ async function viewSla(secao = 'indicadores') {
   });
 
   const chamados = filtrado.filter((r) => r.ticketId).sort((a, b) => String(b.criadoEm).localeCompare(String(a.criadoEm)));
+  // O registro agregado do mês — o total digitado à mão — não é um chamado, e
+  // some da tela se as duas listas disputarem o mesmo lugar. São duas leituras
+  // distintas do mesmo recorte, e as duas pertencem a esta tela.
+  const agregados = filtrado.filter((r) => !r.ticketId);
   const TETO = 300;
   const hora = (t) => (t ? new Date(t).toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' }) : '—');
   const itensDe = (chave, rotulo) => [...new Set(doMes.map((r) => r[chave] || rotulo))].sort()
@@ -86,7 +90,7 @@ async function viewSla(secao = 'indicadores') {
       <div class="campo" style="width:130px"><label for="s-sla">SLA</label><div data-sel="ssla"></div></div>
       <div class="campo" style="flex:1 1 150px"><label for="s-busca">Buscar</label>
         <input id="s-busca" placeholder="assunto, solicitante, nº…" value="${esc(f.busca)}"></div>
-      <button class="bt pri" id="s-novo"${empresaAtiva() ? '' : ' disabled title="Deixe uma só empresa marcada para registrar"'}>Registrar tickets do mês</button>
+      <button class="bt pri" id="s-novo">Registrar tickets do mês</button>
     </div>
     <div class="fichas" id="s-fichas" hidden></div>
     ${regs.length === 0 ? `<section class="bloco"><p class="vazio">
@@ -140,12 +144,19 @@ async function viewSla(secao = 'indicadores') {
           <th>Fila</th><th>Tópico</th><th>Assunto</th><th>Solicitante</th><th>Responsável</th><th>Status</th>
           <th class="n">Horas</th><th>SLA</th></tr></thead>
         <tbody>${chamados.slice(0, TETO).map((r) => {
-          const url = urlDoChamado(r.ticketId);
+          const url = urlDoRegistro(r);
           const ok = (r.dentro || 0) >= (r.total || 1);
           return `<tr>
-            <td style="white-space:nowrap">${url
-              ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">#${esc(r.numero || r.ticketId)}</a>`
-              : esc(r.numero || '—')}</td>
+            <td style="white-space:nowrap">${(() => {
+              // O número se lê igual com ou sem link: sem base configurada para
+              // a origem não há para onde levar, mas o chamado continua sendo
+              // o mesmo "#222".
+              const n = r.numero || r.ticketId;
+              if (!n) return '—';
+              return url
+                ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">#${esc(n)}</a>`
+                : '#' + esc(n);
+            })()}</td>
             <td style="white-space:nowrap">${esc(SISTEMAS_SUPORTE[sistemaDe(r)])}</td>
             <td style="white-space:nowrap">${esc(hora(r.criadoEm))}</td>
             <td>${esc(setorDe(r))}</td>
@@ -161,22 +172,27 @@ async function viewSla(secao = 'indicadores') {
         }).join('')}</tbody></table></div>
       <p class="nota" style="margin-top:10px">O número do chamado abre o registro no osTicket.
         O prazo é a criação mais 48 h do Padrão SLA; chamado ainda aberto é medido contra a data da extração.</p>
-    </section>` : sistemaFixo ? `
+    </section>` : `
     <section class="bloco" id="s-chamados"><p class="vazio">
-      Nenhum chamado do <strong>${esc(SISTEMAS_SUPORTE[sistemaFixo])}</strong> no recorte atual.
-      ${sistemaFixo === 'BITRIX24'
-        ? 'Os chamados do Bitrix24 entram pela planilha padrão, na aba <strong>Dados</strong>.'
-        : 'Amplie a competência no topo, ou importe a base pela aba <strong>Dados</strong>.'}
-    </p></section>` : `
-    <section class="bloco"><header><h2>Registros de ${esc(periodo)}</h2></header>
+      ${sistemaFixo
+        ? `Nenhum chamado do <strong>${esc(SISTEMAS_SUPORTE[sistemaFixo])}</strong> no recorte atual.
+           ${sistemaFixo === 'BITRIX24'
+             ? 'Os chamados do Bitrix24 entram pela planilha padrão, na aba <strong>Dados</strong>.'
+             : 'Amplie a competência no topo, ou importe a base pela aba <strong>Dados</strong>.'}`
+        : 'Nenhum chamado importado no recorte atual.'}
+    </p></section>`}
+    ${sistemaFixo || agregados.length === 0 ? '' : `
+    <section class="bloco"><header><h2>Registros de ${esc(periodo)}</h2>
+      <span class="nota">totais digitados à mão, fora dos chamados importados</span></header>
       <div class="rol"><table><thead><tr><th>Filial</th><th>Fila</th><th>Tópico</th>
         <th class="n">Atendidos</th><th class="n">Dentro</th><th class="n">Fora</th><th class="n">%</th><th></th></tr></thead>
-      <tbody>${filtrado.map((r)=>`<tr data-sid="${esc(r.id)}">
+      <tbody>${agregados.map((r)=>`<tr data-sid="${esc(r.id)}">
         <td>${r.filial?esc(r.filial):'<em style="color:var(--tinta3)">empresa</em>'}</td>
         <td>${esc(r.fila)}</td><td>${esc(r.topico||'—')}</td>
         <td class="n">${inteiro(r.total)}</td><td class="n">${inteiro(r.dentro)}</td><td class="n">${inteiro(r.total-r.dentro)}</td>
         <td class="n">${pctTxt(pct(r.dentro,r.total))}</td>
-        <td><button class="bt fant peq" data-sdel>Excluir</button></td></tr>`).join('')}</tbody></table></div></section>`}`}`;
+        <td style="white-space:nowrap"><button class="bt fant peq" data-sed>Editar</button>
+          <button class="bt fant peq" data-sdel>Excluir</button></td></tr>`).join('')}</tbody></table></div></section>`}`}`;
 
   const itensSComp = comps.map((c) => ({ valor: c, rotulo: mesExib(c) }));
   const grupos = [
@@ -298,6 +314,10 @@ async function viewSla(secao = 'indicadores') {
 
   if (regs.length) {
     el('#pagina').querySelectorAll('tr[data-sid]').forEach((tr) => {
+      tr.querySelector('[data-sed]').onclick = () => {
+        const reg = regs.find((r) => String(r.id) === tr.dataset.sid);
+        if (reg) formSla(reg.competencia, reg);
+      };
       tr.querySelector('[data-sdel]').onclick = () => confirmar({
         titulo:'Excluir registro de SLA', mensagem:'O registro será removido e a exclusão fica na auditoria.',
         rotulo:'Excluir', exigeJustificativa:true,
@@ -316,27 +336,47 @@ async function viewSla(secao = 'indicadores') {
   }
 }
 
-function formSla(comp) {
-  const dono = exigirEmpresaUnica();
-  const fils = filiaisDa(dono), filas = filasDa(dono);
+/**
+ * `existente` edita um registro já gravado. Editar segue a empresa do próprio
+ * registro; criar escolhe aqui dentro, e não pelo filtro do topo — o filtro é
+ * o recorte que o gestor está olhando, e não deveria decidir se ele registra.
+ */
+function formSla(comp, existente) {
+  const ed = !!existente;
+  let dono = ed ? existente.empresa : (empresaAtiva() || escopoEmpresas()[0] || E.empresas[0]?.id);
+  if (!dono) throw new Error('Cadastre uma empresa antes de registrar tickets.');
+  const v = existente || { filial: null, fila: null, topico: '', total: '', dentro: '' };
   abrirModal({
-    titulo: 'Registrar tickets do mês',
+    titulo: ed ? 'Editar registro de SLA' : 'Registrar tickets do mês',
     corpo: `
+      ${ed ? '' : `
+      <div class="campo"><label for="k-empresa">Empresa</label><select id="k-empresa" name="empresa">
+        ${E.empresas.map((e)=>`<option value="${esc(e.id)}"${e.id===dono?' selected':''}>${esc(e.nome)}</option>`).join('')}
+      </select></div>`}
       <div class="grade g3">
-        <div class="campo"><label for="k-fil">Filial</label><select id="k-fil" name="filial">
-          <option value="">— empresa —</option>${fils.map((f)=>`<option>${esc(f.nome)}</option>`).join('')}</select></div>
-        <div class="campo"><label for="k-comp">Competência (MM/AAAA)</label><input id="k-comp" name="comp" value="${mesExib(comp)}"></div>
-        <div class="campo"><label for="k-fila">Fila</label><select id="k-fila" name="fila">
-          ${filas.map((f)=>`<option>${esc(f.nome)}</option>`).join('')}</select></div>
+        <div class="campo"><label for="k-fil">Filial</label><select id="k-fil" name="filial"></select></div>
+        <div class="campo"><label for="k-comp">Competência (MM/AAAA)</label><input id="k-comp" name="comp" value="${mesExib(ed ? existente.competencia : comp)}"></div>
+        <div class="campo"><label for="k-fila">Fila</label><select id="k-fila" name="fila"></select></div>
       </div>
       <div class="grade g3">
-        <div class="campo"><label for="k-top">Tópico de ajuda</label><input id="k-top" name="topico" placeholder="opcional — cadastro livre"></div>
-        <div class="campo"><label for="k-tot">Total atendidos</label><input id="k-tot" name="total" type="number" min="0"></div>
-        <div class="campo"><label for="k-den">Dentro do SLA</label><input id="k-den" name="dentro" type="number" min="0"></div>
+        <div class="campo"><label for="k-top">Tópico de ajuda</label><input id="k-top" name="topico" value="${esc(v.topico||'')}" placeholder="opcional — cadastro livre"></div>
+        <div class="campo"><label for="k-tot">Total atendidos</label><input id="k-tot" name="total" type="number" min="0" value="${v.total===''?'':inteiro(v.total)}"></div>
+        <div class="campo"><label for="k-den">Dentro do SLA</label><input id="k-den" name="dentro" type="number" min="0" value="${v.dentro===''?'':inteiro(v.dentro)}"></div>
       </div>
       <div class="msg" data-calc>Fora do SLA calculado: <strong>—</strong></div>`,
-    acoes:`<button type="button" class="bt" data-c>Cancelar</button><button type="button" class="bt pri" data-s>Salvar registro</button>`,
+    acoes:`<button type="button" class="bt" data-c>Cancelar</button><button type="button" class="bt pri" data-s>${ed?'Salvar alterações':'Salvar registro'}</button>`,
     aoMontar({ raiz, fechar, erro, campo }) {
+      // Filial e fila são cadastros de cada empresa: trocar a empresa repinta
+      // os dois, ou o formulário ofereceria a fila de uma para o registro de outra.
+      const pintarDaEmpresa = () => {
+        raiz.querySelector('#k-fil').innerHTML = '<option value="">— empresa —</option>'
+          + filiaisDa(dono).map((f) => `<option${f.nome === v.filial ? ' selected' : ''}>${esc(f.nome)}</option>`).join('');
+        raiz.querySelector('#k-fila').innerHTML =
+          filasDa(dono).map((f) => `<option${f.nome === v.fila ? ' selected' : ''}>${esc(f.nome)}</option>`).join('');
+      };
+      pintarDaEmpresa();
+      raiz.querySelector('#k-empresa')?.addEventListener('change', (ev) => { dono = ev.target.value; pintarDaEmpresa(); });
+
       const calc = () => {
         const t = Number(campo('total').value||0), d = Number(campo('dentro').value||0);
         const box = raiz.querySelector('[data-calc]');
@@ -356,11 +396,34 @@ function formSla(comp) {
           if (!Number.isInteger(dentro) || dentro < 0) throw new Error('Dentro do SLA inválido.');
           if (dentro > total) throw new Error('Dentro do SLA não pode superar o total atendido.');
           checarCompetencia(c, 'registro de SLA', dono);
-          const atuais = (await Loja.slaDa(dono)).filter((r)=>r.competencia===c).map(({competencia, empresa, ...r})=>r);
-          atuais.push({ id: novoId(), filial: campo('filial').value || null, fila: campo('fila').value,
-            topico: campo('topico').value.trim() || null, total, dentro });
-          await Loja.gravarSlaMes(dono, c, atuais);
-          await Loja.auditar({ acao:'criar', entidade:'ticket_sla', depois:{ competencia:mesExib(c), total, dentro } });
+          // Mudar a competência de um registro é tirá-lo de um mês e pô-lo em
+          // outro: os dois meses precisam estar abertos.
+          if (ed && c !== existente.competencia) checarCompetencia(existente.competencia, 'registro de SLA', dono);
+
+          const dados = { filial: campo('filial').value || null, fila: campo('fila').value,
+            topico: campo('topico').value.trim() || null, total, dentro };
+          const doMes = (comp) => (todos) => todos.filter((r) => r.competencia === comp)
+            .map(({ competencia, empresa, ...r }) => r);
+          const todos = await Loja.slaDa(dono);
+
+          if (ed && c !== existente.competencia) {
+            // Sai do mês antigo e entra no novo, em duas gravações: cada mês é
+            // um documento próprio no armazenamento.
+            await Loja.gravarSlaMes(dono, existente.competencia,
+              doMes(existente.competencia)(todos).filter((r) => r.id !== existente.id));
+            await Loja.gravarSlaMes(dono, c, [...doMes(c)(todos), { id: existente.id, ...dados }]);
+          } else if (ed) {
+            await Loja.gravarSlaMes(dono, c,
+              doMes(c)(todos).map((r) => (r.id === existente.id ? { id: r.id, ...dados } : r)));
+          } else {
+            await Loja.gravarSlaMes(dono, c, [...doMes(c)(todos), { id: novoId(), ...dados }]);
+          }
+
+          await Loja.auditar({
+            acao: ed ? 'atualizar' : 'criar', entidade: 'ticket_sla', id: ed ? existente.id : undefined,
+            antes: ed ? { competencia: mesExib(existente.competencia), total: existente.total, dentro: existente.dentro } : undefined,
+            depois: { competencia: mesExib(c), total, dentro },
+          }, dono);
           E.competencias = new Set([c]); fechar(); render();
         } catch (e) { erro(e.message); ev.target.disabled = false; }
       };
