@@ -164,6 +164,24 @@ lista as subtarefas e pede que sejam desagrupadas ou excluídas antes.
 Tarefa cujo pai foi excluído logicamente volta ao primeiro nível na leitura, em
 vez de sumir da tela.
 
+**A tarefa principal se escolhe numa lista, nunca se digita.** O campo é um
+seletor que traz as tarefas existentes do projeto, indentadas pelo nível em que
+estão — a indentação mostra se a escolha vai criar um segundo ou um terceiro
+nível, o que uma lista plana de nomes não diz. O valor guardado é o **id**, não
+o nome.
+
+Foi um defeito de verdade, relatado pelo gestor: com um campo de texto livre,
+errar um acento ou um espaço devolvia *"não existe uma tarefa X neste projeto"*
+para uma tarefa que existe. E num projeto ainda **sem tarefa nenhuma** o campo
+continuava pedindo um nome que não havia como fornecer — hoje o seletor aparece
+desabilitado, com a opção *nenhuma* explicando que a tarefa fica no primeiro
+nível.
+
+O seletor oferece só quem ainda cabe um nível abaixo, e nunca a própria tarefa
+que está sendo reagrupada: oferecer as demais seria oferecer um erro. Reagrupar
+uma tarefa existente usa o mesmo seletor, agora numa janela própria — antes era
+um `prompt` do navegador pedindo o nome digitado.
+
 ### Gantt agrupável
 
 O Gantt mostra o projeto como linha de grupo e, abaixo, as tarefas em ordem de

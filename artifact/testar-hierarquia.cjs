@@ -134,6 +134,50 @@ const { irPara } = require('./ajuda-testes.cjs');
   const tudoFechado = await nomesVisiveis();
   confere('"Comprimir tudo" deixa só a linha do projeto', tudoFechado, ['Projeto de teste']);
 
+  // ------------------------------------------------ escolher a principal
+  //
+  // O gestor relatou o defeito aqui, e não nas regras: o campo era texto livre,
+  // e um nome com acento errado devolvia "não existe essa tarefa" para uma
+  // tarefa que existe. Num projeto sem tarefa nenhuma, pedia um nome que não
+  // havia como fornecer.
+  console.log('\nFORMULÁRIO — a tarefa principal se escolhe numa lista');
+  await irPara(pag, 'Projetos', 900);
+  await pag.click('#pagina tbody tr button:has-text("Abrir")');
+  await pag.waitForTimeout(800);
+
+  const campo = await pag.$eval('#t-pai', (s) => ({
+    tag: s.tagName,
+    desabilitado: s.disabled,
+    opcoes: [...s.options].map((o) => o.textContent),
+    valores: [...s.options].map((o) => o.value),
+  }));
+  confere('o campo é um seletor, não texto livre', campo.tag, 'SELECT');
+  confere('a primeira opção deixa a tarefa no primeiro nível', campo.valores[0], '');
+  confere('as opções guardam o id, não o nome',
+    campo.valores.slice(1).every((v) => v && !campo.opcoes.includes(v)), true);
+  // As três tarefas do projeto de teste: só as de nível 1 e 2 podem ser
+  // principais, porque a de nível 3 não cabe ninguém abaixo.
+  confere('o seletor traz as candidatas, e não quem já está no último nível',
+    campo.opcoes.some((o) => /Levantamento/.test(o)) && !campo.opcoes.some((o) => /Roteiro/.test(o)), true);
+  confere('a subtarefa aparece recuada, mostrando o nível',
+    campo.opcoes.some((o) => /\u21b3/.test(o)), true);
+
+  // Agrupar uma tarefa existente: seletor numa janela, não `prompt`.
+  await pag.click('[data-tar] tbody tr:first-child [data-grp]');
+  await pag.waitForTimeout(600);
+  const janela = await pag.evaluate(() => {
+    const s = document.querySelector('#g-pai');
+    return { temSeletor: !!s, opcoes: s ? [...s.options].map((o) => o.textContent) : [] };
+  });
+  confere('agrupar abre um seletor com as candidatas', janela.temSeletor, true);
+  // Nunca a própria tarefa: seria o caso trivial de ciclo, oferecido em tela.
+  confere('o seletor não oferece a própria tarefa que está sendo agrupada',
+    janela.opcoes.some((o) => /Levantamento/.test(o)), false);
+  await pag.keyboard.press('Escape');
+  await pag.waitForTimeout(400);
+  confere('Escape fecha só a janela de agrupar, não a do projeto',
+    await pag.evaluate(() => !document.querySelector('#g-pai') && !!document.querySelector('#t-pai')), true);
+
   console.log('\n=== falhas: ' + (falhas.length ? falhas.join('; ') : 'nenhuma') + ' ===');
   console.log('=== erros de console: ' + (erros.length ? '\n' + erros.join('\n') : 'nenhum') + ' ===');
   await nav.close();

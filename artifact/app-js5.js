@@ -53,6 +53,24 @@ function validarPrincipal(tarefas, paiId, id) {
 }
 
 /**
+ * Opções do seletor de tarefa principal. A indentação por nível mostra onde
+ * cada uma está na hierarquia — sem ela, uma lista plana de nomes não diz se a
+ * escolha vai criar um segundo ou um terceiro nível.
+ *
+ * `excluir` tira da lista a própria tarefa que está sendo reagrupada: ninguém
+ * pode ser a própria principal, e oferecer a opção seria oferecer um erro.
+ */
+function opcoesDePrincipal(candidatas, selecionado = null, excluir = null) {
+  const disponiveis = candidatas.filter((c) => c.id !== excluir);
+  const nenhuma = `<option value=""${selecionado ? '' : ' selected'}>— nenhuma (fica no primeiro nível) —</option>`;
+  if (disponiveis.length === 0) return nenhuma;
+  return nenhuma + disponiveis.map((c) => {
+    const recuo = '\u00a0\u00a0'.repeat(c.nivel - 1) + (c.nivel > 1 ? '\u21b3 ' : '');
+    return `<option value="${esc(c.id)}"${c.id === selecionado ? ' selected' : ''}>${esc(recuo + c.nome)}</option>`;
+  }).join('');
+}
+
+/**
  * Tarefas em ordem de leitura — cada principal seguida das suas subtarefas —,
  * com o nível e o intervalo agregado do grupo. O agregado é o que a barra do
  * pai mostra quando o grupo está comprimido: esconder as subtarefas não pode
@@ -440,10 +458,8 @@ function abrirProjeto(p) {
       <form class="filtros" data-formtar style="margin-top:4px">
         <div class="campo" style="flex:1 1 150px"><label for="t-nome">Nova tarefa</label><input id="t-nome" name="tnome" required></div>
         <div class="campo" style="width:140px"><label for="t-resp">Responsável</label><input id="t-resp" name="tresp"></div>
-        <div class="campo" style="width:170px"><label for="t-pai">Tarefa principal</label>
-          <input id="t-pai" name="tpai" list="t-principais" placeholder="opcional — agrupa no Gantt"
-                 aria-describedby="t-pai-ajuda"></div>
-        <datalist id="t-principais"></datalist>
+        <div class="campo" style="width:210px"><label for="t-pai">Tarefa principal</label>
+          <select id="t-pai" name="tpai" aria-describedby="t-pai-ajuda"></select></div>
         <span id="t-pai-ajuda" hidden>Tarefa deste projeto sob a qual esta ficará agrupada. Até 3 níveis.</span>
         <div class="campo" style="width:104px"><label for="t-ini">Início</label><input id="t-ini" name="tini" value="${mesExib(p.inicio)}" required></div>
         <div class="campo" style="width:104px"><label for="t-fim">Fim planejado</label><input id="t-fim" name="tfim" placeholder="MM/AAAA" required></div>
@@ -464,8 +480,13 @@ function abrirProjeto(p) {
         // Só pode ser principal quem ainda cabe um nível abaixo; oferecer as
         // demais na lista seria oferecer um erro.
         const candidatas = emOrdem.filter((x) => x.nivel < PROFUNDIDADE_MAXIMA);
-        raiz.querySelector('#t-principais').innerHTML =
-          candidatas.map((x) => `<option value="${esc(x.nome)}"></option>`).join('');
+        // O seletor guarda o id, não o nome: dois projetos podem ter tarefas
+        // homônimas, e escrever o nome à mão erra mais do que acerta.
+        const sel = raiz.querySelector('#t-pai');
+        const escolhido = sel.value;
+        sel.innerHTML = opcoesDePrincipal(candidatas);
+        sel.disabled = candidatas.length === 0;
+        sel.value = candidatas.some((c) => c.id === escolhido) ? escolhido : '';
 
         t.innerHTML = tarefas.length === 0 ? '<p class="vazio">Nenhuma tarefa.</p>' : `
           <table><thead><tr><th>Tarefa</th><th>Responsável</th><th>Período</th><th>Situação</th><th></th></tr></thead>
@@ -490,20 +511,35 @@ function abrirProjeto(p) {
             const c = mesInterno(m); if (!c) return erro('Mês inválido.');
             tar.fimReal = c; await persistir(); pintar();
           });
-          tr.querySelector('[data-grp]').addEventListener('click', async () => {
-            const atual = (tarefas.find((x) => x.id === tar.paiId) || {}).nome || '';
-            const escolha = prompt(
-              `Tarefa principal de "${tar.nome}" (deixe em branco para desagrupar):\n\n` +
-              candidatas.filter((c) => c.id !== tar.id).map((c) => '· ' + c.nome).join('\n'),
-              atual);
-            if (escolha === null) return;
-            const alvo = escolha.trim().toLowerCase();
-            const pai = alvo ? candidatas.find((c) => c.nome.toLowerCase() === alvo) : null;
-            if (alvo && !pai) return erro(`Não existe uma tarefa "${escolha.trim()}" neste projeto que possa ser principal.`);
-            try {
-              tar.paiId = validarPrincipal(tarefas, pai ? pai.id : null, tar.id);
-            } catch (e) { return erro(e.message); }
-            erro(''); await persistir(); pintar();
+          tr.querySelector('[data-grp]').addEventListener('click', () => {
+            // Escolher numa lista, e não digitar o nome: com o nome, errar um
+            // acento já devolvia "não existe essa tarefa" para uma tarefa que
+            // existe — e com o projeto sem tarefa nenhuma não havia o que
+            // digitar, mas o campo pedia mesmo assim.
+            const disponiveis = candidatas.filter((c) => c.id !== tar.id);
+            abrirModal({
+              titulo: `Agrupar "${tar.nome}"`,
+              corpo: disponiveis.length === 0
+                ? `<p class="vazio" style="text-align:left">Este projeto ainda não tem outra tarefa que possa ser a
+                     principal desta. Crie a tarefa que agrupa antes de agrupar esta.</p>`
+                : `<div class="campo"><label for="g-pai">Tarefa principal</label>
+                     <select id="g-pai">${opcoesDePrincipal(candidatas, tar.paiId || null, tar.id)}</select></div>
+                   <p class="nota" style="margin-top:8px">A hierarquia vai até ${PROFUNDIDADE_MAXIMA} níveis.
+                     Escolher <strong>nenhuma</strong> desagrupa a tarefa.</p>`,
+              acoes: disponiveis.length === 0
+                ? `<button type="button" class="bt" data-c>Fechar</button>`
+                : `<button type="button" class="bt" data-c>Cancelar</button>
+                   <button type="button" class="bt pri" data-ok>Agrupar</button>`,
+              aoMontar({ raiz, fechar, erro: erroModal }) {
+                raiz.querySelector('[data-c]').onclick = fechar;
+                raiz.querySelector('[data-ok]')?.addEventListener('click', async () => {
+                  try {
+                    tar.paiId = validarPrincipal(tarefas, raiz.querySelector('#g-pai').value || null, tar.id);
+                  } catch (e) { return erroModal(e.message); }
+                  fechar(); erro(''); await persistir(); pintar();
+                });
+              },
+            });
           });
           tr.querySelector('[data-del]').addEventListener('click', async () => {
             // Bloqueio, não cascata: em cascata um "Remover" apagaria em
@@ -535,11 +571,8 @@ function abrirProjeto(p) {
         const ini = mesInterno(f.tini.value), fim = mesInterno(f.tfim.value);
         if (!ini || !fim) return erro('Início e fim da tarefa precisam estar em MM/AAAA.');
         if (fim < ini) return erro('O fim planejado da tarefa não pode ser anterior ao início.');
-        const nomePai = f.tpai.value.trim().toLowerCase();
-        const pai = nomePai ? tarefas.find((x) => x.nome.toLowerCase() === nomePai) : null;
-        if (nomePai && !pai) return erro(`Não existe uma tarefa "${f.tpai.value.trim()}" neste projeto.`);
         let paiId = null;
-        try { paiId = validarPrincipal(tarefas, pai ? pai.id : null, null); }
+        try { paiId = validarPrincipal(tarefas, f.tpai.value || null, null); }
         catch (e) { return erro(e.message); }
         tarefas.push({ id: novoId(), nome: f.tnome.value.trim(), inicio: ini, fimPlanejado: fim,
           fimReal: null, responsavel: f.tresp.value.trim() || null, paiId });

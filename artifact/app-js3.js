@@ -11,7 +11,9 @@ function abrirModal({ titulo, corpo, acoes, aoMontar }) {
       <div class="acoes">${acoes}</div>
     </div>`;
   const fechar = () => { fundo.remove(); document.removeEventListener('keydown', tecla); };
-  const tecla = (e) => { if (e.key === 'Escape') fechar(); };
+  // Com modais empilhados, Escape fecha só o de cima: fechar os dois faria o
+  // gestor perder também a tela de onde abriu o segundo.
+  const tecla = (e) => { if (e.key === 'Escape' && fundo === el('#modais').lastElementChild) fechar(); };
   document.addEventListener('keydown', tecla);
   fundo.addEventListener('mousedown', (e) => { if (e.target === fundo) fechar(); });
   fundo.querySelector('[data-x]').addEventListener('click', fechar);

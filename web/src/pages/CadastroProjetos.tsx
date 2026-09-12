@@ -267,9 +267,12 @@ function DetalheProjeto({
   const tarefas = useDados<Tarefa[]>(() => api.get(`/api/projetos/${projeto.id}/tarefas`), [projeto.id]);
   const envolvidos = useDados<Envolvido[]>(() => api.get(`/api/projetos/${projeto.id}/envolvidos`), [projeto.id]);
   const tarefaVazia = { nome: '', mes_inicio: projeto.mes_inicio, mes_fim_planejado: '', responsavel: '', principal: '' };
+  // `principal` guarda o id da tarefa escolhida, em texto — é o que um `select`
+  // devolve. Guardar o nome erra quando duas tarefas se chamam igual.
   const [tarefa, setTarefa] = useState(tarefaVazia);
   const [envolvido, setEnvolvido] = useState({ nome: '', papel: '' });
   const [erro, setErro] = useState<string | null>(null);
+  const [agrupando, setAgrupando] = useState<Tarefa | null>(null);
 
   const adicionarTarefa = async (evento: FormEvent) => {
     evento.preventDefault();
@@ -278,7 +281,7 @@ function DetalheProjeto({
       const { principal, ...campos } = tarefa;
       await api.post(`/api/projetos/${projeto.id}/tarefas`, {
         ...campos,
-        parent_task_id: idDaPrincipal(principal),
+        parent_task_id: principal ? Number(principal) : null,
       });
       setTarefa(tarefaVazia);
       tarefas.recarregar();
@@ -293,33 +296,20 @@ function DetalheProjeto({
    */
   const candidatasAPrincipal = (tarefas.dados ?? []).filter((t) => (t.nivel ?? 1) < 3);
 
-  /** Id da tarefa cujo nome foi digitado; vazio significa sem agrupamento. */
-  const idDaPrincipal = (nome: string): number | null => {
-    const alvo = nome.trim().toLowerCase();
-    if (!alvo) return null;
-    return candidatasAPrincipal.find((t) => t.nome.toLowerCase() === alvo)?.id ?? null;
-  };
+  /**
+   * Rótulo da opção no seletor. O recuo por nível mostra onde a tarefa está na
+   * hierarquia — uma lista plana de nomes não diz se a escolha vai criar um
+   * segundo ou um terceiro nível.
+   */
+  const rotuloDaOpcao = (t: Tarefa) =>
+    '\u00a0\u00a0'.repeat((t.nivel ?? 1) - 1) + ((t.nivel ?? 1) > 1 ? '\u21b3 ' : '') + t.nome;
 
-  /** Vincula ou desvincula uma tarefa existente, pelo nome da principal. */
-  const vincular = async (t: Tarefa) => {
-    const atual = (tarefas.dados ?? []).find((x) => x.id === t.parent_task_id)?.nome ?? '';
-    const nome = window.prompt(
-      `Tarefa principal de "${t.nome}" (deixe em branco para desagrupar):\n\n` +
-        candidatasAPrincipal
-          .filter((c) => c.id !== t.id)
-          .map((c) => '· ' + c.nome)
-          .join('\n'),
-      atual,
-    );
-    if (nome === null) return;
-    const alvo = nome.trim();
-    if (alvo && !idDaPrincipal(alvo)) {
-      setErro(`Não existe uma tarefa "${alvo}" neste projeto que possa ser tarefa principal.`);
-      return;
-    }
+  /** Vincula ou desvincula uma tarefa existente. `paiId` nulo desagrupa. */
+  const vincular = async (t: Tarefa, paiId: number | null) => {
     setErro(null);
     try {
-      await api.patch(`/api/projetos/tarefas/${t.id}`, { parent_task_id: idDaPrincipal(alvo) });
+      await api.patch(`/api/projetos/tarefas/${t.id}`, { parent_task_id: paiId });
+      setAgrupando(null);
       tarefas.recarregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao agrupar a tarefa.');
@@ -420,7 +410,7 @@ function DetalheProjeto({
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {podeEditar && (
-                        <button type="button" className="botao discreto pequeno" onClick={() => vincular(t)}>
+                        <button type="button" className="botao discreto pequeno" onClick={() => setAgrupando(t)}>
                           Agrupar
                         </button>
                       )}
@@ -446,21 +436,22 @@ function DetalheProjeto({
               <input value={tarefa.responsavel} onChange={(e) => setTarefa({ ...tarefa, responsavel: e.target.value })} />
             </Campo>
             <Campo rotulo="Tarefa principal">
-              {/* `datalist` dá a busca com teclado e leitor de tela sem
-                  reimplementar combobox; vazio = tarefa de primeiro nível. */}
-              <input
-                list={`principais-${projeto.id}`}
+              {/* Escolher numa lista, e não digitar o nome: digitando, um acento
+                  errado devolvia "não existe essa tarefa" para uma que existe. */}
+              <select
                 value={tarefa.principal}
                 onChange={(e) => setTarefa({ ...tarefa, principal: e.target.value })}
-                placeholder="opcional — agrupa no Gantt"
+                disabled={candidatasAPrincipal.length === 0}
                 aria-describedby={`ajuda-principal-${projeto.id}`}
-                style={{ minWidth: 180 }}
-              />
-              <datalist id={`principais-${projeto.id}`}>
+                style={{ minWidth: 200 }}
+              >
+                <option value="">— nenhuma (fica no primeiro nível) —</option>
                 {candidatasAPrincipal.map((c) => (
-                  <option key={c.id} value={c.nome} />
+                  <option key={c.id} value={String(c.id)}>
+                    {rotuloDaOpcao(c)}
+                  </option>
                 ))}
-              </datalist>
+              </select>
               <small id={`ajuda-principal-${projeto.id}`} style={{ display: 'none' }}>
                 Tarefa deste projeto sob a qual esta ficará agrupada. Até 3 níveis.
               </small>
@@ -511,6 +502,72 @@ function DetalheProjeto({
           </form>
         )}
       </div>
+      {agrupando && (
+        <AgruparTarefa
+          tarefa={agrupando}
+          candidatas={candidatasAPrincipal.filter((c) => c.id !== agrupando.id)}
+          rotulo={rotuloDaOpcao}
+          aoFechar={() => setAgrupando(null)}
+          aoConfirmar={(paiId) => vincular(agrupando, paiId)}
+        />
+      )}
+    </Modal>
+  );
+}
+
+/**
+ * Escolha da tarefa principal de uma tarefa que já existe. Antes era um
+ * `window.prompt` pedindo o nome digitado: errar um acento devolvia "não
+ * existe essa tarefa" para uma tarefa que existe, e com o projeto ainda sem
+ * tarefas o campo pedia um nome que não havia como fornecer.
+ */
+function AgruparTarefa({
+  tarefa,
+  candidatas,
+  rotulo,
+  aoFechar,
+  aoConfirmar,
+}: {
+  tarefa: Tarefa;
+  candidatas: Tarefa[];
+  rotulo: (t: Tarefa) => string;
+  aoFechar: () => void;
+  aoConfirmar: (paiId: number | null) => void;
+}) {
+  const [escolha, setEscolha] = useState(tarefa.parent_task_id ? String(tarefa.parent_task_id) : '');
+
+  return (
+    <Modal titulo={`Agrupar "${tarefa.nome}"`} aberto aoFechar={aoFechar}>
+      {candidatas.length === 0 ? (
+        <p className="vazio" style={{ textAlign: 'left' }}>
+          Este projeto ainda não tem outra tarefa que possa ser a principal desta. Crie a tarefa que agrupa antes de
+          agrupar esta.
+        </p>
+      ) : (
+        <>
+          <Campo rotulo="Tarefa principal">
+            <select value={escolha} onChange={(e) => setEscolha(e.target.value)} style={{ minWidth: 240 }}>
+              <option value="">— nenhuma (fica no primeiro nível) —</option>
+              {candidatas.map((c) => (
+                <option key={c.id} value={String(c.id)}>
+                  {rotulo(c)}
+                </option>
+              ))}
+            </select>
+          </Campo>
+          <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
+            A hierarquia vai até 3 níveis. Escolher <strong>nenhuma</strong> desagrupa a tarefa.
+          </p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" className="botao" onClick={aoFechar}>
+              Cancelar
+            </button>
+            <button type="button" className="botao primario" onClick={() => aoConfirmar(escolha ? Number(escolha) : null)}>
+              Agrupar
+            </button>
+          </div>
+        </>
+      )}
     </Modal>
   );
 }
