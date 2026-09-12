@@ -35,6 +35,7 @@ const NAVEGACAO = [
       { subtitulo: 'Sistemas de Suporte' },
       { para: '/suporte/ostick', glifo: '·', rotulo: 'Sistema OStick', sub: true },
       { para: '/suporte/bitrix24', glifo: '·', rotulo: 'Sistema Bitrix24', sub: true },
+      { para: '/suporte/integracoes', glifo: '⇄', rotulo: 'Integrações' },
     ],
   },
   {

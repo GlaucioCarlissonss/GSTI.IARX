@@ -312,6 +312,55 @@ fica registrado em log para revisão — recusar o chamado na porta perderia
 justamente o registro que o webhook veio entregar. Setor novo entra no catálogo
 da empresa, como os demais cadastros.
 
+### Integrações: o operador não depende do N8N para diagnosticar
+
+Cada empresa tem uma **conexão por sistema de origem**, com endereço, segredo e
+interruptor próprios. O que sustenta a tela de Integrações é o **log de
+eventos**: o payload entra nele **antes** de ser interpretado, e é de lá que
+sai o diagnóstico de uma falha — e o reprocessamento, sem depender de a origem
+reenviar.
+
+O pipeline de cada recebimento, nesta ordem:
+
+| passo | o que faz |
+| --- | --- |
+| 1 | grava o payload bruto no log, com status `received` |
+| 2 | valida os campos obrigatórios; recusa vira `error` com o motivo legível |
+| 3 | normaliza para o modelo único de chamado |
+| 4 | faz o upsert por `(empresa, sistema, external_id)` |
+| 5 | fecha o evento (`processed` ou `error`) e atualiza a conexão (último evento, último erro) |
+
+**O segredo é guardado como hash, e o valor em claro aparece uma única vez** —
+no instante em que é gerado. É o mesmo trato de uma chave de API: quem tem o
+banco não tem a chave, e quem perdeu o segredo gera outro. A tela diz isso em
+voz alta, porque a alternativa — guardar em texto para poder reexibir — troca
+uma conveniência por um vazamento.
+
+Girar o segredo **invalida o anterior na hora**. Não há janela de convivência:
+duas chaves válidas ao mesmo tempo é o que se quer evitar ao girar.
+
+**Três recusas distintas, e não uma só:**
+
+| situação | resposta | por quê |
+| --- | --- | --- |
+| segredo ausente ou errado | **401** | é o caso de autenticação |
+| conexão desligada de propósito | **403** | 401 mandaria o operador caçar um segredo que está certo |
+| nenhum segredo configurado | **503** | um deploy que esqueceu a variável não vira porta sem tranca |
+
+Sem segredo por empresa, vale o da **variável de ambiente** — é o que sustenta
+uma instalação de um tenant só, sem passar pela tela.
+
+**O payload de teste percorre exatamente o mesmo caminho** do webhook: mesmo
+pipeline, mesmo upsert, mesmo log. Um teste que seguisse caminho próprio
+deixaria de provar o que a produção faz. O chamado de teste entra marcado como
+tal, para dar para achá-lo depois sem caçar por assunto.
+
+**Reprocessar só vale para evento com erro.** Refazer o que deu certo criaria
+escrita sem motivo e faria a auditoria mostrar duas operações onde houve uma.
+
+`GET /api/health` responde **sem autenticação**: um monitor não tem credencial,
+e a resposta não conta nada que já não se saiba de fora.
+
 ### Webhooks (N8N → SaaS)
 
 `POST /api/webhooks/ostick/tickets` e `POST /api/webhooks/bitrix24/tickets`,

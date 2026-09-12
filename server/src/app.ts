@@ -3,10 +3,12 @@ import express from 'express';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { db } from './db/index.js';
 import { autenticado, comEmpresa, tratadorDeErros } from './middleware/index.js';
 import { rotasAuth } from './routes/auth.js';
 import { rotasCadastros } from './routes/cadastros.js';
 import { rotasFinanceiro } from './routes/financeiro.js';
+import { rotasIntegracoes } from './routes/integracoes.js';
 import { rotasProjetos } from './routes/projetos.js';
 import { rotasSla } from './routes/sla.js';
 import { rotasDashboards } from './routes/dashboards.js';
@@ -27,6 +29,25 @@ export function criarApp() {
   // autenticada por segredo em header, e não um usuário logado.
   app.use('/api/webhooks', rotasWebhooks);
 
+  /**
+   * Health check para o N8N acompanhar a disponibilidade do SaaS. Fica fora da
+   * sessão e fora do segredo de webhook: um monitor não tem credencial, e a
+   * resposta não conta nada que já não se saiba de fora.
+   */
+  app.get('/api/health', (_req, res) => {
+    let banco: 'ok' | 'erro' = 'ok';
+    try {
+      db().prepare('SELECT 1').get();
+    } catch {
+      banco = 'erro';
+    }
+    res.status(banco === 'ok' ? 200 : 503).json({
+      status: banco === 'ok' ? 'ok' : 'degradado',
+      banco,
+      em: new Date().toISOString(),
+    });
+  });
+
   // Tudo abaixo exige sessão e empresa em contexto: nenhum dado vive fora do tenant.
   const protegido = express.Router();
   protegido.use(autenticado, comEmpresa);
@@ -35,6 +56,7 @@ export function criarApp() {
   protegido.use('/projetos', rotasProjetos);
   protegido.use('/sla', rotasSla);
   protegido.use('/suporte', rotasSuporte);
+  protegido.use('/integracoes', rotasIntegracoes);
   protegido.use('/dashboards', rotasDashboards);
   protegido.use('/planilhas', rotasPlanilhas);
   app.use('/api', protegido);

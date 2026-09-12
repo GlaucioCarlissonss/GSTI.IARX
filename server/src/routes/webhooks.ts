@@ -9,13 +9,9 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import express from 'express';
 import { db, emTransacao } from '../db/index.js';
 import { erroValidacao } from '../lib/erros.js';
-import {
-  gravarChamado,
-  LIMITE_PAYLOAD_BYTES,
-  normalizar,
-  type SistemaOrigem,
-} from '../domain/suporte.js';
+import { LIMITE_PAYLOAD_BYTES, type SistemaOrigem } from '../domain/suporte.js';
 import { SETOR_NAO_CLASSIFICADO } from '../domain/cadastros.js';
+import { autorizarRecebimento, processarEvento, registrarEvento } from '../domain/integracoes.js';
 
 export const rotasWebhooks = Router();
 
@@ -24,35 +20,41 @@ rotasWebhooks.use(express.json({ limit: LIMITE_PAYLOAD_BYTES }));
 
 // ------------------------------------------------------------- autenticação
 
-const SEGREDO = () => process.env.WEBHOOK_SECRET ?? '';
-
 /**
- * Comparação em tempo constante. Um `===` vaza o tamanho do prefixo correto
- * pelo tempo de resposta, e o segredo é justamente o que protege o endpoint.
+ * A autorização é por empresa e por origem: cada conexão tem o seu segredo e
+ * o seu interruptor, e o da variável de ambiente vale como reserva para a
+ * instalação de um tenant só. A comparação, e a decisão entre 401, 403 e 503,
+ * moram no domínio — aqui fica só o que é de HTTP.
  */
-function segredoConfere(recebido: string, esperado: string): boolean {
-  if (recebido.length !== esperado.length) return false;
-  let diferenca = 0;
-  for (let i = 0; i < recebido.length; i++) diferenca |= recebido.charCodeAt(i) ^ esperado.charCodeAt(i);
-  return diferenca === 0;
-}
+function autenticarWebhook(sistema: SistemaOrigem) {
+  return (req: Request, res: Response, proximo: NextFunction) => {
+    let empresaId: number;
+    try {
+      empresaId = empresaDaRequisicao(req);
+    } catch (erro) {
+      const mensagem = erro instanceof Error ? erro.message : String(erro);
+      registrar(req, 422, mensagem, { sistema });
+      res.status(422).json({ erro: mensagem });
+      return;
+    }
 
-function autenticarWebhook(req: Request, res: Response, proximo: NextFunction) {
-  const esperado = SEGREDO();
-  if (!esperado) {
-    // Sem segredo configurado o endpoint fica fechado, não aberto: um deploy
-    // que esqueceu a variável não pode virar uma porta sem tranca.
-    registrar(req, 503, 'WEBHOOK_SECRET não configurado no servidor');
-    res.status(503).json({ erro: 'Integração de webhooks indisponível.' });
-    return;
-  }
-  const recebido = String(req.header('X-Webhook-Secret') ?? '');
-  if (!segredoConfere(recebido, esperado)) {
-    registrar(req, 401, recebido ? 'segredo incorreto' : 'segredo ausente');
-    res.status(401).json({ erro: 'Autenticação do webhook inválida.' });
-    return;
-  }
-  proximo();
+    const veredito = autorizarRecebimento(empresaId, sistema, String(req.header('X-Webhook-Secret') ?? ''));
+    if (!veredito.ok) {
+      registrar(req, veredito.status, veredito.motivo, { sistema, empresa_id: empresaId });
+      const publico =
+        veredito.status === 503
+          ? 'Integração de webhooks indisponível.'
+          : veredito.status === 403
+            ? 'Integração desativada para este sistema.'
+            : 'Autenticação do webhook inválida.';
+      res.status(veredito.status).json({ erro: publico });
+      return;
+    }
+
+    // A empresa já está resolvida e autorizada: quem recebe não repete o trabalho.
+    (req as Request & { empresaId?: number }).empresaId = empresaId;
+    proximo();
+  };
 }
 
 // -------------------------------------------------------------- rate limiting
@@ -133,15 +135,8 @@ function chamadosDoCorpo(corpo: unknown): Record<string, unknown>[] {
 
 function receber(sistema: SistemaOrigem) {
   return (req: Request, res: Response) => {
-    let empresaId: number;
-    try {
-      empresaId = empresaDaRequisicao(req);
-    } catch (erro) {
-      const mensagem = erro instanceof Error ? erro.message : String(erro);
-      registrar(req, 422, mensagem, { sistema });
-      res.status(422).json({ erro: mensagem });
-      return;
-    }
+    // A autenticação já resolveu a empresa; repetir aqui seria consultar duas vezes.
+    const empresaId = (req as Request & { empresaId?: number }).empresaId as number;
 
     const entrada = chamadosDoCorpo(req.body);
     if (!entrada.length) {
@@ -158,17 +153,28 @@ function receber(sistema: SistemaOrigem) {
     // metade. A linha inválida não derruba as boas — ela vai para o relatório.
     emTransacao(() => {
       entrada.forEach((bruto, indice) => {
-        try {
-          const chamado = normalizar(sistema, bruto);
-          const gravado = gravarChamado(empresaId, chamado, bruto);
-          if (gravado.setor === SETOR_NAO_CLASSIFICADO) semSetor.push(chamado.external_id);
-          aceitos.push({ external_id: chamado.external_id, ticket_id: gravado.ticket_id, criado: gravado.criado });
-        } catch (erro) {
-          recusados.push({
-            indice,
-            external_id: (bruto?.external_id ?? bruto?.ticket_id ?? bruto?.ID ?? null) as string | null,
-            motivo: erro instanceof Error ? erro.message : String(erro),
-          });
+        const idDaOrigem = (bruto?.external_id ?? bruto?.ticket_id ?? bruto?.ID ?? null) as string | null;
+        // Passo 1 do pipeline: o payload entra no log ANTES de ser interpretado.
+        // É isso que permite diagnosticar e reprocessar o que falhar adiante.
+        const eventoId = registrarEvento({
+          empresaId,
+          sistema,
+          externalId: idDaOrigem === null ? null : String(idDaOrigem),
+          // Só dá para saber se criou ou atualizou depois do upsert; o tipo é
+          // corrigido no fim, com o resultado em mãos.
+          tipo: 'ticket.created',
+          payload: bruto,
+        });
+
+        const r = processarEvento(empresaId, sistema, bruto, eventoId);
+        if (r.ok) {
+          if (r.setor === SETOR_NAO_CLASSIFICADO) semSetor.push(String(idDaOrigem ?? r.ticketId));
+          if (!r.criado) {
+            db().prepare(`UPDATE integracao_evento SET tipo = 'ticket.updated' WHERE id = ?`).run(eventoId);
+          }
+          aceitos.push({ external_id: String(idDaOrigem ?? ''), ticket_id: r.ticketId, criado: r.criado });
+        } else {
+          recusados.push({ indice, external_id: idDaOrigem === null ? null : String(idDaOrigem), motivo: r.erro });
         }
       });
     });
@@ -206,5 +212,5 @@ function receber(sistema: SistemaOrigem) {
   };
 }
 
-rotasWebhooks.post('/ostick/tickets', limitarTaxa, autenticarWebhook, receber('OSTICK'));
-rotasWebhooks.post('/bitrix24/tickets', limitarTaxa, autenticarWebhook, receber('BITRIX24'));
+rotasWebhooks.post('/ostick/tickets', limitarTaxa, autenticarWebhook('OSTICK'), receber('OSTICK'));
+rotasWebhooks.post('/bitrix24/tickets', limitarTaxa, autenticarWebhook('BITRIX24'), receber('BITRIX24'));

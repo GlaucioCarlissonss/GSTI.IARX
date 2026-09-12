@@ -307,3 +307,44 @@ CREATE TABLE IF NOT EXISTS importacoes (
   criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS ix_import_empresa ON importacoes(empresa_id, criado_em DESC);
+
+-- ---------------------------------------------------------------- integrações
+-- Cada conexão com um sistema de origem é uma linha: dá para ligar, desligar e
+-- girar o segredo sem mexer em código.
+--
+-- O segredo é guardado como HASH, e não em texto: quem tem o banco não tem a
+-- chave. O valor em claro aparece uma única vez, no momento em que é gerado —
+-- é o mesmo trato de uma chave de API. Perdeu, gera outra.
+CREATE TABLE IF NOT EXISTS integracao_config (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  empresa_id    INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  source_system TEXT NOT NULL CHECK (source_system IN ('OSTICK','BITRIX24')),
+  webhook_path  TEXT NOT NULL,
+  secret_hash   TEXT,
+  ativo         INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0,1)),
+  ultimo_evento_em TEXT,
+  ultimo_erro   TEXT,
+  criado_em     TEXT NOT NULL DEFAULT (datetime('now')),
+  atualizado_em TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (empresa_id, source_system)
+);
+
+-- Log de eventos: auditoria, diagnóstico e reprocessamento. O payload bruto
+-- fica aqui justamente para permitir refazer o processamento sem depender de
+-- a origem reenviar.
+CREATE TABLE IF NOT EXISTS integracao_evento (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  empresa_id    INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  source_system TEXT NOT NULL CHECK (source_system IN ('OSTICK','BITRIX24')),
+  external_id   TEXT,
+  tipo          TEXT NOT NULL CHECK (tipo IN ('ticket.created','ticket.updated','ticket.test')),
+  payload       TEXT NOT NULL,
+  status        TEXT NOT NULL CHECK (status IN ('received','processed','error')),
+  erro          TEXT,
+  ticket_id     INTEGER,
+  teste         INTEGER NOT NULL DEFAULT 0 CHECK (teste IN (0,1)),
+  criado_em     TEXT NOT NULL DEFAULT (datetime('now')),
+  processado_em TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_evento_escopo ON integracao_evento(empresa_id, criado_em DESC);
+CREATE INDEX IF NOT EXISTS ix_evento_status ON integracao_evento(empresa_id, status, criado_em DESC);
