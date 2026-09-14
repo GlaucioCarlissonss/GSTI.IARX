@@ -50,8 +50,22 @@ const NAVEGACAO = [
 ];
 
 export function Layout() {
-  const { usuario, empresas, empresa, trocarEmpresa, filiaisSel, definirFiliais, filiais, sair, ehGestor, pode, permissoes } =
-    useSessao();
+  const {
+    usuario,
+    empresas,
+    empresa,
+    trocarEmpresa,
+    cliente,
+    clientes,
+    trocarCliente,
+    filiaisSel,
+    definirFiliais,
+    filiais,
+    sair,
+    ehGestor,
+    pode,
+    permissoes,
+  } = useSessao();
   const { tema, alternar } = useTema();
 
   const itensFilial = [
@@ -66,6 +80,21 @@ export function Layout() {
           <strong>GSTI.IARX</strong>
           <span>Gestão de TI</span>
         </div>
+
+        {/* O cliente em contexto fica ao lado da marca porque é o recorte que
+            governa TODAS as telas abaixo — e trocar tem de ser um clique, não
+            uma ida ao login. Com um cliente só, trocar não teria para onde ir. */}
+        {cliente && (
+          <div className="cliente-atual">
+            <span>Cliente</span>
+            <strong title={cliente.nome}>{cliente.nome}</strong>
+            {clientes.length > 1 && (
+              <button type="button" className="botao discreto pequeno" onClick={trocarCliente}>
+                Trocar cliente
+              </button>
+            )}
+          </div>
+        )}
         <nav className="menu">
           {/* O perfil governa o menu: módulo que a pessoa não vê não vira link,
               e grupo que ficou sem nenhum item não vira título solto. */}

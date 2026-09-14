@@ -13,9 +13,40 @@ vínculo. Toda consulta do domínio filtra por `empresa_id`, e referências
 cruzadas (filial, tipo de despesa, tópico) são validadas contra o tenant antes
 de gravar — o teste *"o escopo de um tenant nunca vaza para outro"* cobre isso.
 
-**Hierarquia Empresa → Filial.** Uma empresa tem zero ou mais filiais. Consultas
+**Hierarquia Cliente → Matriz → Filial.** O cliente é o contratante, e é o
+recorte mais externo do sistema: nenhuma tela soma dois clientes. No banco a
+hierarquia é `clientes` → `empresas` → `filiais` — `empresas` sempre foi, no
+negócio, a matriz, e renomear a tabela quebraria todo o código por uma palavra.
+Toda entidade de negócio carrega `cliente_id`, e o carimbo é feito por **gatilho
+do banco** a partir da empresa: assim importador, webhook e código novo não têm
+como criar registro sem dono. O vínculo do usuário fica em `usuario_clientes`, e
+pedir um cliente sem vínculo recebe 403 com a **mesma** recusa dada a um id
+inexistente — distinguir as duas contaria quais clientes existem
+(`domain/clientes.ts`). Uma empresa tem zero ou mais filiais, e as consultas
 aceitam três escopos: consolidado (todas), uma filial específica, ou apenas o
 nível empresa (`filial_id = nenhuma`).
+
+### A sessão começa escolhendo o cliente
+
+Depois de entrar, a primeira tela pergunta *"Qual cliente você gostaria de
+acessar?"* — um por vez, porque é assim que o sistema consulta: oferecer
+"todos" prometeria uma visão consolidada que nenhuma tela entrega. Escolhido o
+cliente, o seletor de empresa passa a oferecer **só as matrizes dele**; trocar
+de cliente é um clique no topo (app local: lateral) e não passa pelo login.
+
+A escolha fica no `localStorage`, o que faz a tela aparecer uma vez por
+navegador e não a cada recarregamento. O que fica guardado é a última escolha,
+nunca uma permissão: se o vínculo tiver sido revogado, a escolha guardada é
+descartada e a pergunta volta. Três estados são distintos na tela, porque as
+saídas são opostas: carregando, **nenhum cliente vinculado** (peça acesso) e
+**falha ao buscar** (tentar de novo) — duas telas vazias iguais esconderiam essa
+diferença.
+
+Na versão hospedada, as matrizes carregadas antes desta camada existir foram
+**adotadas** pelo cliente histórico (Grupo Brasil Home Care): sem dono, elas
+sumiriam no instante em que a tela passasse a filtrar por cliente. A adoção
+acontece em memória primeiro e só depois tenta gravar — quem abriu o link
+somente para ver não escreve, e a tela dessa pessoa precisa funcionar igual.
 
 **Competência.** O mês de referência é gravado como `AAAA-MM`, formato que
 ordena e compara com operadores simples, e exposto na API e nas planilhas como

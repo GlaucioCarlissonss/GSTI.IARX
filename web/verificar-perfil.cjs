@@ -19,6 +19,12 @@ const entrar = async (pag, usuario, senha) => {
   await pag.fill('input[autocomplete="username"], input[name="usuario"]', usuario);
   await pag.fill('input[type="password"]', senha);
   await pag.click('button[type="submit"]');
+  // A escolha de cliente vem antes de qualquer tela. Com a escolha já guardada
+  // ela não aparece; quando aparece, entrar pelo primeiro cliente é o caminho
+  // de quem só quer chegar ao menu — o que esta suíte vai conferir.
+  await pag.waitForSelector('.menu a, .cartao button', { timeout: 15000 });
+  const cartao = await pag.$('.cartao button:not(.discreto)');
+  if (cartao && !(await pag.$('.menu a'))) await cartao.click();
   await pag.waitForSelector('.menu a', { timeout: 15000 });
   await pag.waitForTimeout(1200);
 };

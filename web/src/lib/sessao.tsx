@@ -7,6 +7,21 @@ export interface Empresa {
   cnpj: string | null;
   status: string;
   papel: 'gestor' | 'leitor';
+  /** O cliente dono desta matriz. */
+  cliente_id: number | null;
+}
+
+/**
+ * O contratante. É o recorte mais externo do sistema: escolher o cliente é o
+ * primeiro ato da sessão, e nenhuma tela mostra dado de dois clientes juntos.
+ */
+export interface Cliente {
+  id: number;
+  nome: string;
+  documento: string | null;
+  ativo: number;
+  matrizes: number;
+  filiais: number;
 }
 
 export interface Filial {
@@ -51,6 +66,21 @@ export interface EstadoInstalacao {
 
 interface EstadoSessao {
   usuario: Usuario | null;
+  /** Os clientes a que este usuário está vinculado. */
+  clientes: Cliente[];
+  cliente: Cliente | null;
+  /** A busca da lista de clientes ainda está em curso? */
+  carregandoClientes: boolean;
+  /**
+   * Por que a lista não veio. Lista vazia e falha de rede produzem a mesma tela
+   * em branco, e as saídas são opostas: uma pede cadastro, a outra pede repetir.
+   */
+  erroClientes: string | null;
+  escolherCliente: (id: number) => void;
+  /** Volta à tela de boas-vindas, sem derrubar a sessão. */
+  trocarCliente: () => void;
+  recarregarClientes: () => Promise<void>;
+  /** Só as matrizes do cliente escolhido. */
   empresas: Empresa[];
   empresa: Empresa | null;
   filialId: number | 'todas' | 'nenhuma';
@@ -83,8 +113,12 @@ const Contexto = createContext<EstadoSessao | null>(null);
 
 export function ProvedorSessao({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
-  const [empresas, setEmpresas] = useState<Empresa[]>([]);
+  const [empresasTodas, setEmpresas] = useState<Empresa[]>([]);
   const [empresaId, setEmpresaId] = useState<number | null>(sessaoLocal.empresa());
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [clienteId, setClienteId] = useState<number | null>(sessaoLocal.cliente());
+  const [carregandoClientes, setCarregandoClientes] = useState(true);
+  const [erroClientes, setErroClientes] = useState<string | null>(null);
   const [filiaisSel, setFiliaisSel] = useState<Array<number | 'nenhuma'>>([]);
   // `filialId` continua existindo para o código que só lida com uma: é a única
   // selecionada, ou 'todas' quando o recorte é consolidado ou múltiplo.
@@ -111,8 +145,13 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       setUsuario(dados.usuario);
       setEmpresas(dados.empresas);
       const atual = sessaoLocal.empresa();
-      const valida = dados.empresas.some((e) => e.id === atual);
-      aplicarEmpresa(valida ? atual : (dados.empresas[0]?.id ?? null));
+      const guardado = sessaoLocal.cliente();
+      // Sem cliente escolhido não há empresa em contexto: a ordem é cliente,
+      // depois matriz, e inverter as duas abriria a primeira tela no recorte
+      // que a pessoa ainda não escolheu.
+      const candidatas = guardado ? dados.empresas.filter((e) => e.cliente_id === guardado) : [];
+      const valida = candidatas.some((e) => e.id === atual);
+      aplicarEmpresa(valida ? atual : (candidatas[0]?.id ?? null));
     } catch {
       sessaoLocal.definirToken(null);
       setUsuario(null);
@@ -124,6 +163,67 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   useEffect(() => {
     void carregarSessao();
   }, [carregarSessao]);
+
+  const recarregarClientes = useCallback(async () => {
+    if (!sessaoLocal.token()) {
+      setCarregandoClientes(false);
+      return;
+    }
+    setCarregandoClientes(true);
+    setErroClientes(null);
+    try {
+      const dados = await api.get<{ clientes: Cliente[] }>('/api/clientes/meus');
+      setClientes(dados.clientes);
+      // Vínculo revogado não pode sobreviver no localStorage: o que ficou
+      // guardado é a última escolha, não uma permissão.
+      setClienteId((atual) => (atual && dados.clientes.some((c) => c.id === atual) ? atual : null));
+    } catch (e) {
+      setErroClientes(e instanceof Error ? e.message : 'Não foi possível carregar os clientes.');
+    } finally {
+      setCarregandoClientes(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!usuario) {
+      setClientes([]);
+      setCarregandoClientes(false);
+      return;
+    }
+    void recarregarClientes();
+  }, [usuario, recarregarClientes]);
+
+  // A escolha do cliente decide QUAIS matrizes existem para a sessão. Uma
+  // empresa de outro cliente em contexto misturaria dois contratantes na mesma
+  // tela — é exatamente o que a camada de cliente existe para impedir.
+  const empresas = useMemo(
+    () => (clienteId === null ? [] : empresasTodas.filter((e) => e.cliente_id === clienteId)),
+    [empresasTodas, clienteId],
+  );
+
+  useEffect(() => {
+    if (clienteId === null || !empresas.length) return;
+    if (empresas.some((e) => e.id === empresaId)) return;
+    aplicarEmpresa(empresas[0]!.id);
+  }, [clienteId, empresas, empresaId, aplicarEmpresa]);
+
+  const escolherCliente = useCallback(
+    (id: number) => {
+      setClienteId(id);
+      sessaoLocal.definirCliente(id);
+      // A empresa antiga é de outro cliente; deixá-la em contexto faria a
+      // primeira tela carregar com o recorte errado.
+      const primeira = empresasTodas.find((e) => e.cliente_id === id);
+      aplicarEmpresa(primeira?.id ?? null);
+    },
+    [empresasTodas, aplicarEmpresa],
+  );
+
+  const trocarCliente = useCallback(() => {
+    setClienteId(null);
+    sessaoLocal.definirCliente(null);
+    aplicarEmpresa(null);
+  }, [aplicarEmpresa]);
 
   // O estado da instalação decide se a tela de entrada oferece cadastro.
   useEffect(() => {
@@ -170,7 +270,11 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       sessaoLocal.definirToken(dados.token);
       setUsuario(dados.usuario);
       setEmpresas(dados.empresas);
-      aplicarEmpresa(dados.empresas[0]?.id ?? null);
+      // A empresa em contexto sai da escolha de cliente, não do login: entrar
+      // não decide por quem trabalha com mais de um contratante.
+      const guardado = sessaoLocal.cliente();
+      const candidatas = guardado ? dados.empresas.filter((e) => e.cliente_id === guardado) : [];
+      aplicarEmpresa(candidatas[0]?.id ?? null);
     },
     [aplicarEmpresa],
   );
@@ -198,25 +302,43 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
     async (dados: { nome: string; cnpj?: string }) => {
       const nova = await api.post<Empresa>('/api/auth/empresas', dados);
       setEmpresas((atuais) => [...atuais, nova]);
+      // A primeira matriz cria o cliente dela: quem acabou de cadastrar entra
+      // direto, sem passar por uma tela de escolha de um item só.
+      if (nova.cliente_id) {
+        setClienteId(nova.cliente_id);
+        sessaoLocal.definirCliente(nova.cliente_id);
+      }
       aplicarEmpresa(nova.id);
+      void recarregarClientes();
     },
-    [aplicarEmpresa],
+    [aplicarEmpresa, recarregarClientes],
   );
 
   const sair = useCallback(() => {
     sessaoLocal.definirToken(null);
     sessaoLocal.definirEmpresa(null);
+    sessaoLocal.definirCliente(null);
     setUsuario(null);
     setEmpresas([]);
     setEmpresaId(null);
     setPermissoes(null);
+    setClientes([]);
+    setClienteId(null);
   }, []);
 
   const empresa = useMemo(() => empresas.find((e) => e.id === empresaId) ?? null, [empresas, empresaId]);
+  const cliente = useMemo(() => clientes.find((c) => c.id === clienteId) ?? null, [clientes, clienteId]);
 
   const valor = useMemo<EstadoSessao>(
     () => ({
       usuario,
+      clientes,
+      cliente,
+      carregandoClientes,
+      erroClientes,
+      escolherCliente,
+      trocarCliente,
+      recarregarClientes,
       empresas,
       empresa,
       filialId,
@@ -251,6 +373,13 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
     }),
     [
       usuario,
+      clientes,
+      cliente,
+      carregandoClientes,
+      erroClientes,
+      escolherCliente,
+      trocarCliente,
+      recarregarClientes,
       empresas,
       empresa,
       filialId,

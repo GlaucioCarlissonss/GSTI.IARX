@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ProvedorSessao, useSessao } from './lib/sessao';
 import { Layout } from './components/layout';
 import { Login, PrimeiraEmpresa, RedefinirSenha } from './pages/Login';
+import { PaginaSelecaoCliente } from './pages/SelecaoCliente';
 import { PaginaPainelExecutivo } from './pages/PainelExecutivo';
 import { PaginaFinanceiro } from './pages/Financeiro';
 import { PaginaLancamentos } from './pages/Lancamentos';
@@ -18,7 +19,7 @@ import { PaginaAuditoria, PaginaCadastros, PaginaFechamentos } from './pages/Adm
 import { Carregando } from './components/base';
 
 function Rotas() {
-  const { usuario, carregando, empresa } = useSessao();
+  const { usuario, carregando, empresa, cliente, clientes, carregandoClientes, erroClientes } = useSessao();
 
   // O link de redefinição vive fora da sessão: quem chega por ele está
   // justamente sem conseguir entrar.
@@ -26,6 +27,11 @@ function Rotas() {
 
   if (carregando) return <Carregando>Carregando sessão…</Carregando>;
   if (!usuario) return <Login />;
+  // Instalação nova: quem não tem cliente NEM empresa cadastra a primeira, e a
+  // matriz criada já nasce sendo o cliente dela.
+  if (!carregandoClientes && !erroClientes && clientes.length === 0 && !empresa) return <PrimeiraEmpresa />;
+  // O cliente é o recorte mais externo: nenhuma tela abre antes dele.
+  if (!cliente) return <PaginaSelecaoCliente />;
   if (!empresa) return <PrimeiraEmpresa />;
 
   return (

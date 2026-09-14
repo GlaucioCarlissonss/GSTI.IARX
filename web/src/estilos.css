@@ -111,6 +111,17 @@ a { color: var(--serie-1); }
 .marca strong { font-size: 15px; letter-spacing: -0.02em; }
 .marca span { font-size: 11px; color: var(--tinta-fraca); text-transform: uppercase; letter-spacing: 0.08em; }
 
+/* O cliente em contexto: destacado porque governa tudo o que vem abaixo. */
+.cliente-atual {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 12px 0 4px; padding: 8px 10px;
+  border: 1px solid var(--borda); border-radius: 8px;
+  background: var(--superficie-2, var(--superficie));
+}
+.cliente-atual span { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tinta-fraca); }
+.cliente-atual strong { font-size: 13.5px; line-height: 1.25; }
+.cliente-atual button { align-self: flex-start; margin-top: 4px; padding-left: 0; }
+
 .menu { display: flex; flex-direction: column; gap: 2px; }
 .menu-grupo { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tinta-fraca); padding: 12px 8px 4px; }
 .menu a {

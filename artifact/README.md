@@ -73,6 +73,13 @@ seguintes ficam em TDZ quando ele executa.
 | `app-js12.js` | seletor de múltipla escolha e as fichas do que está selecionado |
 | `app-js13.js` | relatório em tabela dinâmica, com drill-down em três níveis |
 | `app-js14.js` | detalhamento padrão: tooltip, drill-down e gatilho acessível |
+| `app-js9.js` | codec de planilha: CSV e XLSX, sem biblioteca externa |
+| `app-js10.js` | importação e exportação sobre o mesmo modelo |
+| `app-js11.js` | aba Dados: a ponte com o Excel |
+| `app-js15.js` | integrações: conexões, eventos e o contrato de payload |
+| `app-js16.js` | usuários, perfis e o modo somente leitura |
+| `app-js17.js` | Indicadores Gerais: financeiro, SLA e projetos |
+| `app-js18.js` | clientes: a escolha do contratante, antes de qualquer tela |
 | `app-js7.js` | abas, seletores globais e inicialização |
 
 ## Testar
@@ -88,6 +95,22 @@ node testar.cjs
 
 `dados/` fica fora do git: são os documentos reais do cliente (nomes de
 colaboradores nas descrições de folha, valores contratuais).
+
+O mock guarda a escolha de cliente no `localStorage` para as suítes abrirem
+direto a tela que cada uma testa — a escolha do contratante é anterior a todas
+elas. Com `?boasVindas=1` nada é guardado, que é como `testar-clientes.cjs`
+exercita a tela de verdade. O atalho vive no `montar-teste.cjs`, não no sistema.
+
+## Escolher o cliente
+
+A primeira tela pergunta de qual contratante são os números, e só então a barra
+de filtros e a navegação aparecem. O seletor de empresa passa a oferecer apenas
+as matrizes daquele cliente — é o isolamento, e é o motivo de a camada existir.
+
+As cinco matrizes que já estavam na base (ALIANÇA, MILAGRES, MOOVE, RESIDENCIAL,
+UNION) foram adotadas pelo **Grupo Brasil Home Care**, que é de quem elas são.
+A adoção vale em memória mesmo quando o armazenamento recusa escrita: quem abriu
+o link só para ver enxerga o mesmo sistema, sem alterar a base.
 
 ## Tooltips e drill-down
 

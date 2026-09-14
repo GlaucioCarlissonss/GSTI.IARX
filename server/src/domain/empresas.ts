@@ -8,12 +8,14 @@ export interface EmpresaDoUsuario {
   cnpj: string | null;
   status: string;
   papel: 'gestor' | 'leitor';
+  /** A quem esta matriz pertence. É o que deixa a tela separar as matrizes por cliente. */
+  cliente_id: number | null;
 }
 
 export function listarEmpresasDoUsuario(usuarioId: number): EmpresaDoUsuario[] {
   return db()
     .prepare(
-      `SELECT e.id, e.nome, e.cnpj, e.status, ue.papel
+      `SELECT e.id, e.nome, e.cnpj, e.status, e.cliente_id, ue.papel
          FROM empresas e JOIN usuario_empresas ue ON ue.empresa_id = e.id
         WHERE ue.usuario_id = ? ORDER BY e.nome`,
     )
@@ -70,7 +72,14 @@ export function criarEmpresa(
     for (const tipo of TIPOS_DESPESA_PADRAO) inserirTipo.run(empresaId, tipo);
     const inserirFila = db().prepare('INSERT INTO filas_ticket (empresa_id, nome, ordem) VALUES (?, ?, ?)');
     FILAS_PADRAO.forEach((fila, i) => inserirFila.run(empresaId, fila, i + 1));
-    return { id: empresaId, nome: dados.nome.trim(), cnpj: dados.cnpj ?? null, status: 'ativa', papel: 'gestor' };
+    return {
+      id: empresaId,
+      nome: dados.nome.trim(),
+      cnpj: dados.cnpj ?? null,
+      status: 'ativa',
+      papel: 'gestor',
+      cliente_id: clienteId,
+    };
   });
 }
 

@@ -18,7 +18,7 @@ import {
 import { semearClientes, UNIDADES_GRUPO } from '../src/db/clientes-seed.js';
 import { criarLancamento } from '../src/domain/financeiro.js';
 import { criarProjeto } from '../src/domain/projetos.js';
-import { criarEmpresa } from '../src/domain/empresas.js';
+import { criarEmpresa, listarEmpresasDoUsuario } from '../src/domain/empresas.js';
 
 // ------------------------------------------------------------------- CNPJ
 
@@ -63,6 +63,17 @@ test('vincular dá acesso, e é idempotente', () => {
   vincularUsuario(ctx.usuarioId, outro.id);
   assert.equal(usuarioTemCliente(ctx.usuarioId, outro.id), true);
   assert.equal(clientesDoUsuario(ctx.usuarioId).filter((c) => c.id === outro.id).length, 1);
+});
+
+test('a lista de matrizes diz de quem cada uma é: é como a tela separa os clientes', () => {
+  const { ctx } = ambienteLimpo();
+  const segunda = criarEmpresa(ctx.usuarioId, { nome: 'Outra contratante' });
+  const minhas = listarEmpresasDoUsuario(ctx.usuarioId);
+  const a = minhas.find((e) => e.id === ctx.empresaId)!;
+  const b = minhas.find((e) => e.id === segunda.id)!;
+  assert.equal(a.cliente_id, ctx.clienteId);
+  assert.ok(b.cliente_id, 'a empresa nova também tem dono');
+  assert.notEqual(a.cliente_id, b.cliente_id, 'sem isso a tela juntaria dois contratantes no mesmo seletor');
 });
 
 // ------------------------------------------------------------- isolamento

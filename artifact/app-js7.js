@@ -116,7 +116,10 @@ function ligarTema() {
 }
 
 function pintarSeletores() {
-  const itensEmpresa = E.empresas.map((e) => ({ valor: e.id, rotulo: e.nome }));
+  // Só as matrizes do cliente aberto. Uma matriz de outro contratante no
+  // seletor juntaria dois clientes na mesma tela — é o que a camada impede.
+  const doCliente = E.clienteSel ? empresasDoCliente(E.clienteSel) : E.empresas;
+  const itensEmpresa = doCliente.map((e) => ({ valor: e.id, rotulo: e.nome }));
   const itensFilial = [
     { valor: '(empresa)', rotulo: 'Sem filial (nível empresa)' },
     ...filiaisDoEscopo().map((f) => ({ valor: f.nome, rotulo: f.nome })),
@@ -226,13 +229,12 @@ function semBanco(motivo) {
     // Antes de montar qualquer tela: saber se esta visualização escreve. A tela
     // precisa disso para não oferecer um botão que o armazenamento vai recusar.
     await apurarEscrita();
-    E.empresasSel = new Set([E.empresas[0].id]);
-    await garantirEscopo();
-    E.cenariosSel = new Set(['oficial']);
-    E.competencias = new Set([competenciaPadrao()]);
-    pintarSeletores();
-    await restaurarPrevia();
-    await render();
+    // O cliente vem antes de tudo: é o recorte mais externo, e abrir uma tela
+    // antes de escolhê-lo mostraria números de um contratante que ninguém pediu.
+    await garantirClientes();
+    const guardado = clienteGuardado();
+    if (guardado && clientePorId(guardado)) await abrirCliente(guardado, false);
+    else viewBoasVindas();
   } catch (e) {
     semBanco('Erro ao carregar: ' + (e.message || e));
   }

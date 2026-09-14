@@ -2,6 +2,7 @@
 
 const CHAVE_TOKEN = 'gsti.token';
 const CHAVE_EMPRESA = 'gsti.empresa';
+const CHAVE_CLIENTE = 'gsti.cliente';
 
 export class ErroApi extends Error {
   constructor(readonly status: number, mensagem: string, readonly detalhes?: unknown) {
@@ -20,6 +21,14 @@ export const sessaoLocal = {
   },
   definirEmpresa: (id: number | null) =>
     id ? localStorage.setItem(CHAVE_EMPRESA, String(id)) : localStorage.removeItem(CHAVE_EMPRESA),
+  // O último cliente escolhido. Guardá-lo é o que faz a tela de boas-vindas
+  // aparecer uma vez, e não a cada recarregamento de quem já escolheu.
+  cliente: () => {
+    const v = localStorage.getItem(CHAVE_CLIENTE);
+    return v ? Number(v) : null;
+  },
+  definirCliente: (id: number | null) =>
+    id ? localStorage.setItem(CHAVE_CLIENTE, String(id)) : localStorage.removeItem(CHAVE_CLIENTE),
 };
 
 function cabecalhos(comCorpo: boolean): HeadersInit {

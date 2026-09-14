@@ -47,6 +47,13 @@ function _col(c) {
 }
 window.claude = { use: async (n) => n === 'db' ? { doc: _doc, collection: _col } : null };
 window.__mem = _mem;
+// As suítes abrem uma tela de dentro do sistema, e a escolha de cliente é
+// anterior a ela. Guardar a escolha aqui deixa o gate de fora do caminho dessas
+// suítes sem colocar atalho de teste no sistema. Com ?boasVindas=1 nada é
+// guardado, que é como a suíte de clientes exercita a tela de verdade.
+if (!new URLSearchParams(location.search).has('boasVindas')) {
+  try { localStorage.setItem('iarx-cliente', 'grupo-brasil-home-care'); } catch (e) {}
+}
 </script>`;
 const html = fs.readFileSync('sistema.html', 'utf8');
 fs.writeFileSync('teste-local.html', mock + html);

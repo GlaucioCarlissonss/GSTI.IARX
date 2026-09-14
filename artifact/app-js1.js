@@ -48,6 +48,8 @@ function ratear(totalCent, n) {
 // ===========================================================================
 const E = {
   db: null, pronto: false, erro: null,
+  clientes: [],             // contratantes; a matriz pertence a um deles
+  clienteSel: null,         // o cliente aberto; nulo = tela de boas-vindas
   empresas: [], filiais: [], tipos: [], filas: [], cenarios: [],
   aba: 'painel',
   lanc: new Map(),          // 'empresa__comp' -> {itens:[...]}
