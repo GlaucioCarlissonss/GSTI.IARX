@@ -100,6 +100,22 @@ function urlDoChamado(ticketId, sistema = 'OSTICK') {
   return base ? base + encodeURIComponent(ticketId) : null;
 }
 
+/**
+ * Reconhecimento da despesa pelo gestor: "eu olhei isto e assumo como meu".
+ *
+ * O registro sem o campo é ANTERIOR ao reconhecimento existir — e o que veio
+ * por carga não foi conferido por ninguém. Ausente vale como NÃO reconhecido,
+ * que é a verdade; tratá-lo como reconhecido apagaria o trabalho a fazer.
+ */
+const reconhecidoDe = (l) => l && l.reconhecido === true;
+
+/**
+ * A não reconhecida se destaca em toda listagem — negrito e laranja. O atributo
+ * vai na linha, e o CSS pinta valor e descrição: destacar a linha inteira
+ * deixaria a tabela toda gritando.
+ */
+const classeReconhecimento = (l) => (reconhecidoDe(l) ? '' : ' data-sem-reconhecer="1"');
+
 /** O endereço do chamado a partir do próprio registro. */
 const urlDoRegistro = (r) => (r && r.ticketId ? urlDoChamado(r.ticketId, sistemaDe(r)) : null);
 

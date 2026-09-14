@@ -122,10 +122,20 @@ function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '', a
     captura.addEventListener('click', (ev) => { const i = maisProximo(ev); sumirDica(); aoClicar(pontos[i], i); });
   }
   svg.appendChild(captura);
+  // Rótulo a cada `passo` pontos, e o último sempre. O passo sai da LARGURA que
+  // um rótulo ocupa, não de um número fixo de rótulos: "01/2026" mede cerca de
+  // 56 unidades do viewBox, e com 24 meses o espaço entre pontos é 25 — pular
+  // um sim um não ainda encavalaria um no outro.
+  const LARGURA_ROTULO = 56;
+  const espaco = lp / Math.max(pontos.length - 1, 1);
+  const passo = Math.max(1, Math.ceil(LARGURA_ROTULO / espaco));
   pontos.forEach((p,i) => {
-    if (pontos.length > 13 && i % 2) return;
+    const ultimo = i === pontos.length - 1;
+    if (!ultimo && i % passo) return;
+    // O penúltimo rótulo desenhado encostaria no último: some com ele.
+    if (!ultimo && pontos.length - 1 - i < passo) return;
     const t = svgEl('text', { x:x(i), y:A-7, class:'eixo',
-      'text-anchor': i===0?'start':i===pontos.length-1?'end':'middle' });
+      'text-anchor': i===0?'start':ultimo?'end':'middle' });
     t.textContent = p.rot; svg.appendChild(t);
   });
   alvo.appendChild(svg);

@@ -50,7 +50,7 @@ function viewLancamentos() {
       <div class="rol"><table>
         <thead><tr><th>Competência</th><th>Filial</th><th>Tipo</th><th>Descrição</th>
           <th>Origem</th><th>Natureza</th><th>Classificação</th><th class="n">Valor</th><th></th></tr></thead>
-        <tbody>${mostrados.map((l) => `<tr data-id="${esc(l.id)}" data-comp="${l.competencia}" data-emp="${esc(l.empresa)}">
+        <tbody>${mostrados.map((l) => `<tr data-id="${esc(l.id)}" data-comp="${l.competencia}" data-emp="${esc(l.empresa)}"${classeReconhecimento(l)}>
           <td>${mesExib(l.competencia)}</td>
           <td>${l.filial ? esc(l.filial) : '<em style="color:var(--tinta3)">empresa</em>'}</td>
           <td>${esc(l.tipo)}</td>
@@ -63,6 +63,7 @@ function viewLancamentos() {
           <td><span class="tag"><i style="background:${l.classificacao==='investimento'?'var(--s2)':'var(--s1)'}"></i>${l.classificacao==='investimento'?'Investimento':'Despesa'}</span></td>
           <td class="n">${brl(l.valor)}</td>
           <td style="white-space:nowrap">
+            <button class="bt fant peq" data-rec>${reconhecidoDe(l) ? 'Desfazer' : 'Reconhecer'}</button>
             <button class="bt fant peq" data-ed>Editar</button>
             <button class="bt fant peq" data-rc>Reclassificar</button>
             <button class="bt fant peq" data-ex>Excluir</button></td>
@@ -102,6 +103,7 @@ function viewLancamentos() {
   el('#pagina').querySelectorAll('tbody tr').forEach((tr) => {
     const id = tr.dataset.id, comp = tr.dataset.comp, emp = tr.dataset.emp;
     const achar = () => ({ ...Loja.itens(emp, comp).find((x) => x.id === id), competencia: comp, empresa: emp });
+    tr.querySelector('[data-rec]').onclick = () => alternarReconhecimento([achar()]);
     tr.querySelector('[data-ed]').onclick = () => formLancamento(achar());
     tr.querySelector('[data-rc]').onclick = () => reclassificar(achar());
     tr.querySelector('[data-ex]').onclick = () => excluirLancamento(achar());
@@ -359,6 +361,41 @@ function reclassificar(l) {
       render();
     },
   });
+}
+
+/**
+ * Reconhecer (ou desfazer) uma ou várias despesas.
+ *
+ * NÃO passa pela trava de competência fechada, e isso é deliberado: conferir um
+ * mês já fechado é exatamente o trabalho esperado, e proibi-lo deixaria o
+ * passivo de não reconhecidos sem saída. Também não é edição — valor,
+ * competência e classificação seguem intactos; o que muda é a afirmação de que
+ * alguém olhou aquilo.
+ */
+async function alternarReconhecimento(lancamentos, forcar) {
+  const alvos = lancamentos.filter(Boolean);
+  if (!alvos.length) return;
+  const destino = forcar === undefined ? !reconhecidoDe(alvos[0]) : !!forcar;
+  const emp = alvos[0].empresa || exigirEmpresaUnica();
+  const mudar = alvos.filter((l) => reconhecidoDe(l) !== destino);
+  if (!mudar.length) return;
+
+  const porMes = new Map();
+  for (const l of mudar) {
+    if (!porMes.has(l.competencia)) porMes.set(l.competencia, Loja.itens(emp, l.competencia).map((x) => ({ ...x })));
+    const item = porMes.get(l.competencia).find((x) => x.id === l.id);
+    if (item) {
+      item.reconhecido = destino;
+      item.reconhecidoEm = destino ? new Date().toISOString() : null;
+    }
+  }
+  for (const [m, itens] of porMes) await Loja.gravarMes(emp, m, itens);
+  await Loja.auditar({
+    acao: destino ? 'reconhecer' : 'desfazer_reconhecimento', entidade: 'lancamento',
+    id: mudar.length === 1 ? mudar[0].id : null,
+    depois: { reconhecido: destino, quantidade: mudar.length },
+  }, emp);
+  render();
 }
 
 function excluirLancamento(l) {

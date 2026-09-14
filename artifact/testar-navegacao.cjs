@@ -6,7 +6,7 @@
 const { chromium } = require('playwright');
 const { irPara, todasAsAbas } = require('./ajuda-testes.cjs');
 
-const MODULOS_ESPERADOS = ['Controle Financeiro', 'Gestão de Projetos', 'Gestão de Suporte TI', 'Sistema'];
+const MODULOS_ESPERADOS = ['Indicadores Gerais', 'Controle Financeiro', 'Gestão de Projetos', 'Gestão de Suporte TI', 'Sistema'];
 
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
@@ -26,7 +26,7 @@ const MODULOS_ESPERADOS = ['Controle Financeiro', 'Gestão de Projetos', 'Gestã
   // ---------------------------------------------------------------- módulos
   console.log('\nMÓDULOS — a separação que o gestor pediu');
   const modulos = await pag.$$eval('#modulos button', (bs) => bs.map((b) => b.textContent.trim()));
-  conferir('os quatro módulos, nos rótulos combinados',
+  conferir('os cinco módulos, nos rótulos combinados',
     JSON.stringify(modulos) === JSON.stringify(MODULOS_ESPERADOS), modulos.join(' | '));
 
   const telas = await todasAsAbas(pag);
@@ -38,12 +38,19 @@ const MODULOS_ESPERADOS = ['Controle Financeiro', 'Gestão de Projetos', 'Gestã
     JSON.stringify(por('Gestão de Suporte TI'))
       === JSON.stringify(['Indicadores', 'Chamados', 'Sistema OStick', 'Sistema Bitrix24', 'Integrações']),
     por('Gestão de Suporte TI').join(', '));
+  conferir('indicadores gerais é módulo de tela única, fora dos operacionais',
+    JSON.stringify(por('Indicadores Gerais')) === JSON.stringify(['Indicadores Gerais']),
+    por('Indicadores Gerais').join(', '));
   conferir('sistema reúne dados, cadastros, acessos e auditoria',
     JSON.stringify(por('Sistema')) === JSON.stringify(['Dados', 'Cadastros', 'Usuários e acessos', 'Auditoria']),
     por('Sistema').join(', '));
-  conferir('nada de SLA ou chamado fora do módulo de suporte',
-    !telas.some((t) => t.modulo !== 'Gestão de Suporte TI' && /chamad|sla|indicad|ostick|bitrix/i.test(t.aba)),
-    telas.filter((t) => t.modulo !== 'Gestão de Suporte TI').map((t) => t.aba).join(', '));
+  // "Indicadores Gerais" é a leitura estratégica dos três módulos, e mora fora
+  // deles de propósito — a regra aqui é sobre a OPERAÇÃO de suporte não vazar.
+  conferir('nada de SLA ou chamado operacional fora do módulo de suporte',
+    !telas.some((t) => t.modulo !== 'Gestão de Suporte TI' && t.modulo !== 'Indicadores Gerais'
+      && /chamad|sla|indicad|ostick|bitrix/i.test(t.aba)),
+    telas.filter((t) => t.modulo !== 'Gestão de Suporte TI' && t.modulo !== 'Indicadores Gerais')
+      .map((t) => t.aba).join(', '));
 
   // Entrar num módulo abre a primeira tela dele.
   for (const m of MODULOS_ESPERADOS) {

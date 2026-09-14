@@ -290,6 +290,11 @@ tr.tot td{border-top:1px solid var(--linha2);background:var(--sup2)}
 .tag.alerta{color:var(--alerta);border-color:color-mix(in srgb,var(--alerta) 50%,transparent)}
 
 .vazio{color:var(--tinta3);text-align:center;padding:26px 12px}
+/* Despesa por reconhecer: negrito e laranja onde o gestor procura — a
+   descrição e o valor. Pintar a linha inteira faria a tabela gritar. */
+tr[data-sem-reconhecer] td:nth-child(4),
+tr[data-sem-reconhecer] td.n{color:var(--alerta);font-weight:700}
+.tag.rec{color:var(--alerta);border-color:color-mix(in srgb,var(--alerta) 50%,transparent)}
 /* Lista de pares rótulo/valor — o cartão de situação das integrações. */
 .par{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;align-items:baseline}
 .par dt{color:var(--tinta3);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono)}

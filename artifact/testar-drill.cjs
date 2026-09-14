@@ -8,7 +8,7 @@ const { chromium } = require('playwright');
 const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
 
 /** Telas com gráfico ou indicador e o que cada uma deve oferecer. */
-const TELAS = ['Painel', 'Conferência', 'Projetos', 'Indicadores'];
+const TELAS = ['Painel', 'Conferência', 'Projetos', 'Indicadores', 'Indicadores Gerais'];
 
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });

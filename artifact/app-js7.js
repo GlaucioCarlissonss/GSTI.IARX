@@ -8,6 +8,10 @@ const ORDEM_BASE = ['planilha', 'folha_ti', 'projecao_spincare', 'manual'];
 // `sistema` guarda o que atravessa os três — planilha, cadastro e auditoria —
 // e por isso não cabe dentro de nenhum.
 const MODULOS_NAV = [
+  // A leitura estratégica não cabe dentro de nenhum dos três módulos
+  // operacionais: ela atravessa os três, e pendurá-la em um deles faria o
+  // gestor procurar SLA dentro de Financeiro.
+  { id:'indicadores', rotulo:'Indicadores Gerais',  abas:['indicadores_gerais'] },
   { id:'financeiro', rotulo:'Controle Financeiro',  abas:['painel', 'lancamentos', 'relatorio', 'conferencia'] },
   { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos'] },
   { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados', 'OSTICK', 'BITRIX24', 'integracoes'] },
@@ -15,6 +19,7 @@ const MODULOS_NAV = [
 ];
 
 const ABAS = [
+  { id:'indicadores_gerais', rotulo:'Indicadores Gerais', view: viewIndicadores },
   { id:'painel',      rotulo:'Painel',       view: viewPainel },
   { id:'lancamentos', rotulo:'Lançamentos',  view: viewLancamentos },
   { id:'relatorio',   rotulo:'Relatório',    view: viewRelatorio },
