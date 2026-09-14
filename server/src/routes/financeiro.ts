@@ -10,6 +10,7 @@ import {
   listarSerie,
   obterLancamento,
   reclassificarLancamento,
+  reconhecerLancamentos,
 } from '../domain/financeiro.js';
 import { ctx, exigir } from '../middleware/index.js';
 import { filiaisDaQuery, listaDaQuery, numerosDaQuery } from '../lib/consulta.js';
@@ -31,10 +32,29 @@ function filtrosDaQuery(query: Record<string, unknown>) {
     competenciaFim: query.competencia_fim ? String(query.competencia_fim) : undefined,
     busca: query.busca ? String(query.busca) : undefined,
     cenarios: listaDaQuery(query.cenario),
+    // Só 'true'/'false' explícitos recortam; ausente traz reconhecido e não
+    // reconhecido, que é o total de verdade.
+    reconhecido:
+      query.reconhecido === undefined || query.reconhecido === ''
+        ? undefined
+        : String(query.reconhecido) === 'true',
     limite: query.limite ? Number(query.limite) : undefined,
     offset: query.offset ? Number(query.offset) : undefined,
   };
 }
+
+/**
+ * Reconhecimento em lote. Vem ANTES de `/:id` de propósito: `/:id` casaria com
+ * o literal `reconhecer` e engoliria esta rota — já aconteceu duas vezes neste
+ * repositório, com `/tarefas` e com `/exportacao.xlsx`.
+ */
+rotasFinanceiro.post('/reconhecer', exigir('financeiro', 'edit'), (req, res) => {
+  const corpo = req.body ?? {};
+  const ids = Array.isArray(corpo.ids) ? corpo.ids.map(Number) : [];
+  res.json(
+    reconhecerLancamentos(ctx(req), ids, corpo.reconhecido !== false, corpo.justificativa ?? undefined),
+  );
+});
 
 rotasFinanceiro.get('/', (req, res) => {
   res.json(listarLancamentos(ctx(req), filtrosDaQuery(req.query as Record<string, unknown>)));

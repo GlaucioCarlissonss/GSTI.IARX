@@ -92,6 +92,12 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   origem              TEXT NOT NULL DEFAULT 'manual'
                         CHECK (origem IN ('planilha','folha_ti','projecao_spincare','manual')),
   dedup_hash          TEXT,
+  -- Reconhecimento: o gestor confirmou que esta despesa é dele e está correta.
+  -- Nasce 0 em tudo que entra por carga — a base do cliente veio sem essa
+  -- conferência, e presumir reconhecido apagaria justamente o trabalho a fazer.
+  reconhecido         INTEGER NOT NULL DEFAULT 0 CHECK (reconhecido IN (0,1)),
+  reconhecido_em      TEXT,
+  reconhecido_por     INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
   excluido_em         TEXT,
   criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
   atualizado_em       TEXT NOT NULL DEFAULT (datetime('now')),

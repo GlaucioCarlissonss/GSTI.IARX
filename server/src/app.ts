@@ -13,6 +13,7 @@ import { rotasIntegracoes } from './routes/integracoes.js';
 import { rotasProjetos } from './routes/projetos.js';
 import { rotasSla } from './routes/sla.js';
 import { rotasDashboards } from './routes/dashboards.js';
+import { rotasIndicadores } from './routes/indicadores.js';
 import { rotasPlanilhas } from './routes/planilhas.js';
 import { rotasWebhooks } from './routes/webhooks.js';
 import { rotasSuporte } from './routes/suporte.js';
@@ -60,6 +61,7 @@ export function criarApp() {
   protegido.use('/integracoes', rotasIntegracoes);
   protegido.use('/acesso', rotasAcesso);
   protegido.use('/dashboards', rotasDashboards);
+  protegido.use('/indicadores', rotasIndicadores);
   protegido.use('/planilhas', rotasPlanilhas);
   app.use('/api', protegido);
 

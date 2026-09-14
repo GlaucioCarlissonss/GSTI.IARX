@@ -101,6 +101,8 @@ interface LinhaLancamento extends Record<string, unknown> {
   observacoes: string | null;
   cenario: string;
   origem: Origem;
+  reconhecido: number;
+  reconhecido_em: string | null;
   excluido_em: string | null;
 }
 
@@ -131,6 +133,10 @@ function apresentar(linha: LinhaLancamento & Record<string, unknown>) {
     origem_custo: (linha.origem_custo as string | null) ?? null,
     destino_pagamento: (linha.destino_pagamento as string | null) ?? null,
     documento: (linha.documento as string | null) ?? null,
+    // O reconhecimento é do gestor, não da carga: tudo que entrou por planilha
+    // ou projeção nasce por reconhecer, e a tela destaca isso.
+    reconhecido: Number(linha.reconhecido ?? 0) === 1,
+    reconhecido_em: (linha.reconhecido_em as string | null) ?? null,
   };
 }
 
@@ -323,6 +329,11 @@ export interface FiltroLancamentos {
   /** Padrão: apenas o cenário oficial. 'todos' traz as projeções alternativas junto. */
   cenario?: string;
   cenarios?: string[];
+  /**
+   * `true` deixa só o reconhecido, `false` só o que falta reconhecer. Ausente
+   * traz os dois — que é o total de verdade, e o padrão de toda tela.
+   */
+  reconhecido?: boolean;
   limite?: number;
   offset?: number;
 }
@@ -359,6 +370,10 @@ function montarFiltro(ctx: Contexto, filtro: FiltroLancamentos) {
   if (filtro.competenciaFim) {
     condicoes.push('l.competencia <= ?');
     params.push(paraInterno(filtro.competenciaFim));
+  }
+  if (filtro.reconhecido !== undefined) {
+    condicoes.push('l.reconhecido = ?');
+    params.push(filtro.reconhecido ? 1 : 0);
   }
   if (filtro.busca?.trim()) {
     condicoes.push('(l.descricao LIKE ? OR l.observacoes LIKE ? OR t.nome LIKE ?)');
@@ -495,6 +510,59 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
     depois,
   });
   return depois;
+}
+
+/**
+ * Reconhecimento da despesa pelo gestor.
+ *
+ * Não é edição do lançamento: o valor, a competência e a classificação seguem
+ * intactos. O que muda é a afirmação de que alguém olhou aquilo e assumiu como
+ * seu — por isso **não** passa pela trava de competência fechada: reconhecer um
+ * mês já fechado é exatamente o trabalho de conferência que se espera, e
+ * proibi-lo deixaria o passivo de não reconhecidos sem saída.
+ *
+ * Aceita uma lista porque o trabalho é em lote: ninguém reconhece 900
+ * lançamentos um a um. Cada um vira uma entrada de trilha própria, porque é
+ * disso que a auditoria precisa — quem reconheceu o quê, e quando.
+ */
+export function reconhecerLancamentos(
+  ctx: Contexto,
+  ids: number[],
+  reconhecido: boolean,
+  justificativa?: string,
+) {
+  if (!ids.length) throw erroValidacao('Informe ao menos um lançamento.');
+  const alvo = reconhecido ? 1 : 0;
+  const carimbo = reconhecido ? new Date().toISOString() : null;
+  const atualizar = db().prepare(
+    `UPDATE lancamentos SET reconhecido = ?, reconhecido_em = ?, reconhecido_por = ?,
+            atualizado_em = datetime('now')
+      WHERE id = ? AND empresa_id = ? AND excluido_em IS NULL AND reconhecido <> ?`,
+  );
+
+  let mudaram = 0;
+  const jaEstavam: number[] = [];
+  db().transaction(() => {
+    for (const id of ids) {
+      const antes = buscarLinha(ctx, id);
+      if (Number(antes.reconhecido ?? 0) === alvo) {
+        jaEstavam.push(id);
+        continue;
+      }
+      atualizar.run(alvo, carimbo, ctx.usuarioId, id, ctx.empresaId, alvo);
+      mudaram += 1;
+      auditar(ctx, {
+        entidade: 'lancamento',
+        entidadeId: id,
+        acao: reconhecido ? 'reconhecer' : 'desfazer_reconhecimento',
+        justificativa: justificativa ?? null,
+        antes: { reconhecido: Number(antes.reconhecido ?? 0) === 1 },
+        depois: { reconhecido },
+      });
+    }
+  })();
+
+  return { alterados: mudaram, ja_estavam: jaEstavam.length, reconhecido };
 }
 
 /**

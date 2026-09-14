@@ -42,6 +42,11 @@ function migrar(db: Conexao): void {
     ['origem_custo', 'TEXT'],
     ['destino_pagamento', 'TEXT'],
     ['documento', 'TEXT'],
+    // Reconhecimento do gestor. O banco que já existia ganha tudo como NÃO
+    // reconhecido, que é a verdade: ninguém conferiu aqueles lançamentos ainda.
+    ['reconhecido', "INTEGER NOT NULL DEFAULT 0"],
+    ['reconhecido_em', 'TEXT'],
+    ['reconhecido_por', 'INTEGER'],
   ] as Array<[string, string]>) {
     if (!colunas.has(nome)) db.exec(`ALTER TABLE lancamentos ADD COLUMN ${nome} ${tipo}`);
   }
