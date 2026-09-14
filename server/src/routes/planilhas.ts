@@ -7,6 +7,23 @@ import { exportarCsv, exportarXlsx, nomeArquivoExportacao } from '../domain/expo
 import { ABAS, ABAS_POR_MODULO, TEMPLATE_VERSAO_ATUAL, type Modulo, type NomeAba } from '../domain/templates.js';
 import { erroValidacao } from '../lib/erros.js';
 import { assincrono, ctx, exigir } from '../middleware/index.js';
+import { comEmpresaEmFoco, empresasDoPedido } from '../domain/escopo.js';
+
+/**
+ * A unidade desta exportação ou carga.
+ *
+ * Exportar e importar são de UMA matriz: o arquivo tem as filiais, os tipos de
+ * despesa e os cenários dela, e reimportá-lo precisa voltar para a mesma. Por
+ * isso a unidade vem do pedido — escolhida na tela, não herdada de um filtro
+ * global —, e sem indicação fica a matriz em foco.
+ */
+function unidadeDoPedido(req: Parameters<typeof ctx>[0]) {
+  const [empresa] = empresasDoPedido({
+    ...(req.query as Record<string, unknown>),
+    ...((req.body ?? {}) as Record<string, unknown>),
+  });
+  return comEmpresaEmFoco(ctx(req), empresa);
+}
 
 export const rotasPlanilhas = Router();
 
@@ -46,13 +63,14 @@ rotasPlanilhas.get(
   '/templates/:modulo.xlsx',
   assincrono(async (req, res) => {
     const modulo = validarModulo(String(req.params.modulo));
-    const buffer = await exportarXlsx(ctx(req), modulo, true);
+    const alvo = unidadeDoPedido(req);
+    const buffer = await exportarXlsx(alvo, modulo, true);
     res
       .status(200)
       .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .setHeader(
         'Content-Disposition',
-        `attachment; filename="${nomeArquivoExportacao(ctx(req), modulo, 'xlsx', true)}"`,
+        `attachment; filename="${nomeArquivoExportacao(alvo, modulo, 'xlsx', true)}"`,
       );
     res.send(buffer);
   }),
@@ -65,11 +83,12 @@ rotasPlanilhas.get(
   exigir('financeiro', 'export'),
   assincrono(async (req, res) => {
     const modulo = validarModulo(String(req.params.modulo));
-    const buffer = await exportarXlsx(ctx(req), modulo, false);
+    const alvo = unidadeDoPedido(req);
+    const buffer = await exportarXlsx(alvo, modulo, false);
     res
       .status(200)
       .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      .setHeader('Content-Disposition', `attachment; filename="${nomeArquivoExportacao(ctx(req), modulo, 'xlsx')}"`);
+      .setHeader('Content-Disposition', `attachment; filename="${nomeArquivoExportacao(alvo, modulo, 'xlsx')}"`);
     res.send(buffer);
   }),
 );
@@ -82,7 +101,7 @@ rotasPlanilhas.get('/exportacao/:aba.csv', exigir('financeiro', 'export'), (req,
     .status(200)
     .type('text/csv; charset=utf-8')
     .setHeader('Content-Disposition', `attachment; filename="${aba.toLowerCase()}.csv"`)
-    .send(exportarCsv(ctx(req), aba, req.query.template === 'true'));
+    .send(exportarCsv(unidadeDoPedido(req), aba, req.query.template === 'true'));
 });
 
 /**
@@ -100,7 +119,7 @@ rotasPlanilhas.post(
   assincrono(async (req, res) => {
     const modulo = validarModulo(String(req.params.modulo));
     if (!req.file) throw erroValidacao('Envie a planilha no campo "arquivo" (multipart/form-data).');
-    const resultado = await importarPlanilha(ctx(req), req.file.buffer, {
+    const resultado = await importarPlanilha(unidadeDoPedido(req), req.file.buffer, {
       modulo,
       arquivoNome: req.file.originalname,
       criarCadastrosAusentes: req.body?.criar_cadastros !== 'false',

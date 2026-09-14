@@ -4,6 +4,7 @@ import { erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
 import { auditar } from './auditoria.js';
 import { ehCompetenciaValida, paraInterno } from './competencia.js';
 import type { Contexto } from './contexto.js';
+import { escopoSql } from './escopo.js';
 import { paraCentavos } from './dinheiro.js';
 import { criarLancamento, garantirCenario, interpretarOrigem, type Origem } from './financeiro.js';
 import { criarFilial, resolverFila, resolverTipoDespesa, resolverTopicoAjuda } from './cadastros.js';
@@ -1083,15 +1084,26 @@ function importarSla(
   resultado.importadas += 1;
 }
 
-export function listarImportacoes(ctx: Contexto) {
+/**
+ * O histórico de cargas do CLIENTE, não o da matriz em foco.
+ *
+ * Quem pergunta "por que os dados não entraram?" não sabe de antemão em qual
+ * unidade a carga foi feita — e era exatamente essa a pergunta que o histórico
+ * existe para responder. A coluna da unidade vem junto para distinguir as linhas.
+ */
+export function listarImportacoes(ctx: Contexto, empresas?: number[]) {
+  const alcance = escopoSql(ctx, empresas, 'i.empresa_id');
   return db()
     .prepare(
       `SELECT i.id, i.modulo, i.modo, i.status, i.mensagem, i.template_versao, i.arquivo_nome,
-              i.total_linhas, i.importadas, i.duplicadas, i.com_erro, i.criado_em, u.nome AS usuario
-         FROM importacoes i LEFT JOIN usuarios u ON u.id = i.usuario_id
-        WHERE i.empresa_id = ? ORDER BY i.id DESC LIMIT 50`,
+              i.total_linhas, i.importadas, i.duplicadas, i.com_erro, i.criado_em, u.nome AS usuario,
+              i.empresa_id, e.nome AS empresa_nome
+         FROM importacoes i
+         JOIN empresas e ON e.id = i.empresa_id
+         LEFT JOIN usuarios u ON u.id = i.usuario_id
+        WHERE ${alcance.sql} ORDER BY i.id DESC LIMIT 50`,
     )
-    .all(ctx.empresaId);
+    .all(...alcance.params);
 }
 
 /**
@@ -1102,13 +1114,14 @@ export function obterImportacao(
   ctx: Contexto,
   id: number,
 ): Record<string, unknown> & { id: number; relatorio: { erros: ErroLinha[]; avisos: string[] } } {
+  const alcance = escopoSql(ctx, null, 'i.empresa_id');
   const linha = db()
     .prepare(
       `SELECT i.*, u.nome AS usuario FROM importacoes i LEFT JOIN usuarios u ON u.id = i.usuario_id
-        WHERE i.id = ? AND i.empresa_id = ?`,
+        WHERE i.id = ? AND ${alcance.sql}`,
     )
-    .get(id, ctx.empresaId) as (Record<string, unknown> & { id: number; relatorio: string | null }) | undefined;
-  if (!linha) throw erroNaoEncontrado(`Importação ${id} não encontrada nesta empresa.`);
+    .get(id, ...alcance.params) as (Record<string, unknown> & { id: number; relatorio: string | null }) | undefined;
+  if (!linha) throw erroNaoEncontrado(`Importação ${id} não encontrada neste cliente.`);
   let relatorio: { erros: ErroLinha[]; avisos: string[] } = { erros: [], avisos: [] };
   try {
     if (linha.relatorio) relatorio = JSON.parse(linha.relatorio);

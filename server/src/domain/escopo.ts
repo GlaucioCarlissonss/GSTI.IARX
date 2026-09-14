@@ -46,6 +46,18 @@ export function empresaDeEscrita(ctx: Contexto, empresaId?: number | null): numb
   return alvo!;
 }
 
+/**
+ * O mesmo contexto, com OUTRA matriz em foco.
+ *
+ * Serve às operações que são de uma unidade só e não de uma tela: exportar,
+ * importar, configurar. A unidade vem do próprio pedido, escolhida ali, em vez
+ * de um filtro no topo do sistema — e passa pela mesma conferência de escrita.
+ */
+export function comEmpresaEmFoco(ctx: Contexto, empresaId?: number | null): Contexto {
+  const alvo = empresaDeEscrita(ctx, empresaId);
+  return alvo === ctx.empresaId ? ctx : { ...ctx, empresaId: alvo };
+}
+
 /** `IN (?, ?, …)` com os parâmetros na ordem — o par que toda consulta usa. */
 export function clausulaEmpresas(empresas: number[], coluna = 'empresa_id'): { sql: string; params: number[] } {
   if (empresas.length === 1) return { sql: `${coluna} = ?`, params: [empresas[0]!] };

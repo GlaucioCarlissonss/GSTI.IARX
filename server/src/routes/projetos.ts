@@ -15,6 +15,7 @@ import {
   removerEnvolvido,
 } from '../domain/projetos.js';
 import { ctx, exigir } from '../middleware/index.js';
+import { empresasDoPedido } from '../domain/escopo.js';
 
 export const rotasProjetos = Router();
 
@@ -26,6 +27,8 @@ function filialDaQuery(valor: unknown): number | null | undefined {
 
 function corpoProjeto(corpo: Record<string, unknown>) {
   return {
+    // A matriz vem do formulário: criar não depende do filtro da tela.
+    empresaId: corpo.empresa_id === undefined || corpo.empresa_id === '' ? undefined : Number(corpo.empresa_id),
     filialId: corpo.filial_id as number | null | undefined,
     nome: String(corpo.nome ?? ''),
     descricao: (corpo.descricao as string | null) ?? null,
@@ -39,6 +42,7 @@ function corpoProjeto(corpo: Record<string, unknown>) {
 rotasProjetos.get('/', (req, res) => {
   res.json(
     listarProjetos(ctx(req), {
+      empresas: empresasDoPedido(req.query as Record<string, unknown>),
       filialId: filialDaQuery(req.query.filial_id),
       status: req.query.status ? (String(req.query.status) as never) : undefined,
       apenasAtrasados: req.query.atrasados === 'true',
@@ -52,6 +56,7 @@ rotasProjetos.get('/', (req, res) => {
 rotasProjetos.get('/tarefas', (req, res) => {
   res.json(
     listarTarefasDaEmpresa(ctx(req), {
+      empresas: empresasDoPedido(req.query as Record<string, unknown>),
       projetoId: req.query.projeto_id ? Number(req.query.projeto_id) : undefined,
       filialId: filialDaQuery(req.query.filial_id),
       // `sem` representa a tarefa sem responsável. Um parâmetro vazio não

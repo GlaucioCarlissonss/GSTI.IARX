@@ -1,5 +1,6 @@
 import { db } from '../db/index.js';
 import type { Contexto } from './contexto.js';
+import { escopoSql } from './escopo.js';
 
 export interface RegistroAuditoria {
   entidade: string;
@@ -77,6 +78,8 @@ export function listarAcessosNegados(limite = 100) {
 }
 
 export interface FiltroAuditoria {
+  /** Filtro local de matriz. Vazio: o cliente inteiro. */
+  empresas?: number[];
   entidade?: string;
   entidadeId?: number;
   limite?: number;
@@ -84,8 +87,11 @@ export interface FiltroAuditoria {
 }
 
 export function listarAuditoria(ctx: Contexto, filtro: FiltroAuditoria = {}) {
-  const condicoes = ['empresa_id = ?'];
-  const params: unknown[] = [ctx.empresaId];
+  // A trilha é do cliente: quem audita procura um registro, e não sabe de
+  // antemão em qual unidade ele foi alterado.
+  const alcance = escopoSql(ctx, filtro.empresas);
+  const condicoes = [alcance.sql];
+  const params: unknown[] = [...alcance.params];
   if (filtro.entidade) {
     condicoes.push('entidade = ?');
     params.push(filtro.entidade);

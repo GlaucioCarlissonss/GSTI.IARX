@@ -16,6 +16,7 @@ import {
 } from '../domain/indicadores.js';
 import { filiaisDaQuery, listaDaQuery } from '../lib/consulta.js';
 import { ctx, exigir } from '../middleware/index.js';
+import { empresasDoPedido } from '../domain/escopo.js';
 
 export const rotasIndicadores = Router();
 
@@ -23,6 +24,12 @@ function recorteDaQuery(query: Record<string, unknown>, prefixo = ''): RecorteIn
   const campo = (nome: string) => query[prefixo ? `${prefixo}_${nome}` : nome];
   const reconhecido = campo('reconhecido');
   return {
+    // Filtro local de matriz, por bloco: `empresas` ou, com prefixo,
+    // `financeiro_empresas`. Vazio é o cliente inteiro.
+    empresas: empresasDoPedido({
+      empresas: campo('empresas'),
+      empresa_id: campo('empresa_id'),
+    }),
     filiais: filiaisDaQuery(campo('filial_id')),
     competencias: listaDaQuery(campo('competencia')),
     competenciaInicio: campo('competencia_inicio') ? String(campo('competencia_inicio')) : undefined,

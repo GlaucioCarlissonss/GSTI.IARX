@@ -14,6 +14,7 @@ import {
 } from '../domain/financeiro.js';
 import { ctx, exigir } from '../middleware/index.js';
 import { filiaisDaQuery, listaDaQuery, numerosDaQuery } from '../lib/consulta.js';
+import { empresasDoPedido } from '../domain/escopo.js';
 
 export const rotasFinanceiro = Router();
 
@@ -23,6 +24,8 @@ export const rotasFinanceiro = Router();
  */
 function filtrosDaQuery(query: Record<string, unknown>) {
   return {
+    // Filtro local de matriz: vazio é o cliente inteiro.
+    empresas: empresasDoPedido(query),
     filiais: filiaisDaQuery(query.filial_id),
     tiposDespesaId: numerosDaQuery(query.tipo_despesa_id),
     naturezas: listaDaQuery(query.natureza) as never,
@@ -72,6 +75,8 @@ rotasFinanceiro.post('/', exigir('financeiro', 'create'), (req, res) => {
   const corpo = req.body ?? {};
   res.status(201).json(
     criarLancamento(ctx(req), {
+      // A matriz vem do formulário: criar não depende do filtro da tela.
+      empresaId: corpo.empresa_id === undefined || corpo.empresa_id === '' ? undefined : Number(corpo.empresa_id),
       filialId: corpo.filial_id ?? null,
       tipoDespesaId: Number(corpo.tipo_despesa_id),
       competencia: String(corpo.competencia ?? ''),
@@ -92,10 +97,13 @@ rotasFinanceiro.post('/', exigir('financeiro', 'create'), (req, res) => {
   );
 });
 
-rotasFinanceiro.get('/cenarios/lista', (req, res) => res.json(listarCenarios(ctx(req))));
+rotasFinanceiro.get('/cenarios/lista', (req, res) =>
+  res.json(listarCenarios(ctx(req), empresasDoPedido(req.query as Record<string, unknown>))),
+);
 
 rotasFinanceiro.get('/competencias/lista', (req, res) => {
-  res.json(listarCompetencias(ctx(req), listaDaQuery((req.query as Record<string, unknown>).cenario)));
+  const query = req.query as Record<string, unknown>;
+  res.json(listarCompetencias(ctx(req), listaDaQuery(query.cenario), empresasDoPedido(query)));
 });
 
 rotasFinanceiro.post('/cenarios', exigir('financeiro', 'create'), (req, res) => {

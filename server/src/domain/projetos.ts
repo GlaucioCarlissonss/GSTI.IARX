@@ -3,6 +3,7 @@ import { erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
 import { auditar } from './auditoria.js';
 import { competenciaAtual, diferencaEmMeses, paraExibicao, paraInterno } from './competencia.js';
 import type { Contexto } from './contexto.js';
+import { empresaDeEscrita, escopoSql } from './escopo.js';
 import { validarFilial } from './cadastros.js';
 
 export type StatusProjeto = 'planejado' | 'em_andamento' | 'concluido' | 'cancelado';
@@ -66,6 +67,10 @@ function apresentarProjeto(linha: LinhaProjeto & Record<string, unknown>) {
   const atraso = calcularAtraso(linha.mes_fim_planejado, linha.mes_fim_real, linha.status);
   return {
     id: linha.id,
+    // A matriz vem na linha: a lista mostra o cliente inteiro, e sem ela não
+    // dá para saber de qual unidade é o projeto.
+    empresa_id: linha.empresa_id,
+    empresa_nome: (linha.empresa_nome as string | null) ?? null,
     filial_id: linha.filial_id,
     filial_nome: (linha.filial_nome as string | null) ?? null,
     nome: linha.nome,
@@ -167,12 +172,14 @@ function validarTarefaPrincipal(
 }
 
 const SQL_PROJETO_BASE = `
-  SELECT p.*, f.nome AS filial_nome,
+  SELECT p.*, f.nome AS filial_nome, e.nome AS empresa_nome,
          (SELECT COUNT(*) FROM tarefas t WHERE t.projeto_id = p.id AND t.excluido_em IS NULL) AS total_tarefas,
          (SELECT COUNT(*) FROM tarefas t WHERE t.projeto_id = p.id AND t.excluido_em IS NULL AND t.mes_fim_real IS NOT NULL) AS tarefas_concluidas
-    FROM projetos p LEFT JOIN filiais f ON f.id = p.filial_id`;
+    FROM projetos p JOIN empresas e ON e.id = p.empresa_id LEFT JOIN filiais f ON f.id = p.filial_id`;
 
 export interface EntradaProjeto {
+  /** Matriz em que o projeto nasce. Escolhida no formulário; ausente, a em foco. */
+  empresaId?: number | null;
   filialId?: number | null;
   nome: string;
   descricao?: string | null;
@@ -184,7 +191,8 @@ export interface EntradaProjeto {
 }
 
 export function criarProjeto(ctx: Contexto, entrada: EntradaProjeto) {
-  const filialId = validarFilial(ctx.empresaId, entrada.filialId);
+  const empresaId = empresaDeEscrita(ctx, entrada.empresaId);
+  const filialId = validarFilial(empresaId, entrada.filialId);
   const inicio = paraInterno(entrada.mesInicio);
   const fimPlanejado = paraInterno(entrada.mesFimPlanejado);
   if (fimPlanejado < inicio) throw erroValidacao('O fim planejado não pode ser anterior ao início.');
@@ -203,7 +211,7 @@ export function criarProjeto(ctx: Contexto, entrada: EntradaProjeto) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
-      ctx.empresaId,
+      empresaId,
       filialId,
       entrada.nome.trim(),
       entrada.descricao ?? null,
@@ -219,14 +227,17 @@ export function criarProjeto(ctx: Contexto, entrada: EntradaProjeto) {
 }
 
 export function obterProjeto(ctx: Contexto, id: number) {
+  const escopo = escopoSql(ctx, null, 'p.empresa_id');
   const linha = db()
-    .prepare(`${SQL_PROJETO_BASE} WHERE p.id = ? AND p.empresa_id = ? AND p.excluido_em IS NULL`)
-    .get(id, ctx.empresaId) as (LinhaProjeto & Record<string, unknown>) | undefined;
-  if (!linha) throw erroNaoEncontrado(`Projeto ${id} não encontrado nesta empresa.`);
+    .prepare(`${SQL_PROJETO_BASE} WHERE p.id = ? AND ${escopo.sql} AND p.excluido_em IS NULL`)
+    .get(id, ...escopo.params) as (LinhaProjeto & Record<string, unknown>) | undefined;
+  if (!linha) throw erroNaoEncontrado(`Projeto ${id} não encontrado neste cliente.`);
   return apresentarProjeto(linha);
 }
 
 export interface FiltroProjetos {
+  /** Filtro local de matriz. Vazio: o cliente inteiro. */
+  empresas?: number[];
   filialId?: number | null;
   status?: StatusProjeto;
   apenasAtrasados?: boolean;
@@ -234,8 +245,9 @@ export interface FiltroProjetos {
 }
 
 export function listarProjetos(ctx: Contexto, filtro: FiltroProjetos = {}) {
-  const condicoes = ['p.empresa_id = ?', 'p.excluido_em IS NULL'];
-  const params: unknown[] = [ctx.empresaId];
+  const escopo = escopoSql(ctx, filtro.empresas, 'p.empresa_id');
+  const condicoes = [escopo.sql, 'p.excluido_em IS NULL'];
+  const params: unknown[] = [...escopo.params];
   if (filtro.filialId === null) condicoes.push('p.filial_id IS NULL');
   else if (filtro.filialId !== undefined) {
     condicoes.push('p.filial_id = ?');
@@ -257,12 +269,13 @@ export function listarProjetos(ctx: Contexto, filtro: FiltroProjetos = {}) {
 }
 
 export function atualizarProjeto(ctx: Contexto, id: number, dados: Partial<EntradaProjeto> & { justificativa?: string }) {
+  const escopo = escopoSql(ctx);
   const antes = db()
-    .prepare('SELECT * FROM projetos WHERE id = ? AND empresa_id = ? AND excluido_em IS NULL')
-    .get(id, ctx.empresaId) as LinhaProjeto | undefined;
+    .prepare(`SELECT * FROM projetos WHERE id = ? AND ${escopo.sql} AND excluido_em IS NULL`)
+    .get(id, ...escopo.params) as LinhaProjeto | undefined;
   if (!antes) throw erroNaoEncontrado(`Projeto ${id} não encontrado nesta empresa.`);
 
-  const filialId = dados.filialId !== undefined ? validarFilial(ctx.empresaId, dados.filialId) : antes.filial_id;
+  const filialId = dados.filialId !== undefined ? validarFilial(antes.empresa_id, dados.filialId) : antes.filial_id;
   const inicio = dados.mesInicio ? paraInterno(dados.mesInicio) : antes.mes_inicio;
   const fimPlanejado = dados.mesFimPlanejado ? paraInterno(dados.mesFimPlanejado) : antes.mes_fim_planejado;
   const fimReal =
@@ -291,7 +304,7 @@ export function atualizarProjeto(ctx: Contexto, id: number, dados: Partial<Entra
       fimReal,
       status,
       id,
-      ctx.empresaId,
+      antes.empresa_id,
     );
   const depois = obterProjeto(ctx, id);
   auditar(ctx, {
@@ -306,9 +319,10 @@ export function atualizarProjeto(ctx: Contexto, id: number, dados: Partial<Entra
 }
 
 export function excluirProjeto(ctx: Contexto, id: number, justificativa?: string) {
+  const escopo = escopoSql(ctx);
   const antes = db()
-    .prepare('SELECT * FROM projetos WHERE id = ? AND empresa_id = ? AND excluido_em IS NULL')
-    .get(id, ctx.empresaId) as LinhaProjeto | undefined;
+    .prepare(`SELECT * FROM projetos WHERE id = ? AND ${escopo.sql} AND excluido_em IS NULL`)
+    .get(id, ...escopo.params) as LinhaProjeto | undefined;
   if (!antes) throw erroNaoEncontrado(`Projeto ${id} não encontrado nesta empresa.`);
   return emTransacao(() => {
     db().prepare(`UPDATE projetos SET excluido_em = datetime('now'), dedup_hash = NULL WHERE id = ?`).run(id);
@@ -321,10 +335,11 @@ export function excluirProjeto(ctx: Contexto, id: number, justificativa?: string
 // ------------------------------------------------------------------ Tarefas
 
 function garantirProjeto(ctx: Contexto, projetoId: number): void {
+  const escopo = escopoSql(ctx);
   const linha = db()
-    .prepare('SELECT id FROM projetos WHERE id = ? AND empresa_id = ? AND excluido_em IS NULL')
-    .get(projetoId, ctx.empresaId);
-  if (!linha) throw erroNaoEncontrado(`Projeto ${projetoId} não encontrado nesta empresa.`);
+    .prepare(`SELECT id FROM projetos WHERE id = ? AND ${escopo.sql} AND excluido_em IS NULL`)
+    .get(projetoId, ...escopo.params);
+  if (!linha) throw erroNaoEncontrado(`Projeto ${projetoId} não encontrado neste cliente.`);
 }
 
 export interface EntradaTarefa {
@@ -374,6 +389,8 @@ export function listarTarefas(ctx: Contexto, projetoId: number) {
 }
 
 export interface FiltroTarefas {
+  /** Filtro local de matriz. Vazio: o cliente inteiro. */
+  empresas?: number[];
   projetoId?: number;
   filialId?: number | null;
   responsavel?: string;
@@ -391,8 +408,9 @@ export interface FiltroTarefas {
  * um projeto com filhas de outro e uma árvore ficaria sem raiz.
  */
 export function listarTarefasDaEmpresa(ctx: Contexto, filtro: FiltroTarefas = {}) {
-  const condicoes = ['p.empresa_id = ?', 'p.excluido_em IS NULL', 't.excluido_em IS NULL'];
-  const params: unknown[] = [ctx.empresaId];
+  const escopo = escopoSql(ctx, filtro.empresas, 'p.empresa_id');
+  const condicoes = [escopo.sql, 'p.excluido_em IS NULL', 't.excluido_em IS NULL'];
+  const params: unknown[] = [...escopo.params];
   if (filtro.projetoId !== undefined) {
     condicoes.push('t.projeto_id = ?');
     params.push(filtro.projetoId);
@@ -461,10 +479,10 @@ export function atualizarTarefa(ctx: Contexto, tarefaId: number, dados: Partial<
   const antes = db()
     .prepare(
       `SELECT t.* FROM tarefas t JOIN projetos p ON p.id = t.projeto_id
-        WHERE t.id = ? AND p.empresa_id = ? AND t.excluido_em IS NULL AND p.excluido_em IS NULL`,
+        WHERE t.id = ? AND ${escopoSql(ctx, null, 'p.empresa_id').sql} AND t.excluido_em IS NULL AND p.excluido_em IS NULL`,
     )
-    .get(tarefaId, ctx.empresaId) as LinhaTarefa | undefined;
-  if (!antes) throw erroNaoEncontrado(`Tarefa ${tarefaId} não encontrada nesta empresa.`);
+    .get(tarefaId, ...escopoSql(ctx, null, 'p.empresa_id').params) as LinhaTarefa | undefined;
+  if (!antes) throw erroNaoEncontrado(`Tarefa ${tarefaId} não encontrada neste cliente.`);
 
   const inicio = dados.mesInicio ? paraInterno(dados.mesInicio) : antes.mes_inicio;
   const fimPlanejado = dados.mesFimPlanejado ? paraInterno(dados.mesFimPlanejado) : antes.mes_fim_planejado;
@@ -512,10 +530,10 @@ export function excluirTarefa(ctx: Contexto, tarefaId: number, justificativa?: s
   const antes = db()
     .prepare(
       `SELECT t.* FROM tarefas t JOIN projetos p ON p.id = t.projeto_id
-        WHERE t.id = ? AND p.empresa_id = ? AND t.excluido_em IS NULL`,
+        WHERE t.id = ? AND ${escopoSql(ctx, null, 'p.empresa_id').sql} AND t.excluido_em IS NULL`,
     )
-    .get(tarefaId, ctx.empresaId) as LinhaTarefa | undefined;
-  if (!antes) throw erroNaoEncontrado(`Tarefa ${tarefaId} não encontrada nesta empresa.`);
+    .get(tarefaId, ...escopoSql(ctx, null, 'p.empresa_id').params) as LinhaTarefa | undefined;
+  if (!antes) throw erroNaoEncontrado(`Tarefa ${tarefaId} não encontrada neste cliente.`);
 
   // Excluir a tarefa principal é bloqueado, não cascateado: em cascata uma
   // confirmação de "excluir 1 tarefa" apagaria silenciosamente a subárvore

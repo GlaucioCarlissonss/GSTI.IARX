@@ -9,6 +9,7 @@ import {
   gravarUrlHelpdesk,
 } from '../domain/sla.js';
 import { ctx, exigir } from '../middleware/index.js';
+import { empresasDoPedido } from '../domain/escopo.js';
 
 export const rotasSla = Router();
 
@@ -31,6 +32,8 @@ rotasSla.get('/', (req, res) => {
   const q = req.query;
   res.json(
     listarTicketsSla(ctx(req), {
+      // Filtro local de matriz: vazio é o cliente inteiro.
+      empresas: empresasDoPedido(q as Record<string, unknown>),
       filialId:
         q.filial_id === undefined || q.filial_id === ''
           ? undefined
@@ -66,6 +69,8 @@ rotasSla.post('/', exigir('suporte_ostick', 'create'), (req, res) => {
   const corpo = req.body ?? {};
   res.status(201).json(
     registrarTicketSla(ctx(req), {
+      // A matriz vem do formulário: registrar não depende do filtro da tela.
+      empresaId: corpo.empresa_id === undefined || corpo.empresa_id === '' ? undefined : Number(corpo.empresa_id),
       filialId: corpo.filial_id ?? null,
       competencia: String(corpo.competencia ?? ''),
       filaId: Number(corpo.fila_id),

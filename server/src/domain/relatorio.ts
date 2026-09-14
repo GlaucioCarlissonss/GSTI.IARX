@@ -19,10 +19,13 @@ import { db } from '../db/index.js';
 import { paraExibicao, paraInterno } from './competencia.js';
 import { paraReais } from './dinheiro.js';
 import type { Contexto } from './contexto.js';
+import { escopoSql } from './escopo.js';
 import { CENARIO_OFICIAL, ROTULO_ORIGEM, type Origem } from './financeiro.js';
 import { clausulaEm } from '../lib/consulta.js';
 
 export interface FiltroRelatorio {
+  /** Filtro local de matriz. Vazio: o cliente inteiro. */
+  empresas?: number[];
   competenciaInicio?: string;
   competenciaFim?: string;
   filiais?: Array<number | null>;
@@ -35,8 +38,9 @@ export interface FiltroRelatorio {
 
 /** Condições e parâmetros comuns ao macro e ao detalhe: o mesmo recorte. */
 function recorte(ctx: Contexto, f: FiltroRelatorio) {
-  const condicoes = ['l.empresa_id = ?', 'l.excluido_em IS NULL'];
-  const params: unknown[] = [ctx.empresaId];
+  const alcance = escopoSql(ctx, f.empresas, 'l.empresa_id');
+  const condicoes = [alcance.sql, 'l.excluido_em IS NULL'];
+  const params: unknown[] = [...alcance.params];
 
   const cenarios = f.cenarios?.length ? f.cenarios : [CENARIO_OFICIAL];
   const cen = clausulaEm('l.cenario', cenarios);

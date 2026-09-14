@@ -13,6 +13,7 @@ import type { Contexto } from './contexto.js';
 import { paraReais } from './dinheiro.js';
 import { calcularAtraso } from './projetos.js';
 import { montarFiltroSla, percentual, type FiltroSla } from './sla.js';
+import { escopoSql } from './escopo.js';
 
 /**
  * Recorte de um painel.
@@ -22,6 +23,11 @@ import { montarFiltroSla, percentual, type FiltroSla } from './sla.js';
  * mesmo recorte, e o contrato antigo continua de pé.
  */
 export interface EscopoDashboard {
+  /**
+   * Filtro LOCAL de matriz do painel. Vazio significa o cliente inteiro — cada
+   * painel escolhe o seu recorte, sem depender de um seletor no topo do sistema.
+   */
+  empresas?: number[];
   /** `undefined` = consolidado da empresa; `null` = apenas nível empresa (sem filial); número = filial específica. */
   filialId?: number | null;
   filiais?: Array<number | null>;
@@ -50,16 +56,18 @@ const cenariosDoEscopo = (e: EscopoDashboard) => lista(e.cenario, e.cenarios) ??
  */
 function ultimaCompetenciaComDados(
   tabela: 'lancamentos' | 'tickets_sla',
-  empresaId: number,
+  escopo: { sql: string; params: number[] },
   filtroExtra: { coluna: string; valor: unknown } | null,
   limite: string,
 ): string | null {
   const extra = filtroExtra ? `AND ${filtroExtra.coluna} = ?` : '';
-  const params = filtroExtra ? [empresaId, filtroExtra.valor, limite] : [empresaId, limite];
+  const params = filtroExtra
+    ? [...escopo.params, filtroExtra.valor, limite]
+    : [...escopo.params, limite];
   const linha = db()
     .prepare(
       `SELECT MAX(competencia) AS m FROM ${tabela}
-        WHERE empresa_id = ? AND excluido_em IS NULL ${extra} AND competencia < ?`,
+        WHERE ${escopo.sql} AND excluido_em IS NULL ${extra} AND competencia < ?`,
     )
     .get(...params) as { m: string | null };
   return linha.m;
@@ -69,21 +77,23 @@ function competenciaReferencia(ctx: Contexto, escopo: EscopoDashboard, cenarios:
   if (escopo.competencia) return paraInterno(escopo.competencia);
   const cenario = cenarios[0]!;
   const atual = competenciaAtual();
-  const fechada = ultimaCompetenciaComDados('lancamentos', ctx.empresaId, { coluna: 'cenario', valor: cenario }, atual);
+  const alcance = escopoSql(ctx, escopo.empresas);
+  const fechada = ultimaCompetenciaComDados('lancamentos', alcance, { coluna: 'cenario', valor: cenario }, atual);
   if (fechada) return fechada;
   // Sem histórico, cai no mês corrente (que pode conter apenas projeções).
   const qualquer = db()
     .prepare(
       `SELECT MAX(competencia) AS m FROM lancamentos
-        WHERE empresa_id = ? AND excluido_em IS NULL AND cenario = ? AND competencia <= ?`,
+        WHERE ${alcance.sql} AND excluido_em IS NULL AND cenario = ? AND competencia <= ?`,
     )
-    .get(ctx.empresaId, cenario, atual) as { m: string | null };
+    .get(...alcance.params, cenario, atual) as { m: string | null };
   return qualquer.m ?? atual;
 }
 
 function filtroFinanceiro(ctx: Contexto, escopo: EscopoDashboard, cenarios: string[]) {
-  const condicoes = ['l.empresa_id = ?', 'l.excluido_em IS NULL'];
-  const params: unknown[] = [ctx.empresaId];
+  const alcance = escopoSql(ctx, escopo.empresas, 'l.empresa_id');
+  const condicoes = [alcance.sql, 'l.excluido_em IS NULL'];
+  const params: unknown[] = [...alcance.params];
   const aplicar = (c: { sql: string; params: unknown[] } | null) => {
     if (!c) return;
     condicoes.push(c.sql);
@@ -233,29 +243,44 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
     };
   });
 
-  // --- Quebra por filial (visão consolidada da empresa)
+  // --- Quebra por unidade (matriz + filial)
+  //
+  // O agrupamento inclui a matriz, e não só a filial: o escopo é o cliente
+  // inteiro, e duas matrizes podem ter filiais de mesmo nome — somá-las na
+  // mesma linha juntaria dinheiro de unidades diferentes sem avisar.
+  const alcanceFilial = escopoSql(ctx, escopo.empresas, 'l.empresa_id');
+  const variasEmpresas = alcanceFilial.params.length > 1;
   const porFilial = (
     db()
       .prepare(
         `SELECT COALESCE(f.nome, '(sem filial / empresa)') AS filial, l.filial_id,
+                l.empresa_id, e.nome AS empresa_nome,
                 COALESCE(SUM(CASE WHEN l.classificacao = 'despesa' THEN l.valor_centavos ELSE 0 END), 0) AS despesa,
                 COALESCE(SUM(CASE WHEN l.classificacao = 'investimento' THEN l.valor_centavos ELSE 0 END), 0) AS investimento,
                 COALESCE(SUM(l.valor_centavos), 0) AS total
-           FROM lancamentos l LEFT JOIN filiais f ON f.id = l.filial_id
-          WHERE l.empresa_id = ? AND l.excluido_em IS NULL
+           FROM lancamentos l
+           JOIN empresas e ON e.id = l.empresa_id
+           LEFT JOIN filiais f ON f.id = l.filial_id
+          WHERE ${alcanceFilial.sql} AND l.excluido_em IS NULL
             AND ${clausulaEm('l.cenario', cenarios)!.sql} AND ${emFoco.sql}
-          GROUP BY l.filial_id ORDER BY total DESC`,
+          GROUP BY l.empresa_id, l.filial_id ORDER BY total DESC`,
       )
-      .all(ctx.empresaId, ...cenarios, ...emFoco.params) as Array<{
+      .all(...alcanceFilial.params, ...cenarios, ...emFoco.params) as Array<{
       filial: string;
       filial_id: number | null;
+      empresa_id: number;
+      empresa_nome: string;
       despesa: number;
       investimento: number;
       total: number;
     }>
   ).map((l) => ({
     filial_id: l.filial_id,
-    filial: l.filial,
+    empresa_id: l.empresa_id,
+    empresa_nome: l.empresa_nome,
+    // Com uma matriz só, o nome dela na frente seria ruído; com várias, é o que
+    // distingue duas filiais homônimas.
+    filial: variasEmpresas ? `${l.empresa_nome} — ${l.filial}` : l.filial,
     despesa: paraReais(l.despesa),
     investimento: paraReais(l.investimento),
     total: paraReais(l.total),
@@ -307,8 +332,9 @@ interface LinhaProjetoGantt {
 }
 
 export function dashboardProjetos(ctx: Contexto, escopo: EscopoDashboard = {}) {
-  const condicoes = ['p.empresa_id = ?', 'p.excluido_em IS NULL'];
-  const params: unknown[] = [ctx.empresaId];
+  const alcance = escopoSql(ctx, escopo.empresas, 'p.empresa_id');
+  const condicoes = [alcance.sql, 'p.excluido_em IS NULL'];
+  const params: unknown[] = [...alcance.params];
   if (escopo.filialId === null) condicoes.push('p.filial_id IS NULL');
   else if (escopo.filialId !== undefined) {
     condicoes.push('p.filial_id = ?');
@@ -523,14 +549,15 @@ function tarefasDoGantt(
 function competenciaReferenciaSla(ctx: Contexto, escopo: EscopoDashboard): string {
   if (escopo.competencia) return paraInterno(escopo.competencia);
   const atual = competenciaAtual();
-  const fechada = ultimaCompetenciaComDados('tickets_sla', ctx.empresaId, null, atual);
+  const alcance = escopoSql(ctx, escopo.empresas);
+  const fechada = ultimaCompetenciaComDados('tickets_sla', alcance, null, atual);
   if (fechada) return fechada;
   const qualquer = db()
     .prepare(
       `SELECT MAX(competencia) AS m FROM tickets_sla
-        WHERE empresa_id = ? AND excluido_em IS NULL AND competencia <= ?`,
+        WHERE ${alcance.sql} AND excluido_em IS NULL AND competencia <= ?`,
     )
-    .get(ctx.empresaId, atual) as { m: string | null };
+    .get(...alcance.params, atual) as { m: string | null };
   return qualquer.m ?? atual;
 }
 
@@ -539,7 +566,7 @@ export function dashboardSla(ctx: Contexto, escopo: EscopoDashboard = {}) {
   const inicioSerie = escopo.competenciaInicio ? paraInterno(escopo.competenciaInicio) : somarMeses(mesRef, -11);
   const fimSerie = escopo.competenciaFim ? paraInterno(escopo.competenciaFim) : mesRef;
 
-  const filtroBase: FiltroSla = { filialId: escopo.filialId };
+  const filtroBase: FiltroSla = { filialId: escopo.filialId, empresas: escopo.empresas };
   const { where, params } = montarFiltroSla(ctx, filtroBase);
 
   const totais = db()
@@ -589,19 +616,35 @@ export function dashboardSla(ctx: Contexto, escopo: EscopoDashboard = {}) {
     pct_fora_sla: percentual(l.total - l.dentro, l.total),
   }));
 
+  // Agrupa por matriz e filial pelo mesmo motivo do painel financeiro: no
+  // escopo do cliente, duas matrizes podem ter filiais homônimas.
+  const alcanceSla = escopoSql(ctx, escopo.empresas, 's.empresa_id');
+  const variasEmpresasSla = alcanceSla.params.length > 1;
   const porFilial = (
     db()
       .prepare(
         `SELECT COALESCE(f.nome, '(sem filial / empresa)') AS filial, s.filial_id,
+                s.empresa_id, e.nome AS empresa_nome,
                 COALESCE(SUM(s.total_atendidos), 0) AS total, COALESCE(SUM(s.dentro_sla), 0) AS dentro
-           FROM tickets_sla s LEFT JOIN filiais f ON f.id = s.filial_id
-          WHERE s.empresa_id = ? AND s.excluido_em IS NULL AND s.competencia = ?
-          GROUP BY s.filial_id ORDER BY total DESC`,
+           FROM tickets_sla s
+           JOIN empresas e ON e.id = s.empresa_id
+           LEFT JOIN filiais f ON f.id = s.filial_id
+          WHERE ${alcanceSla.sql} AND s.excluido_em IS NULL AND s.competencia = ?
+          GROUP BY s.empresa_id, s.filial_id ORDER BY total DESC`,
       )
-      .all(ctx.empresaId, mesRef) as Array<{ filial: string; filial_id: number | null; total: number; dentro: number }>
+      .all(...alcanceSla.params, mesRef) as Array<{
+      filial: string;
+      filial_id: number | null;
+      empresa_id: number;
+      empresa_nome: string;
+      total: number;
+      dentro: number;
+    }>
   ).map((l) => ({
     filial_id: l.filial_id,
-    filial: l.filial,
+    empresa_id: l.empresa_id,
+    empresa_nome: l.empresa_nome,
+    filial: variasEmpresasSla ? `${l.empresa_nome} — ${l.filial}` : l.filial,
     total_atendidos: l.total,
     dentro_sla: l.dentro,
     fora_sla: l.total - l.dentro,
@@ -687,10 +730,11 @@ export function visaoExecutiva(ctx: Contexto, escopo: EscopoDashboard = {}) {
  * visão, a única conversa possível sobre a diferença é "o número está errado";
  * com ela, o gestor confere parcela por parcela e decide o que é oficial.
  *
- * Ignora o recorte de filial de propósito: a conferência é da empresa inteira.
+ * Ignora o recorte de filial de propósito: a conferência é da unidade inteira.
  */
 export function conferenciaOrigem(ctx: Contexto, escopo: EscopoDashboard = {}) {
   const cenario = escopo.cenario ?? CENARIO_OFICIAL;
+  const alcance = escopoSql(ctx, escopo.empresas);
 
   const linhas = db()
     .prepare(
@@ -698,11 +742,11 @@ export function conferenciaOrigem(ctx: Contexto, escopo: EscopoDashboard = {}) {
               COUNT(*) AS n,
               SUM(valor_centavos) AS centavos
          FROM lancamentos
-        WHERE empresa_id = ? AND excluido_em IS NULL AND cenario = ?
+        WHERE ${alcance.sql} AND excluido_em IS NULL AND cenario = ?
         GROUP BY origem, competencia
         ORDER BY competencia`,
     )
-    .all(ctx.empresaId, cenario) as Array<{ origem: Origem; competencia: string; n: number; centavos: number }>;
+    .all(...alcance.params, cenario) as Array<{ origem: Origem; competencia: string; n: number; centavos: number }>;
 
   const totalCentavos = linhas.reduce((s, l) => s + l.centavos, 0);
   const ordem: Origem[] = ['planilha', 'folha_ti', 'projecao_spincare', 'manual'];

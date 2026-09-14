@@ -15,6 +15,7 @@ import { db } from '../db/index.js';
 import { clausulaEm, clausulaEmComNulo } from '../lib/consulta.js';
 import { paraExibicao, paraInterno } from './competencia.js';
 import type { Contexto } from './contexto.js';
+import { escopoSql } from './escopo.js';
 import { paraReais } from './dinheiro.js';
 import { CENARIO_OFICIAL } from './financeiro.js';
 import { percentual } from './sla.js';
@@ -27,6 +28,8 @@ export const META_SLA = 80;
  * bloco, e misturá-los num recorte só faria o financeiro seguir o SLA.
  */
 export interface RecorteIndicadores {
+  /** Filtro local de matriz do bloco. Vazio: o cliente inteiro. */
+  empresas?: number[];
   filiais?: Array<number | null>;
   competenciaInicio?: string;
   competenciaFim?: string;
@@ -70,8 +73,9 @@ function janela(recorte: RecorteIndicadores, coluna: string) {
  * isolado seria ler ruído como direção.
  */
 export function reducaoDeCusto(ctx: Contexto, recorte: RecorteIndicadores = {}) {
-  const condicoes = ['l.empresa_id = ?', 'l.excluido_em IS NULL', "l.natureza = 'fixa'"];
-  const params: unknown[] = [ctx.empresaId];
+  const alcance = escopoSql(ctx, recorte.empresas, 'l.empresa_id');
+  const condicoes = [alcance.sql, 'l.excluido_em IS NULL', "l.natureza = 'fixa'"];
+  const params: unknown[] = [...alcance.params];
   const aplicar = (c: { sql: string; params: unknown[] } | null) => {
     if (!c) return;
     condicoes.push(c.sql);
@@ -147,8 +151,9 @@ export function reducaoDeCusto(ctx: Contexto, recorte: RecorteIndicadores = {}) 
 export function despesasPorReconhecer(ctx: Contexto, recorte: RecorteIndicadores = {}) {
   // O recorte é montado uma vez SEM o filtro de reconhecimento: ele serve às
   // duas consultas, e a de universo é justamente a mesma sem essa condição.
-  const condicoes = ['l.empresa_id = ?', 'l.excluido_em IS NULL'];
-  const params: unknown[] = [ctx.empresaId];
+  const alcance = escopoSql(ctx, recorte.empresas, 'l.empresa_id');
+  const condicoes = [alcance.sql, 'l.excluido_em IS NULL'];
+  const params: unknown[] = [...alcance.params];
   const aplicar = (c: { sql: string; params: unknown[] } | null) => {
     if (!c) return;
     condicoes.push(c.sql);
@@ -218,8 +223,9 @@ export function despesasPorReconhecer(ctx: Contexto, recorte: RecorteIndicadores
  * quatro daria mais que o total, e a tela precisa dizer isso.
  */
 export function conformidadeSla(ctx: Contexto, recorte: RecorteIndicadores = {}) {
-  const condicoes = ['s.empresa_id = ?', 's.excluido_em IS NULL'];
-  const params: unknown[] = [ctx.empresaId];
+  const alcance = escopoSql(ctx, recorte.empresas, 's.empresa_id');
+  const condicoes = [alcance.sql, 's.excluido_em IS NULL'];
+  const params: unknown[] = [...alcance.params];
   const filiais = clausulaEmComNulo('s.filial_id', recorte.filiais);
   if (filiais) {
     condicoes.push(filiais.sql);
@@ -295,8 +301,9 @@ export function entregaDeTarefas(ctx: Contexto, recorte: RecorteIndicadores = {}
   // O mês corrente entra como PRIMEIRO parâmetro porque o `?` dele está no
   // SELECT, antes de qualquer `?` do WHERE: em SQLite a ligação é posicional,
   // e mandá-lo por último desalinharia a lista inteira.
-  const condicoes = ['p.empresa_id = ?', 'p.excluido_em IS NULL', 't.excluido_em IS NULL'];
-  const params: unknown[] = [new Date().toISOString().slice(0, 7), ctx.empresaId];
+  const alcance = escopoSql(ctx, recorte.empresas, 'p.empresa_id');
+  const condicoes = [alcance.sql, 'p.excluido_em IS NULL', 't.excluido_em IS NULL'];
+  const params: unknown[] = [new Date().toISOString().slice(0, 7), ...alcance.params];
   const filiais = clausulaEmComNulo('p.filial_id', recorte.filiais);
   if (filiais) {
     condicoes.push(filiais.sql);
