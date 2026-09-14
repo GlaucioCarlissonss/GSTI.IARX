@@ -21,26 +21,29 @@ rotasWebhooks.use(express.json({ limit: LIMITE_PAYLOAD_BYTES }));
 // ------------------------------------------------------------- autenticação
 
 /**
- * A autorização é por empresa e por origem: cada conexão tem o seu segredo e
- * o seu interruptor, e o da variável de ambiente vale como reserva para a
+ * A autorização é por CLIENTE e por origem: quem contrata o helpdesk é o
+ * contratante, e o segredo e o interruptor são dele. O destino continua sendo
+ * uma matriz — cada unidade tem a própria instância, e o chamado 4812 de uma
+ * não é o 4812 da outra. O da variável de ambiente vale como reserva para a
  * instalação de um tenant só. A comparação, e a decisão entre 401, 403 e 503,
  * moram no domínio — aqui fica só o que é de HTTP.
  */
 function autenticarWebhook(sistema: SistemaOrigem) {
   return (req: Request, res: Response, proximo: NextFunction) => {
-    let empresaId: number;
+    let destino: { empresaId: number; clienteId: number };
     try {
-      empresaId = empresaDaRequisicao(req);
+      destino = destinoDaRequisicao(req);
     } catch (erro) {
       const mensagem = erro instanceof Error ? erro.message : String(erro);
       registrar(req, 422, mensagem, { sistema });
       res.status(422).json({ erro: mensagem });
       return;
     }
+    const { empresaId, clienteId } = destino;
 
-    const veredito = autorizarRecebimento(empresaId, sistema, String(req.header('X-Webhook-Secret') ?? ''));
+    const veredito = autorizarRecebimento(clienteId, sistema, String(req.header('X-Webhook-Secret') ?? ''));
     if (!veredito.ok) {
-      registrar(req, veredito.status, veredito.motivo, { sistema, empresa_id: empresaId });
+      registrar(req, veredito.status, veredito.motivo, { sistema, empresa_id: empresaId, cliente_id: clienteId });
       const publico =
         veredito.status === 503
           ? 'Integração de webhooks indisponível.'
@@ -104,19 +107,53 @@ function registrar(req: Request, status: number, detalhe?: string, extra: Record
 // ------------------------------------------------------------------ recepção
 
 /**
- * A empresa vem do header `X-Empresa-Id`, como no resto da API. Num sistema
- * multi-tenant o chamado precisa saber a quem pertence, e a automação é quem
- * sabe: adivinhar pelo conteúdo criaria vazamento entre empresas.
+ * A quem o chamado pertence: a unidade de destino e o cliente dono da conexão.
+ *
+ * A automação informa a unidade em `X-Empresa-Id`, como sempre. Com o cliente
+ * em `X-Cliente-Id`, a unidade passa a ser opcional: um contratante de matriz
+ * única não precisa saber o id dela para mandar um chamado — e com mais de uma,
+ * a escolha continua obrigatória, porque adivinhar pelo conteúdo misturaria
+ * chamados de unidades diferentes em silêncio.
  */
-function empresaDaRequisicao(req: Request): number {
-  const bruto = req.header('X-Empresa-Id') ?? (req.body as Record<string, unknown>)?.empresa_id;
-  const id = Number(bruto);
-  if (!Number.isInteger(id) || id <= 0) {
-    throw erroValidacao('Informe a empresa em "X-Empresa-Id" (ou "empresa_id" no corpo).');
+function destinoDaRequisicao(req: Request): { empresaId: number; clienteId: number } {
+  const corpo = (req.body ?? {}) as Record<string, unknown>;
+  const brutoEmpresa = req.header('X-Empresa-Id') ?? corpo.empresa_id;
+  const brutoCliente = req.header('X-Cliente-Id') ?? corpo.cliente_id;
+
+  if (brutoEmpresa !== undefined && brutoEmpresa !== null && brutoEmpresa !== '') {
+    const id = Number(brutoEmpresa);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw erroValidacao('Informe a empresa em "X-Empresa-Id" (ou "empresa_id" no corpo).');
+    }
+    const linha = db()
+      .prepare('SELECT id, cliente_id FROM empresas WHERE id = ? AND status = ?')
+      .get(id, 'ativa') as { id: number; cliente_id: number | null } | undefined;
+    if (!linha) throw erroValidacao(`Empresa ${id} não encontrada ou inativa.`);
+    if (!linha.cliente_id) throw erroValidacao(`Empresa ${id} ainda não pertence a um cliente.`);
+    // Os dois informados e discordando: recusa. A divergência é justamente o
+    // que um pedido forjado produziria.
+    if (brutoCliente !== undefined && brutoCliente !== null && brutoCliente !== '') {
+      if (Number(brutoCliente) !== linha.cliente_id) {
+        throw erroValidacao('A empresa informada não pertence ao cliente informado.');
+      }
+    }
+    return { empresaId: id, clienteId: linha.cliente_id };
   }
-  const existe = db().prepare('SELECT id FROM empresas WHERE id = ? AND status = ?').get(id, 'ativa');
-  if (!existe) throw erroValidacao(`Empresa ${id} não encontrada ou inativa.`);
-  return id;
+
+  const clienteId = Number(brutoCliente);
+  if (!Number.isInteger(clienteId) || clienteId <= 0) {
+    throw erroValidacao('Informe a empresa em "X-Empresa-Id" ou o cliente em "X-Cliente-Id".');
+  }
+  const matrizes = db()
+    .prepare("SELECT id FROM empresas WHERE cliente_id = ? AND status = 'ativa' ORDER BY id")
+    .all(clienteId) as Array<{ id: number }>;
+  if (matrizes.length === 0) throw erroValidacao(`Cliente ${clienteId} não tem matriz ativa cadastrada.`);
+  if (matrizes.length > 1) {
+    throw erroValidacao(
+      `O cliente ${clienteId} tem ${matrizes.length} unidades: informe a de destino em "X-Empresa-Id".`,
+    );
+  }
+  return { empresaId: matrizes[0]!.id, clienteId };
 }
 
 /**
@@ -135,7 +172,7 @@ function chamadosDoCorpo(corpo: unknown): Record<string, unknown>[] {
 
 function receber(sistema: SistemaOrigem) {
   return (req: Request, res: Response) => {
-    // A autenticação já resolveu a empresa; repetir aqui seria consultar duas vezes.
+    // A autenticação já resolveu a unidade; repetir aqui seria consultar duas vezes.
     const empresaId = (req as Request & { empresaId?: number }).empresaId as number;
 
     const entrada = chamadosDoCorpo(req.body);

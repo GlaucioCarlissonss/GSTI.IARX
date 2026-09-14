@@ -105,8 +105,20 @@ export function urlDoChamado(
   const linha = db()
     .prepare('SELECT valor FROM configuracoes WHERE empresa_id = ? AND chave = ?')
     .get(empresaId, chave) as { valor: string | null } | undefined;
+  // Sem endereço na unidade, vale o do CLIENTE: a integração é dele, e quem usa
+  // uma instância só configura uma vez. A consulta é feita aqui, e não pelo
+  // módulo de integrações, para não criar ciclo de importação entre os dois.
+  const doCliente = linha?.valor
+    ? null
+    : (db()
+        .prepare(
+          `SELECT ic.url_base FROM integracao_config ic
+             JOIN empresas e ON e.cliente_id = ic.cliente_id
+            WHERE e.id = ? AND ic.source_system = ?`,
+        )
+        .get(empresaId, sistema ?? 'OSTICK') as { url_base: string | null } | undefined)?.url_base ?? null;
   // Só o osTicket tem endereço padrão: é o helpdesk em uso hoje.
-  const base = linha?.valor || (chave === 'url_helpdesk' ? URL_HELPDESK_PADRAO : null);
+  const base = linha?.valor || doCliente || (chave === 'url_helpdesk' ? URL_HELPDESK_PADRAO : null);
   return base ? base + encodeURIComponent(String(idExterno)) : null;
 }
 

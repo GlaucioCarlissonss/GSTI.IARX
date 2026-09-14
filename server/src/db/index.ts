@@ -276,6 +276,81 @@ CREATE TRIGGER IF NOT EXISTS tg_proj_cliente_mudou AFTER UPDATE OF empresa_id ON
    WHERE id = NEW.id;
 END;`);
 
+  // -------------------------------------------- integração ao nível do cliente
+  //
+  // A configuração das integrações era por MATRIZ. Estava errado: quem contrata
+  // o OStick é o contratante, e o endereço, o segredo e o interruptor são os
+  // mesmos para todas as unidades dele. Guardá-los por matriz obrigava a
+  // repetir a configuração uma vez por unidade e prendia a tela de Integrações
+  // a um seletor de empresa — que é justamente o defeito relatado.
+  //
+  // A tabela é RECONSTRUÍDA porque a dona muda de coluna e o índice único junto:
+  // `ALTER TABLE` do SQLite não faz nem uma coisa nem outra.
+  const configIntegracao = new Set(
+    (db.prepare('PRAGMA table_info(integracao_config)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (configIntegracao.size > 0 && !configIntegracao.has('cliente_id')) {
+    db.exec(`CREATE TABLE integracao_config_nova (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      cliente_id    INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+      source_system TEXT NOT NULL CHECK (source_system IN ('OSTICK','BITRIX24')),
+      webhook_path  TEXT NOT NULL,
+      secret_hash   TEXT,
+      url_base      TEXT,
+      ativo         INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0,1)),
+      ultimo_evento_em TEXT,
+      ultimo_erro   TEXT,
+      criado_em     TEXT NOT NULL DEFAULT (datetime('now')),
+      atualizado_em TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (cliente_id, source_system)
+    )`);
+    // Duas matrizes do mesmo cliente podiam ter configuração para a mesma
+    // origem. Vira UMA: fica a que tem segredo, e entre as que têm, a de evento
+    // mais recente — é a que o N8N está usando de verdade. Descartar a que
+    // nunca recebeu nada não perde nada; descartar a ativa quebraria a
+    // integração em produção.
+    db.exec(`INSERT INTO integracao_config_nova
+               (cliente_id, source_system, webhook_path, secret_hash, ativo, ultimo_evento_em, ultimo_erro, criado_em, atualizado_em)
+             SELECT e.cliente_id, c.source_system, c.webhook_path, c.secret_hash, c.ativo,
+                    c.ultimo_evento_em, c.ultimo_erro, c.criado_em, c.atualizado_em
+               FROM integracao_config c
+               JOIN empresas e ON e.id = c.empresa_id
+              WHERE e.cliente_id IS NOT NULL
+                AND c.id = (
+                  SELECT c2.id FROM integracao_config c2
+                    JOIN empresas e2 ON e2.id = c2.empresa_id
+                   WHERE e2.cliente_id = e.cliente_id AND c2.source_system = c.source_system
+                   ORDER BY (c2.secret_hash IS NULL), c2.ultimo_evento_em DESC, c2.id
+                   LIMIT 1)`);
+    db.exec('DROP TABLE integracao_config');
+    db.exec('ALTER TABLE integracao_config_nova RENAME TO integracao_config');
+  }
+  if (configIntegracao.size > 0 && !configIntegracao.has('url_base')) {
+    const atual = new Set(
+      (db.prepare('PRAGMA table_info(integracao_config)').all() as Array<{ name: string }>).map((c) => c.name),
+    );
+    if (!atual.has('url_base')) db.exec('ALTER TABLE integracao_config ADD COLUMN url_base TEXT');
+  }
+
+  // O evento guarda as duas pontas: o cliente (dono da integração) e a matriz
+  // (destino do chamado). O carimbo do cliente é gatilho, como nas demais.
+  const colunasEvento = new Set(
+    (db.prepare('PRAGMA table_info(integracao_evento)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (colunasEvento.size > 0 && !colunasEvento.has('cliente_id')) {
+    db.exec('ALTER TABLE integracao_evento ADD COLUMN cliente_id INTEGER');
+  }
+  db.exec(`UPDATE integracao_evento SET cliente_id = (
+             SELECT e.cliente_id FROM empresas e WHERE e.id = integracao_evento.empresa_id)
+            WHERE cliente_id IS NULL`);
+  db.exec(`CREATE INDEX IF NOT EXISTS ix_evento_cliente ON integracao_evento(cliente_id, criado_em DESC);
+CREATE INDEX IF NOT EXISTS ix_evento_cliente_status ON integracao_evento(cliente_id, status, criado_em DESC);
+CREATE TRIGGER IF NOT EXISTS tg_evento_cliente_novo AFTER INSERT ON integracao_evento
+WHEN NEW.cliente_id IS NULL BEGIN
+  UPDATE integracao_evento SET cliente_id = (SELECT cliente_id FROM empresas WHERE id = NEW.empresa_id)
+   WHERE id = NEW.id;
+END;`);
+
   // ------------------------------------------------------------------ acesso
   //
   // Login por `username`. O e-mail sai da autenticação e passa a servir só à

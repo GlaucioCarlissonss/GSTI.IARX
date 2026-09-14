@@ -10,8 +10,10 @@
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { db } from '../db/index.js';
-import { erroValidacao } from '../lib/erros.js';
+import { erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
 import type { Contexto } from './contexto.js';
+import { empresaDeEscrita, escopoSql } from './escopo.js';
+import { clienteDaEmpresa } from './clientes.js';
 import { gravarChamado, normalizar, type SistemaOrigem } from './suporte.js';
 import { SETOR_NAO_CLASSIFICADO } from './cadastros.js';
 
@@ -47,10 +49,11 @@ export const gerarSegredo = () => randomBytes(24).toString('base64url');
 
 interface LinhaConfig {
   id: number;
-  empresa_id: number;
+  cliente_id: number;
   source_system: SistemaOrigem;
   webhook_path: string;
   secret_hash: string | null;
+  url_base: string | null;
   ativo: number;
   ultimo_evento_em: string | null;
   ultimo_erro: string | null;
@@ -66,6 +69,7 @@ function apresentarConfig(linha: LinhaConfig) {
     // Nunca o segredo, nem o hash: só se ele existe. O valor em claro vai
     // apenas na resposta de quem acabou de gerá-lo.
     tem_segredo: !!linha.secret_hash,
+    url_base: linha.url_base,
     ativo: linha.ativo === 1,
     ultimo_evento_em: linha.ultimo_evento_em,
     ultimo_erro: linha.ultimo_erro,
@@ -75,29 +79,64 @@ function apresentarConfig(linha: LinhaConfig) {
 }
 
 /** Garante a linha de configuração de cada origem, criando o que faltar. */
-function garantirConfigs(empresaId: number) {
+function garantirConfigs(clienteId: number) {
   const inserir = db().prepare(
-    `INSERT OR IGNORE INTO integracao_config (empresa_id, source_system, webhook_path)
+    `INSERT OR IGNORE INTO integracao_config (cliente_id, source_system, webhook_path)
        VALUES (?, ?, ?)`,
   );
-  for (const s of SISTEMAS) inserir.run(empresaId, s, caminhoDoWebhook(s));
+  for (const s of SISTEMAS) inserir.run(clienteId, s, caminhoDoWebhook(s));
+}
+
+/**
+ * O cliente da operação.
+ *
+ * A integração é DELE, e não da matriz em foco — é o que tira esta tela da
+ * dependência do seletor de empresa. A base histórica pode ter matriz sem dono
+ * carimbado; nesse caso o dono sai da própria empresa, que é a mesma fonte que
+ * a migração usa.
+ */
+function clienteDoContexto(ctx: Contexto): number {
+  const cliente = ctx.clienteId ?? clienteDaEmpresa(ctx.empresaId);
+  if (!cliente) {
+    throw erroValidacao('Esta empresa ainda não pertence a um cliente; a integração é configurada por cliente.');
+  }
+  return cliente;
 }
 
 export function listarIntegracoes(ctx: Contexto) {
-  garantirConfigs(ctx.empresaId);
+  const clienteId = clienteDoContexto(ctx);
+  garantirConfigs(clienteId);
   const linhas = db()
-    .prepare('SELECT * FROM integracao_config WHERE empresa_id = ? ORDER BY source_system')
-    .all(ctx.empresaId) as LinhaConfig[];
-  return linhas.map(apresentarConfig);
+    .prepare('SELECT * FROM integracao_config WHERE cliente_id = ? ORDER BY source_system')
+    .all(clienteId) as LinhaConfig[];
+  // As unidades vêm junto: o chamado tem sempre uma de destino, e a tela
+  // precisa oferecer a escolha sem depender de um filtro no topo do sistema.
+  const unidades = db()
+    .prepare("SELECT id, nome FROM empresas WHERE cliente_id = ? AND status = 'ativa' ORDER BY nome")
+    .all(clienteId) as Array<{ id: number; nome: string }>;
+  return {
+    cliente_id: clienteId,
+    unidades,
+    integracoes: linhas.map(apresentarConfig),
+  };
 }
 
-function obterConfig(empresaId: number, sistema: SistemaOrigem): LinhaConfig {
-  garantirConfigs(empresaId);
+function obterConfig(clienteId: number, sistema: SistemaOrigem): LinhaConfig {
+  garantirConfigs(clienteId);
   const linha = db()
-    .prepare('SELECT * FROM integracao_config WHERE empresa_id = ? AND source_system = ?')
-    .get(empresaId, sistema) as LinhaConfig | undefined;
-  if (!linha) throw erroValidacao(`Integração ${sistema} não encontrada nesta empresa.`);
+    .prepare('SELECT * FROM integracao_config WHERE cliente_id = ? AND source_system = ?')
+    .get(clienteId, sistema) as LinhaConfig | undefined;
+  if (!linha) throw erroValidacao(`Integração ${sistema} não encontrada neste cliente.`);
   return linha;
+}
+
+/** Endereço base do sistema de origem configurado para o cliente, se houver. */
+export function urlBaseDoCliente(clienteId: number | null, sistema: string | null): string | null {
+  if (!clienteId) return null;
+  const linha = db()
+    .prepare('SELECT url_base FROM integracao_config WHERE cliente_id = ? AND source_system = ?')
+    .get(clienteId, sistema ?? 'OSTICK') as { url_base: string | null } | undefined;
+  return linha?.url_base || null;
 }
 
 /**
@@ -106,26 +145,45 @@ function obterConfig(empresaId: number, sistema: SistemaOrigem): LinhaConfig {
  * no instante da troca, e o operador cola o novo no workflow.
  */
 export function regenerarSegredo(ctx: Contexto, sistema: SistemaOrigem) {
-  obterConfig(ctx.empresaId, sistema);
+  const clienteId = clienteDoContexto(ctx);
+  obterConfig(clienteId, sistema);
   const segredo = gerarSegredo();
   db()
     .prepare(
       `UPDATE integracao_config SET secret_hash = ?, atualizado_em = datetime('now')
-        WHERE empresa_id = ? AND source_system = ?`,
+        WHERE cliente_id = ? AND source_system = ?`,
     )
-    .run(hashDoSegredo(segredo), ctx.empresaId, sistema);
+    .run(hashDoSegredo(segredo), clienteId, sistema);
   return { source_system: sistema, segredo, webhook_path: caminhoDoWebhook(sistema) };
 }
 
 export function definirAtivo(ctx: Contexto, sistema: SistemaOrigem, ativo: boolean) {
-  obterConfig(ctx.empresaId, sistema);
+  const clienteId = clienteDoContexto(ctx);
+  obterConfig(clienteId, sistema);
   db()
     .prepare(
       `UPDATE integracao_config SET ativo = ?, atualizado_em = datetime('now')
-        WHERE empresa_id = ? AND source_system = ?`,
+        WHERE cliente_id = ? AND source_system = ?`,
     )
-    .run(ativo ? 1 : 0, ctx.empresaId, sistema);
-  return apresentarConfig(obterConfig(ctx.empresaId, sistema));
+    .run(ativo ? 1 : 0, clienteId, sistema);
+  return apresentarConfig(obterConfig(clienteId, sistema));
+}
+
+/** Endereço base do sistema de origem, para o link do chamado. */
+export function definirUrlBase(ctx: Contexto, sistema: SistemaOrigem, url: string | null) {
+  const clienteId = clienteDoContexto(ctx);
+  obterConfig(clienteId, sistema);
+  const valor = (url ?? '').trim();
+  if (valor && !/^https?:\/\//i.test(valor)) {
+    throw erroValidacao('O endereço do sistema de origem precisa começar com http:// ou https://.');
+  }
+  db()
+    .prepare(
+      `UPDATE integracao_config SET url_base = ?, atualizado_em = datetime('now')
+        WHERE cliente_id = ? AND source_system = ?`,
+    )
+    .run(valor || null, clienteId, sistema);
+  return apresentarConfig(obterConfig(clienteId, sistema));
 }
 
 /**
@@ -134,16 +192,16 @@ export function definirAtivo(ctx: Contexto, sistema: SistemaOrigem, ativo: boole
  * de 403 (conexão desligada de propósito).
  */
 export function autorizarRecebimento(
-  empresaId: number,
+  clienteId: number,
   sistema: SistemaOrigem,
   segredoRecebido: string,
 ): { ok: true } | { ok: false; status: 401 | 403 | 503; motivo: string } {
-  const config = obterConfig(empresaId, sistema);
+  const config = obterConfig(clienteId, sistema);
   if (!config.ativo) {
     return { ok: false, status: 403, motivo: 'Integração desativada para este sistema.' };
   }
 
-  // Sem segredo por empresa, vale o da variável de ambiente — é o que sustenta
+  // Sem segredo por cliente, vale o da variável de ambiente — é o que sustenta
   // uma instalação de um tenant só, sem passar pela tela de integrações.
   const doAmbiente = process.env.WEBHOOK_SECRET ?? '';
   const esperado = config.secret_hash ?? (doAmbiente ? hashDoSegredo(doAmbiente) : null);
@@ -162,6 +220,7 @@ export function autorizarRecebimento(
 
 interface LinhaEvento {
   id: number;
+  cliente_id: number | null;
   empresa_id: number;
   source_system: SistemaOrigem;
   external_id: string | null;
@@ -243,17 +302,21 @@ export function concluirEvento(
   // A linha de configuração pode ainda não existir — um payload de teste ou um
   // webhook podem chegar antes de alguém abrir a tela de Integrações. Sem isto,
   // o "último evento" ficaria vazio para sempre nesses casos.
-  garantirConfigs(linha.empresa_id);
+  const clienteId = linha.cliente_id ?? clienteDaEmpresa(linha.empresa_id);
+  if (!clienteId) return;
+  garantirConfigs(clienteId);
   db()
     .prepare(
       `UPDATE integracao_config
           SET ultimo_evento_em = datetime('now'), ultimo_erro = ?, atualizado_em = datetime('now')
-        WHERE empresa_id = ? AND source_system = ?`,
+        WHERE cliente_id = ? AND source_system = ?`,
     )
-    .run(resultado.ok ? null : resultado.erro.slice(0, 500), linha.empresa_id, linha.source_system);
+    .run(resultado.ok ? null : resultado.erro.slice(0, 500), clienteId, linha.source_system);
 }
 
 export interface FiltroEventos {
+  /** Filtro local de matriz. Vazio: todas as unidades do cliente. */
+  empresas?: number[];
   sistemas?: SistemaOrigem[];
   status?: StatusEvento[];
   de?: string;
@@ -262,8 +325,11 @@ export interface FiltroEventos {
 }
 
 export function listarEventos(ctx: Contexto, filtro: FiltroEventos = {}) {
-  const condicoes = ['empresa_id = ?'];
-  const params: unknown[] = [ctx.empresaId];
+  // O log é do CLIENTE: a integração é dele, e ver só os eventos de uma matriz
+  // esconderia metade do que aconteceu na mesma conexão.
+  const alcance = escopoSql(ctx, filtro.empresas);
+  const condicoes = [alcance.sql];
+  const params: unknown[] = [...alcance.params];
   const emLista = (coluna: string, valores?: string[]) => {
     if (!valores?.length) return;
     condicoes.push(`${coluna} IN (${valores.map(() => '?').join(',')})`);
@@ -289,11 +355,12 @@ export function listarEventos(ctx: Contexto, filtro: FiltroEventos = {}) {
     )
     .all(...params, limite) as LinhaEvento[];
 
+  const alcanceResumo = escopoSql(ctx, filtro.empresas);
   const resumo = db()
     .prepare(
-      `SELECT status, COUNT(*) AS n FROM integracao_evento WHERE empresa_id = ? GROUP BY status`,
+      `SELECT status, COUNT(*) AS n FROM integracao_evento WHERE ${alcanceResumo.sql} GROUP BY status`,
     )
-    .all(ctx.empresaId) as Array<{ status: StatusEvento; n: number }>;
+    .all(...alcanceResumo.params) as Array<{ status: StatusEvento; n: number }>;
 
   return {
     itens: linhas.map(apresentarEvento),
@@ -331,10 +398,11 @@ export function processarEvento(
 
 /** Refaz o processamento de um evento com erro, a partir do payload guardado. */
 export function reprocessarEvento(ctx: Contexto, eventoId: number) {
+  const alcance = escopoSql(ctx);
   const linha = db()
-    .prepare('SELECT * FROM integracao_evento WHERE id = ? AND empresa_id = ?')
-    .get(eventoId, ctx.empresaId) as LinhaEvento | undefined;
-  if (!linha) throw erroValidacao(`Evento ${eventoId} não encontrado nesta empresa.`);
+    .prepare(`SELECT * FROM integracao_evento WHERE id = ? AND ${alcance.sql}`)
+    .get(eventoId, ...alcance.params) as LinhaEvento | undefined;
+  if (!linha) throw erroNaoEncontrado(`Evento ${eventoId} não encontrado neste cliente.`);
   if (linha.status === 'processed') {
     throw erroValidacao('Este evento já foi processado com sucesso. Não há o que refazer.');
   }
@@ -346,7 +414,8 @@ export function reprocessarEvento(ctx: Contexto, eventoId: number) {
     throw erroValidacao('O payload guardado não é um JSON legível; não há como reprocessar.');
   }
 
-  const r = processarEvento(ctx.empresaId, linha.source_system, bruto, eventoId);
+  // Reprocessa na matriz DO EVENTO: o chamado é da unidade que o recebeu.
+  const r = processarEvento(linha.empresa_id, linha.source_system, bruto, eventoId);
   if (!r.ok) throw erroValidacao(r.erro);
   return { evento_id: eventoId, ticket_id: r.ticketId, criado: r.criado, setor: r.setor };
 }
@@ -388,17 +457,20 @@ export function payloadDeTeste(sistema: SistemaOrigem): Record<string, unknown> 
 }
 
 /** Dispara o payload de exemplo pelo mesmo pipeline do webhook. */
-export function enviarPayloadDeTeste(ctx: Contexto, sistema: SistemaOrigem) {
+export function enviarPayloadDeTeste(ctx: Contexto, sistema: SistemaOrigem, empresaId?: number) {
+  // O teste precisa de uma unidade de DESTINO: o chamado é sempre de uma. Ela
+  // é escolhida no formulário; sem escolha, a matriz em foco.
+  const destino = empresaDeEscrita(ctx, empresaId);
   const bruto = payloadDeTeste(sistema);
   const eventoId = registrarEvento({
-    empresaId: ctx.empresaId,
+    empresaId: destino,
     sistema,
     externalId: String(bruto.ticket_id ?? bruto.ID ?? ''),
     tipo: 'ticket.test',
     payload: bruto,
     teste: true,
   });
-  const r = processarEvento(ctx.empresaId, sistema, bruto, eventoId);
+  const r = processarEvento(destino, sistema, bruto, eventoId);
   if (!r.ok) throw erroValidacao(r.erro);
   return {
     evento_id: eventoId,

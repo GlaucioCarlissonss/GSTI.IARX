@@ -16,9 +16,9 @@ import {
 } from '../src/domain/integracoes.js';
 import { listarChamados } from '../src/domain/suporte.js';
 
-test('cada empresa nasce com as duas conexões, desligadas do segredo', () => {
+test('cada cliente nasce com as duas conexões, desligadas do segredo', () => {
   const { ctx } = ambienteLimpo();
-  const itens = listarIntegracoes(ctx);
+  const itens = listarIntegracoes(ctx).integracoes;
   assert.deepEqual(itens.map((i) => i.source_system), ['BITRIX24', 'OSTICK']);
   assert.equal(itens.every((i) => i.ativo), true);
   // Nenhuma nasce com segredo próprio: até girar, vale o da variável de ambiente.
@@ -36,13 +36,13 @@ test('o segredo aparece uma vez e depois só existe como hash', () => {
   assert.ok(r.segredo.length >= 24);
 
   // A listagem nunca devolve o segredo nem o hash: só diz que existe.
-  const config = listarIntegracoes(ctx).find((i) => i.source_system === 'OSTICK');
+  const config = listarIntegracoes(ctx).integracoes.find((i) => i.source_system === 'OSTICK');
   assert.equal(config?.tem_segredo, true);
   assert.equal('segredo' in (config as object), false);
   assert.equal('secret_hash' in (config as object), false);
 
-  assert.deepEqual(autorizarRecebimento(ctx.empresaId, 'OSTICK', r.segredo), { ok: true });
-  const errado = autorizarRecebimento(ctx.empresaId, 'OSTICK', r.segredo + 'x');
+  assert.deepEqual(autorizarRecebimento(ctx.clienteId!, 'OSTICK', r.segredo), { ok: true });
+  const errado = autorizarRecebimento(ctx.clienteId!, 'OSTICK', r.segredo + 'x');
   assert.equal(errado.ok, false);
   assert.equal(errado.ok === false && errado.status, 401);
 });
@@ -52,21 +52,21 @@ test('girar o segredo invalida o anterior na hora', () => {
   const antigo = regenerarSegredo(ctx, 'OSTICK').segredo;
   const novo = regenerarSegredo(ctx, 'OSTICK').segredo;
   assert.notEqual(antigo, novo);
-  assert.equal(autorizarRecebimento(ctx.empresaId, 'OSTICK', novo).ok, true);
-  assert.equal(autorizarRecebimento(ctx.empresaId, 'OSTICK', antigo).ok, false);
+  assert.equal(autorizarRecebimento(ctx.clienteId!, 'OSTICK', novo).ok, true);
+  assert.equal(autorizarRecebimento(ctx.clienteId!, 'OSTICK', antigo).ok, false);
 });
 
 test('conexão desligada recusa com 403, e não com 401', () => {
   const { ctx } = ambienteLimpo();
   const segredo = regenerarSegredo(ctx, 'OSTICK').segredo;
   definirAtivo(ctx, 'OSTICK', false);
-  const r = autorizarRecebimento(ctx.empresaId, 'OSTICK', segredo);
+  const r = autorizarRecebimento(ctx.clienteId!, 'OSTICK', segredo);
   // 401 diria "seu segredo está errado", e mandaria o operador caçar o que não
   // está quebrado. 403 diz o que é: a conexão foi desligada de propósito.
   assert.equal(r.ok === false && r.status, 403);
 
   definirAtivo(ctx, 'OSTICK', true);
-  assert.equal(autorizarRecebimento(ctx.empresaId, 'OSTICK', segredo).ok, true);
+  assert.equal(autorizarRecebimento(ctx.clienteId!, 'OSTICK', segredo).ok, true);
 });
 
 test('sem segredo por empresa e sem variável de ambiente, responde 503', () => {
@@ -74,7 +74,7 @@ test('sem segredo por empresa e sem variável de ambiente, responde 503', () => 
   const antes = process.env.WEBHOOK_SECRET;
   delete process.env.WEBHOOK_SECRET;
   try {
-    const r = autorizarRecebimento(ctx.empresaId, 'BITRIX24', 'qualquer-coisa');
+    const r = autorizarRecebimento(ctx.clienteId!, 'BITRIX24', 'qualquer-coisa');
     // Fechado, não aberto: um deploy que esqueceu a variável não pode virar
     // uma porta sem tranca.
     assert.equal(r.ok === false && r.status, 503);
@@ -159,7 +159,7 @@ test('evento já processado não é reprocessado', () => {
 test('o último evento e o último erro ficam na configuração da origem', () => {
   const { ctx } = ambienteLimpo();
   enviarPayloadDeTeste(ctx, 'OSTICK');
-  const depoisDoSucesso = listarIntegracoes(ctx).find((i) => i.source_system === 'OSTICK');
+  const depoisDoSucesso = listarIntegracoes(ctx).integracoes.find((i) => i.source_system === 'OSTICK');
   assert.ok(depoisDoSucesso?.ultimo_evento_em);
   assert.equal(depoisDoSucesso?.ultimo_erro, null);
 
@@ -168,7 +168,7 @@ test('o último evento e o último erro ficam na configuração da origem', () =
     empresaId: ctx.empresaId, sistema: 'OSTICK', externalId: null, tipo: 'ticket.created', payload: ruim,
   });
   processarEvento(ctx.empresaId, 'OSTICK', ruim, eventoId);
-  const depoisDoErro = listarIntegracoes(ctx).find((i) => i.source_system === 'OSTICK');
+  const depoisDoErro = listarIntegracoes(ctx).integracoes.find((i) => i.source_system === 'OSTICK');
   assert.ok(depoisDoErro?.ultimo_erro, 'o último erro precisa aparecer na tela sem abrir o log');
 });
 

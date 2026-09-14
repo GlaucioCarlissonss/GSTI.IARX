@@ -399,25 +399,39 @@ CREATE INDEX IF NOT EXISTS ix_import_empresa ON importacoes(empresa_id, criado_e
 -- O segredo é guardado como HASH, e não em texto: quem tem o banco não tem a
 -- chave. O valor em claro aparece uma única vez, no momento em que é gerado —
 -- é o mesmo trato de uma chave de API. Perdeu, gera outra.
+--
+-- A configuração é do CLIENTE, não da matriz. Quem contrata o OStick é o
+-- contratante: o endereço, o segredo e o interruptor são os mesmos para todas
+-- as unidades dele. Guardá-los por matriz obrigava a repetir a configuração
+-- cinco vezes e fazia a tela de Integrações depender de um seletor de empresa
+-- para mostrar o que não varia com ela.
 CREATE TABLE IF NOT EXISTS integracao_config (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  empresa_id    INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  cliente_id    INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
   source_system TEXT NOT NULL CHECK (source_system IN ('OSTICK','BITRIX24')),
   webhook_path  TEXT NOT NULL,
   secret_hash   TEXT,
+  -- Endereço base do sistema de origem, para montar o link do chamado. Fica no
+  -- cliente porque é dele o contrato; a matriz que usa instância própria pode
+  -- sobrepor em `configuracoes`.
+  url_base      TEXT,
   ativo         INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0,1)),
   ultimo_evento_em TEXT,
   ultimo_erro   TEXT,
   criado_em     TEXT NOT NULL DEFAULT (datetime('now')),
   atualizado_em TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (empresa_id, source_system)
+  UNIQUE (cliente_id, source_system)
 );
 
 -- Log de eventos: auditoria, diagnóstico e reprocessamento. O payload bruto
 -- fica aqui justamente para permitir refazer o processamento sem depender de
 -- a origem reenviar.
+-- O evento guarda as DUAS pontas: o cliente, que é dono da integração, e a
+-- matriz, que é o destino do chamado — cada unidade tem a própria instância do
+-- helpdesk, e o mesmo número de chamado em duas delas não é o mesmo chamado.
 CREATE TABLE IF NOT EXISTS integracao_evento (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id    INTEGER REFERENCES clientes(id) ON DELETE CASCADE,
   empresa_id    INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   source_system TEXT NOT NULL CHECK (source_system IN ('OSTICK','BITRIX24')),
   external_id   TEXT,

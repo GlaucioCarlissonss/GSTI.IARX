@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import {
   definirAtivo,
+  definirUrlBase,
   enviarPayloadDeTeste,
   listarEventos,
   listarIntegracoes,
@@ -18,6 +19,7 @@ import {
 import type { SistemaOrigem } from '../domain/suporte.js';
 import { erroValidacao } from '../lib/erros.js';
 import { ctx, exigir } from '../middleware/index.js';
+import { empresasDoPedido } from '../domain/escopo.js';
 
 export const rotasIntegracoes = Router();
 
@@ -51,20 +53,32 @@ rotasIntegracoes.post('/:sistema/segredo', exigir('integracoes', 'create'), (req
 });
 
 rotasIntegracoes.patch('/:sistema', exigir('integracoes', 'edit'), (req, res) => {
-  const ativo = (req.body ?? {}).ativo;
-  if (typeof ativo !== 'boolean') throw erroValidacao('Informe "ativo" como verdadeiro ou falso.');
-  res.json(definirAtivo(ctx(req), sistemaDaRota(req.params.sistema), ativo));
+  const corpo = (req.body ?? {}) as { ativo?: unknown; url_base?: unknown };
+  const sistema = sistemaDaRota(req.params.sistema);
+  if (corpo.url_base !== undefined) {
+    const depois = definirUrlBase(ctx(req), sistema, corpo.url_base === null ? null : String(corpo.url_base));
+    if (typeof corpo.ativo !== 'boolean') return res.json(depois);
+  }
+  if (typeof corpo.ativo !== 'boolean') {
+    throw erroValidacao('Informe "ativo" como verdadeiro ou falso, ou "url_base" com o endereço da origem.');
+  }
+  res.json(definirAtivo(ctx(req), sistema, corpo.ativo));
 });
 
 /** Dispara o payload de exemplo pelo mesmo pipeline do webhook. */
 rotasIntegracoes.post('/:sistema/teste', exigir('integracoes', 'create'), (req, res) => {
-  res.json(enviarPayloadDeTeste(ctx(req), sistemaDaRota(req.params.sistema)));
+  // O chamado de teste precisa de uma unidade de destino: ela vem do
+  // formulário, e sem escolha fica a matriz em foco.
+  const [destino] = empresasDoPedido((req.body ?? {}) as Record<string, unknown>);
+  res.json(enviarPayloadDeTeste(ctx(req), sistemaDaRota(req.params.sistema), destino));
 });
 
 rotasIntegracoes.get('/eventos', (req, res) => {
   const q = req.query;
   res.json(
     listarEventos(ctx(req), {
+      // Filtro local de unidade: vazio traz o cliente inteiro.
+      empresas: empresasDoPedido(q as Record<string, unknown>),
       sistemas: listaDaQuery(q.sistema) as SistemaOrigem[] | undefined,
       status: listaDaQuery(q.status) as StatusEvento[] | undefined,
       de: q.de ? String(q.de) : undefined,
