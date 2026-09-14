@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { useFiltroEscopo } from '../lib/filtros';
+import { Filtro, FiltroUnidades, SeletorUnidadeFoco } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta } from '../components/base';
 import { competenciaAtual, competenciaValida, dataHora, inteiro } from '../lib/formato';
 
@@ -17,7 +19,7 @@ interface Fechamento {
 }
 
 export function PaginaFechamentos() {
-  const { empresa, pode } = useSessao();
+  const { empresa, empresas, trocarEmpresa, pode } = useSessao();
   // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
   const podeEditar = pode('configuracoes', 'edit');
   const [competencia, setCompetencia] = useState(competenciaAtual());
@@ -26,6 +28,7 @@ export function PaginaFechamentos() {
   const [reabrir, setReabrir] = useState<Fechamento | null>(null);
 
   const consulta = useDados<Fechamento[]>(() => api.get('/api/fechamentos'), [empresa?.id]);
+
 
   const fechar = async (evento: FormEvent) => {
     evento.preventDefault();
@@ -42,6 +45,15 @@ export function PaginaFechamentos() {
 
   return (
     <>
+      <div className="barra-filtros">
+        <SeletorUnidadeFoco
+          empresas={empresas}
+          empresaId={empresa?.id ?? null}
+          aoTrocar={trocarEmpresa}
+          explicacao="O fechamento trava a competência DESTA unidade: as demais continuam aceitando lançamento."
+        />
+      </div>
+
       <Cartao titulo="Fechamento de competência">
         <Aviso>
           Uma competência fechada não aceita novos lançamentos nem alterações — inclusive por importação. Reabrir exige
@@ -136,12 +148,17 @@ interface FilialCadastro extends ItemCadastro {
 }
 
 export function PaginaCadastros() {
-  const { empresa, pode, recarregarFiliais } = useSessao();
+  const { empresa, empresas, trocarEmpresa, pode, recarregarFiliais } = useSessao();
   // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
   const podeEditar = pode('configuracoes', 'edit');
   const [erro, setErro] = useState<string | null>(null);
 
-  const filiais = useDados<FilialCadastro[]>(() => api.get('/api/filiais'), [empresa?.id]);
+  // O cadastro é de UMA unidade: filial, tipo de despesa e tópico pertencem à
+  // matriz, e um cadastro "do cliente inteiro" não teria onde ser gravado.
+  const filiais = useDados<FilialCadastro[]>(
+    () => api.get('/api/filiais', { empresas: empresa?.id }),
+    [empresa?.id],
+  );
   const tipos = useDados<ItemCadastro[]>(() => api.get('/api/tipos-despesa', { incluir_inativos: true }), [empresa?.id]);
   const topicos = useDados<ItemCadastro[]>(() => api.get('/api/topicos-ajuda', { incluir_inativos: true }), [empresa?.id]);
   const filas = useDados<ItemCadastro[]>(() => api.get('/api/filas'), []);
@@ -169,6 +186,15 @@ export function PaginaCadastros() {
 
   return (
     <>
+      <div className="barra-filtros">
+        <SeletorUnidadeFoco
+          empresas={empresas}
+          empresaId={empresa?.id ?? null}
+          aoTrocar={trocarEmpresa}
+          explicacao="Os cadastros abaixo (filiais, tipos de despesa, tópicos) pertencem a esta unidade e valem só para ela."
+        />
+      </div>
+
       {erro && <Aviso tipo="erro">{erro}</Aviso>}
 
       <Cartao titulo="Filiais" descricao="Uma empresa pode ter zero ou mais filiais">
@@ -251,6 +277,9 @@ export function PaginaCadastros() {
  */
 function EnderecoHelpdesk({ podeEditar }: { podeEditar: boolean }) {
   const { empresa } = useSessao();
+  // O endereço é desta unidade — cada uma pode ter instância própria do
+  // helpdesk. Sem endereço aqui, vale o configurado para o cliente em
+  // Integrações.
   const consulta = useDados<{ url_helpdesk: string }>(() => api.get('/api/sla/configuracao'), [empresa?.id]);
   const [url, setUrl] = useState<string | null>(null);
   const [erro, setErro] = useState('');
@@ -397,17 +426,34 @@ interface RegistroAuditoria {
 const ENTIDADES = ['lancamento', 'projeto', 'tarefa', 'ticket_sla', 'fechamento', 'importacao', 'filial', 'tipo_despesa'];
 
 export function PaginaAuditoria() {
-  const { empresa } = useSessao();
+  const { empresas } = useSessao();
+  // Filtro LOCAL: a trilha é do cliente, e quem audita procura um registro sem
+  // saber de antemão em qual unidade ele foi alterado.
+  const escopo = useFiltroEscopo('auditoria');
   const [entidade, setEntidade] = useState('');
   const consulta = useDados<RegistroAuditoria[]>(
-    () => api.get('/api/auditoria', { entidade: entidade || undefined, limite: 200 }),
-    [empresa?.id, entidade],
+    () =>
+      api.get('/api/auditoria', {
+        entidade: entidade || undefined,
+        empresas: escopo.params.empresas,
+        limite: 200,
+      }),
+    [escopo.params.empresas, entidade],
   );
 
   return (
     <>
       <div className="barra-filtros">
-        <Campo rotulo="Entidade">
+        <FiltroUnidades
+          empresas={empresas}
+          empresasSel={escopo.empresas}
+          aoMudarEmpresas={escopo.definirEmpresas}
+          aoLimpar={escopo.limpar}
+        />
+        <Filtro
+          rotulo="Entidade"
+          explicacao="Restringe a trilha a um tipo de registro (lançamento, projeto, chamado…). Vazio traz todos."
+        >
           <select value={entidade} onChange={(e) => setEntidade(e.target.value)}>
             <option value="">Todas</option>
             {ENTIDADES.map((e) => (
@@ -416,7 +462,7 @@ export function PaginaAuditoria() {
               </option>
             ))}
           </select>
-        </Campo>
+        </Filtro>
         <div style={{ marginLeft: 'auto', color: 'var(--tinta-fraca)', fontSize: 13 }}>
           Nenhuma alteração relevante ocorre sem trilha: quem, quando e o quê.
         </div>

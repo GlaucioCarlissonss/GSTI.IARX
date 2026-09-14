@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { SeletorUnidadeFoco } from '../components/filtro-escopo';
 import { Aviso, Campo, Cartao, Etiqueta } from '../components/base';
 import { dataHora, inteiro } from '../lib/formato';
 
@@ -61,7 +62,7 @@ const MODULOS = [
 ];
 
 export function PaginaPlanilhas() {
-  const { empresa, pode } = useSessao();
+  const { empresa, empresas, trocarEmpresa, pode } = useSessao();
   // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
   const podeEditar = pode('configuracoes', 'import');
   const [modulo, setModulo] = useState('financeiro');
@@ -76,6 +77,8 @@ export function PaginaPlanilhas() {
   const [erroMapa, setErroMapa] = useState<string | null>(null);
 
   const templates = useDados<Templates>(() => api.get('/api/planilhas/templates'), []);
+  // O histórico é do CLIENTE: quem pergunta "por que os dados não entraram?"
+  // não sabe de antemão em qual unidade a carga foi feita.
   const historico = useDados<Importacao[]>(() => api.get('/api/planilhas/importacoes'), [empresa?.id]);
   const adaptador = useDados<Adaptador>(() => api.get('/api/planilhas/mapeamentos'), [empresa?.id]);
 
@@ -90,6 +93,9 @@ export function PaginaPlanilhas() {
         simular: String(simular),
         modo,
         confirmar: String(confirmar),
+        // A unidade da carga vai explícita: o arquivo traz as filiais e os tipos
+        // de despesa DELA, e reimportá-lo precisa voltar para a mesma.
+        ...(empresa ? { empresas: String(empresa.id) } : null),
       });
       setResultado(r);
       setPrecisaConfirmar(false);
@@ -131,6 +137,15 @@ export function PaginaPlanilhas() {
 
   return (
     <>
+      <div className="barra-filtros">
+        <SeletorUnidadeFoco
+          empresas={empresas}
+          empresaId={empresa?.id ?? null}
+          aoTrocar={trocarEmpresa}
+          explicacao="Exportar e importar são de UMA unidade: o arquivo traz as filiais, os tipos de despesa e os cenários dela, e reimportá-lo volta para a mesma."
+        />
+      </div>
+
       <div className="grade c2">
         <Cartao
           titulo="Importar planilha"
@@ -215,7 +230,12 @@ export function PaginaPlanilhas() {
                   key={m.chave}
                   type="button"
                   className="botao"
-                  onClick={() => api.baixar(`/api/planilhas/exportacao/${m.chave}.xlsx`, `gsti-${m.chave}.xlsx`)}
+                  onClick={() =>
+                    api.baixar(
+                      `/api/planilhas/exportacao/${m.chave}.xlsx?empresas=${empresa?.id ?? ''}`,
+                      `gsti-${m.chave}.xlsx`,
+                    )
+                  }
                 >
                   Base — {m.rotulo}
                 </button>
@@ -231,7 +251,12 @@ export function PaginaPlanilhas() {
                     key={m.chave}
                     type="button"
                     className="botao pequeno"
-                    onClick={() => api.baixar(`/api/planilhas/templates/${m.chave}.xlsx`, `template-${m.chave}.xlsx`)}
+                    onClick={() =>
+                      api.baixar(
+                        `/api/planilhas/templates/${m.chave}.xlsx?empresas=${empresa?.id ?? ''}`,
+                        `template-${m.chave}.xlsx`,
+                      )
+                    }
                   >
                     {m.rotulo}
                   </button>

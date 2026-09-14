@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { SeletorUnidadeFoco } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal } from '../components/base';
 import { dataHora } from '../lib/formato';
 
@@ -49,7 +50,7 @@ interface Minhas {
 }
 
 export function PaginaAcessos() {
-  const { empresa } = useSessao();
+  const { empresa, empresas, trocarEmpresa } = useSessao();
   const usuarios = useDados<Usuario[]>(() => api.get('/api/acesso/usuarios'), [empresa?.id]);
   const perfis = useDados<Perfil[]>(() => api.get('/api/acesso/perfis'), [empresa?.id]);
   const meta = useDados<Minhas>(() => api.get('/api/acesso/minhas-permissoes'), [empresa?.id]);
@@ -88,13 +89,22 @@ export function PaginaAcessos() {
 
   return (
     <>
+      <div className="barra-filtros">
+        <SeletorUnidadeFoco
+          empresas={empresas}
+          empresaId={empresa?.id ?? null}
+          aoTrocar={trocarEmpresa}
+          explicacao="O acesso é por unidade: o papel e o perfil concedidos aqui valem só nesta, e não nas demais do cliente."
+        />
+      </div>
+
       {erro && <Aviso tipo="erro">{erro}</Aviso>}
       {aviso && <Aviso tipo="ok">{aviso}</Aviso>}
       {email.dados && !email.dados.configurado && <Aviso tipo="erro">{email.dados.aviso}</Aviso>}
 
       <Cartao
         titulo="Usuários"
-        descricao="O acesso é por empresa: papel e perfil valem só aqui"
+        descricao={`O acesso é por unidade: papel e perfil valem só em ${empresa?.nome ?? 'esta unidade'}`}
         acoes={
           <button type="button" className="botao primario" onClick={() => setNovoUsuario(true)}>
             Novo usuário

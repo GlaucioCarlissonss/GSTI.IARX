@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { FichasSelecao, SeletorMulti } from './seletor-multi';
 import { useSessao } from '../lib/sessao';
+import { useLimparFiltros } from '../lib/filtros';
 import { ICONE_TEMA, ROTULO_TEMA, useTema } from '../lib/tema';
 
 // O menu é o desenho dos módulos do negócio. Quem trabalha com dinheiro não
@@ -51,28 +51,16 @@ const NAVEGACAO = [
 ];
 
 export function Layout() {
-  const {
-    usuario,
-    empresas,
-    empresa,
-    trocarEmpresa,
-    cliente,
-    clientes,
-    trocarCliente,
-    filiaisSel,
-    definirFiliais,
-    filiais,
-    sair,
-    ehGestor,
-    pode,
-    permissoes,
-  } = useSessao();
+  const { usuario, empresas, cliente, trocarCliente, sair, ehGestor, pode, permissoes } = useSessao();
   const { tema, alternar } = useTema();
+  const limparFiltros = useLimparFiltros();
 
-  const itensFilial = [
-    { valor: 'nenhuma', rotulo: 'Sem filial (empresa)' },
-    ...filiais.map((f) => ({ valor: String(f.id), rotulo: f.uf ? `${f.nome} — ${f.uf}` : f.nome })),
-  ];
+  // Trocar de cliente recarrega o contexto inteiro: o filtro de uma tela no
+  // contratante anterior não significa nada no próximo.
+  const trocar = () => {
+    limparFiltros();
+    trocarCliente();
+  };
 
   return (
     <div className="app">
@@ -84,16 +72,21 @@ export function Layout() {
 
         {/* O cliente em contexto fica ao lado da marca porque é o recorte que
             governa TODAS as telas abaixo — e trocar tem de ser um clique, não
-            uma ida ao login. Com um cliente só, trocar não teria para onde ir. */}
+            uma ida ao login. O botão aparece SEMPRE, inclusive com um cliente
+            só: quem ganha acesso a um segundo contratante no meio da semana
+            precisa achar a saída sem descobrir que ela só existe depois. */}
         {cliente && (
           <div className="cliente-atual">
             <span>Cliente</span>
             <strong title={cliente.nome}>{cliente.nome}</strong>
-            {clientes.length > 1 && (
-              <button type="button" className="botao discreto pequeno" onClick={trocarCliente}>
-                Trocar cliente
-              </button>
-            )}
+            <button
+              type="button"
+              className="botao discreto pequeno"
+              onClick={trocar}
+              title="Volta à tela de seleção para escolher outro contratante"
+            >
+              Trocar cliente
+            </button>
           </div>
         )}
         <nav className="menu">
@@ -141,47 +134,24 @@ export function Layout() {
       </aside>
 
       <div className="conteudo">
+        {/* O topo perdeu os seletores de empresa e filial. Eles eram um recorte
+            GLOBAL: mexer neles para conferir um número num módulo recortava o
+            sistema inteiro, e prendia telas que não são de unidade nenhuma — a
+            de Integrações, por exemplo — a uma escolha que não lhes diz
+            respeito. Cada tela tem agora o seu filtro, que vale só nela. */}
         <header className="topo">
           <div className="titulo">
-            <h1>{empresa?.nome ?? 'Sem empresa'}</h1>
+            <h1>{cliente?.nome ?? 'Sem cliente'}</h1>
             <small>
-              {filiaisSel.length === 0
-                ? 'Consolidado da empresa'
-                : filiaisSel.length === 1
-                  ? (itensFilial.find((i) => i.valor === String(filiaisSel[0]))?.rotulo ?? 'Filial')
-                  : `${filiaisSel.length} filiais`}
+              {empresas.length === 1
+                ? empresas[0]!.nome
+                : `${empresas.length} empresas (matrizes) · cada tela filtra a sua`}
               {/* O perfil é o que governa de fato; o papel antigo só responde
                   enquanto nenhum perfil foi atribuído. */}
               {permissoes?.perfil
                 ? ` · perfil ${permissoes.perfil.nome}`
                 : !ehGestor && ' · acesso somente leitura'}
             </small>
-          </div>
-
-          <div className="campo">
-            <label htmlFor="sel-empresa">Empresa</label>
-            <select
-              id="sel-empresa"
-              value={empresa?.id ?? ''}
-              onChange={(e) => trocarEmpresa(Number(e.target.value))}
-            >
-              {empresas.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="campo">
-            <label>Filial</label>
-            <SeletorMulti
-              rotulo="Filial"
-              largura={200}
-              itens={itensFilial}
-              selecionados={filiaisSel.map(String)}
-              aoMudar={(v) => definirFiliais(v.map((x) => (x === 'nenhuma' ? 'nenhuma' : Number(x))))}
-            />
           </div>
 
           <button
@@ -195,20 +165,6 @@ export function Layout() {
             {ROTULO_TEMA[tema]}
           </button>
         </header>
-
-        {filiaisSel.length > 1 && (
-          <div style={{ padding: '0 24px 12px' }}>
-            <FichasSelecao
-              grupos={[{
-                chave: 'filial',
-                rotulo: 'Filial',
-                itens: itensFilial,
-                selecionados: filiaisSel.map(String),
-                aoMudar: (v) => definirFiliais(v.map((x) => (x === 'nenhuma' ? 'nenhuma' : Number(x)))),
-              }]}
-            />
-          </div>
-        )}
 
         <main className="pagina">
           <Outlet />

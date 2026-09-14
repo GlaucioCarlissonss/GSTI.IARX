@@ -15,6 +15,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { useFiltroEscopo } from '../lib/filtros';
+import { EXPLICACAO, Filtro, FiltroUnidades } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, Etiqueta, Modal } from '../components/base';
 import { SeletorMulti } from '../components/seletor-multi';
 import { competenciaValida, inteiro, moeda } from '../lib/formato';
@@ -85,7 +87,9 @@ export function resumoDoLancamento(l: Lancamento): string {
 }
 
 export function PaginaRelatorio() {
-  const { empresa, filialId, paramFilial } = useSessao();
+  const { empresas, filiais } = useSessao();
+  // Filtro LOCAL deste relatório.
+  const escopo = useFiltroEscopo('relatorio');
   // Padrão recolhido, como na tabela dinâmica do anexo: a visão macro primeiro.
   const grupos = useExpansao('gsti-relatorio-expandidos', 'recolhido');
   const [de, setDe] = useState('');
@@ -97,12 +101,13 @@ export function PaginaRelatorio() {
   const consulta = useDados<Relatorio>(
     () =>
       api.get('/api/dashboards/relatorio', {
-        filial_id: paramFilial(),
+        empresas: escopo.params.empresas,
+        filial_id: escopo.params.filial_id,
         competencia_inicio: competenciaValida(de) ? de : undefined,
         competencia_fim: competenciaValida(ate) ? ate : undefined,
         classificacao: classificacoes.join(','),
       }),
-    [empresa?.id, filialId, de, ate, classificacoes],
+    [escopo.params.empresas, escopo.params.filial_id, de, ate, classificacoes],
   );
 
   // O detalhe de cada linha expandida, buscado sob demanda e mantido em cache
@@ -119,13 +124,14 @@ export function PaginaRelatorio() {
     document.addEventListener('keydown', sair);
     return () => document.removeEventListener('keydown', sair);
   }, [telaCheia]);
-  useEffect(() => setDetalhes({}), [empresa?.id, filialId, de, ate, classificacoes]);
+  useEffect(() => setDetalhes({}), [escopo.params.empresas, escopo.params.filial_id, de, ate, classificacoes]);
 
   const buscarDetalhe = useCallback(
     async (linha: LinhaRelatorio) => {
       setDetalhes((d) => (d[linha.chave] ? d : { ...d, [linha.chave]: 'carregando' }));
       try {
         const r = await api.get<Detalhe>('/api/dashboards/relatorio/lancamentos', {
+          empresas: escopo.params.empresas,
           filial_id: linha.filial_id === null ? 'nenhuma' : linha.filial_id,
           tipo_despesa_id: linha.tipo_despesa_id ?? undefined,
           competencia_inicio: competenciaValida(de) ? de : undefined,
@@ -180,13 +186,22 @@ export function PaginaRelatorio() {
   return (
     <>
       <div className="barra-filtros">
-        <Campo rotulo="De">
+        <FiltroUnidades
+          empresas={empresas}
+          empresasSel={escopo.empresas}
+          aoMudarEmpresas={escopo.definirEmpresas}
+          filiais={filiais}
+          filiaisSel={escopo.filiais}
+          aoMudarFiliais={escopo.definirFiliais}
+          aoLimpar={escopo.limpar}
+        />
+        <Filtro rotulo="De" explicacao={EXPLICACAO.competenciaIntervalo}>
           <input value={de} onChange={(e) => setDe(e.target.value)} placeholder="MM/AAAA" style={{ width: 100 }} />
-        </Campo>
-        <Campo rotulo="Até">
+        </Filtro>
+        <Filtro rotulo="Até" explicacao={EXPLICACAO.competenciaIntervalo}>
           <input value={ate} onChange={(e) => setAte(e.target.value)} placeholder="MM/AAAA" style={{ width: 100 }} />
-        </Campo>
-        <Campo rotulo="Classificação">
+        </Filtro>
+        <Filtro rotulo="Classificação" explicacao="Separa custeio (despesa) de investimento. Vazio traz os dois.">
           <SeletorMulti
             rotulo="Classificação"
             largura={190}
@@ -197,7 +212,7 @@ export function PaginaRelatorio() {
             selecionados={classificacoes}
             aoMudar={setClassificacoes}
           />
-        </Campo>
+        </Filtro>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'flex-end' }}>
           <button
             type="button"

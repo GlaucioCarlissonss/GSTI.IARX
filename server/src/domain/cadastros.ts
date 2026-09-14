@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { erroConflito, erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
 import { auditar } from './auditoria.js';
 import type { Contexto } from './contexto.js';
+import { escopoSql } from './escopo.js';
 
 /** Tipos de despesa criados automaticamente em toda empresa nova. */
 export const TIPOS_DESPESA_PADRAO = [
@@ -18,10 +19,23 @@ export const TIPOS_DESPESA_PADRAO = [
 
 // ---------------------------------------------------------------- Filiais
 
-export function listarFiliais(ctx: Contexto) {
+/**
+ * As filiais do CLIENTE, não só as da matriz em foco.
+ *
+ * O filtro de filial de cada tela recorta o que a tela mostra — e a tela mostra
+ * o cliente inteiro. Oferecer só as filiais de uma matriz deixaria de fora,
+ * sem aviso, metade das unidades que estão na lista. A matriz vem na linha para
+ * a tela distinguir filiais homônimas de matrizes diferentes.
+ */
+export function listarFiliais(ctx: Contexto, empresas?: number[]) {
+  const alcance = escopoSql(ctx, empresas, 'f.empresa_id');
   return db()
-    .prepare('SELECT id, nome, cidade, uf, ativo FROM filiais WHERE empresa_id = ? ORDER BY nome')
-    .all(ctx.empresaId);
+    .prepare(
+      `SELECT f.id, f.nome, f.cidade, f.uf, f.ativo, f.empresa_id, e.nome AS empresa_nome
+         FROM filiais f JOIN empresas e ON e.id = f.empresa_id
+        WHERE ${alcance.sql} ORDER BY e.nome, f.nome`,
+    )
+    .all(...alcance.params);
 }
 
 export function criarFilial(ctx: Contexto, dados: { nome: string; cidade?: string; uf?: string }) {

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { useFiltroEscopo } from '../lib/filtros';
+import { FichasUnidades, FiltroUnidades } from '../components/filtro-escopo';
 import { Aviso, Carregando, Cartao, Etiqueta } from '../components/base';
 import { GraficoRanking, Indicador, Legenda } from '../components/graficos';
 import { competenciaAtual, inteiro, mesCurto, ROTULO_STATUS_PROJETO } from '../lib/formato';
@@ -92,7 +94,9 @@ const SERIES_GANTT = [
 const SEM_RESPONSAVEL = '(não atribuído)';
 
 export function PaginaProjetos() {
-  const { empresa, filialId, paramFilial } = useSessao();
+  const { empresas, filiais } = useSessao();
+  // Filtro LOCAL desta tela.
+  const escopo = useFiltroEscopo('projetos');
   // Projeto e grupo de tarefas usam o mesmo estado persistido, com prefixo
   // diferente na chave: são dois níveis do mesmo cronograma.
   const grupos = useExpansao('gsti-gantt-comprimidos', 'expandido');
@@ -102,15 +106,23 @@ export function PaginaProjetos() {
   const caixa = useRef<HTMLDivElement>(null);
 
   const consulta = useDados<DashboardProjetos>(
-    () => api.get('/api/dashboards/projetos', { filial_id: paramFilial() }),
-    [empresa?.id, filialId],
+    () =>
+      api.get('/api/dashboards/projetos', {
+        empresas: escopo.params.empresas,
+        filial_id: escopo.params.filial_id,
+      }),
+    [escopo.params.empresas, escopo.params.filial_id],
   );
 
   /**
    * O recorte em vigor na tela, repassado a todo detalhamento. É o que garante
    * que a lista aberta some exatamente o número que estava no indicador.
    */
-  const recorte = (extra: Record<string, unknown> = {}) => ({ filial_id: paramFilial(), ...extra });
+  const recorte = (extra: Record<string, unknown> = {}) => ({
+    empresas: escopo.params.empresas,
+    filial_id: escopo.params.filial_id,
+    ...extra,
+  });
 
   const indiceHoje = useMemo(() => {
     if (!consulta.dados) return -1;
@@ -193,6 +205,26 @@ export function PaginaProjetos() {
 
   return (
     <>
+      <div className="barra-filtros">
+        <FiltroUnidades
+          empresas={empresas}
+          empresasSel={escopo.empresas}
+          aoMudarEmpresas={escopo.definirEmpresas}
+          filiais={filiais}
+          filiaisSel={escopo.filiais}
+          aoMudarFiliais={escopo.definirFiliais}
+          aoLimpar={escopo.limpar}
+        />
+      </div>
+      <FichasUnidades
+        empresas={empresas}
+        empresasSel={escopo.empresas}
+        aoMudarEmpresas={escopo.definirEmpresas}
+        filiais={filiais}
+        filiaisSel={escopo.filiais}
+        aoMudarFiliais={escopo.definirFiliais}
+      />
+
       <div className="grade c4">
         <Indicador
           rotulo="Projetos"

@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { useFiltroEscopo } from '../lib/filtros';
+import { EXPLICACAO, FichasUnidades, Filtro, FiltroUnidades } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal } from '../components/base';
 import { SeletorMulti } from '../components/seletor-multi';
 import { GraficoBarras, GraficoLinhas, GraficoRanking, Indicador } from '../components/graficos';
@@ -30,17 +32,20 @@ const SERIES_SLA = [
 ];
 
 export function PaginaSla() {
-  const { empresa, filialId, paramFilial } = useSessao();
+  const { empresas, filiais } = useSessao();
+  // Filtro LOCAL deste painel.
+  const escopo = useFiltroEscopo('sla');
   const [competencias, setCompetencias] = useState<string[]>([]);
   const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
 
   const consulta = useDados<DashboardSla>(
     () =>
       api.get('/api/dashboards/sla', {
-        filial_id: paramFilial(),
+        empresas: escopo.params.empresas,
+        filial_id: escopo.params.filial_id,
         competencia: competencias.join(',') || undefined,
       }),
-    [empresa?.id, filialId, competencias.join(',')],
+    [escopo.params.empresas, escopo.params.filial_id, competencias.join(',')],
   );
 
   if (consulta.erro) return <Aviso tipo="erro">{consulta.erro}</Aviso>;
@@ -52,7 +57,8 @@ export function PaginaSla() {
    * garante que os chamados abertos são os mesmos que formaram o número.
    */
   const doMes = (extra: Record<string, unknown> = {}) => ({
-    filial_id: paramFilial(),
+    empresas: escopo.params.empresas,
+    filial_id: escopo.params.filial_id,
     competencia: d.escopo.competencia,
     ...extra,
   });
@@ -76,15 +82,33 @@ export function PaginaSla() {
   return (
     <>
       <div className="barra-filtros">
-        <Campo rotulo="Competência" dica="Nenhuma = último mês com registro">
+        <FiltroUnidades
+          empresas={empresas}
+          empresasSel={escopo.empresas}
+          aoMudarEmpresas={escopo.definirEmpresas}
+          filiais={filiais}
+          filiaisSel={escopo.filiais}
+          aoMudarFiliais={escopo.definirFiliais}
+          aoLimpar={escopo.limpar}
+        />
+        <Filtro rotulo="Competência" explicacao={`${EXPLICACAO.periodo} Nenhuma marcada traz o último mês com registro.`}>
           <SeletorMulti rotulo="Competência" largura={180} itens={itensMes}
             selecionados={competencias} aoMudar={setCompetencias} />
-        </Campo>
+        </Filtro>
         <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--tinta-fraca)' }}>
-          {d.escopo.consolidado ? 'Consolidado da empresa' : 'Filial selecionada'} · competência{' '}
-          <strong style={{ color: 'var(--tinta-2)' }}>{d.escopo.competencia}</strong>
+          {escopo.empresas.length === 0 ? 'Todas as unidades do cliente' : `${escopo.empresas.length} unidade(s)`} ·
+          competência <strong style={{ color: 'var(--tinta-2)' }}>{d.escopo.competencia}</strong>
         </div>
       </div>
+
+      <FichasUnidades
+        empresas={empresas}
+        empresasSel={escopo.empresas}
+        aoMudarEmpresas={escopo.definirEmpresas}
+        filiais={filiais}
+        filiaisSel={escopo.filiais}
+        aoMudarFiliais={escopo.definirFiliais}
+      />
 
       <div className="grade c4">
         <Indicador
@@ -154,7 +178,7 @@ export function PaginaSla() {
               const m = d.tendencia_mensal[i]!;
               setDetalhe(
                 detalheDeRegistrosSla(`Conformidade de ${m.competencia}`,
-                  { filial_id: paramFilial(), competencia: m.competencia }, m.total_atendidos),
+                  { empresas: escopo.params.empresas, filial_id: escopo.params.filial_id, competencia: m.competencia }, m.total_atendidos),
               );
             }}
           />
@@ -262,7 +286,11 @@ interface Topico {
 }
 
 export function PaginaRegistrosSla() {
-  const { empresa, filialId, paramFilial, filiais, pode } = useSessao();
+  const { empresa, empresas, filiais, pode } = useSessao();
+  // Filtro LOCAL desta tela: a lista de chamados não segue o painel.
+  const escopo = useFiltroEscopo('sla-registros');
+  // Sugestão de unidade para o formulário de registro — não amarra a escolha.
+  const empresaEmFoco = escopo.empresas.length === 1 ? escopo.empresas[0]! : (empresa?.id ?? null);
   // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
   const podeEditar = pode('suporte_ostick', 'create');
   const [novo, setNovo] = useState(false);
@@ -270,14 +298,15 @@ export function PaginaRegistrosSla() {
   const [competencia, setCompetencia] = useState('');
 
   const filas = useDados<Fila[]>(() => api.get('/api/filas'), []);
-  const topicos = useDados<Topico[]>(() => api.get('/api/topicos-ajuda'), [empresa?.id]);
+  const topicos = useDados<Topico[]>(() => api.get('/api/topicos-ajuda'), []);
   const consulta = useDados<{ itens: RegistroSla[]; resumo: DashboardSla['totais_mes'] }>(
     () =>
       api.get('/api/sla', {
-        filial_id: paramFilial(),
+        empresas: escopo.params.empresas,
+        filial_id: escopo.params.filial_id,
         competencia: competenciaValida(competencia) ? competencia : undefined,
       }),
-    [empresa?.id, filialId, competencia],
+    [escopo.params.empresas, escopo.params.filial_id, competencia],
   );
 
   // As colunas do chamado só aparecem quando há chamado no recorte: num
@@ -294,14 +323,23 @@ export function PaginaRegistrosSla() {
   return (
     <>
       <div className="barra-filtros">
-        <Campo rotulo="Competência">
+        <FiltroUnidades
+          empresas={empresas}
+          empresasSel={escopo.empresas}
+          aoMudarEmpresas={escopo.definirEmpresas}
+          filiais={filiais}
+          filiaisSel={escopo.filiais}
+          aoMudarFiliais={escopo.definirFiliais}
+          aoLimpar={escopo.limpar}
+        />
+        <Filtro rotulo="Competência" explicacao={EXPLICACAO.periodo}>
           <input
             value={competencia}
             onChange={(e) => setCompetencia(e.target.value)}
             placeholder="todas"
             style={{ width: 110 }}
           />
-        </Campo>
+        </Filtro>
         {podeEditar && (
           <button type="button" className="botao primario" onClick={() => setNovo(true)} style={{ marginLeft: 'auto' }}>
             Registrar tickets do mês
@@ -398,6 +436,8 @@ export function PaginaRegistrosSla() {
         aoFechar={() => setNovo(false)}
         filas={filas.dados ?? []}
         topicos={topicos.dados ?? []}
+        empresas={empresas}
+        empresaPadrao={empresaEmFoco}
         filiais={filiais}
         aoSalvar={consulta.recarregar}
       />
@@ -423,6 +463,8 @@ function FormularioSla({
   aoFechar,
   filas,
   topicos,
+  empresas,
+  empresaPadrao,
   filiais,
   aoSalvar,
 }: {
@@ -430,10 +472,14 @@ function FormularioSla({
   aoFechar: () => void;
   filas: Fila[];
   topicos: Topico[];
-  filiais: Array<{ id: number; nome: string }>;
+  empresas: Array<{ id: number; nome: string }>;
+  empresaPadrao: number | null;
+  /** Todas as filiais do cliente; o formulário mostra as da unidade escolhida. */
+  filiais: Array<{ id: number; nome: string; empresa_id?: number }>;
   aoSalvar: () => void;
 }) {
   const vazio = {
+    empresa_id: empresaPadrao ? String(empresaPadrao) : '',
     filial_id: '',
     competencia: competenciaAtual(),
     fila_id: '',
@@ -453,6 +499,8 @@ function FormularioSla({
     setErro(null);
     try {
       await api.post('/api/sla', {
+        // A unidade sai do formulário: registrar não depende do filtro da tela.
+        empresa_id: form.empresa_id ? Number(form.empresa_id) : undefined,
         filial_id: form.filial_id ? Number(form.filial_id) : null,
         competencia: form.competencia,
         fila_id: Number(form.fila_id),
@@ -472,14 +520,31 @@ function FormularioSla({
     <Modal titulo="Registrar tickets do mês" aberto={aberto} aoFechar={aoFechar}>
       <form onSubmit={submeter} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div className="grade c3">
+          {empresas.length > 1 && (
+            <Campo rotulo="Empresa (matriz)" dica="Onde o registro vai nascer. Independe do filtro da tela.">
+              <select
+                value={form.empresa_id}
+                onChange={(e) => setForm({ ...form, empresa_id: e.target.value, filial_id: '' })}
+                required
+              >
+                {empresas.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+          )}
           <Campo rotulo="Filial">
             <select value={form.filial_id} onChange={(e) => setForm({ ...form, filial_id: e.target.value })}>
-              <option value="">— empresa —</option>
-              {filiais.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.nome}
-                </option>
-              ))}
+              <option value="">— matriz —</option>
+              {filiais
+                .filter((f) => f.empresa_id === undefined || String(f.empresa_id) === form.empresa_id)
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nome}
+                  </option>
+                ))}
             </select>
           </Campo>
           <Campo rotulo="Competência (MM/AAAA)">

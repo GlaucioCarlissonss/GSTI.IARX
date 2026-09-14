@@ -30,6 +30,9 @@ export interface Filial {
   cidade: string | null;
   uf: string | null;
   ativo: number;
+  /** A matriz a que a filial pertence — a lista é do cliente inteiro. */
+  empresa_id?: number;
+  empresa_nome?: string;
 }
 
 export interface Usuario {
@@ -82,11 +85,14 @@ interface EstadoSessao {
   recarregarClientes: () => Promise<void>;
   /** Só as matrizes do cliente escolhido. */
   empresas: Empresa[];
+  /**
+   * Matriz EM FOCO: a que recebe o que for criado, exportado ou importado sem
+   * escolha explícita. Não é mais recorte de leitura — isso é do cliente, e
+   * cada tela aplica o seu filtro local por cima.
+   */
   empresa: Empresa | null;
-  filialId: number | 'todas' | 'nenhuma';
-  /** Filiais em foco. Lista vazia = todas (consolidado). `'nenhuma'` é o nível empresa. */
-  filiaisSel: Array<number | 'nenhuma'>;
   carregando: boolean;
+  /** Todas as filiais do cliente, de todas as matrizes. */
   filiais: Filial[];
   /** O identificador de login é o USUÁRIO; o e-mail não autentica. */
   entrar: (usuario: string, senha: string) => Promise<void>;
@@ -95,11 +101,7 @@ interface EstadoSessao {
   instalacao: EstadoInstalacao | null;
   sair: () => void;
   trocarEmpresa: (id: number) => void;
-  definirFilial: (valor: number | 'todas' | 'nenhuma') => void;
-  definirFiliais: (valores: Array<number | 'nenhuma'>) => void;
   recarregarFiliais: () => Promise<void>;
-  /** Parâmetro de filial pronto para a query da API. */
-  paramFilial: () => string | undefined;
   ehGestor: boolean;
   /** Permissões do perfil nesta empresa; `null` enquanto não chegaram. */
   permissoes: Permissoes | null;
@@ -119,11 +121,6 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   const [clienteId, setClienteId] = useState<number | null>(sessaoLocal.cliente());
   const [carregandoClientes, setCarregandoClientes] = useState(true);
   const [erroClientes, setErroClientes] = useState<string | null>(null);
-  const [filiaisSel, setFiliaisSel] = useState<Array<number | 'nenhuma'>>([]);
-  // `filialId` continua existindo para o código que só lida com uma: é a única
-  // selecionada, ou 'todas' quando o recorte é consolidado ou múltiplo.
-  const filialId: number | 'todas' | 'nenhuma' = filiaisSel.length === 1 ? filiaisSel[0]! : 'todas';
-  const setFilialId = (v: number | 'todas' | 'nenhuma') => setFiliaisSel(v === 'todas' ? [] : [v]);
   const [filiais, setFiliais] = useState<Filial[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [instalacao, setInstalacao] = useState<EstadoInstalacao | null>(null);
@@ -132,7 +129,6 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   const aplicarEmpresa = useCallback((id: number | null) => {
     setEmpresaId(id);
     sessaoLocal.definirEmpresa(id);
-    setFiliaisSel([]);
   }, []);
 
   const carregarSessao = useCallback(async () => {
@@ -233,10 +229,12 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       .catch(() => setInstalacao({ registro_aberto: false, primeiro_acesso: false }));
   }, [usuario]);
 
+  // As filiais são do CLIENTE, não da matriz em foco: o filtro de cada tela
+  // recorta o que a tela mostra, e a tela mostra o cliente inteiro.
   const recarregarFiliais = useCallback(async () => {
-    if (!empresaId) return setFiliais([]);
+    if (!clienteId) return setFiliais([]);
     setFiliais(await api.get<Filial[]>('/api/filiais'));
-  }, [empresaId]);
+  }, [clienteId]);
 
   useEffect(() => {
     void recarregarFiliais();
@@ -341,8 +339,6 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       recarregarClientes,
       empresas,
       empresa,
-      filialId,
-      filiaisSel,
       filiais,
       carregando,
       instalacao,
@@ -351,11 +347,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       criarEmpresa,
       sair,
       trocarEmpresa: aplicarEmpresa,
-      definirFilial: setFilialId,
-      definirFiliais: setFiliaisSel,
       recarregarFiliais,
-      // A API aceita lista separada por vírgula; vazio significa consolidado.
-      paramFilial: () => (filiaisSel.length ? filiaisSel.map(String).join(',') : undefined),
       ehGestor: empresa?.papel === 'gestor',
       permissoes,
       // Enquanto a resposta não chega, nada é escondido. Esconder antes de
@@ -382,8 +374,6 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
       recarregarClientes,
       empresas,
       empresa,
-      filialId,
-      filiaisSel,
       filiais,
       carregando,
       instalacao,

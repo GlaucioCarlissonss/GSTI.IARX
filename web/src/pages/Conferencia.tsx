@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { useFiltroEscopo } from '../lib/filtros';
+import { EXPLICACAO, Filtro, FiltroUnidades } from '../components/filtro-escopo';
 import { useState } from 'react';
 import { Aviso, Campo, Carregando, Cartao, Etiqueta } from '../components/base';
 import { SeletorMulti } from '../components/seletor-multi';
@@ -55,13 +57,21 @@ const CURTO_ORIGEM: Record<string, string> = {
 
 export function PaginaConferencia() {
   const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
-  const { empresa } = useSessao();
+  const { empresas } = useSessao();
+  // Filtro LOCAL desta conferência.
+  const escopo = useFiltroEscopo('conferencia');
   const [cenariosSel, setCenariosSel] = useState<string[]>(['oficial']);
   const cenarios = useDados<Array<{ chave: string; nome: string }>>(
-    () => api.get('/api/lancamentos/cenarios/lista'), [empresa?.id]);
+    () => api.get('/api/lancamentos/cenarios/lista', { empresas: escopo.params.empresas }),
+    [escopo.params.empresas],
+  );
   const consulta = useDados<Conferencia>(
-    () => api.get('/api/dashboards/conferencia', { cenario: cenariosSel.join(',') }),
-    [empresa?.id, cenariosSel.join(',')],
+    () =>
+      api.get('/api/dashboards/conferencia', {
+        cenario: cenariosSel.join(','),
+        empresas: escopo.params.empresas,
+      }),
+    [escopo.params.empresas, cenariosSel.join(',')],
   );
 
   if (consulta.erro) return <Aviso tipo="erro">{consulta.erro}</Aviso>;
@@ -84,7 +94,13 @@ export function PaginaConferencia() {
       </Aviso>
 
       <div className="barra-filtros">
-        <Campo rotulo="Cenário de projeção">
+        <FiltroUnidades
+          empresas={empresas}
+          empresasSel={escopo.empresas}
+          aoMudarEmpresas={escopo.definirEmpresas}
+          aoLimpar={escopo.limpar}
+        />
+        <Filtro rotulo="Cenário de projeção" explicacao={EXPLICACAO.cenario}>
           <SeletorMulti
             rotulo="Cenário de projeção"
             largura={200}
@@ -95,7 +111,7 @@ export function PaginaConferencia() {
             selecionados={cenariosSel}
             aoMudar={setCenariosSel}
           />
-        </Campo>
+        </Filtro>
       </div>
 
       <div className="grade c4">
@@ -140,7 +156,10 @@ export function PaginaConferencia() {
         />
       </div>
 
-      <Cartao titulo="Composição por origem" descricao={`Cenário ${c.cenario}, consolidado da empresa.`}>
+      <Cartao
+        titulo="Composição por origem"
+        descricao={`Cenário ${c.cenario} · ${escopo.empresas.length === 0 ? 'todas as unidades do cliente' : `${escopo.empresas.length} unidade(s)`}.`}
+      >
         <div className="tabela-envolucro">
           <table>
             <thead>

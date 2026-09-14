@@ -19,7 +19,14 @@ const usuario = registrar({
   senha: process.env.SENHA_VERIFICACAO || 'varredura2026',
   username: 'gestora',
 });
-criarEmpresa(usuario.id, { nome: 'ALIANÇA' });
+const alianca = criarEmpresa(usuario.id, { nome: 'ALIANÇA' });
+// Uma SEGUNDA matriz no mesmo cliente: é o caso em que o escopo por cliente e o
+// filtro local de cada tela mudam o resultado. Com uma matriz só, a mudança
+// seria invisível na tela.
+const segunda = criarMatriz(alianca.cliente_id!, { nome: 'ALIANÇA — Filial Norte' }) as { id: number };
+db()
+  .prepare("INSERT INTO usuario_empresas (usuario_id, empresa_id, papel) VALUES (?, ?, 'gestor')")
+  .run(usuario.id, segunda.id);
 
 const outro = criarCliente({ nome: 'Limas IT' });
 vincularUsuario(usuario.id, outro.id);

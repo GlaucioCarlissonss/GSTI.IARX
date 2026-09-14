@@ -9,6 +9,8 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { useFiltroEscopo } from '../lib/filtros';
+import { EXPLICACAO, Filtro, FiltroUnidades } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, Etiqueta, Modal } from '../components/base';
 import { SeletorMulti } from '../components/seletor-multi';
 import { dataHora } from '../lib/formato';
@@ -22,9 +24,21 @@ interface Config {
   source_system: SistemaOrigem;
   webhook_path: string;
   tem_segredo: boolean;
+  /** Endereço base do sistema de origem, para o link de volta ao chamado. */
+  url_base: string | null;
   ativo: boolean;
   ultimo_evento_em: string | null;
   ultimo_erro: string | null;
+}
+
+/**
+ * A resposta da tela: a configuração é do CLIENTE, e as unidades vêm junto
+ * porque o chamado tem sempre uma de destino.
+ */
+interface VisaoIntegracoes {
+  cliente_id: number;
+  unidades: Array<{ id: number; nome: string }>;
+  integracoes: Config[];
 }
 
 interface Evento {
@@ -71,11 +85,59 @@ function BotaoCopiar({ texto, rotulo }: { texto: string; rotulo: string }) {
   );
 }
 
+/**
+ * Endereço base do sistema de origem, editável na própria linha.
+ *
+ * Fica num componente porque o campo tem estado próprio — o que está digitado
+ * ainda não é o que está salvo —, e um estado por origem no componente-pai
+ * viraria um mapa de strings sem dono.
+ */
+function EnderecoOrigem({
+  sistema,
+  valor,
+  podeEditar,
+  aoSalvar,
+}: {
+  sistema: SistemaOrigem;
+  valor: string | null;
+  podeEditar: boolean;
+  aoSalvar: (url: string | null) => void;
+}) {
+  const [texto, setTexto] = useState<string | null>(null);
+  const atual = texto ?? valor ?? '';
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <input
+        value={atual}
+        aria-label={`Endereço base do ${sistema}`}
+        placeholder="https://helpdesk.exemplo.com/ticket.php?id="
+        onChange={(e) => setTexto(e.target.value)}
+        style={{ flex: 1 }}
+      />
+      <button
+        type="button"
+        className="botao pequeno"
+        disabled={!podeEditar || atual === (valor ?? '')}
+        onClick={() => aoSalvar(atual.trim() || null)}
+      >
+        Salvar
+      </button>
+    </div>
+  );
+}
+
 export function PaginaIntegracoes() {
-  const { empresa, pode } = useSessao();
+  const { empresa, cliente, pode } = useSessao();
   // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
   const podeEditar = pode('integracoes', 'edit');
-  const configs = useDados<Config[]>(() => api.get('/api/integracoes'), [empresa?.id]);
+  // A integração é do CLIENTE: esta tela não depende de filtro de empresa
+  // nenhum — era exatamente o defeito que a bloqueava com mais de uma marcada.
+  const configs = useDados<VisaoIntegracoes>(() => api.get('/api/integracoes'), [cliente?.id]);
+  // Unidade de DESTINO do chamado de teste: o chamado é sempre de uma, porque
+  // cada unidade tem a própria instância do helpdesk.
+  const [destino, setDestino] = useState<number | null>(null);
+  const unidadeTeste = destino ?? empresa?.id ?? null;
+  const escopo = useFiltroEscopo('integracoes');
 
   const [status, setStatus] = useState<string[]>([]);
   const [sistemas, setSistemas] = useState<string[]>([]);
@@ -85,9 +147,10 @@ export function PaginaIntegracoes() {
   const eventos = useDados<{ itens: Evento[]; resumo: Record<string, number> }>(
     () => api.get('/api/integracoes/eventos', {
       status: status.join(','), sistema: sistemas.join(','),
+      empresas: escopo.params.empresas,
       de: de || undefined, ate: ate || undefined, limite: 200,
     }),
-    [empresa?.id, status, sistemas, de, ate, versao],
+    [cliente?.id, escopo.params.empresas, status, sistemas, de, ate, versao],
   );
 
   const [erro, setErro] = useState<string | null>(null);
@@ -119,12 +182,18 @@ export function PaginaIntegracoes() {
   return (
     <>
       <Cartao
-        titulo="Integrações"
+        titulo={`Integrações de ${cliente?.nome ?? 'cliente'}`}
         descricao="OStick e Bitrix24 → N8N → webhook deste SaaS → chamados"
       >
         <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
           O N8N é quem consulta os sistemas de origem e entrega aqui. Este SaaS é o receptor: expõe o endereço,
           confere o segredo, normaliza e grava. Reentrega do mesmo chamado <strong>atualiza</strong>, nunca duplica.
+        </p>
+        <p className="dica-filtro" style={{ marginBottom: 0 }}>
+          A configuração abaixo é do <strong>cliente</strong> e vale para todas as unidades dele
+          {configs.dados ? ` (${configs.dados.unidades.length})` : ''}. Só o <strong>destino</strong> do chamado
+          é por unidade: cada uma tem a própria instância do helpdesk, e o mesmo número de chamado em duas delas
+          não é o mesmo chamado.
         </p>
       </Cartao>
 
@@ -135,7 +204,7 @@ export function PaginaIntegracoes() {
         <Carregando />
       ) : (
         <div className="grade c2">
-          {configs.dados.map((c) => (
+          {configs.dados.integracoes.map((c) => (
             <Cartao
               key={c.source_system}
               titulo={ROTULO[c.source_system]}
@@ -186,6 +255,42 @@ export function PaginaIntegracoes() {
                 )}
               </Campo>
 
+              <Campo
+                rotulo="Endereço do sistema de origem"
+                dica="Base da URL do chamado, para o link de volta. Vale para todas as unidades; a que usa instância própria sobrepõe em Cadastros."
+              >
+                <EnderecoOrigem
+                  sistema={c.source_system}
+                  valor={c.url_base}
+                  podeEditar={podeEditar}
+                  aoSalvar={(url) =>
+                    acao(
+                      () => api.patch(`/api/integracoes/${c.source_system.toLowerCase()}`, { url_base: url }),
+                      'Endereço do sistema de origem atualizado.',
+                    )
+                  }
+                />
+              </Campo>
+
+              {configs.dados!.unidades.length > 1 && (
+                <Campo
+                  rotulo="Unidade de destino do teste"
+                  dica="Em qual unidade o chamado de teste será criado. Não muda a configuração — só o destino deste envio."
+                >
+                  <select
+                    aria-label="Unidade de destino do teste"
+                    value={unidadeTeste ?? ''}
+                    onChange={(e) => setDestino(Number(e.target.value))}
+                  >
+                    {configs.dados!.unidades.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.nome}
+                      </option>
+                    ))}
+                  </select>
+                </Campo>
+              )}
+
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
                   type="button"
@@ -226,10 +331,12 @@ export function PaginaIntegracoes() {
                     acao(async () => {
                       const r = await api.post<{ external_id: string }>(
                         `/api/integracoes/${c.source_system.toLowerCase()}/teste`,
-                        {},
+                        { empresas: unidadeTeste ?? undefined },
                       );
+                      const nome = configs.dados?.unidades.find((u) => u.id === unidadeTeste)?.nome;
                       setAviso(
-                        `Payload de teste processado: o chamado ${r.external_id} entrou em ${ROTULO[c.source_system]}.`,
+                        `Payload de teste processado: o chamado ${r.external_id} entrou em ${ROTULO[c.source_system]}` +
+                          (nome ? ` — unidade ${nome}.` : '.'),
                       );
                     })
                   }
@@ -251,7 +358,7 @@ export function PaginaIntegracoes() {
 
       <Cartao
         titulo="Como configurar no N8N"
-        descricao="O passo a passo com o endereço e o header desta empresa"
+        descricao="O passo a passo com o endereço e os headers deste cliente"
       >
         <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
           <li>
@@ -264,8 +371,11 @@ export function PaginaIntegracoes() {
           </li>
           <li>
             <strong>HTTP Request</strong> — <code>POST</code> para a URL acima, com os headers{' '}
-            <code>X-Webhook-Secret</code> (o segredo gerado) e <code>X-Empresa-Id</code> (
-            {empresa?.id ?? '—'}).
+            <code>X-Webhook-Secret</code> (o segredo gerado) e a unidade de destino em{' '}
+            <code>X-Empresa-Id</code>. Com uma unidade só, basta{' '}
+            <code>X-Cliente-Id: {configs.dados?.cliente_id ?? cliente?.id ?? '—'}</code>; com mais de uma, o
+            <code> X-Empresa-Id</code> é obrigatório — adivinhar pelo conteúdo misturaria chamados de unidades
+            diferentes.
           </li>
           <li>
             <strong>Retry</strong> — 3 tentativas com espera crescente em falha de rede ou 5xx. Reentregar o
@@ -287,7 +397,13 @@ export function PaginaIntegracoes() {
         }
       >
         <div className="filtros">
-          <Campo rotulo="Sistema">
+          <FiltroUnidades
+            empresas={configs.dados?.unidades ?? []}
+            empresasSel={escopo.empresas}
+            aoMudarEmpresas={escopo.definirEmpresas}
+            aoLimpar={escopo.limpar}
+          />
+          <Filtro rotulo="Sistema" explicacao={EXPLICACAO.sistema}>
             <SeletorMulti
               rotulo="Sistema"
               itens={[
@@ -297,8 +413,11 @@ export function PaginaIntegracoes() {
               selecionados={sistemas}
               aoMudar={setSistemas}
             />
-          </Campo>
-          <Campo rotulo="Situação">
+          </Filtro>
+          <Filtro
+            rotulo="Situação"
+            explicacao="Situação do evento no pipeline: recebido, processado ou com erro. Vazio traz os três."
+          >
             <SeletorMulti
               rotulo="Situação"
               itens={[
@@ -309,13 +428,13 @@ export function PaginaIntegracoes() {
               selecionados={status}
               aoMudar={setStatus}
             />
-          </Campo>
-          <Campo rotulo="De">
+          </Filtro>
+          <Filtro rotulo="De" explicacao="Data inicial de recebimento do evento. Vazio traz desde o começo do log.">
             <input type="date" value={de} onChange={(e) => setDe(e.target.value)} />
-          </Campo>
-          <Campo rotulo="Até">
+          </Filtro>
+          <Filtro rotulo="Até" explicacao="Data final de recebimento. O dia informado entra inteiro.">
             <input type="date" value={ate} onChange={(e) => setAte(e.target.value)} />
-          </Campo>
+          </Filtro>
         </div>
 
         {eventos.erro && <Aviso tipo="erro">{eventos.erro}</Aviso>}

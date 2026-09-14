@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ProvedorSessao, useSessao } from './lib/sessao';
+import { ProvedorFiltros } from './lib/filtros';
 import { Layout } from './components/layout';
 import { Login, PrimeiraEmpresa, RedefinirSenha } from './pages/Login';
 import { PaginaSelecaoCliente } from './pages/SelecaoCliente';
@@ -66,7 +67,11 @@ export function App() {
   return (
     <BrowserRouter>
       <ProvedorSessao>
-        <Rotas />
+        {/* Os filtros de tela vivem acima das rotas e abaixo da sessão: eles
+            duram a sessão, e trocar de cliente os zera. */}
+        <ProvedorFiltros>
+          <Rotas />
+        </ProvedorFiltros>
       </ProvedorSessao>
     </BrowserRouter>
   );

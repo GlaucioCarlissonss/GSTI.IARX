@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { useFiltroEscopo } from '../lib/filtros';
+import { FiltroUnidades } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal } from '../components/base';
 import { competenciaAtual, competenciaValida, inteiro, ROTULO_STATUS_PROJETO, ROTULO_STATUS_TAREFA } from '../lib/formato';
 
@@ -42,7 +44,12 @@ interface Envolvido {
 }
 
 export function PaginaCadastroProjetos() {
-  const { empresa, filialId, paramFilial, filiais, pode } = useSessao();
+  const { empresa, empresas, filiais, pode } = useSessao();
+  // Filtro LOCAL desta tela: a lista não depende do painel nem de um seletor
+  // no topo do sistema.
+  const escopo = useFiltroEscopo('projetos-cadastro');
+  // Sugestão de unidade para o formulário de criação — não amarra a escolha.
+  const empresaEmFoco = escopo.empresas.length === 1 ? escopo.empresas[0]! : (empresa?.id ?? null);
   // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
   const podeEditar = pode('projetos', 'edit');
   const [novo, setNovo] = useState(false);
@@ -50,15 +57,25 @@ export function PaginaCadastroProjetos() {
   const [excluir, setExcluir] = useState<Projeto | null>(null);
 
   const consulta = useDados<Projeto[]>(
-    () => api.get('/api/projetos', { filial_id: paramFilial() }),
-    [empresa?.id, filialId],
+    () => api.get('/api/projetos', { empresas: escopo.params.empresas, filial_id: escopo.params.filial_id }),
+    [escopo.params.empresas, escopo.params.filial_id],
   );
 
   return (
     <>
       <div className="barra-filtros">
-        <div style={{ marginRight: 'auto', color: 'var(--tinta-fraca)', fontSize: 13 }}>
-          Projetos do escopo selecionado. Clique em um projeto para gerenciar tarefas e envolvidos.
+        <FiltroUnidades
+          empresas={empresas}
+          empresasSel={escopo.empresas}
+          aoMudarEmpresas={escopo.definirEmpresas}
+          filiais={filiais}
+          filiaisSel={escopo.filiais}
+          aoMudarFiliais={escopo.definirFiliais}
+          aoLimpar={escopo.limpar}
+        />
+        <div style={{ marginRight: 'auto', color: 'var(--tinta-fraca)', fontSize: 13, maxWidth: 320 }}>
+          Clique em um projeto para gerenciar tarefas e envolvidos. Criar não depende deste filtro: a
+          unidade é escolhida no próprio formulário.
         </div>
         {podeEditar && (
           <button type="button" className="botao primario" onClick={() => setNovo(true)}>
@@ -130,6 +147,8 @@ export function PaginaCadastroProjetos() {
       <FormularioProjeto
         aberto={novo}
         aoFechar={() => setNovo(false)}
+        empresas={empresas}
+        empresaPadrao={empresaEmFoco}
         filiais={filiais}
         aoSalvar={consulta.recarregar}
       />
@@ -164,17 +183,23 @@ export function PaginaCadastroProjetos() {
 function FormularioProjeto({
   aberto,
   aoFechar,
+  empresas,
+  empresaPadrao,
   filiais,
   aoSalvar,
 }: {
   aberto: boolean;
   aoFechar: () => void;
-  filiais: Array<{ id: number; nome: string }>;
+  empresas: Array<{ id: number; nome: string }>;
+  empresaPadrao: number | null;
+  /** Todas as filiais do cliente; o formulário mostra as da unidade escolhida. */
+  filiais: Array<{ id: number; nome: string; empresa_id?: number }>;
   aoSalvar: () => void;
 }) {
   const vazio = {
     nome: '',
     descricao: '',
+    empresa_id: empresaPadrao ? String(empresaPadrao) : '',
     filial_id: '',
     mes_inicio: competenciaAtual(),
     mes_fim_planejado: '',
@@ -192,6 +217,8 @@ function FormularioProjeto({
       await api.post('/api/projetos', {
         nome: form.nome,
         descricao: form.descricao || null,
+        // A unidade sai do formulário: criar não depende do filtro da tela.
+        empresa_id: form.empresa_id ? Number(form.empresa_id) : undefined,
         filial_id: form.filial_id ? Number(form.filial_id) : null,
         mes_inicio: form.mes_inicio,
         mes_fim_planejado: form.mes_fim_planejado,
@@ -215,14 +242,31 @@ function FormularioProjeto({
           <textarea value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
         </Campo>
         <div className="grade c3">
+          {empresas.length > 1 && (
+            <Campo rotulo="Empresa (matriz)" dica="Onde o projeto vai nascer. Independe do filtro da tela.">
+              <select
+                value={form.empresa_id}
+                onChange={(e) => setForm({ ...form, empresa_id: e.target.value, filial_id: '' })}
+                required
+              >
+                {empresas.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+          )}
           <Campo rotulo="Filial">
             <select value={form.filial_id} onChange={(e) => setForm({ ...form, filial_id: e.target.value })}>
-              <option value="">— empresa —</option>
-              {filiais.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.nome}
-                </option>
-              ))}
+              <option value="">— matriz —</option>
+              {filiais
+                .filter((f) => f.empresa_id === undefined || String(f.empresa_id) === form.empresa_id)
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nome}
+                  </option>
+                ))}
             </select>
           </Campo>
           <Campo rotulo="Mês de início">

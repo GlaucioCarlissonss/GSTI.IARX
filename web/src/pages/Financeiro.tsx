@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
-import { Aviso, Campo, Carregando, Cartao } from '../components/base';
+import { useFiltroEscopo } from '../lib/filtros';
+import { Aviso, Carregando, Cartao } from '../components/base';
+import { EXPLICACAO, FichasUnidades, Filtro, FiltroUnidades } from '../components/filtro-escopo';
 import { FichasSelecao, SeletorMulti } from '../components/seletor-multi';
 import { GraficoBarras, GraficoLinhas, GraficoRanking, Indicador } from '../components/graficos';
 import { Detalhamento, detalheDeLancamentos, type PedidoDetalhe } from '../components/detalhamento';
@@ -43,7 +45,9 @@ const SERIES_PROJECAO = [
 ];
 
 export function PaginaFinanceiro() {
-  const { empresa, paramFilial, filialId } = useSessao();
+  const { empresas, filiais } = useSessao();
+  // Filtro LOCAL desta tela: vale aqui e em mais nenhuma.
+  const escopo = useFiltroEscopo('financeiro');
   const [competencias, setCompetencias] = useState<string[]>([]);
   const [cenariosSel, setCenariosSel] = useState<string[]>(['oficial']);
   // Um só detalhamento por vez: o que estiver aberto define o que buscar.
@@ -51,19 +55,27 @@ export function PaginaFinanceiro() {
   // entre renders.
   const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
 
-  const cenarios = useDados<Cenario[]>(() => api.get('/api/lancamentos/cenarios/lista'), [empresa?.id]);
+  const cenarios = useDados<Cenario[]>(
+    () => api.get('/api/lancamentos/cenarios/lista', { empresas: escopo.params.empresas }),
+    [escopo.params.empresas],
+  );
   const meses = useDados<Array<{ competencia: string; lancamentos: number }>>(
-    () => api.get('/api/lancamentos/competencias/lista', { cenario: cenariosSel.join(',') }),
-    [empresa?.id, cenariosSel.join(',')],
+    () =>
+      api.get('/api/lancamentos/competencias/lista', {
+        cenario: cenariosSel.join(','),
+        empresas: escopo.params.empresas,
+      }),
+    [escopo.params.empresas, cenariosSel.join(',')],
   );
   const consulta = useDados<DashboardFinanceiro>(
     () =>
       api.get('/api/dashboards/financeiro', {
-        filial_id: paramFilial(),
+        empresas: escopo.params.empresas,
+        filial_id: escopo.params.filial_id,
         competencia: competencias.join(',') || undefined,
         cenario: cenariosSel.join(','),
       }),
-    [empresa?.id, filialId, competencias.join(','), cenariosSel.join(',')],
+    [escopo.params.empresas, escopo.params.filial_id, competencias.join(','), cenariosSel.join(',')],
   );
 
   // Trocar de cenário muda quais meses existem: manter uma competência que o
@@ -84,7 +96,8 @@ export function PaginaFinanceiro() {
    * registros abertos são os mesmos que formaram o número clicado.
    */
   const recorte = (extra: Record<string, unknown> = {}) => ({
-    filial_id: paramFilial(),
+    empresas: escopo.params.empresas,
+    filial_id: escopo.params.filial_id,
     cenario: cenariosSel.join(','),
     ...extra,
   });
@@ -97,7 +110,16 @@ export function PaginaFinanceiro() {
   return (
     <>
       <div className="barra-filtros">
-        <Campo rotulo="Competência" dica="Nenhuma = último mês com movimento">
+        <FiltroUnidades
+          empresas={empresas}
+          empresasSel={escopo.empresas}
+          aoMudarEmpresas={escopo.definirEmpresas}
+          filiais={filiais}
+          filiaisSel={escopo.filiais}
+          aoMudarFiliais={escopo.definirFiliais}
+          aoLimpar={escopo.limpar}
+        />
+        <Filtro rotulo="Competência" explicacao={EXPLICACAO.periodo}>
           <SeletorMulti
             rotulo="Competência"
             largura={180}
@@ -109,8 +131,8 @@ export function PaginaFinanceiro() {
             selecionados={competencias}
             aoMudar={setCompetencias}
           />
-        </Campo>
-        <Campo rotulo="Cenário de projeção">
+        </Filtro>
+        <Filtro rotulo="Cenário de projeção" explicacao={EXPLICACAO.cenario}>
           <SeletorMulti
             rotulo="Cenário de projeção"
             largura={200}
@@ -120,9 +142,9 @@ export function PaginaFinanceiro() {
             selecionados={cenariosSel}
             aoMudar={setCenariosSel}
           />
-        </Campo>
+        </Filtro>
         <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--tinta-fraca)', maxWidth: 420 }}>
-          {d.escopo.consolidado ? 'Consolidado da empresa' : 'Filial selecionada'} ·{' '}
+          {escopo.empresas.length === 0 ? 'Todas as unidades do cliente' : `${escopo.empresas.length} unidade(s)`} ·{' '}
           {competencias.length > 1 ? 'período' : 'competência'}{' '}
           <strong style={{ color: 'var(--tinta-2)' }}>
             {competencias.length > 1
@@ -131,6 +153,15 @@ export function PaginaFinanceiro() {
           </strong>
         </div>
       </div>
+
+      <FichasUnidades
+        empresas={empresas}
+        empresasSel={escopo.empresas}
+        aoMudarEmpresas={escopo.definirEmpresas}
+        filiais={filiais}
+        filiaisSel={escopo.filiais}
+        aoMudarFiliais={escopo.definirFiliais}
+      />
 
       <FichasSelecao
         grupos={[

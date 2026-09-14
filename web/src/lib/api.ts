@@ -1,4 +1,4 @@
-/** Cliente HTTP: injeta sessão e empresa em contexto em toda chamada. */
+/** Cliente HTTP: injeta a sessão, o cliente e a matriz em foco em toda chamada. */
 
 const CHAVE_TOKEN = 'gsti.token';
 const CHAVE_EMPRESA = 'gsti.empresa';
@@ -36,6 +36,12 @@ function cabecalhos(comCorpo: boolean): HeadersInit {
   if (comCorpo) h['Content-Type'] = 'application/json';
   const token = sessaoLocal.token();
   if (token) h.Authorization = `Bearer ${token}`;
+  // O CLIENTE é o recorte da requisição: é contra ele que o servidor monta o
+  // escopo de leitura. A empresa vai junto como matriz EM FOCO — o que escrever,
+  // exportar ou importar precisa de uma só —, e o servidor recusa se ela não
+  // for do cliente informado.
+  const cliente = sessaoLocal.cliente();
+  if (cliente) h['X-Cliente-Id'] = String(cliente);
   const empresa = sessaoLocal.empresa();
   if (empresa) h['X-Empresa-Id'] = String(empresa);
   return h;

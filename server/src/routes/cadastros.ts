@@ -17,6 +17,7 @@ import { listarAuditoria } from '../domain/auditoria.js';
 import { fecharCompetencia, listarFechamentos, reabrirCompetencia } from '../domain/fechamento.js';
 import { paraInterno } from '../domain/competencia.js';
 import { ctx, exigir } from '../middleware/index.js';
+import { comEmpresaEmFoco, empresasDoPedido } from '../domain/escopo.js';
 
 export const rotasCadastros = Router();
 
@@ -35,7 +36,9 @@ rotasCadastros.post('/empresa/acessos', exigir('configuracoes', 'create'), (req,
 });
 
 // ------------------------------------------------------------------ Filiais
-rotasCadastros.get('/filiais', (req, res) => res.json(listarFiliais(ctx(req))));
+rotasCadastros.get('/filiais', (req, res) =>
+  res.json(listarFiliais(ctx(req), empresasDoPedido(req.query as Record<string, unknown>))),
+);
 
 rotasCadastros.post('/filiais', exigir('configuracoes', 'create'), (req, res) => {
   res.status(201).json(criarFilial(ctx(req), req.body ?? {}));
@@ -46,8 +49,17 @@ rotasCadastros.patch('/filiais/:id', exigir('configuracoes', 'edit'), (req, res)
 });
 
 // ------------------------------------------------------- Tipos de despesa
+// O catálogo é da UNIDADE — tipo de despesa, tópico e fila pertencem à matriz.
+// A unidade vem do pedido (o formulário escolhe onde o registro vai nascer) e,
+// sem indicação, é a que está em foco. A conferência é a mesma da escrita: id de
+// outro cliente é 403.
+function unidade(req: Parameters<typeof ctx>[0]) {
+  const [empresa] = empresasDoPedido(req.query as Record<string, unknown>);
+  return comEmpresaEmFoco(ctx(req), empresa);
+}
+
 rotasCadastros.get('/tipos-despesa', (req, res) => {
-  res.json(listarTiposDespesa(ctx(req), req.query.incluir_inativos === 'true'));
+  res.json(listarTiposDespesa(unidade(req), req.query.incluir_inativos === 'true'));
 });
 
 rotasCadastros.post('/tipos-despesa', exigir('configuracoes', 'create'), (req, res) => {
@@ -60,7 +72,7 @@ rotasCadastros.patch('/tipos-despesa/:id', exigir('configuracoes', 'edit'), (req
 
 // -------------------------------------------------------- Tópicos de ajuda
 rotasCadastros.get('/topicos-ajuda', (req, res) => {
-  res.json(listarTopicosAjuda(ctx(req), req.query.incluir_inativos === 'true'));
+  res.json(listarTopicosAjuda(unidade(req), req.query.incluir_inativos === 'true'));
 });
 
 rotasCadastros.post('/topicos-ajuda', exigir('configuracoes', 'create'), (req, res) => {
@@ -72,7 +84,7 @@ rotasCadastros.patch('/topicos-ajuda/:id', exigir('configuracoes', 'edit'), (req
 });
 
 // -------------------------------------------------------------- Filas SLA
-rotasCadastros.get('/filas', (req, res) => res.json(listarFilas(ctx(req))));
+rotasCadastros.get('/filas', (req, res) => res.json(listarFilas(unidade(req))));
 
 rotasCadastros.post('/filas', exigir('configuracoes', 'create'), (req, res) => {
   res.status(201).json(criarFila(ctx(req), String(req.body?.nome ?? '')));

@@ -312,6 +312,17 @@ textarea { resize: vertical; min-height: 62px; }
   border-radius: var(--raio);
 }
 
+/* A linha de apoio de cada filtro: o que ele filtra, sobre quais dados atua e o
+   efeito esperado. É texto de leitura, não decoração — por isso tem contraste
+   de corpo de texto e não some em telas estreitas; só encurta a largura. */
+.campo.filtro { max-width: 260px; }
+.dica-filtro {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--tinta-2);
+  max-width: 260px;
+}
+
 /* -------------------------------------------------------------------- cartões */
 .cartao {
   background: var(--superficie);

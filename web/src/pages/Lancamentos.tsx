@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { useFiltroEscopo } from '../lib/filtros';
+import { EXPLICACAO, FichasUnidades, Filtro, FiltroUnidades } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal } from '../components/base';
 import { FichasSelecao, SeletorMulti } from '../components/seletor-multi';
 import { competenciaAtual, competenciaValida, inteiro, moeda, ROTULO_NATUREZA } from '../lib/formato';
@@ -62,7 +64,13 @@ const ORIGEM_CURTA: Record<string, string> = {
 };
 
 export function PaginaLancamentos() {
-  const { empresa, filialId, paramFilial, filiais, pode } = useSessao();
+  const { empresa, empresas, filiais, pode } = useSessao();
+  // Filtro LOCAL desta tela.
+  const escopo = useFiltroEscopo('lancamentos');
+  // A unidade que o formulário de criação abre marcada: a única do filtro, se
+  // houver uma só, ou a matriz em foco. Sugestão, não amarra — o formulário
+  // deixa trocar.
+  const empresaEmFoco = escopo.empresas.length === 1 ? escopo.empresas[0]! : (empresa?.id ?? null);
   // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
   const podeEditar = pode('financeiro', 'create');
   // Cada dimensão guarda uma lista: a API aceita valores separados por vírgula.
@@ -88,12 +96,19 @@ export function PaginaLancamentos() {
   const [excluir, setExcluir] = useState<Lancamento | null>(null);
   const [serie, setSerie] = useState<Lancamento[] | null>(null);
 
+  // Os tipos do FILTRO: do cliente inteiro não existe — o catálogo é por
+  // unidade —, então valem os da unidade em foco, que é o catálogo que o gestor
+  // reconhece. A criação usa o da unidade escolhida no formulário.
   const tipos = useDados<TipoDespesa[]>(() => api.get('/api/tipos-despesa'), [empresa?.id]);
-  const cenarios = useDados<Cenario[]>(() => api.get('/api/lancamentos/cenarios/lista'), [empresa?.id]);
+  const cenarios = useDados<Cenario[]>(
+    () => api.get('/api/lancamentos/cenarios/lista', { empresas: escopo.params.empresas }),
+    [escopo.params.empresas],
+  );
   const consulta = useDados<Pagina>(
     () =>
       api.get('/api/lancamentos', {
-        filial_id: paramFilial(),
+        empresas: escopo.params.empresas,
+        filial_id: escopo.params.filial_id,
         limite: 300,
         competencia_inicio: filtros.competencia_inicio || undefined,
         competencia_fim: filtros.competencia_fim || undefined,
@@ -103,7 +118,7 @@ export function PaginaLancamentos() {
         tipo_despesa_id: filtros.tipos.join(',') || undefined,
         cenario: filtros.cenarios.join(',') || undefined,
       }),
-    [empresa?.id, filialId, JSON.stringify(filtros)],
+    [escopo.params.empresas, escopo.params.filial_id, JSON.stringify(filtros)],
   );
 
   const atualizar = (chave: string, valor: string) => setFiltros((f) => ({ ...f, [chave]: valor }));
@@ -124,48 +139,66 @@ export function PaginaLancamentos() {
   return (
     <>
       <div className="barra-filtros">
-        <Campo rotulo="De (MM/AAAA)">
+        <FiltroUnidades
+          empresas={empresas}
+          empresasSel={escopo.empresas}
+          aoMudarEmpresas={escopo.definirEmpresas}
+          filiais={filiais}
+          filiaisSel={escopo.filiais}
+          aoMudarFiliais={escopo.definirFiliais}
+          aoLimpar={escopo.limpar}
+        />
+        <Filtro rotulo="De (MM/AAAA)" explicacao={EXPLICACAO.competenciaIntervalo}>
           <input
             value={filtros.competencia_inicio}
             onChange={(e) => atualizar('competencia_inicio', e.target.value)}
             placeholder="01/2026"
             style={{ width: 100 }}
           />
-        </Campo>
-        <Campo rotulo="Até (MM/AAAA)">
+        </Filtro>
+        <Filtro rotulo="Até (MM/AAAA)" explicacao={EXPLICACAO.competenciaIntervalo}>
           <input
             value={filtros.competencia_fim}
             onChange={(e) => atualizar('competencia_fim', e.target.value)}
             placeholder="12/2026"
             style={{ width: 100 }}
           />
-        </Campo>
-        <Campo rotulo="Tipo de despesa">
+        </Filtro>
+        <Filtro rotulo="Tipo de despesa" explicacao={EXPLICACAO.tipoDespesa}>
           <SeletorMulti rotulo="Tipo de despesa" itens={itensTipo} selecionados={filtros.tipos}
             aoMudar={definirLista('tipos')} largura={180} />
-        </Campo>
-        <Campo rotulo="Natureza">
+        </Filtro>
+        <Filtro rotulo="Natureza" explicacao="Separa despesa fixa recorrente, pontual única e parcelada. Vazio traz as três.">
           <SeletorMulti rotulo="Natureza" itens={itensNatureza} selecionados={filtros.naturezas}
             aoMudar={definirLista('naturezas')} largura={160} />
-        </Campo>
-        <Campo rotulo="Classificação">
+        </Filtro>
+        <Filtro rotulo="Classificação" explicacao="Separa custeio (despesa) de investimento. Vazio traz os dois.">
           <SeletorMulti rotulo="Classificação" itens={itensClassificacao} selecionados={filtros.classificacoes}
             aoMudar={definirLista('classificacoes')} largura={150} />
-        </Campo>
-        <Campo rotulo="Cenário">
+        </Filtro>
+        <Filtro rotulo="Cenário" explicacao={EXPLICACAO.cenario}>
           <SeletorMulti rotulo="Cenário" itens={itensCenario} selecionados={filtros.cenarios}
             aoMudar={definirLista('cenarios')} minimo={1} largura={170}
             aviso="Cenários são alternativas: marcar vários soma linhas que representam a mesma despesa." />
-        </Campo>
-        <Campo rotulo="Buscar">
+        </Filtro>
+        <Filtro rotulo="Buscar" explicacao={EXPLICACAO.busca}>
           <input value={filtros.busca} onChange={(e) => atualizar('busca', e.target.value)} placeholder="fornecedor, motivo…" />
-        </Campo>
+        </Filtro>
         {podeEditar && (
           <button type="button" className="botao primario" onClick={() => setNovoAberto(true)} style={{ marginLeft: 'auto' }}>
             Novo lançamento
           </button>
         )}
       </div>
+
+      <FichasUnidades
+        empresas={empresas}
+        empresasSel={escopo.empresas}
+        aoMudarEmpresas={escopo.definirEmpresas}
+        filiais={filiais}
+        filiaisSel={escopo.filiais}
+        aoMudarFiliais={escopo.definirFiliais}
+      />
 
       <FichasSelecao
         grupos={[
@@ -281,7 +314,8 @@ export function PaginaLancamentos() {
       <FormularioLancamento
         aberto={novoAberto}
         aoFechar={() => setNovoAberto(false)}
-        tipos={tipos.dados ?? []}
+        empresas={empresas}
+        empresaPadrao={empresaEmFoco}
         filiais={filiais}
         aoSalvar={consulta.recarregar}
       />
@@ -365,17 +399,21 @@ export function PaginaLancamentos() {
 function FormularioLancamento({
   aberto,
   aoFechar,
-  tipos,
+  empresas,
+  empresaPadrao,
   filiais,
   aoSalvar,
 }: {
   aberto: boolean;
   aoFechar: () => void;
-  tipos: TipoDespesa[];
-  filiais: Array<{ id: number; nome: string }>;
+  empresas: Array<{ id: number; nome: string }>;
+  empresaPadrao: number | null;
+  /** Todas as filiais do cliente; o formulário mostra as da unidade escolhida. */
+  filiais: Array<{ id: number; nome: string; empresa_id?: number }>;
   aoSalvar: () => void;
 }) {
   const vazio = {
+    empresa_id: empresaPadrao ? String(empresaPadrao) : '',
     filial_id: '',
     tipo_despesa_id: '',
     competencia: competenciaAtual(),
@@ -395,6 +433,16 @@ function FormularioLancamento({
 
   const alterar = (chave: string, valor: string) => setForm((f) => ({ ...f, [chave]: valor }));
 
+  // Filial e tipo de despesa são da unidade escolhida no formulário: oferecer
+  // os da unidade errada faria o servidor recusar o que a tela ofereceu.
+  const unidade = form.empresa_id ? Number(form.empresa_id) : null;
+  const filiaisDaUnidade = filiais.filter((f) => f.empresa_id === undefined || f.empresa_id === unidade);
+  const tiposDaUnidade = useDados<TipoDespesa[]>(
+    () => api.get('/api/tipos-despesa', { empresas: unidade ?? undefined }),
+    [unidade],
+  );
+  const tipos = tiposDaUnidade.dados ?? [];
+
   const submeter = async (evento: FormEvent) => {
     evento.preventDefault();
     if (!competenciaValida(form.competencia)) return setErro('Competência deve estar no formato MM/AAAA.');
@@ -402,6 +450,9 @@ function FormularioLancamento({
     setErro(null);
     try {
       await api.post('/api/lancamentos', {
+        // A unidade sai DAQUI, e não de um filtro: registrar nunca depende do
+        // recorte que a tela está mostrando.
+        empresa_id: form.empresa_id ? Number(form.empresa_id) : undefined,
         filial_id: form.filial_id ? Number(form.filial_id) : null,
         tipo_despesa_id: Number(form.tipo_despesa_id),
         competencia: form.competencia,
@@ -429,10 +480,25 @@ function FormularioLancamento({
     <Modal titulo="Novo lançamento" aberto={aberto} aoFechar={aoFechar}>
       <form onSubmit={submeter} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div className="grade c3">
-          <Campo rotulo="Filial" dica="Vazio = nível empresa">
+          {empresas.length > 1 && (
+            <Campo rotulo="Empresa (matriz)" dica="Onde o lançamento vai nascer. Independe do filtro da tela.">
+              <select
+                value={form.empresa_id}
+                onChange={(e) => setForm((f) => ({ ...f, empresa_id: e.target.value, filial_id: '' }))}
+                required
+              >
+                {empresas.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+          )}
+          <Campo rotulo="Filial" dica="Vazio = nível da matriz">
             <select value={form.filial_id} onChange={(e) => alterar('filial_id', e.target.value)}>
-              <option value="">— empresa —</option>
-              {filiais.map((f) => (
+              <option value="">— matriz —</option>
+              {filiaisDaUnidade.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.nome}
                 </option>

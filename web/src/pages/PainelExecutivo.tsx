@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { useFiltroEscopo } from '../lib/filtros';
+import { FichasUnidades, FiltroUnidades } from '../components/filtro-escopo';
 import { Aviso, Carregando, Cartao } from '../components/base';
 import { GraficoBarras, Indicador } from '../components/graficos';
 import {
@@ -40,16 +42,19 @@ function mesSeguinte(competencia: string): string {
 }
 
 export function PaginaPainelExecutivo() {
-  const { empresa, filialId, paramFilial } = useSessao();
+  const { empresa, empresas, filiais, cliente } = useSessao();
+  // Filtro LOCAL deste painel: recortar aqui não mexe nas outras telas.
+  const escopo = useFiltroEscopo('executivo');
   const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
 
+  const recorte = { empresas: escopo.params.empresas, filial_id: escopo.params.filial_id };
   const visao = useDados<VisaoExecutiva>(
-    () => api.get('/api/dashboards/executivo', { filial_id: paramFilial() }),
-    [empresa?.id, filialId],
+    () => api.get('/api/dashboards/executivo', recorte),
+    [escopo.params.empresas, escopo.params.filial_id],
   );
   const financeiro = useDados<DashboardFinanceiro>(
-    () => api.get('/api/dashboards/financeiro', { filial_id: paramFilial() }),
-    [empresa?.id, filialId],
+    () => api.get('/api/dashboards/financeiro', recorte),
+    [escopo.params.empresas, escopo.params.filial_id],
   );
 
   if (visao.erro) return <Aviso tipo="erro">{visao.erro}</Aviso>;
@@ -89,10 +94,32 @@ export function PaginaPainelExecutivo() {
 
   return (
     <>
+      <div className="barra-filtros">
+        <FiltroUnidades
+          empresas={empresas}
+          empresasSel={escopo.empresas}
+          aoMudarEmpresas={escopo.definirEmpresas}
+          filiais={filiais}
+          filiaisSel={escopo.filiais}
+          aoMudarFiliais={escopo.definirFiliais}
+          aoLimpar={escopo.limpar}
+        />
+      </div>
+      <FichasUnidades
+        empresas={empresas}
+        empresasSel={escopo.empresas}
+        aoMudarEmpresas={escopo.definirEmpresas}
+        filiais={filiais}
+        filiaisSel={escopo.filiais}
+        aoMudarFiliais={escopo.definirFiliais}
+      />
+
       <Aviso>
-        Escopo: <strong>{empresa?.nome}</strong> ·{' '}
-        {v.escopo.consolidado ? 'consolidado (todas as filiais)' : 'filial selecionada'} · competência{' '}
-        <strong>{v.escopo.competencia}</strong>
+        Escopo: <strong>{cliente?.nome}</strong> ·{' '}
+        {escopo.empresas.length === 0
+          ? `todas as unidades (${empresas.length})`
+          : `${escopo.empresas.length} de ${empresas.length} unidades`}{' '}
+        · competência <strong>{v.escopo.competencia}</strong>
       </Aviso>
 
       <div className="grade c4">
@@ -106,7 +133,7 @@ export function PaginaPainelExecutivo() {
             setDetalhe(
               detalheDeLancamentos(
                 `Gasto de TI — ${v.escopo.competencia}`,
-                { filial_id: paramFilial(), competencia_inicio: v.escopo.competencia, competencia_fim: v.escopo.competencia },
+                { ...recorte, competencia_inicio: v.escopo.competencia, competencia_fim: v.escopo.competencia },
                 v.financeiro.total_mes,
               ),
             )
@@ -121,7 +148,7 @@ export function PaginaPainelExecutivo() {
             setDetalhe(
               detalheDeLancamentos(
                 'Compromisso dos próximos 12 meses',
-                { filial_id: paramFilial(), competencia_inicio: mesSeguinte(v.escopo.competencia) },
+                { ...recorte, competencia_inicio: mesSeguinte(v.escopo.competencia) },
                 v.financeiro.compromisso_proximos_12_meses,
               ),
             )
@@ -136,7 +163,7 @@ export function PaginaPainelExecutivo() {
             setDetalhe(
               detalheDeProjetos(
                 'Projetos atrasados',
-                { filial_id: paramFilial(), atrasados: 'true' },
+                { ...recorte, atrasados: 'true' },
                 v.projetos.atrasados,
                 'O cronograma completo está na Gestão de Projetos; aqui ficam os projetos que compõem o número.',
               ),
@@ -158,7 +185,7 @@ export function PaginaPainelExecutivo() {
                   setDetalhe(
                     detalheDeRegistrosSla(
                       `Atendimento de ${v.escopo.competencia}`,
-                      { filial_id: paramFilial(), competencia: v.escopo.competencia },
+                      { ...recorte, competencia: v.escopo.competencia },
                       v.sla.total_atendidos,
                     ),
                   )
@@ -192,7 +219,7 @@ export function PaginaPainelExecutivo() {
               setDetalhe(
                 detalheDeLancamentos(
                   `Gasto de ${m.competencia}`,
-                  { filial_id: paramFilial(), competencia_inicio: m.competencia, competencia_fim: m.competencia },
+                  { ...recorte, competencia_inicio: m.competencia, competencia_fim: m.competencia },
                   m.total,
                 ),
               );

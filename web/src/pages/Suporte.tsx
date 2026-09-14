@@ -8,6 +8,8 @@
 import { useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
+import { useFiltroEscopo } from '../lib/filtros';
+import { EXPLICACAO, FichasUnidades, Filtro, FiltroUnidades } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, Etiqueta, Modal } from '../components/base';
 import { SeletorMulti, FichasSelecao } from '../components/seletor-multi';
 import { Indicador } from '../components/graficos';
@@ -100,7 +102,10 @@ export function PaginaBitrix24() {
 const ABERTOS = ['open', 'in_progress'];
 
 function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
-  const { empresa, filialId, paramFilial, pode } = useSessao();
+  const { empresas, filiais, pode } = useSessao();
+  // Filtro LOCAL desta tela — e por SISTEMA: o recorte do OStick não é o do
+  // Bitrix24, e as duas telas são a mesma com origem diferente.
+  const escopo = useFiltroEscopo(`suporte-${sistema}`);
   // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
   const podeEditar = pode('suporte_ostick', 'import');
   const [setores, setSetores] = useState<string[]>([]);
@@ -115,15 +120,16 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
   const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
 
   const opcoes = useDados<Opcoes>(
-    () => api.get('/api/suporte/chamados/opcoes', { sistema }),
-    [empresa?.id, sistema],
+    () => api.get('/api/suporte/chamados/opcoes', { sistema, empresas: escopo.params.empresas }),
+    [escopo.params.empresas, sistema],
   );
 
   const consulta = useDados<Pagina>(
     () =>
       api.get('/api/suporte/chamados', {
         sistema,
-        filial_id: paramFilial(),
+        empresas: escopo.params.empresas,
+        filial_id: escopo.params.filial_id,
         setor_id: setores.join(','),
         atendente: atendentes.join(','),
         solicitante: solicitantes.join(','),
@@ -133,7 +139,7 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
         competencia_fim: competenciaValida(ate) ? ate : undefined,
         pagina,
       }),
-    [empresa?.id, filialId, sistema, setores, atendentes, solicitantes, status, busca, de, ate, pagina],
+    [escopo.params.empresas, escopo.params.filial_id, sistema, setores, atendentes, solicitantes, status, busca, de, ate, pagina],
   );
 
   /**
@@ -142,7 +148,8 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
    */
   const recorte = (extra: Record<string, unknown> = {}) => ({
     sistema,
-    filial_id: paramFilial(),
+    empresas: escopo.params.empresas,
+    filial_id: escopo.params.filial_id,
     setor_id: setores.join(','),
     atendente: atendentes.join(','),
     solicitante: solicitantes.join(','),
@@ -177,10 +184,19 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
   return (
     <>
       <div className="barra-filtros">
-        <Campo rotulo="Setor / área">
+        <FiltroUnidades
+          empresas={empresas}
+          empresasSel={escopo.empresas}
+          aoMudarEmpresas={escopo.definirEmpresas}
+          filiais={filiais}
+          filiaisSel={escopo.filiais}
+          aoMudarFiliais={escopo.definirFiliais}
+          aoLimpar={escopo.limpar}
+        />
+        <Filtro rotulo="Setor / área" explicacao={EXPLICACAO.setor}>
           <SeletorMulti rotulo="Setor" largura={190} itens={itensSetor} selecionados={setores} aoMudar={comReset(setSetores)} />
-        </Campo>
-        <Campo rotulo="Atendente">
+        </Filtro>
+        <Filtro rotulo="Atendente" explicacao="Filtra pelos chamados atendidos pela pessoa escolhida. Vazio traz todos os atendentes.">
           <SeletorMulti
             rotulo="Atendente"
             largura={180}
@@ -188,8 +204,8 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
             selecionados={atendentes}
             aoMudar={comReset(setAtendentes)}
           />
-        </Campo>
-        <Campo rotulo="Solicitante">
+        </Filtro>
+        <Filtro rotulo="Solicitante" explicacao="Filtra pelos chamados abertos pela pessoa escolhida. Vazio traz todos os solicitantes.">
           <SeletorMulti
             rotulo="Solicitante"
             largura={180}
@@ -197,8 +213,8 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
             selecionados={solicitantes}
             aoMudar={comReset(setSolicitantes)}
           />
-        </Campo>
-        <Campo rotulo="Status">
+        </Filtro>
+        <Filtro rotulo="Status" explicacao={EXPLICACAO.status}>
           <SeletorMulti
             rotulo="Status"
             largura={160}
@@ -206,22 +222,31 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
             selecionados={status}
             aoMudar={comReset(setStatus)}
           />
-        </Campo>
-        <Campo rotulo="De">
+        </Filtro>
+        <Filtro rotulo="De" explicacao={EXPLICACAO.competenciaIntervalo}>
           <input value={de} onChange={(e) => comReset(setDe)(e.target.value)} placeholder="MM/AAAA" style={{ width: 92 }} />
-        </Campo>
-        <Campo rotulo="Até">
+        </Filtro>
+        <Filtro rotulo="Até" explicacao={EXPLICACAO.competenciaIntervalo}>
           <input value={ate} onChange={(e) => comReset(setAte)(e.target.value)} placeholder="MM/AAAA" style={{ width: 92 }} />
-        </Campo>
-        <Campo rotulo="Buscar">
+        </Filtro>
+        <Filtro rotulo="Buscar" explicacao={EXPLICACAO.busca}>
           <input
             value={busca}
             onChange={(e) => comReset(setBusca)(e.target.value)}
             placeholder="assunto, solicitante, nº…"
             style={{ minWidth: 170 }}
           />
-        </Campo>
+        </Filtro>
       </div>
+
+      <FichasUnidades
+        empresas={empresas}
+        empresasSel={escopo.empresas}
+        aoMudarEmpresas={escopo.definirEmpresas}
+        filiais={filiais}
+        filiaisSel={escopo.filiais}
+        aoMudarFiliais={escopo.definirFiliais}
+      />
 
       <FichasSelecao
         grupos={[

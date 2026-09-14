@@ -48,9 +48,16 @@ const SENHA = process.env.SENHA || 'varredura2026';
   const noTopo = await pag.$eval('.cliente-atual b, .cliente-atual strong', (b) => b.textContent.trim()).catch(() => null);
   ok('o cliente escolhido aparece na lateral', noTopo === 'Limas IT', String(noTopo));
 
-  const empresas = await pag.$$eval('#sel-empresa option', (os) => os.map((o) => o.textContent.trim()));
-  ok('o seletor de empresa só traz as matrizes do cliente',
-    empresas.length === 1 && /Limas IT/.test(empresas[0]), empresas.join(' | '));
+  // O seletor GLOBAL de empresa não existe mais: o recorte é do cliente, e o
+  // filtro de empresa é local de cada tela.
+  ok('não há seletor global de empresa no topo', (await pag.$$('#sel-empresa')).length === 0);
+  const subtitulo = await pag.$eval('.titulo small', (s) => s.textContent.trim()).catch(() => '');
+  ok('o topo mostra a unidade do cliente de uma matriz só', /Limas IT/.test(subtitulo), subtitulo);
+  // Com UM cliente só, trocar continua acessível: quem ganha acesso a um
+  // segundo contratante precisa achar a saída sem descobrir que ela só existe
+  // depois de ter dois.
+  ok('o botão de trocar cliente está sempre visível',
+    (await pag.$$('button:has-text("Trocar cliente")')).length === 1);
 
   const guardado = await pag.evaluate(() => localStorage.getItem('gsti.cliente'));
   ok('a escolha fica guardada', !!guardado, String(guardado));
@@ -68,8 +75,41 @@ const SENHA = process.env.SENHA || 'varredura2026';
   await pag.click('.cartao button:has-text("ALIANÇA")');
   await pag.waitForSelector('.menu a', { timeout: 15000 });
   await pag.waitForTimeout(1200);
-  const outras = await pag.$$eval('#sel-empresa option', (os) => os.map((o) => o.textContent.trim()));
-  ok('o outro cliente traz a matriz dele', outras.length === 1 && /ALIAN/.test(outras[0]), outras.join(' | '));
+  const doOutro = await pag.$eval('.titulo h1', (h) => h.textContent.trim());
+  ok('o outro cliente entra em contexto', /ALIAN/.test(doOutro), doOutro);
+
+  // ------------------------------------- o filtro de empresa é LOCAL da tela
+  console.log('\nFILTRO LOCAL — o recorte é da tela, não do sistema');
+  await pag.click('.menu a:has-text("Lançamentos")');
+  await pag.waitForSelector('.barra-filtros', { timeout: 15000 });
+  await pag.waitForTimeout(900);
+  const rotulos = await pag.$$eval('.barra-filtros .campo label', (ls) => ls.map((l) => l.textContent.trim()));
+  ok('a tela traz o filtro de empresa dela', rotulos.some((r) => /Empresa \(matriz\)/.test(r)), rotulos.join(' | '));
+  ok('todo filtro da barra tem texto de apoio',
+    (await pag.$$('.barra-filtros .campo.filtro')).length ===
+      (await pag.$$('.barra-filtros .campo.filtro .dica-filtro')).length);
+  const opcoesLocais = await pag.$$eval('.barra-filtros .seletor-multi .lista label', () => []).catch(() => []);
+  void opcoesLocais;
+  // Abre o seletor local e confere que ele só oferece as matrizes DESTE cliente.
+  await pag.locator('.barra-filtros .seletor-multi button[aria-label="Empresa (matriz)"]').click();
+  await pag.waitForTimeout(400);
+  const matrizes = await pag.$$eval('.seletor-multi .painel .lista .rot', (rs) => rs.map((r) => r.textContent.trim()));
+  ok('o filtro local só oferece as matrizes do cliente ativo',
+    matrizes.length === 2 && matrizes.every((m) => /ALIAN/i.test(m)) && !matrizes.some((m) => /Limas/i.test(m)),
+    matrizes.join(' | '));
+  await pag.keyboard.press('Escape');
+
+  // Recortar aqui não pode recortar outra tela: o estado é por tela.
+  await pag.click('.seletor-multi button[aria-label="Empresa (matriz)"]');
+  await pag.waitForTimeout(300);
+  await pag.locator('.seletor-multi .painel .lista label').first().click();
+  await pag.keyboard.press('Escape');
+  await pag.waitForTimeout(800);
+  await pag.click('.menu a:has-text("Dashboard financeiro")');
+  await pag.waitForSelector('.barra-filtros', { timeout: 15000 });
+  await pag.waitForTimeout(900);
+  const resumoFin = await pag.$eval('.barra-filtros > div:last-child', (d) => d.textContent.trim()).catch(() => '');
+  ok('o recorte de uma tela não vaza para a outra', /Todas as unidades/.test(resumoFin), resumoFin);
 
   // ------------------------------------------------- cadastro de estrutura
   console.log('\nCADASTRO — a regra do CNPJ decide onde a unidade entra');
