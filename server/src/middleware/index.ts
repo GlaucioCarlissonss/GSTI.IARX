@@ -1,11 +1,11 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ErroHttp, erroNaoAutenticado, erroSemPermissao, erroValidacao } from '../lib/erros.js';
 import { verificarToken, type Sessao } from '../domain/auth.js';
-import { acessoDoUsuario } from '../domain/empresas.js';
+import { acessoDoUsuario, empresasAcessiveis } from '../domain/empresas.js';
 import { clienteDaEmpresa, usuarioTemCliente } from '../domain/clientes.js';
 import type { Contexto } from '../domain/contexto.js';
 import { exigirPermissao, type Acao } from '../domain/acesso.js';
-import { auditar } from '../domain/auditoria.js';
+import { auditar, registrarAcessoNegado } from '../domain/auditoria.js';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -30,36 +30,118 @@ export function autenticado(req: Request, _res: Response, next: NextFunction) {
 }
 
 /**
- * Resolve o tenant da requisição. Toda operação de negócio ocorre dentro de
- * uma empresa — sem contexto organizacional não há operação.
+ * Resolve o tenant da requisição.
+ *
+ * O recorte é o CLIENTE: a requisição informa `X-Cliente-Id`, o servidor
+ * confere o vínculo e monta o escopo com todas as matrizes daquele cliente a
+ * que a pessoa tem acesso. A empresa deixou de ser o recorte do sistema e
+ * passou a ser o filtro local de cada tela.
+ *
+ * `X-Empresa-Id` continua aceito: é o contrato antigo, e o cliente sai dela.
+ * Quem manda os dois e eles discordam é recusado — a divergência é justamente
+ * o que um pedido forjado produziria.
  */
 export function comEmpresa(req: Request, _res: Response, next: NextFunction) {
   if (!req.sessao) return next(erroNaoAutenticado());
-  const bruto = req.header('x-empresa-id') ?? (req.query.empresa_id as string | undefined);
-  const empresaId = Number(bruto);
-  if (!bruto || !Number.isInteger(empresaId) || empresaId <= 0) {
-    return next(erroValidacao('Informe a empresa em contexto no cabeçalho X-Empresa-Id.'));
+  const usuarioId = req.sessao.usuarioId;
+  const brutoCliente = req.header('x-cliente-id') ?? (req.query.cliente_id as string | undefined);
+  const brutoEmpresa = req.header('x-empresa-id') ?? (req.query.empresa_id as string | undefined);
+
+  let clienteId: number | null = null;
+  if (brutoCliente) {
+    const pedido = Number(brutoCliente);
+    if (!Number.isInteger(pedido) || pedido <= 0) {
+      return next(erroValidacao('Cliente em contexto inválido.'));
+    }
+    if (!usuarioTemCliente(usuarioId, pedido)) {
+      // A tentativa fica registrada: saber quem pediu um cliente que não é seu
+      // é metade do valor de ter isolamento.
+      registrarTentativa(req, pedido, 'cliente sem vínculo com o usuário');
+      return next(erroSemPermissao('Você não tem acesso a este cliente.'));
+    }
+    clienteId = pedido;
   }
-  const papel = acessoDoUsuario(req.sessao.usuarioId, empresaId);
+
+  const empresas = clienteId === null ? [] : empresasAcessiveis(usuarioId, clienteId);
+  let empresaId = Number(brutoEmpresa);
+  if (brutoEmpresa && (!Number.isInteger(empresaId) || empresaId <= 0)) {
+    return next(erroValidacao('Empresa em contexto inválida.'));
+  }
+
+  if (!brutoCliente) {
+    // Contrato antigo: só a empresa veio. O cliente sai DELA — o cabeçalho é a
+    // pergunta, e a resposta está gravada.
+    if (!brutoEmpresa) {
+      return next(erroValidacao('Informe o cliente em contexto no cabeçalho X-Cliente-Id.'));
+    }
+    const papelDireto = acessoDoUsuario(usuarioId, empresaId);
+    if (!papelDireto) return next(erroSemPermissao('Você não tem acesso a esta empresa.'));
+    const donoDaEmpresa = clienteDaEmpresa(empresaId);
+    if (donoDaEmpresa !== null && !usuarioTemCliente(usuarioId, donoDaEmpresa)) {
+      registrarTentativa(req, donoDaEmpresa, 'empresa de cliente sem vínculo com o usuário');
+      return next(erroSemPermissao('Você não tem acesso a este cliente.'));
+    }
+    req.contexto = {
+      clienteId: donoDaEmpresa,
+      empresaIds: donoDaEmpresa === null ? [empresaId] : empresasAcessiveis(usuarioId, donoDaEmpresa),
+      empresaId,
+      usuarioId,
+      usuarioEmail: req.sessao.email,
+      papel: papelDireto,
+    };
+    return next();
+  }
+
+  // Daqui para baixo o cliente veio no pedido e já passou pela conferência.
+  const clienteAtivo = clienteId as number;
+
+  if (brutoEmpresa) {
+    // Empresa informada junto do cliente: ela tem de ser DELE. Aceitar uma
+    // empresa de outro cliente aqui furaria o isolamento inteiro.
+    if (!empresas.includes(empresaId)) {
+      registrarTentativa(req, clienteAtivo, `empresa ${empresaId} fora do cliente em contexto`);
+      return next(erroSemPermissao('Esta empresa não pertence ao cliente em contexto.'));
+    }
+  } else {
+    empresaId = empresas[0] ?? 0;
+  }
+  if (!empresaId) {
+    return next(erroValidacao('Este cliente ainda não tem matriz cadastrada à qual você tenha acesso.'));
+  }
+
+  const papel = acessoDoUsuario(usuarioId, empresaId);
   if (!papel) return next(erroSemPermissao('Você não tem acesso a esta empresa.'));
 
-  // O cliente vem da EMPRESA, não do cabeçalho: o cabeçalho é a pergunta, e a
-  // resposta está gravada. Quem mandasse um cliente pela requisição estaria
-  // afirmando o que o servidor tem de conferir.
-  const clienteId = clienteDaEmpresa(empresaId);
-  if (clienteId !== null && !usuarioTemCliente(req.sessao.usuarioId, clienteId)) {
-    // Acesso à empresa sem acesso ao cliente dela não existe: o cliente é o
-    // recorte mais externo, e deixar passar aqui furaria o isolamento inteiro.
-    return next(erroSemPermissao('Você não tem acesso a este cliente.'));
-  }
   req.contexto = {
-    clienteId,
+    clienteId: clienteAtivo,
+    empresaIds: empresas,
     empresaId,
-    usuarioId: req.sessao.usuarioId,
+    usuarioId,
     usuarioEmail: req.sessao.email,
     papel,
   };
   next();
+}
+
+/**
+ * Tentativa de acesso a cliente não autorizado, na trilha.
+ *
+ * Não pode derrubar a recusa: se a auditoria falhar, a requisição continua
+ * sendo recusada — o registro é o que se perde, nunca a barreira.
+ */
+function registrarTentativa(req: Request, clienteId: number, motivo: string) {
+  try {
+    registrarAcessoNegado({
+      clienteId,
+      usuarioId: req.sessao?.usuarioId ?? null,
+      usuarioEmail: req.sessao?.email ?? null,
+      rota: req.originalUrl,
+      metodo: req.method,
+      motivo,
+    });
+  } catch {
+    // A trilha nunca bloqueia a recusa.
+  }
 }
 
 /** Somente gestores escrevem; leitores têm acesso de consulta. */

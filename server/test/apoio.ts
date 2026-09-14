@@ -16,6 +16,7 @@ export function ambienteLimpo(): { ctx: Contexto; empresaId: number } {
     empresaId: empresa.id,
     ctx: {
       clienteId: clienteDaEmpresa(empresa.id),
+      empresaIds: [empresa.id],
       empresaId: empresa.id,
       usuarioId: usuario.id,
       usuarioEmail: usuario.email,
@@ -29,6 +30,17 @@ export function idTipoDespesa(ctx: Contexto, nome = 'Licenças de Softwares'): n
     .prepare('SELECT id FROM tipos_despesa WHERE empresa_id = ? AND nome = ?')
     .get(ctx.empresaId, nome) as { id: number };
   return linha.id;
+}
+
+/**
+ * O contexto de OUTRO tenant, para as conferências de isolamento.
+ *
+ * Trocar só `empresaId` deixaria `empresaIds` apontando para as matrizes do
+ * cliente anterior — e a consulta, que hoje lê o cliente inteiro, continuaria
+ * enxergando os dados de lá. O escopo inteiro troca junto.
+ */
+export function contextoDe(ctx: Contexto, empresaId: number): Contexto {
+  return { ...ctx, empresaId, empresaIds: [empresaId], clienteId: clienteDaEmpresa(empresaId) };
 }
 
 /** Competência deslocada em N meses a partir de hoje, no formato MM/AAAA. */

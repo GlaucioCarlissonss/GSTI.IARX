@@ -22,8 +22,14 @@ export function garantirCompetenciaEditavel(
   ctx: Contexto,
   competencia: string,
   justificativa?: string | null,
+  /**
+   * A empresa DO REGISTRO. O escopo passou a ser o cliente inteiro, então o
+   * registro que está sendo alterado pode ser de outra matriz que não a em
+   * foco — e o mês fechado que vale é o da matriz dona do registro.
+   */
+  empresaId?: number,
 ): void {
-  if (competenciaEstaFechada(ctx.empresaId, competencia)) {
+  if (competenciaEstaFechada(empresaId ?? ctx.empresaId, competencia)) {
     throw erroConflito(
       `A competência ${paraExibicao(competencia)} está fechada. Reabra a competência para alterá-la.`,
     );

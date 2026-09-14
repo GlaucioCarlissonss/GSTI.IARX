@@ -22,6 +22,27 @@ export function listarEmpresasDoUsuario(usuarioId: number): EmpresaDoUsuario[] {
     .all(usuarioId) as EmpresaDoUsuario[];
 }
 
+/**
+ * As matrizes DESTE cliente a que esta pessoa tem acesso — o escopo de leitura
+ * de todas as telas.
+ *
+ * O cruzamento é o ponto: nem todas as empresas do cliente (haveria vazamento
+ * entre usuários do mesmo contratante), nem todas as empresas do usuário (elas
+ * podem ser de clientes diferentes, e o recorte externo é o cliente).
+ */
+export function empresasAcessiveis(usuarioId: number, clienteId: number): number[] {
+  return (
+    db()
+      .prepare(
+        `SELECT e.id
+           FROM empresas e JOIN usuario_empresas ue ON ue.empresa_id = e.id
+          WHERE ue.usuario_id = ? AND e.cliente_id = ?
+          ORDER BY e.nome`,
+      )
+      .all(usuarioId, clienteId) as Array<{ id: number }>
+  ).map((e) => e.id);
+}
+
 export function acessoDoUsuario(usuarioId: number, empresaId: number): 'gestor' | 'leitor' | null {
   const linha = db()
     .prepare('SELECT papel FROM usuario_empresas WHERE usuario_id = ? AND empresa_id = ?')

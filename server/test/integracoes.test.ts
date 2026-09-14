@@ -88,7 +88,7 @@ test('o payload de teste percorre o mesmo pipeline e vira chamado de verdade', (
   const r = enviarPayloadDeTeste(ctx, 'OSTICK');
   assert.ok(r.ticket_id > 0);
 
-  const chamados = listarChamados(ctx.empresaId, {}).itens as Array<Record<string, unknown>>;
+  const chamados = listarChamados(ctx, {}).itens as Array<Record<string, unknown>>;
   const doTeste = chamados.find((c) => c.external_id === r.external_id);
   assert.ok(doTeste, 'o chamado de teste tem de aparecer na listagem');
   assert.equal(doTeste?.source_system, 'OSTICK');
@@ -175,7 +175,7 @@ test('o último evento e o último erro ficam na configuração da origem', () =
 test('o log é por empresa', () => {
   const { ctx } = ambienteLimpo();
   enviarPayloadDeTeste(ctx, 'OSTICK');
-  const outra = { ...ctx, empresaId: ctx.empresaId + 999 };
+  const outra = { ...ctx, empresaId: ctx.empresaId + 999, empresaIds: [ctx.empresaId + 999] };
   assert.equal(listarEventos(outra as typeof ctx).itens.length, 0);
 });
 

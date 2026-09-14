@@ -22,6 +22,7 @@ import {
 import { escreverXlsx } from '../lib/planilha.js';
 import { assincrono } from '../middleware/index.js';
 import { erroValidacao } from '../lib/erros.js';
+import { empresasDoPedido } from '../domain/escopo.js';
 
 export const rotasSuporte = Router();
 
@@ -45,6 +46,8 @@ const competencia = (v: unknown) => (v ? paraInterno(String(v)) : undefined);
  */
 export function filtroDaQuery(q: Record<string, unknown>) {
   return {
+      // Filtro local de matriz: vazio é o cliente inteiro.
+      empresas: empresasDoPedido(q),
       sistemas: sistemasDaQuery(q.sistema ?? q.source_system),
       setorIds: numerosDaQuery(q.setor_id),
       atendentes: listaDaQuery(q.atendente),
@@ -70,12 +73,18 @@ export function filtroDaQuery(q: Record<string, unknown>) {
 }
 
 rotasSuporte.get('/chamados', (req, res) => {
-  res.json(listarChamados(ctx(req).empresaId, filtroDaQuery(req.query as Record<string, unknown>)));
+  res.json(listarChamados(ctx(req), filtroDaQuery(req.query as Record<string, unknown>)));
 });
 
 /** Valores presentes na base, para a tela montar os filtros sem inventar opções. */
 rotasSuporte.get('/chamados/opcoes', (req, res) => {
-  res.json(opcoesDeFiltro(ctx(req).empresaId, sistemasDaQuery(req.query.sistema ?? req.query.source_system)));
+  res.json(
+    opcoesDeFiltro(
+      ctx(req),
+      sistemasDaQuery(req.query.sistema ?? req.query.source_system),
+      empresasDoPedido(req.query as Record<string, unknown>),
+    ),
+  );
 });
 
 // Antes de `/chamados/:id`, e não depois: Express casa na ordem de declaração,
@@ -100,7 +109,7 @@ rotasSuporte.get(
 );
 
 rotasSuporte.get('/chamados/:id', (req, res) => {
-  res.json(obterChamado(ctx(req).empresaId, Number(req.params.id)));
+  res.json(obterChamado(ctx(req), Number(req.params.id)));
 });
 
 // ------------------------------------------------------------------ setores

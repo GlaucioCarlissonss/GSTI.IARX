@@ -8,7 +8,19 @@ export interface Contexto {
    * migração preenche na primeira abertura, e daí em diante vem sempre.
    */
   clienteId: number | null;
-  /** Empresa (matriz) sobre a qual a operação é executada. Nunca é opcional. */
+  /**
+   * TODAS as matrizes do cliente a que este usuário tem acesso — o escopo de
+   * leitura de qualquer tela.
+   *
+   * É o que substitui o antigo "filtro global de empresa": a tela não pergunta
+   * mais ao topo do sistema de quem são os números; ela lê o cliente inteiro e
+   * aplica, por conta própria, o filtro local que a pessoa escolheu ali dentro.
+   */
+  empresaIds: number[];
+  /**
+   * Empresa (matriz) em foco para ESCRITA. Criar, editar e excluir precisam de
+   * uma só — um registro não pertence a duas matrizes. A leitura não usa isto.
+   */
   empresaId: number;
   usuarioId: number;
   usuarioEmail: string;

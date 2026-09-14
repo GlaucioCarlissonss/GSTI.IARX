@@ -92,7 +92,7 @@ test('a carga de outra empresa não aparece nem é aberta', async () => {
   await importarPlanilha(ctx, csv, { modulo: 'financeiro', arquivoNome: 'minha.csv' });
   const minha = (listarImportacoes(ctx)[0] as { id: number }).id;
 
-  const alheio = { ...ctx, empresaId: ctx.empresaId + 999 };
+  const alheio = { ...ctx, empresaId: ctx.empresaId + 999, empresaIds: [ctx.empresaId + 999] };
   assert.throws(() => obterImportacao(alheio, minha), /não encontrada/i);
 });
 

@@ -3,6 +3,7 @@ import { erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
 import { auditar } from './auditoria.js';
 import { paraExibicao, paraInterno } from './competencia.js';
 import type { Contexto } from './contexto.js';
+import { empresaDeEscrita, escopoSql } from './escopo.js';
 import { validarFilial } from './cadastros.js';
 
 interface LinhaTicket {
@@ -117,6 +118,8 @@ const SQL_BASE = `
     LEFT JOIN filiais f ON f.id = s.filial_id`;
 
 export interface EntradaTicketSla {
+  /** Matriz em que o chamado é registrado. Ausente: a matriz em foco. */
+  empresaId?: number | null;
   filialId?: number | null;
   competencia: string;
   filaId: number;
@@ -182,15 +185,16 @@ function garantirTopico(empresaId: number, topicoId: number | null | undefined):
 
 export function registrarTicketSla(ctx: Contexto, entrada: EntradaTicketSla) {
   const competencia = paraInterno(entrada.competencia);
-  const filialId = validarFilial(ctx.empresaId, entrada.filialId);
-  garantirFila(ctx.empresaId, entrada.filaId);
-  const topicoId = garantirTopico(ctx.empresaId, entrada.topicoAjudaId);
+  const empresaId = empresaDeEscrita(ctx, entrada.empresaId);
+  const filialId = validarFilial(empresaId, entrada.filialId);
+  garantirFila(empresaId, entrada.filaId);
+  const topicoId = garantirTopico(empresaId, entrada.topicoAjudaId);
   const { total, dentro, fora } = validarNumeros(entrada);
 
   // O chamado é único por empresa. O banco já garante isso com um índice; aqui
   // a recusa vem com o motivo, em vez de um erro de restrição.
   if (entrada.ticketId !== null && entrada.ticketId !== undefined) {
-    if (buscarPorTicketId(ctx, Number(entrada.ticketId))) {
+    if (buscarPorTicketId(ctx, Number(entrada.ticketId), empresaId)) {
       throw erroValidacao(`O chamado ${entrada.ticketId} já está registrado nesta empresa.`);
     }
   }
@@ -203,7 +207,7 @@ export function registrarTicketSla(ctx: Contexto, entrada: EntradaTicketSla) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${CAMPOS_CHAMADO.map(() => '?').join(', ')})`,
     )
     .run(
-      ctx.empresaId,
+      empresaId,
       filialId,
       competencia,
       entrada.filaId,
@@ -226,24 +230,31 @@ export function registrarTicketSla(ctx: Contexto, entrada: EntradaTicketSla) {
 }
 
 export function obterTicketSla(ctx: Contexto, id: number) {
+  const escopo = escopoSql(ctx, null, 's.empresa_id');
   const linha = db()
-    .prepare(`${SQL_BASE} WHERE s.id = ? AND s.empresa_id = ? AND s.excluido_em IS NULL`)
-    .get(id, ctx.empresaId) as (LinhaTicket & Record<string, unknown>) | undefined;
-  if (!linha) throw erroNaoEncontrado(`Registro de SLA ${id} não encontrado nesta empresa.`);
-  return apresentar(linha, ctx.empresaId);
+    .prepare(`${SQL_BASE} WHERE s.id = ? AND ${escopo.sql} AND s.excluido_em IS NULL`)
+    .get(id, ...escopo.params) as (LinhaTicket & Record<string, unknown>) | undefined;
+  if (!linha) throw erroNaoEncontrado(`Registro de SLA ${id} não encontrado neste cliente.`);
+  // O endereço do chamado sai da configuração da matriz DONA do registro: cada
+  // unidade tem a própria instância do helpdesk.
+  return apresentar(linha, linha.empresa_id);
 }
 
 /**
  * Registro do chamado `ticketId` nesta empresa, se existir. É o que permite
  * recarregar a mesma extração do helpdesk atualizando em vez de duplicar.
  */
-export function buscarPorTicketId(ctx: Contexto, ticketId: number) {
+export function buscarPorTicketId(ctx: Contexto, ticketId: number, empresaId?: number) {
+  // A busca é por MATRIZ, não pelo cliente: cada unidade tem a própria
+  // instância do helpdesk, e o chamado 4812 de uma não é o 4812 da outra.
   return db()
     .prepare('SELECT id FROM tickets_sla WHERE empresa_id = ? AND ticket_id = ? AND excluido_em IS NULL')
-    .get(ctx.empresaId, ticketId) as { id: number } | undefined;
+    .get(empresaId ?? ctx.empresaId, ticketId) as { id: number } | undefined;
 }
 
 export interface FiltroSla {
+  /** Filtro local de matriz. Vazio: o cliente inteiro. */
+  empresas?: number[];
   filialId?: number | null;
   filaId?: number;
   topicoAjudaId?: number | null;
@@ -255,8 +266,9 @@ export interface FiltroSla {
 }
 
 export function montarFiltroSla(ctx: Contexto, filtro: FiltroSla) {
-  const condicoes = ['s.empresa_id = ?', 's.excluido_em IS NULL'];
-  const params: unknown[] = [ctx.empresaId];
+  const escopo = escopoSql(ctx, filtro.empresas, 's.empresa_id');
+  const condicoes = [escopo.sql, 's.excluido_em IS NULL'];
+  const params: unknown[] = [...escopo.params];
   if (filtro.filialId === null) condicoes.push('s.filial_id IS NULL');
   else if (filtro.filialId !== undefined) {
     condicoes.push('s.filial_id = ?');
@@ -293,7 +305,7 @@ export function listarTicketsSla(ctx: Contexto, filtro: FiltroSla = {}) {
   const linhas = db()
     .prepare(`${SQL_BASE} WHERE ${where} ORDER BY s.competencia DESC, q.ordem, ta.nome`)
     .all(...params) as Array<LinhaTicket & Record<string, unknown>>;
-  const itens = linhas.map((l) => apresentar(l, ctx.empresaId));
+  const itens = linhas.map((l) => apresentar(l, l.empresa_id));
   const total = itens.reduce((s, i) => s + i.total_atendidos, 0);
   const dentro = itens.reduce((s, i) => s + i.dentro_sla, 0);
   return {
@@ -313,17 +325,20 @@ export function atualizarTicketSla(
   id: number,
   dados: Partial<EntradaTicketSla> & { justificativa?: string },
 ) {
+  const escopo = escopoSql(ctx);
   const antes = db()
-    .prepare('SELECT * FROM tickets_sla WHERE id = ? AND empresa_id = ? AND excluido_em IS NULL')
-    .get(id, ctx.empresaId) as LinhaTicket | undefined;
-  if (!antes) throw erroNaoEncontrado(`Registro de SLA ${id} não encontrado nesta empresa.`);
+    .prepare(`SELECT * FROM tickets_sla WHERE id = ? AND ${escopo.sql} AND excluido_em IS NULL`)
+    .get(id, ...escopo.params) as LinhaTicket | undefined;
+  if (!antes) throw erroNaoEncontrado(`Registro de SLA ${id} não encontrado neste cliente.`);
+  // Fila, filial e tópico são da matriz DO REGISTRO, não da que está em foco.
+  const empresaDoRegistro = antes.empresa_id;
 
   const competencia = dados.competencia ? paraInterno(dados.competencia) : antes.competencia;
-  const filialId = dados.filialId !== undefined ? validarFilial(ctx.empresaId, dados.filialId) : antes.filial_id;
+  const filialId = dados.filialId !== undefined ? validarFilial(empresaDoRegistro, dados.filialId) : antes.filial_id;
   const filaId = dados.filaId ?? antes.fila_id;
-  garantirFila(ctx.empresaId, filaId);
+  garantirFila(empresaDoRegistro, filaId);
   const topicoId =
-    dados.topicoAjudaId !== undefined ? garantirTopico(ctx.empresaId, dados.topicoAjudaId) : antes.topico_ajuda_id;
+    dados.topicoAjudaId !== undefined ? garantirTopico(empresaDoRegistro, dados.topicoAjudaId) : antes.topico_ajuda_id;
 
   const { total, dentro, fora } = validarNumeros({
     competencia: paraExibicao(competencia),
@@ -369,7 +384,7 @@ export function atualizarTicketSla(
       dados.observacoes !== undefined ? dados.observacoes : antes.observacoes,
       ...valoresDoChamado(chamado),
       id,
-      ctx.empresaId,
+      empresaDoRegistro,
     );
   const depois = obterTicketSla(ctx, id);
   auditar(ctx, {
@@ -384,10 +399,11 @@ export function atualizarTicketSla(
 }
 
 export function excluirTicketSla(ctx: Contexto, id: number, justificativa?: string) {
+  const escopo = escopoSql(ctx);
   const antes = db()
-    .prepare('SELECT * FROM tickets_sla WHERE id = ? AND empresa_id = ? AND excluido_em IS NULL')
-    .get(id, ctx.empresaId) as LinhaTicket | undefined;
-  if (!antes) throw erroNaoEncontrado(`Registro de SLA ${id} não encontrado nesta empresa.`);
+    .prepare(`SELECT * FROM tickets_sla WHERE id = ? AND ${escopo.sql} AND excluido_em IS NULL`)
+    .get(id, ...escopo.params) as LinhaTicket | undefined;
+  if (!antes) throw erroNaoEncontrado(`Registro de SLA ${id} não encontrado neste cliente.`);
   db().prepare(`UPDATE tickets_sla SET excluido_em = datetime('now'), dedup_hash = NULL WHERE id = ?`).run(id);
   auditar(ctx, { entidade: 'ticket_sla', entidadeId: id, acao: 'excluir', justificativa: justificativa ?? null, antes });
   return { excluido: true };

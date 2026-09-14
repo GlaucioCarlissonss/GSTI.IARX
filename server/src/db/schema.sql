@@ -355,6 +355,26 @@ CREATE TABLE IF NOT EXISTS auditoria (
 );
 CREATE INDEX IF NOT EXISTS ix_auditoria_escopo ON auditoria(empresa_id, criado_em DESC);
 
+-- Tentativa de acesso a um cliente que não é do usuário.
+--
+-- Fica fora de `auditoria` por um motivo de fato: aquela tabela é por empresa, e
+-- uma tentativa recusada não tem empresa nenhuma — ela morre antes de o contexto
+-- existir. E `cliente_id` aqui NÃO tem chave estrangeira de propósito: quem
+-- sonda ids manda números que não existem, e é justamente essa tentativa que
+-- precisa ficar registrada.
+CREATE TABLE IF NOT EXISTS acesso_negado (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id    INTEGER,
+  usuario_id    INTEGER REFERENCES usuarios(id),
+  usuario_email TEXT,
+  rota          TEXT,
+  metodo        TEXT,
+  motivo        TEXT,
+  criado_em     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_acesso_negado_data ON acesso_negado(criado_em DESC);
+CREATE INDEX IF NOT EXISTS ix_acesso_negado_usuario ON acesso_negado(usuario_id, criado_em DESC);
+
 CREATE TABLE IF NOT EXISTS importacoes (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   empresa_id      INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,

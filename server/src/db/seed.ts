@@ -147,6 +147,7 @@ function prepararAmbiente(usuarioId: number, email: string): Ambiente {
     const empresa = criarEmpresa(usuarioId, { nome });
     const ctx: Contexto = {
       clienteId: clienteDaEmpresa(empresa.id),
+      empresaIds: [empresa.id],
       empresaId: empresa.id,
       usuarioId,
       usuarioEmail: email,

@@ -110,7 +110,13 @@ test('a primeira empresa nasce com os tipos padrão e o criador como gestor', ()
   assert.equal(acessoDoUsuario(usuario.id, empresa.id), 'gestor');
   assert.deepEqual(listarEmpresasDoUsuario(usuario.id).map((e) => e.nome), ['Minha Empresa']);
 
-  const ctx = { empresaId: empresa.id, usuarioId: usuario.id, usuarioEmail: usuario.email, papel: 'gestor' as const };
+  const ctx = {
+    empresaId: empresa.id,
+    empresaIds: [empresa.id],
+    usuarioId: usuario.id,
+    usuarioEmail: usuario.email,
+    papel: 'gestor' as const,
+  };
   const tipos = (listarTiposDespesa(ctx) as Array<{ nome: string }>).map((t) => t.nome).sort();
   assert.deepEqual(tipos, [...TIPOS_DESPESA_PADRAO].sort());
 });

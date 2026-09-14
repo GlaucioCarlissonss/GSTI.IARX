@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ambienteLimpo, idTipoDespesa, mesRelativo } from './apoio.js';
+import { ambienteLimpo, contextoDe, idTipoDespesa, mesRelativo } from './apoio.js';
 import {
   adicionarEnvolvido,
   atualizarProjeto,
@@ -229,7 +229,7 @@ test('o escopo de um tenant nunca vaza para outro', () => {
   });
 
   const outra = criarEmpresa(primeiro.ctx.usuarioId, { nome: 'Outra empresa' });
-  const ctxOutra = { ...primeiro.ctx, empresaId: outra.id };
+  const ctxOutra = contextoDe(primeiro.ctx, outra.id);
 
   assert.equal(dashboardFinanceiro(ctxOutra, { competencia: mesRelativo(0) }).totais_mes.total, 0);
   assert.equal(listarProjetos(ctxOutra).length, 0);
@@ -475,7 +475,7 @@ test('o sentinela "sem" chega à consulta como filtro de tarefa sem responsável
 test('tarefa de outra empresa não aparece na listagem', () => {
   const { ctx } = ambienteLimpo();
   const outra = criarEmpresa(ctx.usuarioId, { nome: 'Outra empresa' }) as { id: number };
-  const ctxOutra: Contexto = { ...ctx, empresaId: outra.id };
+  const ctxOutra: Contexto = contextoDe(ctx, outra.id);
 
   const meu = criarProjeto(ctx, { nome: 'Meu', mesInicio: mesRelativo(0), mesFimPlanejado: mesRelativo(1) }) as {
     id: number;

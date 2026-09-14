@@ -11,6 +11,8 @@ import { db } from '../db/index.js';
 import { erroValidacao } from '../lib/erros.js';
 import { resolverFila, resolverSetor, resolverTopicoAjuda, SETOR_NAO_CLASSIFICADO } from './cadastros.js';
 import { urlDoChamado } from './sla.js';
+import type { Contexto } from './contexto.js';
+import { escopoSql } from './escopo.js';
 
 export type SistemaOrigem = 'OSTICK' | 'BITRIX24';
 export const SISTEMAS: SistemaOrigem[] = ['OSTICK', 'BITRIX24'];
@@ -321,6 +323,11 @@ function resolverFilaDoChamado(empresaId: number, nome: string | null): number {
 // ----------------------------------------------------------------- consulta
 
 export interface FiltroChamados {
+  /**
+   * Filtro LOCAL de matriz. Vazio significa o cliente inteiro — a tela de
+   * chamados não depende mais de um seletor global de empresa.
+   */
+  empresas?: number[];
   sistemas?: SistemaOrigem[];
   setorIds?: number[];
   atendentes?: string[];
@@ -340,7 +347,7 @@ export interface FiltroChamados {
 }
 
 const SQL_CHAMADO = `
-  SELECT s.id, s.source_system, s.external_id, s.ticket_id, s.numero, s.assunto, s.descricao, s.status, s.prioridade,
+  SELECT s.id, s.empresa_id, s.source_system, s.external_id, s.ticket_id, s.numero, s.assunto, s.descricao, s.status, s.prioridade,
          s.setor_id, st.nome AS setor, s.solicitante, s.solicitante_email, s.solicitante_externo_id,
          s.responsavel, s.atendente_externo_id, s.filial_id, f.nome AS filial_nome,
          s.fila_id, q.nome AS fila, ta.nome AS topico_ajuda,
@@ -357,20 +364,23 @@ const SQL_CHAMADO = `
  * servidor, e não de cada tela: assim a listagem, o detalhe e o detalhamento
  * de qualquer indicador apontam para o mesmo lugar.
  */
-const comEndereco = (empresaId: number) => (linha: Record<string, unknown>) => ({
+const comEndereco = () => (linha: Record<string, unknown>) => ({
   ...linha,
   url_externa: urlDoChamado(
-    empresaId,
+    // A base é a da matriz DONA do chamado: cada unidade tem a própria
+    // instância do helpdesk, e o link de uma não abre o chamado da outra.
+    Number(linha.empresa_id),
     (linha.external_id as string | null) ?? (linha.ticket_id as number | null),
     linha.source_system as string | null,
   ),
 });
 
-function montarFiltro(empresaId: number, f: FiltroChamados) {
+function montarFiltro(ctx: Contexto, f: FiltroChamados) {
   // Só o que veio de um sistema de suporte: o registro agregado mensal, sem
   // `source_system`, pertence à tela de indicadores, não à de chamados.
-  const condicoes = ['s.empresa_id = ?', 's.excluido_em IS NULL', 's.source_system IS NOT NULL'];
-  const params: unknown[] = [empresaId];
+  const escopo = escopoSql(ctx, f.empresas, 's.empresa_id');
+  const condicoes = [escopo.sql, 's.excluido_em IS NULL', 's.source_system IS NOT NULL'];
+  const params: unknown[] = [...escopo.params];
 
   const emLista = (coluna: string, valores?: unknown[]) => {
     if (!valores?.length) return;
@@ -430,8 +440,8 @@ function montarFiltro(empresaId: number, f: FiltroChamados) {
  * Chamados no escopo, paginados. A contagem vem junto porque a tela precisa
  * dizer quantos existem, não só quantos couberam na página.
  */
-export function listarChamados(empresaId: number, f: FiltroChamados = {}) {
-  const { where, params } = montarFiltro(empresaId, f);
+export function listarChamados(ctx: Contexto, f: FiltroChamados = {}) {
+  const { where, params } = montarFiltro(ctx, f);
   const limite = Math.min(Math.max(f.limite ?? 100, 1), 500);
   const pagina = Math.max(f.pagina ?? 1, 1);
 
@@ -442,18 +452,18 @@ export function listarChamados(empresaId: number, f: FiltroChamados = {}) {
     db()
       .prepare(`${SQL_CHAMADO} WHERE ${where} ORDER BY s.aberto_em DESC, s.id DESC LIMIT ? OFFSET ?`)
       .all(...params, limite, (pagina - 1) * limite) as Array<Record<string, unknown>>
-  ).map(comEndereco(empresaId));
+  ).map(comEndereco());
 
   return {
     itens,
     paginacao: { pagina, limite, total, paginas: Math.max(Math.ceil(total / limite), 1) },
-    resumo: resumoDosChamados(empresaId, f),
+    resumo: resumoDosChamados(ctx, f),
   };
 }
 
 /** Totais do mesmo recorte, para os indicadores baterem com a lista. */
-function resumoDosChamados(empresaId: number, f: FiltroChamados) {
-  const { where, params } = montarFiltro(empresaId, f);
+function resumoDosChamados(ctx: Contexto, f: FiltroChamados) {
+  const { where, params } = montarFiltro(ctx, f);
   const linha = db()
     .prepare(
       `SELECT COUNT(*) AS total,
@@ -473,12 +483,13 @@ function resumoDosChamados(empresaId: number, f: FiltroChamados) {
 }
 
 /** Um chamado, com o payload de origem. */
-export function obterChamado(empresaId: number, id: number) {
+export function obterChamado(ctx: Contexto, id: number) {
+  const escopo = escopoSql(ctx, null, 's.empresa_id');
   const linha = db()
-    .prepare(`${SQL_CHAMADO} WHERE s.id = ? AND s.empresa_id = ? AND s.excluido_em IS NULL`)
-    .get(id, empresaId) as Record<string, unknown> | undefined;
-  if (!linha) throw erroValidacao(`Chamado ${id} não encontrado nesta empresa.`);
-  const chamado = comEndereco(empresaId)(linha);
+    .prepare(`${SQL_CHAMADO} WHERE s.id = ? AND ${escopo.sql} AND s.excluido_em IS NULL`)
+    .get(id, ...escopo.params) as Record<string, unknown> | undefined;
+  if (!linha) throw erroValidacao(`Chamado ${id} não encontrado neste cliente.`);
+  const chamado = comEndereco()(linha);
   const bruto = db().prepare('SELECT raw_payload FROM tickets_sla WHERE id = ?').get(id) as
     | { raw_payload: string | null }
     | undefined;
@@ -493,8 +504,8 @@ export function obterChamado(empresaId: number, id: number) {
 }
 
 /** Valores presentes no recorte, para montar os filtros sem inventar opções. */
-export function opcoesDeFiltro(empresaId: number, sistemas?: SistemaOrigem[]) {
-  const { where, params } = montarFiltro(empresaId, { sistemas });
+export function opcoesDeFiltro(ctx: Contexto, sistemas?: SistemaOrigem[], empresas?: number[]) {
+  const { where, params } = montarFiltro(ctx, { sistemas, empresas });
   const distintos = (coluna: string) =>
     (
       db()

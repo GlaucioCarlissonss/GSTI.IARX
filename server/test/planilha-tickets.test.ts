@@ -80,7 +80,7 @@ test('a prévia diz linha a linha o que vai acontecer, sem gravar nada', async (
   assert.deepEqual(previa.linhas.map((l) => l.linha), [2, 3]);
 
   // Prévia não grava: o gestor ainda não confirmou.
-  assert.equal(listarChamados(ctx.empresaId, {}).paginacao.total, 0);
+  assert.equal(listarChamados(ctx, {}).paginacao.total, 0);
 });
 
 test('a prévia distingue criar de atualizar', async () => {
@@ -146,7 +146,7 @@ test('importar cria, reimportar atualiza, e nunca duplica', async () => {
     { criados: 0, atualizados: 1, rejeitados: 0 },
   );
 
-  const lista = listarChamados(ctx.empresaId, {});
+  const lista = listarChamados(ctx, {});
   assert.equal(lista.paginacao.total, 1, 'a mesma chave não pode virar dois chamados');
   assert.equal((lista.itens[0] as Record<string, string>).assunto, 'Assunto corrigido');
 });
@@ -164,21 +164,21 @@ test('linha inválida é rejeitada sem derrubar as boas', async () => {
   assert.equal(r.rejeitados, 1);
   assert.equal(r.erros[0].linha, 3);
   assert.equal(r.erros[0].external_id, 'ruim');
-  assert.equal(listarChamados(ctx.empresaId, {}).paginacao.total, 2);
+  assert.equal(listarChamados(ctx, {}).paginacao.total, 2);
 });
 
 test('sector em branco entra como "Não classificado", e não recusa a linha', async () => {
   const { ctx } = ambienteLimpo();
   const r = await importarTickets(ctx, await arquivoCom([{ ...LINHA_BOA, sector: '' }]));
   assert.equal(r.criados, 1);
-  const c = listarChamados(ctx.empresaId, {}).itens[0] as Record<string, string>;
+  const c = listarChamados(ctx, {}).itens[0] as Record<string, string>;
   assert.equal(c.setor, SETOR_NAO_CLASSIFICADO);
 });
 
 test('status e priority em branco caem no padrão', async () => {
   const { ctx } = ambienteLimpo();
   await importarTickets(ctx, await arquivoCom([{ ...LINHA_BOA, status: '', priority: '' }]));
-  const c = listarChamados(ctx.empresaId, {}).itens[0] as Record<string, string>;
+  const c = listarChamados(ctx, {}).itens[0] as Record<string, string>;
   assert.equal(c.status, 'open');
   assert.equal(c.prioridade, 'medium');
 });
@@ -189,7 +189,7 @@ test('data no formato brasileiro e em ISO dão o mesmo resultado', async () => {
     { ...LINHA_BOA, external_id: 'br', created_at: '10/09/2026 08:30' },
     { ...LINHA_BOA, external_id: 'iso', created_at: '2026-09-10T08:30:00' },
   ]));
-  const itens = listarChamados(ctx.empresaId, {}).itens as Array<Record<string, string>>;
+  const itens = listarChamados(ctx, {}).itens as Array<Record<string, string>>;
   const br = itens.find((c) => c.external_id === 'br');
   const iso = itens.find((c) => c.external_id === 'iso');
   assert.equal(br?.competencia, iso?.competencia);
@@ -214,6 +214,6 @@ test('a exportação é por empresa', () => {
   const { ctx } = ambienteLimpo();
   const bruto = { ticket_id: '7', subject: 'Meu', status: 'open', created: '2026-08-01T09:00:00Z' };
   gravarChamado(ctx.empresaId, normalizarOstick(bruto), bruto);
-  const outra = { ...ctx, empresaId: ctx.empresaId + 999 };
+  const outra = { ...ctx, empresaId: ctx.empresaId + 999, empresaIds: [ctx.empresaId + 999] };
   assert.equal(abasDeTickets(outra as typeof ctx, {})[0].linhas.length, 0);
 });

@@ -14,6 +14,7 @@ import { db } from '../db/index.js';
 import { erroValidacao } from '../lib/erros.js';
 import { lerXlsx, type Aba } from '../lib/planilha.js';
 import type { Contexto } from './contexto.js';
+import { escopoSql } from './escopo.js';
 import {
   gravarChamado,
   listarChamados,
@@ -91,24 +92,25 @@ interface LinhaExportada {
 export function linhasDeTickets(ctx: Contexto, filtro: FiltroChamados = {}) {
   // Teto alto e explícito: uma planilha de 50 mil linhas trava o Excel antes
   // de ajudar, e o gestor tem os filtros para estreitar.
-  const pagina = listarChamados(ctx.empresaId, { ...filtro, limite: 500, pagina: 1 });
+  const pagina = listarChamados(ctx, { ...filtro, limite: 500, pagina: 1 });
   const total = pagina.paginacao.total;
   const itens: LinhaExportada[] = [];
   for (let p = 1; p <= Math.min(pagina.paginacao.paginas, 40); p++) {
-    const lote = listarChamados(ctx.empresaId, { ...filtro, limite: 500, pagina: p });
+    const lote = listarChamados(ctx, { ...filtro, limite: 500, pagina: p });
     itens.push(...(lote.itens as unknown as LinhaExportada[]));
   }
 
   // O último evento de integração de cada chamado responde "como terminou a
   // última sincronização" sem consultar o log linha a linha na planilha.
   const ultimoStatus = new Map<string, string>();
+  const escopoEventos = escopoSql(ctx);
   for (const linha of db()
     .prepare(
       `SELECT source_system, external_id, status FROM integracao_evento
-        WHERE empresa_id = ? AND external_id IS NOT NULL
+        WHERE ${escopoEventos.sql} AND external_id IS NOT NULL
         ORDER BY criado_em ASC`,
     )
-    .all(ctx.empresaId) as Array<{ source_system: string; external_id: string; status: string }>) {
+    .all(...escopoEventos.params) as Array<{ source_system: string; external_id: string; status: string }>) {
     ultimoStatus.set(`${linha.source_system}|${linha.external_id}`, linha.status);
   }
 

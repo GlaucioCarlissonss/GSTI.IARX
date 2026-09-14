@@ -14,6 +14,7 @@ import { validarFilial } from './cadastros.js';
 import { garantirCompetenciaEditavel } from './fechamento.js';
 import { paraCentavos, paraReais, ratear } from './dinheiro.js';
 import { clausulaEm, clausulaEmComNulo } from '../lib/consulta.js';
+import { empresaDeEscrita, escopoDeLeitura, escopoSql } from './escopo.js';
 
 export type Natureza = 'fixa' | 'pontual_unica' | 'pontual_parcelada';
 export type Classificacao = 'despesa' | 'investimento';
@@ -54,6 +55,12 @@ export function interpretarOrigem(texto: string | null | undefined): Origem | nu
 }
 
 export interface EntradaLancamento {
+  /**
+   * Matriz em que o lançamento nasce. Escolhida no próprio formulário — o
+   * registro não depende mais de um filtro no topo da tela. Ausente: a matriz
+   * em foco.
+   */
+  empresaId?: number | null;
   filialId?: number | null;
   tipoDespesaId: number;
   competencia: string;              // "MM/AAAA"
@@ -112,6 +119,10 @@ const MAX_OCORRENCIAS = 240;
 function apresentar(linha: LinhaLancamento & Record<string, unknown>) {
   return {
     id: linha.id,
+    // A matriz vem junto: a lista mostra o cliente inteiro, e sem a unidade na
+    // linha não dá para saber de qual delas é o número.
+    empresa_id: linha.empresa_id,
+    empresa_nome: (linha.empresa_nome as string | null) ?? null,
     filial_id: linha.filial_id,
     filial_nome: (linha.filial_nome as string | null) ?? null,
     tipo_despesa_id: linha.tipo_despesa_id,
@@ -140,11 +151,20 @@ function apresentar(linha: LinhaLancamento & Record<string, unknown>) {
   };
 }
 
+/**
+ * O lançamento dentro do CLIENTE — não dentro da matriz em foco.
+ *
+ * Abrir um lançamento de outra matriz do mesmo contratante é rotina desde que a
+ * tela lista o cliente inteiro; exigir que o filtro estivesse na matriz certa
+ * faria o registro que a pessoa acabou de ver na lista "não existir" ao clicar.
+ * A linha devolvida traz `empresa_id`, e é ele que toda escrita usa.
+ */
 function buscarLinha(ctx: Contexto, id: number): LinhaLancamento {
+  const escopo = escopoSql(ctx);
   const linha = db()
-    .prepare('SELECT * FROM lancamentos WHERE id = ? AND empresa_id = ? AND excluido_em IS NULL')
-    .get(id, ctx.empresaId) as LinhaLancamento | undefined;
-  if (!linha) throw erroNaoEncontrado(`Lançamento ${id} não encontrado nesta empresa.`);
+    .prepare(`SELECT * FROM lancamentos WHERE id = ? AND ${escopo.sql} AND excluido_em IS NULL`)
+    .get(id, ...escopo.params) as LinhaLancamento | undefined;
+  if (!linha) throw erroNaoEncontrado(`Lançamento ${id} não encontrado neste cliente.`);
   return linha;
 }
 
@@ -166,13 +186,14 @@ function garantirTipoDespesa(empresaId: number, tipoDespesaId: number): void {
  */
 export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
   const competencia = paraInterno(entrada.competencia);
-  const filialId = validarFilial(ctx.empresaId, entrada.filialId);
-  garantirTipoDespesa(ctx.empresaId, entrada.tipoDespesaId);
-  garantirCompetenciaEditavel(ctx, competencia, entrada.justificativa);
+  const empresaId = empresaDeEscrita(ctx, entrada.empresaId);
+  const filialId = validarFilial(empresaId, entrada.filialId);
+  garantirTipoDespesa(empresaId, entrada.tipoDespesaId);
+  garantirCompetenciaEditavel(ctx, competencia, entrada.justificativa, empresaId);
 
   const valorCentavos = paraCentavos(entrada.valor);
   if (valorCentavos < 0) throw erroValidacao('O valor do lançamento não pode ser negativo.');
-  const cenario = garantirCenario(ctx.empresaId, entrada.cenario);
+  const cenario = garantirCenario(empresaId, entrada.cenario);
 
   const valores: Array<{ competencia: string; centavos: number; parcela: number | null }> = [];
   let qtdParcelas: number | null = null;
@@ -210,7 +231,7 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
 
   // Meses futuros de uma série não podem cair em competência fechada.
   for (const v of valores.slice(1)) {
-    garantirCompetenciaEditavel(ctx, v.competencia, entrada.justificativa);
+    garantirCompetenciaEditavel(ctx, v.competencia, entrada.justificativa, empresaId);
   }
 
   return emTransacao(() => {
@@ -224,7 +245,7 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
 
     const primeiro = valores[0]!;
     const infoPrimeiro = inserir.run(
-      ctx.empresaId,
+      empresaId,
       filialId,
       entrada.tipoDespesaId,
       primeiro.competencia,
@@ -248,7 +269,7 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
     const ids = [origemId];
     for (const v of valores.slice(1)) {
       const info = inserir.run(
-        ctx.empresaId,
+        empresaId,
         filialId,
         entrada.tipoDespesaId,
         v.competencia,
@@ -291,16 +312,18 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
 }
 
 export function obterLancamento(ctx: Contexto, id: number) {
+  const escopo = escopoSql(ctx, null, 'l.empresa_id');
   const linha = db()
     .prepare(
-      `SELECT l.*, t.nome AS tipo_despesa, f.nome AS filial_nome
+      `SELECT l.*, t.nome AS tipo_despesa, f.nome AS filial_nome, e.nome AS empresa_nome
          FROM lancamentos l
          JOIN tipos_despesa t ON t.id = l.tipo_despesa_id
+         JOIN empresas e ON e.id = l.empresa_id
          LEFT JOIN filiais f ON f.id = l.filial_id
-        WHERE l.id = ? AND l.empresa_id = ? AND l.excluido_em IS NULL`,
+        WHERE l.id = ? AND ${escopo.sql} AND l.excluido_em IS NULL`,
     )
-    .get(id, ctx.empresaId) as (LinhaLancamento & Record<string, unknown>) | undefined;
-  if (!linha) throw erroNaoEncontrado(`Lançamento ${id} não encontrado nesta empresa.`);
+    .get(id, ...escopo.params) as (LinhaLancamento & Record<string, unknown>) | undefined;
+  if (!linha) throw erroNaoEncontrado(`Lançamento ${id} não encontrado neste cliente.`);
   return apresentar(linha);
 }
 
@@ -312,6 +335,12 @@ export function obterLancamento(ctx: Contexto, id: number) {
  * de um item é o mesmo filtro.
  */
 export interface FiltroLancamentos {
+  /**
+   * Filtro LOCAL de matriz. Vazio significa o cliente inteiro — o padrão de toda
+   * tela desde que o recorte deixou de ser global. Matriz de outro cliente é
+   * recusada no `escopoDeLeitura`, não filtrada em silêncio.
+   */
+  empresas?: number[];
   filialId?: number | null;
   filiais?: Array<number | null>;
   incluirFiliais?: boolean;
@@ -345,8 +374,9 @@ function comoLista<T>(unico: T | undefined, varios: T[] | undefined): T[] | unde
 }
 
 function montarFiltro(ctx: Contexto, filtro: FiltroLancamentos) {
-  const condicoes = ['l.empresa_id = ?', 'l.excluido_em IS NULL'];
-  const params: unknown[] = [ctx.empresaId];
+  const escopo = escopoSql(ctx, filtro.empresas, 'l.empresa_id');
+  const condicoes = [escopo.sql, 'l.excluido_em IS NULL'];
+  const params: unknown[] = [...escopo.params];
   const aplicar = (c: { sql: string; params: unknown[] } | null) => {
     if (!c) return;
     condicoes.push(c.sql);
@@ -400,9 +430,10 @@ export function listarLancamentos(ctx: Contexto, filtro: FiltroLancamentos = {})
 
   const itens = db()
     .prepare(
-      `SELECT l.*, t.nome AS tipo_despesa, f.nome AS filial_nome
+      `SELECT l.*, t.nome AS tipo_despesa, f.nome AS filial_nome, e.nome AS empresa_nome
          FROM lancamentos l
          JOIN tipos_despesa t ON t.id = l.tipo_despesa_id
+         JOIN empresas e ON e.id = l.empresa_id
          LEFT JOIN filiais f ON f.id = l.filial_id
         WHERE ${where}
         ORDER BY l.competencia DESC, t.nome, l.id
@@ -423,17 +454,18 @@ export function listarLancamentos(ctx: Contexto, filtro: FiltroLancamentos = {})
  * Competências com movimento, para alimentar o seletor de múltipla escolha.
  * Sem lista, a tela só poderia oferecer um campo de texto livre.
  */
-export function listarCompetencias(ctx: Contexto, cenarios?: string[]) {
+export function listarCompetencias(ctx: Contexto, cenarios?: string[], empresas?: number[]) {
   const alvo = cenarios?.length ? cenarios : [CENARIO_OFICIAL];
+  const escopo = escopoSql(ctx, empresas);
   const linhas = db()
     .prepare(
       `SELECT competencia, COUNT(*) AS lancamentos, COALESCE(SUM(valor_centavos), 0) AS total
          FROM lancamentos
-        WHERE empresa_id = ? AND excluido_em IS NULL
+        WHERE ${escopo.sql} AND excluido_em IS NULL
           AND cenario IN (${alvo.map(() => '?').join(', ')})
         GROUP BY competencia ORDER BY competencia`,
     )
-    .all(ctx.empresaId, ...alvo) as Array<{ competencia: string; lancamentos: number; total: number }>;
+    .all(...escopo.params, ...alvo) as Array<{ competencia: string; lancamentos: number; total: number }>;
   return linhas.map((l) => ({
     competencia: paraExibicao(l.competencia),
     lancamentos: l.lancamentos,
@@ -457,7 +489,10 @@ export interface AtualizacaoLancamento {
 
 export function atualizarLancamento(ctx: Contexto, id: number, dados: AtualizacaoLancamento) {
   const antes = buscarLinha(ctx, id);
-  garantirCompetenciaEditavel(ctx, antes.competencia, dados.justificativa);
+  // A matriz é a DO REGISTRO: filial, tipo de despesa e mês fechado são dela,
+  // não da que por acaso está em foco.
+  const empresaDoRegistro = antes.empresa_id;
+  garantirCompetenciaEditavel(ctx, antes.competencia, dados.justificativa, empresaDoRegistro);
 
   const novaCompetencia = dados.competencia ? paraInterno(dados.competencia) : antes.competencia;
   if (novaCompetencia !== antes.competencia) {
@@ -466,11 +501,11 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
         'Não é possível mover a competência de uma parcela projetada. Reprograme o lançamento de origem.',
       );
     }
-    garantirCompetenciaEditavel(ctx, novaCompetencia, dados.justificativa);
+    garantirCompetenciaEditavel(ctx, novaCompetencia, dados.justificativa, empresaDoRegistro);
   }
 
-  const filialId = dados.filialId !== undefined ? validarFilial(ctx.empresaId, dados.filialId) : antes.filial_id;
-  if (dados.tipoDespesaId !== undefined) garantirTipoDespesa(ctx.empresaId, dados.tipoDespesaId);
+  const filialId = dados.filialId !== undefined ? validarFilial(empresaDoRegistro, dados.filialId) : antes.filial_id;
+  if (dados.tipoDespesaId !== undefined) garantirTipoDespesa(empresaDoRegistro, dados.tipoDespesaId);
 
   const valorCentavos = dados.valor !== undefined ? paraCentavos(dados.valor) : antes.valor_centavos;
   if (valorCentavos < 0) throw erroValidacao('O valor do lançamento não pode ser negativo.');
@@ -497,7 +532,7 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
       dados.destinoPagamento !== undefined ? dados.destinoPagamento : antes.destino_pagamento,
       dados.documento !== undefined ? dados.documento : antes.documento,
       id,
-      ctx.empresaId,
+      empresaDoRegistro,
     );
 
   const depois = obterLancamento(ctx, id);
@@ -549,7 +584,7 @@ export function reconhecerLancamentos(
         jaEstavam.push(id);
         continue;
       }
-      atualizar.run(alvo, carimbo, ctx.usuarioId, id, ctx.empresaId, alvo);
+      atualizar.run(alvo, carimbo, ctx.usuarioId, id, antes.empresa_id, alvo);
       mudaram += 1;
       auditar(ctx, {
         entidade: 'lancamento',
@@ -596,7 +631,7 @@ export function reclassificarLancamento(
             AND (id = ? OR lancamento_origem_id = ?)
             AND competencia > ?`,
       )
-      .all(ctx.empresaId, alvo.id, grupoId, grupoId, atual) as LinhaLancamento[];
+      .all(alvo.empresa_id, alvo.id, grupoId, grupoId, atual) as LinhaLancamento[];
     alvos.push(...irmas.filter((l) => l.classificacao !== dados.classificacao));
   }
 
@@ -616,7 +651,7 @@ export function reclassificarLancamento(
       `UPDATE lancamentos SET classificacao = ?, atualizado_em = datetime('now') WHERE id = ? AND empresa_id = ?`,
     );
     for (const linha of alvos) {
-      atualizar.run(dados.classificacao, linha.id, ctx.empresaId);
+      atualizar.run(dados.classificacao, linha.id, linha.empresa_id);
       auditar(ctx, {
         entidade: 'lancamento',
         entidadeId: linha.id,
@@ -652,7 +687,7 @@ export function excluirLancamento(
   if (ehOrigem && incluirParcelas) {
     const filhas = db()
       .prepare('SELECT * FROM lancamentos WHERE empresa_id = ? AND lancamento_origem_id = ? AND excluido_em IS NULL')
-      .all(ctx.empresaId, alvo.id) as LinhaLancamento[];
+      .all(alvo.empresa_id, alvo.id) as LinhaLancamento[];
     alvos.push(...filhas);
   }
   for (const linha of alvos.slice(1)) {
@@ -664,7 +699,7 @@ export function excluirLancamento(
       `UPDATE lancamentos SET excluido_em = datetime('now'), dedup_hash = NULL WHERE id = ? AND empresa_id = ?`,
     );
     for (const linha of alvos) {
-      marcar.run(linha.id, ctx.empresaId);
+      marcar.run(linha.id, linha.empresa_id);
       auditar(ctx, {
         entidade: 'lancamento',
         entidadeId: linha.id,
@@ -690,7 +725,7 @@ export function listarSerie(ctx: Contexto, id: number) {
         WHERE l.empresa_id = ? AND l.excluido_em IS NULL AND (l.id = ? OR l.lancamento_origem_id = ?)
         ORDER BY l.competencia`,
     )
-    .all(ctx.empresaId, grupoId, grupoId) as Array<LinhaLancamento & Record<string, unknown>>;
+    .all(alvo.empresa_id, grupoId, grupoId) as Array<LinhaLancamento & Record<string, unknown>>;
   return linhas.map(apresentar);
 }
 
@@ -716,20 +751,37 @@ export function garantirCenario(empresaId: number, chave: string | null | undefi
   return limpo;
 }
 
-export function listarCenarios(ctx: Contexto) {
+/**
+ * Os cenários do CLIENTE, um por chave.
+ *
+ * A tabela guarda uma linha por matriz — é assim que a validação de escrita
+ * confere se a matriz conhece o cenário —, mas a lista é do cliente: o gestor
+ * cadastra "contrato com desconto" uma vez, e ele vale para todas as unidades.
+ * A contagem soma as matrizes, porque o número que interessa é o do cliente.
+ */
+export function listarCenarios(ctx: Contexto, empresas?: number[]) {
+  const escopo = escopoSql(ctx, empresas);
+  const escopoC = escopoSql(ctx, empresas, 'c.empresa_id');
   const alternativos = db()
     .prepare(
-      `SELECT c.chave, c.nome, c.descricao,
+      `SELECT c.chave, MIN(c.nome) AS nome, MIN(c.descricao) AS descricao,
               (SELECT COUNT(*) FROM lancamentos l
-                WHERE l.empresa_id = c.empresa_id AND l.cenario = c.chave AND l.excluido_em IS NULL) AS lancamentos
-         FROM cenarios c WHERE c.empresa_id = ? ORDER BY c.nome`,
+                WHERE ${escopoSql(ctx, empresas, 'l.empresa_id').sql}
+                  AND l.cenario = c.chave AND l.excluido_em IS NULL) AS lancamentos
+         FROM cenarios c WHERE ${escopoC.sql}
+        GROUP BY c.chave ORDER BY MIN(c.nome)`,
     )
-    .all(ctx.empresaId) as Array<{ chave: string; nome: string; descricao: string | null; lancamentos: number }>;
+    .all(...escopoSql(ctx, empresas, 'l.empresa_id').params, ...escopoC.params) as Array<{
+    chave: string;
+    nome: string;
+    descricao: string | null;
+    lancamentos: number;
+  }>;
   const oficial = db()
     .prepare(
-      `SELECT COUNT(*) AS n FROM lancamentos WHERE empresa_id = ? AND cenario = ? AND excluido_em IS NULL`,
+      `SELECT COUNT(*) AS n FROM lancamentos WHERE ${escopo.sql} AND cenario = ? AND excluido_em IS NULL`,
     )
-    .get(ctx.empresaId, CENARIO_OFICIAL) as { n: number };
+    .get(...escopo.params, CENARIO_OFICIAL) as { n: number };
   return [
     { chave: CENARIO_OFICIAL, nome: 'Oficial', descricao: 'Projeção vigente', lancamentos: oficial.n },
     ...alternativos,
@@ -741,10 +793,21 @@ export function criarCenario(ctx: Contexto, dados: { chave: string; nome: string
   if (!chave || chave === CENARIO_OFICIAL) {
     throw erroValidacao('Informe uma chave de cenário diferente de "oficial".');
   }
-  const info = db()
-    .prepare('INSERT INTO cenarios (empresa_id, chave, nome, descricao) VALUES (?, ?, ?, ?)')
-    .run(ctx.empresaId, chave, dados.nome?.trim() || chave, dados.descricao ?? null);
-  const id = Number(info.lastInsertRowid);
+  // O cenário é do cliente: ele nasce em TODAS as matrizes dele. Criá-lo só na
+  // matriz em foco faria o lançamento numa unidade irmã ser recusado por
+  // "cenário não cadastrado" — com o cenário visível na lista, que é do cliente.
+  const nome = dados.nome?.trim() || chave;
+  const inserir = db().prepare(
+    `INSERT INTO cenarios (empresa_id, chave, nome, descricao) VALUES (?, ?, ?, ?)
+     ON CONFLICT (empresa_id, chave) DO NOTHING`,
+  );
+  let id = 0;
+  emTransacao(() => {
+    for (const empresaId of escopoDeLeitura(ctx)) {
+      const info = inserir.run(empresaId, chave, nome, dados.descricao ?? null);
+      if (empresaId === ctx.empresaId || id === 0) id = Number(info.lastInsertRowid) || id;
+    }
+  });
   auditar(ctx, { entidade: 'cenario', entidadeId: id, acao: 'criar', depois: dados });
-  return { id, chave, nome: dados.nome?.trim() || chave, descricao: dados.descricao ?? null };
+  return { id, chave, nome, descricao: dados.descricao ?? null };
 }

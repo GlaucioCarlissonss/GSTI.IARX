@@ -33,6 +33,49 @@ export function auditar(ctx: Contexto, registro: RegistroAuditoria): void {
     );
 }
 
+export interface TentativaNegada {
+  clienteId: number | null;
+  usuarioId: number | null;
+  usuarioEmail: string | null;
+  rota?: string | null;
+  metodo?: string | null;
+  motivo?: string | null;
+}
+
+/**
+ * Tentativa de acesso a cliente não autorizado.
+ *
+ * Fora de `auditar` porque não há contexto: a recusa acontece ANTES de existir
+ * empresa em foco — é o próprio contexto que foi negado. Guardar em `auditoria`
+ * exigiria inventar uma empresa para a linha, e uma empresa inventada na trilha
+ * vale menos que nenhuma.
+ */
+export function registrarAcessoNegado(tentativa: TentativaNegada): void {
+  db()
+    .prepare(
+      `INSERT INTO acesso_negado (cliente_id, usuario_id, usuario_email, rota, metodo, motivo)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      tentativa.clienteId,
+      tentativa.usuarioId,
+      tentativa.usuarioEmail,
+      tentativa.rota ?? null,
+      tentativa.metodo ?? null,
+      tentativa.motivo ?? null,
+    );
+}
+
+/** As tentativas recusadas, da mais recente para a mais antiga. */
+export function listarAcessosNegados(limite = 100) {
+  return db()
+    .prepare(
+      `SELECT id, cliente_id, usuario_id, usuario_email, rota, metodo, motivo, criado_em
+         FROM acesso_negado ORDER BY id DESC LIMIT ?`,
+    )
+    .all(Math.min(limite, 500));
+}
+
 export interface FiltroAuditoria {
   entidade?: string;
   entidadeId?: number;

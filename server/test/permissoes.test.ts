@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ambienteLimpo } from './apoio.js';
+import { ambienteLimpo, contextoDe } from './apoio.js';
 import {
   ACOES,
   atualizarPerfil,
@@ -217,7 +217,7 @@ test('usuário de outra empresa não aparece nem é alterável', () => {
   // Uma empresa de verdade, e não um id inventado: a segunda empresa tem os
   // próprios perfis, e é isso que o isolamento precisa exercitar.
   const outraEmpresa = criarEmpresa(ctx.usuarioId, { nome: 'Outra empresa' }) as { id: number };
-  const outra: Contexto = { ...ctx, empresaId: outraEmpresa.id };
+  const outra: Contexto = contextoDe(ctx, outraEmpresa.id);
 
   assert.equal(listarUsuarios(outra).some((u) => u.id === daqui.id), false);
   // Responder "não está nesta empresa" já contaria que a conta existe.

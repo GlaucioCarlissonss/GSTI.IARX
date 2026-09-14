@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ambienteLimpo, idTipoDespesa, mesRelativo } from './apoio.js';
+import { ambienteLimpo, contextoDe, idTipoDespesa, mesRelativo } from './apoio.js';
 import { db } from '../src/db/index.js';
 import {
   atualizarLancamento,
@@ -220,7 +220,7 @@ test('lançamento não aceita filial de outra empresa', () => {
     .prepare('SELECT id FROM tipos_despesa WHERE empresa_id = ?')
     .get(outraEmpresaId) as { id: number };
 
-  const ctxOutra = { ...primeira.ctx, empresaId: outraEmpresaId };
+  const ctxOutra = contextoDe(primeira.ctx, outraEmpresaId);
   assert.throws(
     () =>
       criarLancamento(ctxOutra, {

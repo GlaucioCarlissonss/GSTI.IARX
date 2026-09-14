@@ -7,6 +7,7 @@ import { criarFila, listarFilas } from '../src/domain/cadastros.js';
 import { registrarTicketSla } from '../src/domain/sla.js';
 import { escreverCsv, lerCsv } from '../src/lib/planilha.js';
 import type { Contexto } from '../src/domain/contexto.js';
+import { contextoDe } from './apoio.js';
 import type { Request } from 'express';
 import { baseDeLink, confiaNoProxy, enderecoConfigurado } from '../src/lib/endereco.js';
 
@@ -21,6 +22,7 @@ function ambiente() {
   const empresa = criarEmpresa(usuario.id, { nome: 'Empresa A' });
   const ctx: Contexto = {
     empresaId: empresa.id,
+    empresaIds: [empresa.id],
     usuarioId: usuario.id,
     usuarioEmail: usuario.email,
     papel: 'gestor',
@@ -77,7 +79,7 @@ test('um token assinado com outro segredo é recusado', () => {
 test('as filas de ticket pertencem à empresa e não vazam entre tenants', () => {
   const { usuario, ctx } = ambiente();
   const outra = criarEmpresa(usuario.id, { nome: 'Empresa B' });
-  const ctxB: Contexto = { ...ctx, empresaId: outra.id };
+  const ctxB: Contexto = contextoDe(ctx, outra.id);
 
   // Toda empresa nasce com as três filas padrão, próprias.
   const filasA = listarFilas(ctx) as Array<{ id: number; nome: string }>;

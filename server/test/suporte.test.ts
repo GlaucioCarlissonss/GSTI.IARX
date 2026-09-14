@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ambienteLimpo } from './apoio.js';
+import { ambienteLimpo, contextoDe } from './apoio.js';
 import {
   gravarChamado,
   listarChamados,
@@ -94,12 +94,12 @@ test('reentrega do mesmo chamado atualiza, nunca duplica', () => {
   const repetido = gravarChamado(empresaId, normalizar('OSTICK', payload), payload);
   assert.equal(repetido.criado, false);
   assert.equal(repetido.ticket_id, primeiro.ticket_id);
-  assert.equal(listarChamados(empresaId).paginacao.total, 1);
+  assert.equal(listarChamados(ctx).paginacao.total, 1);
 
   // Agora com o fechamento: o mesmo registro é atualizado.
   const fechado = { ...payload, status: 'Fechado', closed: '02/08/2026 10:00', hours: 25 };
   gravarChamado(empresaId, normalizar('OSTICK', fechado), fechado);
-  const lista = listarChamados(empresaId);
+  const lista = listarChamados(ctx);
   assert.equal(lista.paginacao.total, 1);
   assert.equal((lista.itens[0] as Record<string, unknown>).status, 'closed');
   assert.equal((lista.itens[0] as Record<string, unknown>).horas, 25);
@@ -110,9 +110,9 @@ test('reentrega do mesmo chamado atualiza, nunca duplica', () => {
   // O mesmo id no OUTRO sistema é outro chamado: a chave é composta.
   const bitrix = { ID: '21734', TITLE: 'Outro assunto', DEPARTMENT: 'TI' };
   gravarChamado(empresaId, normalizar('BITRIX24', bitrix), bitrix);
-  assert.equal(listarChamados(empresaId).paginacao.total, 2);
-  assert.equal(listarChamados(empresaId, { sistemas: ['OSTICK'] }).paginacao.total, 1);
-  assert.equal(listarChamados(empresaId, { sistemas: ['BITRIX24'] }).paginacao.total, 1);
+  assert.equal(listarChamados(ctx).paginacao.total, 2);
+  assert.equal(listarChamados(ctx, { sistemas: ['OSTICK'] }).paginacao.total, 1);
+  assert.equal(listarChamados(ctx, { sistemas: ['BITRIX24'] }).paginacao.total, 1);
 
   void ctx;
 });
@@ -132,36 +132,36 @@ test('setor ausente vira "Não classificado" em vez de recusar o chamado', () =>
 });
 
 test('filtros recortam por setor, atendente, solicitante, status e busca', () => {
-  const { empresaId } = ambienteLimpo();
+  const { ctx, empresaId } = ambienteLimpo();
   const entrar = (p: Record<string, unknown>) => gravarChamado(empresaId, normalizar('OSTICK', p), p);
   entrar({ ticket_id: '1', subject: 'Impressora travada', department: 'Enfermagem', staff: 'João', user: 'Maria', status: 'Aberto' });
   entrar({ ticket_id: '2', subject: 'VPN fora do ar', department: 'TI', staff: 'Ana', user: 'Carlos', status: 'Fechado', closed: '02/08/2026 10:00' });
   entrar({ ticket_id: '3', subject: 'Impressora sem toner', department: 'Enfermagem', staff: 'Ana', user: 'Maria', status: 'Aberto' });
 
-  const opcoes = opcoesDeFiltro(empresaId);
+  const opcoes = opcoesDeFiltro(ctx);
   assert.deepEqual((opcoes.setores as Array<{ nome: string }>).map((s) => s.nome).sort(), ['Enfermagem', 'TI']);
   assert.deepEqual(opcoes.atendentes.sort(), ['Ana', 'João']);
   assert.deepEqual(opcoes.solicitantes.sort(), ['Carlos', 'Maria']);
 
   const enfermagem = (opcoes.setores as Array<{ id: number; nome: string }>).find((s) => s.nome === 'Enfermagem')!;
-  assert.equal(listarChamados(empresaId, { setorIds: [enfermagem.id] }).paginacao.total, 2);
-  assert.equal(listarChamados(empresaId, { atendentes: ['Ana'] }).paginacao.total, 2);
-  assert.equal(listarChamados(empresaId, { solicitantes: ['Maria'] }).paginacao.total, 2);
-  assert.equal(listarChamados(empresaId, { status: ['closed'] }).paginacao.total, 1);
-  assert.equal(listarChamados(empresaId, { busca: 'impressora' }).paginacao.total, 2);
-  assert.equal(listarChamados(empresaId, { busca: 'toner' }).paginacao.total, 1);
+  assert.equal(listarChamados(ctx, { setorIds: [enfermagem.id] }).paginacao.total, 2);
+  assert.equal(listarChamados(ctx, { atendentes: ['Ana'] }).paginacao.total, 2);
+  assert.equal(listarChamados(ctx, { solicitantes: ['Maria'] }).paginacao.total, 2);
+  assert.equal(listarChamados(ctx, { status: ['closed'] }).paginacao.total, 1);
+  assert.equal(listarChamados(ctx, { busca: 'impressora' }).paginacao.total, 2);
+  assert.equal(listarChamados(ctx, { busca: 'toner' }).paginacao.total, 1);
 
   // O resumo é do mesmo recorte: os números do detalhamento batem com o filtro.
-  const soAna = listarChamados(empresaId, { atendentes: ['Ana'] });
+  const soAna = listarChamados(ctx, { atendentes: ['Ana'] });
   assert.equal(soAna.resumo.total, 2);
   assert.equal(soAna.resumo.em_aberto, 1);
 });
 
 test('o detalhe traz o payload como chegou, para reconferir contra a origem', () => {
-  const { empresaId } = ambienteLimpo();
+  const { ctx, empresaId } = ambienteLimpo();
   const bruto = { ticket_id: '55', subject: 'Chamado com anexo', campo_exotico: { a: 1, b: [2, 3] } };
   const { ticket_id } = gravarChamado(empresaId, normalizar('OSTICK', bruto), bruto);
-  const detalhe = obterChamado(empresaId, ticket_id) as Record<string, unknown>;
+  const detalhe = obterChamado(ctx, ticket_id) as Record<string, unknown>;
   assert.deepEqual(detalhe.raw_payload, bruto);
   assert.ok(detalhe.synced_at, 'o momento da sincronização fica registrado');
   assert.equal(detalhe.source_system, 'OSTICK');
@@ -173,19 +173,24 @@ test('chamado de uma empresa não aparece na outra', () => {
   // apareceria, não o de dois bancos separados.
   const empresaB = criarEmpresa(ctx.usuarioId, { nome: 'Segunda Empresa' }).id;
 
+  // Cada matriz criada sem cliente informado vira cliente de si mesma: são dois
+  // contratantes distintos, e é assim que o escopo os separa.
+  const ctxA = contextoDe(ctx, empresaA);
+  const ctxB = contextoDe(ctx, empresaB);
+
   const p = { ticket_id: '777', subject: 'Só da empresa A', department: 'TI' };
   gravarChamado(empresaA, normalizar('OSTICK', p), p);
-  assert.equal(listarChamados(empresaA).paginacao.total, 1);
-  assert.equal(listarChamados(empresaB).paginacao.total, 0);
+  assert.equal(listarChamados(ctxA).paginacao.total, 1);
+  assert.equal(listarChamados(ctxB).paginacao.total, 0);
 
   // O mesmo id externo nas duas empresas são dois chamados distintos: elas
   // podem usar instâncias separadas do mesmo helpdesk.
   gravarChamado(empresaB, normalizar('OSTICK', p), p);
-  assert.equal(listarChamados(empresaA).paginacao.total, 1);
-  assert.equal(listarChamados(empresaB).paginacao.total, 1);
+  assert.equal(listarChamados(ctxA).paginacao.total, 1);
+  assert.equal(listarChamados(ctxB).paginacao.total, 1);
 
   // E o setor criado numa empresa não aparece no catálogo da outra.
-  const setoresB = listarSetores({ ...ctx, empresaId: empresaB }) as Array<{ nome: string }>;
+  const setoresB = listarSetores(ctxB) as Array<{ nome: string }>;
   assert.equal(setoresB.length, 1);
 });
 
@@ -198,13 +203,13 @@ test('o endereço do chamado sai do servidor, pronto e igual em toda tela', () =
   };
   gravarChamado(ctx.empresaId, normalizarOstick(bruto), bruto);
 
-  const daListagem = listarChamados(ctx.empresaId, {}).itens[0] as Record<string, unknown>;
+  const daListagem = listarChamados(ctx, {}).itens[0] as Record<string, unknown>;
   const url = daListagem.url_externa as string;
   assert.match(url, /21734$/);
 
   // Listagem, detalhe e o registro visto pelo módulo de SLA têm de apontar
   // para o mesmo lugar: telas que remontam a URL por conta própria divergem.
-  const doDetalhe = obterChamado(ctx.empresaId, daListagem.id as number) as Record<string, unknown>;
+  const doDetalhe = obterChamado(ctx, daListagem.id as number) as Record<string, unknown>;
   assert.equal(doDetalhe.url_externa, url);
   const doSla = listarTicketsSla(ctx).itens.find((r) => r.external_id === '21734');
   assert.equal(doSla?.url_externa, url);
@@ -225,7 +230,7 @@ test('sem base configurada para a origem, não há link adivinhado', () => {
   const { ctx } = ambienteLimpo();
   const doBitrixBruto = { ID: '55', TITLE: 'Chamado do Bitrix', STAGE_ID: 'NEW', CREATED_TIME: '2026-08-03T09:00:00Z' };
   gravarChamado(ctx.empresaId, normalizarBitrix24(doBitrixBruto), doBitrixBruto);
-  const doBitrix = listarChamados(ctx.empresaId, {}).itens[0] as Record<string, unknown>;
+  const doBitrix = listarChamados(ctx, {}).itens[0] as Record<string, unknown>;
   // Só o osTicket tem endereço padrão. Um endereço inventado para o Bitrix24
   // levaria o gestor a uma página que não existe.
   assert.equal(doBitrix.url_externa, null);
@@ -233,6 +238,6 @@ test('sem base configurada para a origem, não há link adivinhado', () => {
   gravarUrlHelpdesk(ctx, 'https://helpdesk.exemplo.com/t/');
   const outroBruto = { ticket_id: '77', subject: 'x', status: 'open', created: '2026-08-04T09:00:00Z' };
   gravarChamado(ctx.empresaId, normalizarOstick(outroBruto), outroBruto);
-  const comBaseTrocada = listarChamados(ctx.empresaId, { busca: 'x' }).itens[0] as Record<string, unknown>;
+  const comBaseTrocada = listarChamados(ctx, { busca: 'x' }).itens[0] as Record<string, unknown>;
   assert.equal(comBaseTrocada.url_externa, 'https://helpdesk.exemplo.com/t/77');
 });
