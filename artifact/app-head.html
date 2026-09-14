@@ -236,7 +236,10 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .bt.perigo{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 40%,transparent)}
 
 .filtros{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;background:var(--sup);border:1px solid var(--linha);border-radius:12px;padding:12px 14px;box-shadow:var(--sombra)}
-.filtros .campo{flex:0 1 auto}
+.filtros .campo{flex:0 1 auto;max-width:100%}
+/* Campo com largura mínima declarada não pode empurrar a página numa tela
+   estreita: o pedido de largura vale enquanto couber. */
+.filtros .campo>input,.filtros .campo>select,.filtros .campo>textarea{max-width:100%}
 
 /* ------------------------------------------------- seletor de múltipla escolha */
 /* Caixas de seleção em formulário: lançar a mesma despesa em várias filiais
@@ -313,7 +316,11 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .delta.sobe{color:var(--crit)} .delta.desce{color:var(--bomtxt)} .delta.zero{color:var(--tinta3)}
 
 /* -------------------------------------------------------------- tabela */
-.rol{overflow-x:auto}
+.rol{overflow-x:auto;max-width:100%;min-width:0}
+/* O contêiner de rolagem só segura a tabela se ele PRÓPRIO puder encolher: num
+   pai flex ou grid, a largura mínima automática do filho o empurra para fora e
+   a página inteira ganha rolagem horizontal. */
+.bloco{min-width:0}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--tinta3);font-weight:500;padding:7px 9px;border-bottom:1px solid var(--linha2);white-space:nowrap}
 td{padding:8px 9px;border-bottom:1px solid var(--linha);vertical-align:top}

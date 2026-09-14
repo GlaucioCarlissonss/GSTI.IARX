@@ -296,6 +296,11 @@ async function viewIntegracoes() {
   const ultimas24 = eventos.filter((e) => (agora - new Date(e.quando).getTime()) < dia).length;
 
   el('#pagina').innerHTML = `
+    <div class="msg"><strong>A configuração abaixo é do cliente</strong> — ${esc(clienteAtual() ? clienteAtual().nome : '')} —
+      e vale para as ${inteiro(unidades.length)} unidade(s) dele. Só o <strong>destino</strong> do chamado é por
+      unidade: cada uma tem a própria instância do helpdesk, e o mesmo número de chamado em duas delas não é o
+      mesmo chamado.</div>
+
     <div class="msg"><strong>Esta versão hospedada não recebe o POST do N8N.</strong>
       Ela define a conexão, publica o contrato do payload e passa o que você colar aqui pelo mesmo tratamento que o
       servidor local aplica ao webhook de verdade — normalização, validação e gravação por

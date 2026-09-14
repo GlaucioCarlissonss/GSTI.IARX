@@ -179,7 +179,7 @@ const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-te
   await pag.evaluate(async () => {
     E.empresasSel = new Set(['residencial']);
     for (const e of E.empresasSel) await garantirDados(e);
-    ajustarCompetencias(); pintarSeletores(); await render();
+    ajustarCompetencias(); pintarFiltrosDaTela(); await render();
   });
   await pag.waitForTimeout(700);
   // A tabela de chamados vive na tela Chamados, do módulo Gestão de Suporte TI;

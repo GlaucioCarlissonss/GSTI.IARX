@@ -39,6 +39,15 @@ const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||''));
   const kpi = (i = 0) => pag.$$eval('.kpi .n', (ns) => ns.map((n) => n.textContent))
     .then((ns) => centavos(ns[i]));
 
+  // O escopo abre com o CLIENTE INTEIRO. Os números conferidos abaixo são de
+  // uma unidade, então a suíte começa recortando o Painel numa — que é o uso
+  // normal do filtro local, e o que as seções seguintes ampliam e desfazem.
+  await pag.evaluate(async () => {
+    filtroDaTela('painel').empresas = new Set(['alianca']);
+    await render();
+  });
+  await pag.waitForTimeout(700);
+
   // ---------------------------------------------------------- competências
   console.log('COMPETÊNCIA — somar vários meses');
   const so08 = await kpi();
@@ -98,12 +107,14 @@ const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||''));
     }), 5);
   await pag.keyboard.press('Escape');
   await pag.waitForTimeout(400);
+  // Cadastro e carga são de UMA unidade, e ela se escolhe na própria tela —
+  // não deixando "só uma marcada" num filtro que governava o sistema inteiro.
   await ir('Cadastros');
-  confere('cadastros explicam a restrição',
-    /uma empresa por vez/.test(await pag.$eval('#pagina', (e) => e.textContent)), true);
+  confere('cadastros escolhem a unidade na tela',
+    await pag.$$eval('#f-foco option', (os) => os.length), 5);
   await ir('Dados');
-  confere('dados explicam a restrição',
-    /uma empresa por vez/.test(await pag.$eval('#pagina', (e) => e.textContent)), true);
+  confere('a carga escolhe a unidade na tela',
+    await pag.$$eval('#f-foco option', (os) => os.length), 5);
   await pag.evaluate(async () => {
     for (const e of ['alianca', 'union']) {
       await E.db.doc('auditoria/' + e).set({ itens: [{ acao:'criar', entidade:'lancamento',
@@ -116,9 +127,13 @@ const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||''));
   confere('auditoria ganha coluna de empresa', cabAud.includes('Empresa'), true);
   confere('auditoria junta as duas trilhas', await pag.$$eval('#pagina tbody tr', (r) => r.length), 2);
 
+  // O filtro de empresa vive na barra DA TELA: em Auditoria ele nem existe.
+  // Voltar ao Painel é o que traz o seletor de volta — e é a demonstração de
+  // que o recorte é local.
+  confere('a auditoria não tem filtro de empresa', (await pag.$$('#f-empresa')).length, 0);
+  await ir('Painel');
   await marcar('f-empresa', ['union'], false);
   await pag.waitForTimeout(900);
-  await ir('Painel');
   confere('volta a uma empresa', await kpi(), so08);
 
   // --------------------------------------------------------------- cenário

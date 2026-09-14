@@ -41,8 +41,9 @@ const MODULOS_ESPERADOS = ['Indicadores Gerais', 'Controle Financeiro', 'Gestão
   conferir('indicadores gerais é módulo de tela única, fora dos operacionais',
     JSON.stringify(por('Indicadores Gerais')) === JSON.stringify(['Indicadores Gerais']),
     por('Indicadores Gerais').join(', '));
-  conferir('sistema reúne dados, cadastros, acessos e auditoria',
-    JSON.stringify(por('Sistema')) === JSON.stringify(['Dados', 'Cadastros', 'Usuários e acessos', 'Auditoria']),
+  conferir('sistema reúne dados, clientes, cadastros, acessos e auditoria',
+    JSON.stringify(por('Sistema'))
+      === JSON.stringify(['Dados', 'Clientes e unidades', 'Cadastros', 'Usuários e acessos', 'Auditoria']),
     por('Sistema').join(', '));
   // "Indicadores Gerais" é a leitura estratégica dos três módulos, e mora fora
   // deles de propósito — a regra aqui é sobre a OPERAÇÃO de suporte não vazar.

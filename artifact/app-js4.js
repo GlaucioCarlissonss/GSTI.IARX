@@ -22,6 +22,9 @@ function lancFiltrados() {
 function viewLancamentos() {
   const lista = lancFiltrados();
   const mostrados = lista.slice(0, 400);
+  // A lista mostra o cliente inteiro: sem a unidade na linha não dá para saber
+  // de qual delas é o número. Com uma só, a coluna seria ruído.
+  const variasUnidades = escopoEmpresas().length > 1;
   const total = reais(somaC(lista.map((l)=>l.valor)));
   const tipos = tiposDoEscopo();
   const f = E.filtros;
@@ -48,11 +51,12 @@ function viewLancamentos() {
         <span class="nota">${inteiro(lista.length)} registros · ${brl(total)}${lista.length>400?' · exibindo os 400 mais recentes':''}</span></header>
       ${mostrados.length === 0 ? '<p class="vazio">Nenhum lançamento com estes filtros.</p>' : `
       <div class="rol"><table>
-        <thead><tr><th>Competência</th><th>Filial</th><th>Tipo</th><th>Descrição</th>
+        <thead><tr><th>Competência</th>${variasUnidades ? '<th>Unidade</th>' : ''}<th>Filial</th><th>Tipo</th><th>Descrição</th>
           <th>Origem</th><th>Natureza</th><th>Classificação</th><th class="n">Valor</th><th></th></tr></thead>
         <tbody>${mostrados.map((l) => `<tr data-id="${esc(l.id)}" data-comp="${l.competencia}" data-emp="${esc(l.empresa)}"${classeReconhecimento(l)}>
           <td>${mesExib(l.competencia)}</td>
-          <td>${l.filial ? esc(l.filial) : '<em style="color:var(--tinta3)">empresa</em>'}</td>
+          ${variasUnidades ? `<td>${esc(nomeEmpresa(l.empresa))}</td>` : ''}
+          <td>${l.filial ? esc(l.filial) : '<em style="color:var(--tinta3)">matriz</em>'}</td>
           <td>${esc(l.tipo)}</td>
           <td style="max-width:280px">${esc(l.descricao||'')}
             ${l.obs?`<div style="color:var(--tinta3);font-size:12px">${esc(l.obs)}</div>`:''}
@@ -68,7 +72,7 @@ function viewLancamentos() {
             <button class="bt fant peq" data-rc>Reclassificar</button>
             <button class="bt fant peq" data-ex>Excluir</button></td>
         </tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="7">Total exibido</td>
+        <tfoot><tr><td colspan="${variasUnidades ? 8 : 7}">Total exibido</td>
           <td class="n">${brl(reais(somaC(mostrados.map((l)=>l.valor))))}</td><td></td></tr></tfoot>
       </table></div>`}
     </section>`;

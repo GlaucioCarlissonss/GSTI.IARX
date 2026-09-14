@@ -64,7 +64,14 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
     noTopo: document.querySelector('#cliente-atual b')?.textContent.trim() || null,
   }));
   conferir('o cliente escolhido entra em contexto', depois.cliente === 'grupo-brasil-home-care', String(depois.cliente));
-  conferir('uma matriz do cliente já vem selecionada', depois.empresasSel.length === 1, depois.empresasSel.join(', '));
+  // O escopo é o CLIENTE INTEIRO: nenhuma tela começa recortada por uma
+  // escolha que ninguém fez. O recorte de cada tela é dela, e nasce vazio.
+  const doCliente = await pag.evaluate(() => empresasDoCliente(E.clienteSel).map((e) => e.id));
+  conferir('o escopo abre com todas as unidades do cliente',
+    depois.empresasSel.length === doCliente.length && doCliente.every((e) => depois.empresasSel.includes(e)),
+    depois.empresasSel.join(', '));
+  const filtroVazio = await pag.evaluate(() => filtroDaTela().empresas.size === 0);
+  conferir('o filtro da tela nasce vazio — vazio quer dizer "todas"', filtroVazio, String(filtroVazio));
   conferir('o topo mostra de quem são os números', depois.noTopo === 'Grupo Brasil Home Care', String(depois.noTopo));
   conferir('a escolha fica guardada', depois.guardado === 'grupo-brasil-home-care', String(depois.guardado));
 
@@ -87,11 +94,12 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
   conferir('quem já escolheu não é perguntado de novo',
     semPerguntar.cliente === 'grupo-brasil-home-care' && !semPerguntar.boasVindas, JSON.stringify(semPerguntar));
 
-  // Com um cliente só, trocar não teria para onde ir — e o botão prometeria
-  // uma escolha que não existe.
+  // O botão aparece SEMPRE, inclusive com um cliente só: quem ganha acesso a
+  // um segundo contratante no meio da semana precisa achar a saída sem
+  // descobrir que ela só existe depois de ter dois.
   const temBotao = await pag.evaluate(() => !!document.querySelector('#bt-trocar-cliente'));
   const quantos = await pag.evaluate(() => E.clientes.filter((c) => c.ativo !== false).length);
-  conferir('o botão de trocar só aparece havendo para onde ir', temBotao === quantos > 1,
+  conferir('o botão de trocar cliente está sempre visível', temBotao === true,
     quantos + ' cliente(s), botão ' + (temBotao ? 'presente' : 'ausente'));
 
   // Trocar pela função é o mesmo caminho do botão; com um cliente só, o botão

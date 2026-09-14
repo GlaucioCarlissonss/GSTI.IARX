@@ -56,7 +56,7 @@ const { irPara } = require('./ajuda-testes.cjs');
   // base: a semeadura precisa acontecer depois de cada carga.
   const semear = async () => {
     await pag.evaluate(async () => {
-      const dono = [...E.empresasSel][0];
+      const dono = escopoEmpresas()[0];
       // Só o projeto de teste, para as asserções não dependerem da posição
       // dele no meio dos projetos reais da base.
       await Loja.gravarProjetos(dono, [{
@@ -68,6 +68,10 @@ const { irPara } = require('./ajuda-testes.cjs');
           { id: 'c', nome: 'Roteiro', inicio: '2026-03', fimPlanejado: '2026-06', fimReal: null, paiId: 'b', responsavel: 'Ana' },
         ],
       }]);
+      // A tela mostra o cliente inteiro; o filtro DELA recorta a unidade
+      // semeada, para as asserções não dependerem da posição do projeto de
+      // teste no meio dos projetos reais das outras unidades.
+      filtroDaTela('projetos').empresas = new Set([dono]);
     });
     await irPara(pag, 'Projetos', 900);
   };

@@ -31,8 +31,12 @@ nível empresa (`filial_id = nenhuma`).
 Depois de entrar, a primeira tela pergunta *"Qual cliente você gostaria de
 acessar?"* — um por vez, porque é assim que o sistema consulta: oferecer
 "todos" prometeria uma visão consolidada que nenhuma tela entrega. Escolhido o
-cliente, o seletor de empresa passa a oferecer **só as matrizes dele**; trocar
-de cliente é um clique no topo (app local: lateral) e não passa pelo login.
+cliente, **todas as unidades dele** entram no escopo, e cada tela recorta o que
+quiser dentro disso — nenhuma tela abre recortada por uma escolha que ninguém
+fez. Trocar de cliente é um clique no topo (app local: lateral) e não passa
+pelo login; o botão aparece **sempre**, inclusive com um cliente só, porque
+quem ganha acesso a um segundo contratante no meio da semana precisa achar a
+saída sem descobrir que ela só existe depois de ter dois.
 
 A escolha fica no `localStorage`, o que faz a tela aparecer uma vez por
 navegador e não a cada recarregamento. O que fica guardado é a última escolha,
@@ -379,9 +383,32 @@ fica registrado em log para revisão — recusar o chamado na porta perderia
 justamente o registro que o webhook veio entregar. Setor novo entra no catálogo
 da empresa, como os demais cadastros.
 
+### A integração é do CLIENTE; o destino do chamado é a unidade
+
+Quem contrata o OStick é o **contratante**: o endereço, o segredo e o
+interruptor são os mesmos para todas as unidades dele. Guardá-los por matriz
+obrigava a repetir a configuração uma vez por unidade e prendia a tela de
+Integrações a um seletor de empresa — que é exatamente a barreira relatada.
+
+A tabela `integracao_config` passou a ser chaveada por **(cliente, origem)**. A
+migração reconstrói a tabela (a dona muda de coluna e o índice único junto, e o
+`ALTER TABLE` do SQLite não faz nem uma coisa nem outra) e consolida as linhas:
+de duas conexões do mesmo cliente para a mesma origem fica a que está **em
+uso** — a que tem segredo e, entre elas, a de evento mais recente. Descartar a
+que nunca recebeu nada não perde nada; descartar a ativa quebraria a integração
+em produção.
+
+O **destino** continua sendo uma unidade, e isso é deliberado: cada uma tem a
+própria instância do helpdesk, e o chamado 4812 de uma não é o 4812 da outra. O
+webhook autoriza pelo cliente e entrega na unidade; com `X-Cliente-Id`, um
+contratante de matriz única não precisa saber o id dela, e com mais de uma o
+`X-Empresa-Id` segue obrigatório — adivinhar pelo conteúdo misturaria chamados
+de unidades diferentes em silêncio. Empresa e cliente informados juntos e
+discordando é recusa, que é o que um pedido forjado produziria.
+
 ### Integrações: o operador não depende do N8N para diagnosticar
 
-Cada empresa tem uma **conexão por sistema de origem**, com endereço, segredo e
+Cada cliente tem uma **conexão por sistema de origem**, com endereço, segredo e
 interruptor próprios. O que sustenta a tela de Integrações é o **log de
 eventos**: o payload entra nele **antes** de ser interpretado, e é de lá que
 sai o diagnóstico de uma falha — e o reprocessamento, sem depender de a origem
@@ -626,6 +653,43 @@ depois, com piscada visível.
 
 ## Filtros
 
+### O recorte é do CLIENTE, e cada tela filtra o seu
+
+O sistema tinha um filtro **global** no topo — uma empresa e uma filial — e
+toda tela obedecia a ele. Tinha dois defeitos, e os dois apareceram no uso: a
+tela de Integrações, que é do contratante e não de uma unidade, recusava abrir
+com mais de uma empresa marcada e mandava "deixe uma só"; e mexer no filtro
+para conferir um número no Financeiro recortava Projetos, Suporte e os
+relatórios junto.
+
+Agora o escopo de **toda** consulta é o cliente em contexto: entrar num
+contratante abre todas as unidades dele. Por cima disso, **cada tela tem o seu
+filtro**, com estado só de sessão — recorte de leitura não é configuração, e
+guardá-lo faria a pessoa voltar dias depois a uma tela filtrada sem lembrar por
+quê. Trocar de cliente zera todos: o recorte de um contratante não significa
+nada no outro.
+
+A conferência mora num lugar só (`server/src/domain/escopo.ts`): filtro com
+empresa fora do cliente é **403**, com a mesma recusa dada a uma empresa
+inexistente — distinguir as duas contaria a quem tenta qual id existe. Vazio
+significa o cliente inteiro, e isso está escrito na tela: um seletor vazio que
+traz tudo é justamente o que confunde quem chega.
+
+**Nem toda tela é consulta.** Cadastros, fechamento de competência, acessos,
+exportação e carga escrevem numa unidade só — um registro não pertence a duas
+matrizes. Elas têm um seletor de **unidade em foco**, com a frase do que ele
+governa ali, no lugar de exigir que o filtro de leitura estivesse "certo".
+
+### Todo filtro diz o que faz
+
+Cada campo leva uma linha de apoio com **o que filtra**, **sobre quais dados
+atua** e **o efeito esperado** — "Escolhe as unidades deste cliente que entram
+nesta tela; vazio traz todas juntas", "Filtra pelo mês/ano de competência;
+afeta os gráficos e as tabelas desta tela". Os textos que se repetem ficam num
+lugar só (`web/src/components/filtro-escopo.tsx` e `EXPLICA` no hospedado): a
+mesma pergunta aparece em sete telas, e sete respostas ligeiramente diferentes
+ensinariam sete regras diferentes.
+
 Todo filtro aceita **mais de um valor**. Na tela isso são caixas de seleção,
 com o que está marcado aparecendo em fichas removíveis; na API, listas
 separadas por vírgula (`natureza=fixa,pontual_unica`), o parâmetro repetido, ou
@@ -651,9 +715,9 @@ montada em separado (`lib/consulta.ts`).
 ### O filtro não decide se dá para registrar
 
 Botão de criar registro **nunca** fica desabilitado por causa do recorte em
-tela. O filtro do topo diz o que o gestor está **olhando**; se ele pode ou não
-lançar é outra pergunta, e trancar o botão por causa da primeira é responder a
-errada — o gestor via o botão cinza sem saber o que fazer para destravá-lo.
+tela. O filtro diz o que o gestor está **olhando**; se ele pode ou não lançar é
+outra pergunta, e trancar o botão por causa da primeira é responder a errada —
+o gestor via o botão cinza sem saber o que fazer para destravá-lo.
 
 A empresa do registro se escolhe **dentro do formulário**, já sugerida pela do
 recorte quando há uma só. Quem decide é o formulário, que é onde o registro

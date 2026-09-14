@@ -152,6 +152,14 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
 
   console.log('\n--- a despesa reconhecida perde o destaque na listagem ---');
   await irPara(pag, 'Lançamentos', 1200);
+  // A listagem mostra o cliente inteiro e tem teto de linhas: para conferir a
+  // linha que acabou de ser reconhecida, o filtro DESTA tela recorta a unidade
+  // dela — que é o uso normal do filtro local.
+  await pag.evaluate(async () => {
+    filtroDaTela('lancamentos').empresas = new Set([empresaAtiva()]);
+    await render();
+  });
+  await pag.waitForTimeout(900);
   const listagem = await pag.evaluate(() => {
     const linhas = [...document.querySelectorAll('#pagina tbody tr')];
     const reconhecida = linhas.find((l) => !l.hasAttribute('data-sem-reconhecer'));

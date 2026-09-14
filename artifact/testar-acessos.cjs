@@ -46,8 +46,10 @@ const { irPara } = require('./ajuda-testes.cjs');
   await pag.check('#cx-ativa');
   await pag.click('.modal [data-s]');
   await pag.waitForTimeout(700);
+  // A conexão é do CLIENTE: é ele quem contrata o helpdesk, e a configuração
+  // vale para todas as unidades dele.
   const gravada = await pag.evaluate(async () => {
-    const c = (await Loja.integracoesDa(empresaAtiva())).find((x) => x.sistema === 'OSTICK');
+    const c = (await Loja.integracoesDa(E.clienteSel)).find((x) => x.sistema === 'OSTICK');
     return { ativa: c && c.ativa, hook: c && c.urlWebhook, urlConfig: E.config.urlOsTicket };
   });
   ok('a conexão fica gravada e ativa', gravada.ativa === true);

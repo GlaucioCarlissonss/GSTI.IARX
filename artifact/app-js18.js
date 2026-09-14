@@ -385,7 +385,7 @@ async function viewClientes() {
         <div class="campo"><label for="un-nome">Nome</label><input id="un-nome" value="${esc(rascunho.nome)}" style="min-width:200px"></div>
         <div class="campo"><label for="un-codigo">Código</label><input id="un-codigo" value="${esc(rascunho.codigo)}" style="width:110px"></div>
         <div class="campo"><label for="un-cnpj">CNPJ</label><input id="un-cnpj" value="${esc(rascunho.cnpj)}" style="width:175px"></div>
-        <div class="campo"><label for="un-endereco">Endereço</label><input id="un-endereco" value="${esc(rascunho.endereco)}" style="min-width:300px"></div>
+        <div class="campo"><label for="un-endereco">Endereço</label><input id="un-endereco" value="${esc(rascunho.endereco)}" style="flex:1 1 300px;min-width:0"></div>
         <div class="campo"><label for="un-cep">CEP</label><input id="un-cep" value="${esc(rascunho.cep)}" style="width:110px"></div>
         <div class="campo" id="campo-uf"${rascunho.tipo === 'FILIAL' ? '' : ' hidden'}>
           <label for="un-uf">UF</label><input id="un-uf" value="${esc(rascunho.uf)}" maxlength="2" style="width:60px"></div>
