@@ -184,6 +184,37 @@ gsti.suaempresa.com.br {
 }
 ```
 
+### O link único de acesso
+
+**Um endereço serve a todos os clientes.** O contratante é escolhido *dentro*
+do sistema, depois de entrar — é para isso que existe a camada de cliente. Um
+endereço por cliente significaria uma instalação por cliente, com uma base e um
+backup para cada.
+
+Publicado o domínio, acrescente ao `.env`:
+
+```
+APP_URL=https://gsti.suaempresa.com.br
+TRUST_PROXY=true
+```
+
+- **`APP_URL`** é o endereço que entra nos links enviados por e-mail. Sem ele, o
+  link é montado com o cabeçalho `Host` da requisição — que vem de quem chama:
+  um pedido de redefinição de senha forjado faria a pessoa certa receber um
+  e-mail com um link válido apontando para o site de quem pediu. Com `APP_URL`
+  definido, o cabeçalho deixa de ser consultado.
+- **`TRUST_PROXY`** diz que há um proxy reverso na frente, e só então os
+  cabeçalhos `X-Forwarded-*` passam a valer. É opção explícita porque, sem
+  proxy, qualquer requisição forjaria o próprio IP — e é por IP que o bloqueio
+  após cinco tentativas de senha conta.
+
+Ao subir, o terminal imprime o endereço de acesso configurado. Se a aplicação
+estiver exposta à rede sem `APP_URL`, ele avisa.
+
+O link abre em qualquer tela: `https://.../lancamentos` leva direto aos
+lançamentos depois do login, e o mesmo endereço serve ao convite e ao
+favorito de cada pessoa.
+
 ## 10. Notas de segurança
 
 - **O `.env` guarda o segredo das sessões.** Ele é gerado por

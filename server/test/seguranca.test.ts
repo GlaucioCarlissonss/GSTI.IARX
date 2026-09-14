@@ -7,6 +7,8 @@ import { criarFila, listarFilas } from '../src/domain/cadastros.js';
 import { registrarTicketSla } from '../src/domain/sla.js';
 import { escreverCsv, lerCsv } from '../src/lib/planilha.js';
 import type { Contexto } from '../src/domain/contexto.js';
+import type { Request } from 'express';
+import { baseDeLink, confiaNoProxy, enderecoConfigurado } from '../src/lib/endereco.js';
 
 const SEGREDO = 'a'.repeat(64);
 
@@ -142,4 +144,61 @@ test('exportação em CSV neutraliza fórmula, e a leitura devolve o valor origi
   const comum = escreverCsv(['Descrição'], [{ 'Descrição': 'Licença anual' }]);
   assert.ok(comum.includes('Licença anual'));
   assert.equal(comum.includes("'Licença"), false);
+});
+
+// ------------------------------------------------- endereço público (link único)
+
+test('com APP_URL, o link do e-mail não sai do cabeçalho Host de quem chamou', () => {
+  const antes = process.env.APP_URL;
+  try {
+    process.env.APP_URL = 'https://gestao.exemplo.com.br/';
+    // O `Host` aqui é o de um pedido forjado: sem APP_URL, o e-mail chegaria à
+    // pessoa certa com um link válido apontando para o site de quem pediu.
+    const req = { protocol: 'http', get: () => 'sitedequempediu.example' } as unknown as Request;
+    assert.equal(baseDeLink(req), 'https://gestao.exemplo.com.br');
+    assert.equal(enderecoConfigurado(), 'https://gestao.exemplo.com.br');
+  } finally {
+    if (antes === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = antes;
+  }
+});
+
+test('sem APP_URL, o endereço da requisição ainda serve — é o caso do desenvolvimento local', () => {
+  const antes = process.env.APP_URL;
+  try {
+    delete process.env.APP_URL;
+    const req = { protocol: 'http', get: () => '127.0.0.1:3333' } as unknown as Request;
+    assert.equal(enderecoConfigurado(), null);
+    assert.equal(baseDeLink(req), 'http://127.0.0.1:3333');
+  } finally {
+    if (antes !== undefined) process.env.APP_URL = antes;
+  }
+});
+
+test('APP_URL inválido não vira endereço pela metade', () => {
+  const antes = process.env.APP_URL;
+  try {
+    for (const valor of ['gestao.exemplo.com.br', 'javascript:alert(1)', '   ']) {
+      process.env.APP_URL = valor;
+      assert.equal(enderecoConfigurado(), null, `"${valor}" não é endereço de acesso`);
+    }
+  } finally {
+    if (antes === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = antes;
+  }
+});
+
+test('confiar no proxy é opção explícita: sem ela, o IP da requisição não é o que o cliente disser', () => {
+  const antes = process.env.TRUST_PROXY;
+  try {
+    delete process.env.TRUST_PROXY;
+    assert.equal(confiaNoProxy(), false);
+    process.env.TRUST_PROXY = 'true';
+    assert.equal(confiaNoProxy(), true);
+    process.env.TRUST_PROXY = 'talvez';
+    assert.equal(confiaNoProxy(), false, 'só o sim explícito liga');
+  } finally {
+    if (antes === undefined) delete process.env.TRUST_PROXY;
+    else process.env.TRUST_PROXY = antes;
+  }
 });

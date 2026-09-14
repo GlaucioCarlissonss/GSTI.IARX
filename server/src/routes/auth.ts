@@ -3,6 +3,7 @@ import { autenticar, registrar, registroAberto } from '../domain/auth.js';
 import { criarEmpresa, listarEmpresasDoUsuario } from '../domain/empresas.js';
 import { pedirRedefinicao, redefinirSenha, situacaoDoEmail } from '../domain/senha.js';
 import { assincrono, autenticado } from '../middleware/index.js';
+import { baseDeLink } from '../lib/endereco.js';
 
 export const rotasAuth = Router();
 
@@ -38,7 +39,10 @@ rotasAuth.post('/login', (req, res) => {
 rotasAuth.post(
   '/senha/pedir',
   assincrono(async (req, res) => {
-    const base = `${req.protocol}://${req.get('host') ?? 'localhost'}`;
+    // O endereço do link NÃO sai do cabeçalho `Host` quando há APP_URL: com
+    // ele, um pedido forjado mandaria à pessoa certa um link para o site de
+    // quem pediu, carregando um token válido.
+    const base = baseDeLink(req);
     const r = await pedirRedefinicao(String((req.body ?? {}).email ?? ''), base);
     res.json({ aviso: r.aviso });
   }),

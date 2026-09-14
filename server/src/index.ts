@@ -26,7 +26,20 @@ try {
 
 db(); // abre a conexão e aplica o schema antes de aceitar requisições
 
+const { enderecoConfigurado } = await import('./lib/endereco.js');
+
 criarApp().listen(porta, host, () => {
   const alcance = host === '127.0.0.1' || host === 'localhost' ? 'somente nesta máquina' : `exposto em ${host}`;
   console.log(`GSTI.IARX — API ouvindo em http://localhost:${porta} (${alcance})`);
+
+  // O endereço público é o link único: todo cliente entra por ele, e o
+  // contratante é escolhido dentro do sistema.
+  const publico = enderecoConfigurado();
+  if (publico) console.log(`Endereço de acesso: ${publico}`);
+  else if (host !== '127.0.0.1' && host !== 'localhost') {
+    console.warn(
+      'Atenção: APP_URL não está definido. Os links enviados por e-mail vão usar o endereço da requisição, ' +
+        'que vem de quem chama — defina APP_URL com o endereço público desta instalação.',
+    );
+  }
 });

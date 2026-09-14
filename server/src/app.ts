@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db } from './db/index.js';
+import { confiaNoProxy } from './lib/endereco.js';
 import { autenticado, comEmpresa, tratadorDeErros } from './middleware/index.js';
 import { rotasAuth } from './routes/auth.js';
 import { rotasCadastros } from './routes/cadastros.js';
@@ -21,6 +22,10 @@ import { rotasSuporte } from './routes/suporte.js';
 
 export function criarApp() {
   const app = express();
+  // Atrás de proxy reverso, o IP e o protocolo reais vêm em `X-Forwarded-*`.
+  // Confiar neles é opção explícita: sem proxy na frente, qualquer requisição
+  // forjaria o próprio IP — e é por IP que o bloqueio por tentativas conta.
+  if (confiaNoProxy()) app.set('trust proxy', 1);
   app.use(cors());
   app.use(express.json({ limit: '5mb' }));
   app.use(express.urlencoded({ extended: true }));
