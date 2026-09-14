@@ -438,9 +438,10 @@ async function viewCadastros() {
   await Loja.configuracao();
   const emp = empresaAtiva();
   if (!emp) {
-    el('#pagina').innerHTML = `<div class="msg alerta"><strong>Cadastros são de uma empresa por vez.</strong>
-      Há ${inteiro(E.empresasSel.size)} empresas selecionadas — filiais, tipos, filas e cenários pertencem a
-      cada uma, e o fechamento de competência também. Deixe uma só marcada no seletor <strong>Empresa</strong>.</div>`;
+    // Filiais, tipos, filas e cenários pertencem a uma unidade, e o fechamento
+    // de competência também. A unidade se escolhe na barra desta tela.
+    el('#pagina').innerHTML = `<div class="msg alerta"><strong>Este cliente ainda não tem unidade cadastrada.</strong>
+      Os cadastros pertencem a uma unidade. Cadastre a matriz em <strong>Clientes e unidades</strong>.</div>`;
     return;
   }
   const fechadas = await Loja.fechamentosDa(emp);

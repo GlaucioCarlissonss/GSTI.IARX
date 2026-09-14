@@ -2,24 +2,18 @@
   <div class="linha1">
     <div class="marca"><b>Gestão de TI IARX</b><span>Financeiro · Projetos · Suporte de TI</span></div>
     <div class="cliente-atual" id="cliente-atual" hidden></div>
-    <div class="campo" style="min-width:190px">
-      <label for="f-empresa">Empresa</label>
-      <div data-sel="empresa"></div>
-    </div>
-    <div class="campo" style="min-width:170px">
-      <label for="f-filial">Filial</label>
-      <div data-sel="filial"></div>
-    </div>
-    <div class="campo" style="min-width:200px">
-      <label for="f-base">Base considerada</label>
-      <div data-sel="base"></div>
-    </div>
+    <!-- Os seletores de Empresa, Filial e Base saíram daqui de propósito: eram
+         um recorte GLOBAL, e mexer neles para conferir um número num módulo
+         recortava o sistema inteiro — além de travar a tela de Integrações,
+         que é do contratante e não de uma unidade. Cada tela tem agora a sua
+         barra de filtros, logo abaixo do menu. -->
     <button type="button" class="bt-tema" id="bt-tema" aria-pressed="false"></button>
   </div>
   <div class="fichas" id="f-fichas" hidden style="padding:10px 20px 0"></div>
   <nav class="modulos" id="modulos" aria-label="Módulos"></nav>
   <nav class="abas" id="abas" aria-label="Telas do módulo"></nav>
 </div>
+<div class="filtros-tela" id="filtros-tela" hidden></div>
 <main class="pagina" id="pagina">
   <div class="carregando"><span class="giro"></span> Abrindo a base…</div>
 </main>

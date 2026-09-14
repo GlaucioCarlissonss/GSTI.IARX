@@ -89,8 +89,13 @@ const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-te
     await pag.evaluate(() => Loja.todos(empresaAtiva()).some((l) => l.descricao === 'só da MOOVE')), true);
 
   // ------------------------------------------------------------- Cadastros
+  //
+  // Cadastro é escrita numa unidade, e a unidade se escolhe NA TELA: o filtro
+  // de leitura de outra aba não decide onde a filial nova vai nascer.
   console.log('\nCADASTROS');
   await ir('Cadastros');
+  await pag.selectOption('#f-foco', 'moove').catch(() => {});
+  await pag.waitForTimeout(500);
   const criar = async (tipo, campos) => {
     await pag.click(`#pagina [data-novo="${tipo}"]`);
     await pag.waitForSelector('.modal', { timeout: 6000 });

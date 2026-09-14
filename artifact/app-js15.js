@@ -223,16 +223,26 @@ function payloadDeExemplo(sistema) {
 // ----------------------------------------------------------------- a tela
 async function viewIntegracoes() {
   await Loja.configuracao();
-  const emp = empresaAtiva();
-  if (!emp) {
-    el('#pagina').innerHTML = `<div class="msg alerta"><strong>A integração é de uma empresa por vez.</strong>
-      Há ${inteiro(E.empresasSel.size)} empresas selecionadas — cada uma tem a própria instância do helpdesk, e o
-      mesmo número de chamado em duas delas não é o mesmo chamado. Deixe uma só marcada no seletor
-      <strong>Empresa</strong>.</div>`;
+  // A CONFIGURAÇÃO é do cliente: endereço, webhook e interruptor são os mesmos
+  // para todas as unidades dele. O DESTINO do chamado continua sendo uma
+  // unidade — cada uma tem a própria instância do helpdesk, e o mesmo número de
+  // chamado em duas delas não é o mesmo chamado —, e ela se escolhe aqui,
+  // não num filtro no topo do sistema.
+  const cliente = E.clienteSel;
+  if (!cliente) {
+    el('#pagina').innerHTML = `<div class="msg alerta"><strong>Escolha um cliente.</strong>
+      A integração é do contratante: é ele quem contrata o helpdesk.</div>`;
     return;
   }
-  const conexoes = await Loja.integracoesDa(emp);
-  const eventos = await Loja.eventosDa(emp);
+  const unidades = empresasDoCliente(cliente);
+  const emp = empresaAtiva();
+  if (!emp) {
+    el('#pagina').innerHTML = `<div class="msg alerta"><strong>Este cliente ainda não tem unidade cadastrada.</strong>
+      O chamado precisa de uma unidade de destino. Cadastre a matriz em <strong>Clientes e unidades</strong>.</div>`;
+    return;
+  }
+  const conexoes = await Loja.integracoesDa(cliente);
+  const eventos = await Loja.eventosDoCliente(cliente);
   const sistemas = Object.keys(SISTEMAS_SUPORTE);
   const agora = Date.now();
   const dia = 24 * 60 * 60 * 1000;
@@ -308,6 +318,9 @@ async function viewIntegracoes() {
       <div class="msg">Cole o JSON que o fluxo do N8N vai postar. O que entrar aqui é gravado como chamado de
         verdade nesta base — use o payload de teste enquanto estiver validando o contrato.</div>
       <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
+        <div class="campo" style="width:220px"><label for="ev-destino">Unidade de destino</label>
+          <select id="ev-destino">${unidades.map((u)=>`<option value="${esc(u.id)}"${u.id===emp?' selected':''}>${esc(u.nome)}</option>`).join('')}</select>
+          <small class="dica-filtro">Em qual unidade o chamado será criado. Não muda a configuração — só o destino deste envio.</small></div>
         <div class="campo" style="width:200px"><label for="ev-sistema">Sistema de origem</label>
           <select id="ev-sistema">${sistemas.map((s)=>`<option value="${s}">${esc(SISTEMAS_SUPORTE[s])}</option>`).join('')}</select></div>
         <div class="campo" style="width:200px"><label for="ev-tipo">Tipo de evento</label>
@@ -324,12 +337,13 @@ async function viewIntegracoes() {
 
     <section class="bloco" style="margin-top:16px">
       <header><h2>Eventos recebidos</h2><span class="nota">${inteiro(eventos.length)} registro(s), mais recentes primeiro</span></header>
-      ${eventos.length === 0 ? '<p class="vazio">Nenhum evento registrado nesta empresa.</p>' : `
+      ${eventos.length === 0 ? '<p class="vazio">Nenhum evento registrado neste cliente.</p>' : `
       <div class="rol"><table><thead><tr>
-        <th>Quando</th><th>Sistema</th><th>Tipo</th><th>Id externo</th><th>Situação</th><th>Resultado</th><th></th>
+        <th>Quando</th><th>Unidade</th><th>Sistema</th><th>Tipo</th><th>Id externo</th><th>Situação</th><th>Resultado</th><th></th>
       </tr></thead><tbody>
         ${eventos.slice(0, 100).map((e)=>`<tr data-ev="${esc(e.id)}">
           <td style="white-space:nowrap">${new Date(e.quando).toLocaleString('pt-BR')}</td>
+          <td style="white-space:nowrap">${esc(nomeEmpresa(e.empresa))}</td>
           <td style="white-space:nowrap">${esc(SISTEMAS_SUPORTE[e.sistema] || e.sistema)}</td>
           <td><code>${esc(e.tipo)}</code>${e.teste ? ' <span class="tag alerta">teste</span>' : ''}</td>
           <td><code>${esc(e.externalId || '—')}</code></td>
@@ -343,21 +357,25 @@ async function viewIntegracoes() {
 
   // ------------------------------------------------------------- ligações
   el('#pagina').querySelectorAll('[data-editar]').forEach((b) =>
-    b.onclick = () => formConexao(emp, conexaoDe(conexoes, b.dataset.editar)));
+    b.onclick = () => formConexao(cliente, conexaoDe(conexoes, b.dataset.editar)));
   el('#pagina').querySelectorAll('[data-contrato]').forEach((b) =>
     b.onclick = () => verContrato(b.dataset.contrato));
   el('#pagina').querySelectorAll('[data-teste]').forEach((b) =>
     b.onclick = () => confirmar({
       titulo: 'Enviar payload de teste',
-      mensagem: `Um chamado de teste será criado nesta base, em ${esc(SISTEMAS_SUPORTE[b.dataset.teste])}. ` +
+      mensagem: `Um chamado de teste será criado na unidade ${esc(nomeEmpresa(destinoDoTeste()))}, em ` +
+        `${esc(SISTEMAS_SUPORTE[b.dataset.teste])}. ` +
         'Ele fica marcado como teste no log de eventos e com o assunto "Chamado de teste da integração", ' +
         'para dar para achá-lo e apagá-lo depois.',
       rotulo: 'Enviar',
       async aoConfirmar() {
-        await processarEventoIntegracao(emp, {
+        await processarEventoIntegracao(destinoDoTeste(), {
           sistema: b.dataset.teste, tipo: 'ticket.test', payload: payloadDeExemplo(b.dataset.teste), teste: true });
         render();
       } }));
+
+  // A unidade de destino do envio: o campo da tela, ou a em foco.
+  const destinoDoTeste = () => (el('#ev-destino') && el('#ev-destino').value) || emp;
 
   const saida = el('#ev-saida');
   const dizer = (classe, html) => { saida.hidden = false; saida.className = 'msg ' + classe; saida.innerHTML = html; };
@@ -390,7 +408,7 @@ async function viewIntegracoes() {
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
         throw new Error('O payload precisa ser um objeto JSON — um chamado por evento.');
       }
-      const evento = await processarEventoIntegracao(emp, {
+      const evento = await processarEventoIntegracao(destinoDoTeste(), {
         sistema: el('#ev-sistema').value, tipo: el('#ev-tipo').value, payload });
       if (evento.status === 'erro') dizer('erro', `<strong>Recusado.</strong> ${esc(evento.mensagem)}`);
       else dizer('bom', `<strong>Processado.</strong> ${esc(evento.mensagem)}`);
@@ -416,7 +434,8 @@ async function viewIntegracoes() {
       refazer.disabled = true;
       // Reprocessar refaz o MESMO evento a partir do payload guardado: o id não
       // muda, para o log não virar uma fila de tentativas do mesmo chamado.
-      await processarEventoIntegracao(emp, { sistema: evento.sistema, tipo: evento.tipo,
+      // Reprocessa na unidade DO EVENTO: o chamado é da unidade que o recebeu.
+      await processarEventoIntegracao(evento.empresa || emp, { sistema: evento.sistema, tipo: evento.tipo,
         payload: evento.payload, teste: evento.teste, id: evento.id });
       render();
     };
@@ -424,13 +443,21 @@ async function viewIntegracoes() {
 }
 
 /** Cadastro da conexão de uma origem. */
-function formConexao(empresa, conexao) {
+/**
+ * A conexão de uma origem — do CLIENTE, não da unidade.
+ *
+ * Endereço, webhook e interruptor valem para todas as unidades do contratante:
+ * é ele quem contrata o helpdesk, e repetir a configuração por matriz era o
+ * que prendia esta tela a um seletor de empresa.
+ */
+function formConexao(cliente, conexao) {
   const sugestao = 'https://servidor-da-empresa' + CAMINHO_WEBHOOK[conexao.sistema];
   abrirModal({
     titulo: 'Conexão — ' + SISTEMAS_SUPORTE[conexao.sistema],
     tipo: 'conexao-integracao',
     corpo: `
-      <div class="msg">O endereço do chamado é o que transforma o número em link nas telas de suporte.
+      <div class="msg">Esta conexão é do <strong>cliente</strong> e vale para todas as unidades dele.
+        O endereço do chamado é o que transforma o número em link nas telas de suporte.
         O endereço do webhook é o que você entrega a quem monta o fluxo no N8N.</div>
       <div class="campo"><label for="cx-base">Endereço do chamado (o id entra no fim)</label>
         <input id="cx-base" name="base" value="${esc(conexao.urlBase)}" placeholder="https://.../tickets.php?id="></div>
@@ -459,15 +486,15 @@ function formConexao(empresa, conexao) {
           if (ativa && !hook) throw new Error('Uma conexão ativa precisa do endereço do webhook — sem ele o N8N não tem para onde postar.');
           const nova = { sistema: conexao.sistema, ativa, urlBase: base, urlWebhook: hook,
             fluxo: campo('fluxo').value.trim(), observacao: campo('obs').value.trim() };
-          const atuais = (await Loja.integracoesDa(empresa)).filter((c) => c.sistema !== conexao.sistema);
-          await Loja.gravarIntegracoes(empresa, [...atuais, nova]);
+          const atuais = (await Loja.integracoesDa(cliente)).filter((c) => c.sistema !== conexao.sistema);
+          await Loja.gravarIntegracoes(cliente, [...atuais, nova]);
           // O link do chamado já lia a configuração antiga: manter as duas em
           // dia evita a tela de suporte discordar da tela de integração.
           if (base) {
             await Loja.gravarConfiguracao(conexao.sistema === 'BITRIX24' ? { urlBitrix24: base } : { urlOsTicket: base });
           }
           await Loja.auditar({ acao:'atualizar', entidade:'conexao_integracao', id: conexao.sistema,
-            antes: conexao, depois: nova }, empresa);
+            antes: conexao, depois: nova }, empresaAtiva());
           fechar(); render();
         } catch (e) { erro(e.message); ev.target.disabled = false; }
       };

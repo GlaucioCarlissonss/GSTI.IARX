@@ -69,9 +69,17 @@ const E = {
   somenteLeitura: false,    // o armazenamento recusou escrita: link compartilhado só para ver
 
   // Todo filtro é um conjunto. Vazio quer dizer "todos" onde isso faz sentido;
-  // onde não faz (empresa, competência, cenário) o seletor impede esvaziar.
-  empresasSel: new Set(),
-  filiaisSel: new Set(),    // vazio = todas; '(empresa)' é o nível sem filial
+  // onde não faz (competência, cenário) o seletor impede esvaziar.
+  //
+  // `empresasSel` deixou de ser o recorte do sistema: o escopo agora é o
+  // CLIENTE, e ela guarda as matrizes dele que estão carregadas. O recorte que
+  // a pessoa escolhe é por TELA, em `filtrosTela` — mexer no filtro de uma não
+  // pode recortar as outras, e a tela de Integrações (que é do contratante)
+  // não pode depender de seletor de empresa nenhum.
+  /** tela -> { empresas:Set, filiais:Set }. Só de sessão: recorte não é configuração. */
+  filtrosTela: new Map(),
+  /** Matriz EM FOCO para escrever: criar, importar e configurar precisam de uma. */
+  empresaFoco: null,
   origens: new Set(),       // vazio = todas as procedências
   competencias: new Set(),
   cenarios: new Set(['oficial']),
@@ -126,22 +134,78 @@ const classeReconhecimento = (l) => (reconhecidoDe(l) ? '' : ' data-sem-reconhec
 const urlDoRegistro = (r) => (r && r.ticketId ? urlDoChamado(r.ticketId, sistemaDe(r)) : null);
 
 /**
- * Empresa em que se escreve. Criar, editar e excluir precisam de uma só — com
- * várias selecionadas o sistema não teria como saber a quem o registro pertence.
+ * A unidade EM FOCO — aquela em que se escreve.
+ *
+ * Criar, importar e configurar precisam de UMA: um registro não pertence a duas
+ * matrizes. Antes ela saía do filtro global ("deixe só uma marcada"), o que
+ * transformava um recorte de leitura em pré-requisito de escrita — e era o que
+ * travava a tela de Integrações. Agora é uma escolha própria, com a primeira
+ * matriz do cliente como padrão.
  */
-const empresaAtiva = () => (E.empresasSel.size === 1 ? [...E.empresasSel][0] : null);
+const empresaAtiva = () => {
+  const doCliente = matrizesDoClienteAtivo();
+  // Filtro da tela com UMA unidade é intenção declarada: quem deixou só a
+  // MOOVE à vista está trabalhando nela, e criar em outra surpreenderia.
+  const local = [...filtroDaTela().empresas].filter((id) => doCliente.includes(id));
+  if (local.length === 1) return local[0];
+  if (E.empresaFoco && doCliente.includes(E.empresaFoco)) return E.empresaFoco;
+  return doCliente[0] || null;
+};
 
-/** Escrita exige uma empresa só; sem isso o registro não teria dono. */
+/** Escrita exige uma unidade; sem cliente escolhido não há nenhuma. */
 function exigirEmpresaUnica() {
   const e = empresaAtiva();
   if (!e) {
-    throw new Error('Há ' + E.empresasSel.size + ' empresas selecionadas. ' +
-      'Para criar ou alterar registros, deixe apenas uma marcada no seletor Empresa.');
+    throw new Error('Nenhuma unidade em foco. Escolha um cliente com ao menos uma matriz cadastrada.');
   }
   return e;
 }
 const nomeEmpresa = (id) => (E.empresas.find((e) => e.id === id) || {}).nome || id;
-const escopoEmpresas = () => [...E.empresasSel];
+
+/** As matrizes do cliente aberto — o escopo de leitura de toda tela. */
+function matrizesDoClienteAtivo() {
+  const doCliente = E.clienteSel
+    ? E.empresas.filter((e) => clienteDaEmpresa(e) === E.clienteSel)
+    : E.empresas;
+  return doCliente.map((e) => e.id);
+}
+
+/** O filtro LOCAL da tela em foco. Vazio significa o cliente inteiro. */
+function filtroDaTela(tela = E.aba) {
+  let f = E.filtrosTela.get(tela);
+  if (!f) {
+    f = { empresas: new Set(), filiais: new Set() };
+    E.filtrosTela.set(tela, f);
+  }
+  return f;
+}
+
+/**
+ * O escopo de leitura desta tela: o filtro local, quando há, e o cliente
+ * inteiro quando não há. Nunca o banco todo — matriz de outro contratante não
+ * entra nem por engano.
+ */
+function escopoEmpresas(tela = E.aba) {
+  const doCliente = matrizesDoClienteAtivo();
+  const local = [...filtroDaTela(tela).empresas].filter((id) => doCliente.includes(id));
+  return local.length ? local : doCliente;
+}
+
+/** As filiais em foco NESTA tela. Vazio = todas. */
+const filiaisDaTela = (tela = E.aba) => filtroDaTela(tela).filiais;
+
+// `E.empresasSel` e `E.filiaisSel` passam a ser VISTAS do filtro da tela em
+// foco. São dezenas de usos espalhados pelas telas, e trocar cada um por uma
+// chamada nova só criaria oportunidade de esquecer algum — aqui a leitura e a
+// escrita caem, as duas, no filtro local certo.
+Object.defineProperty(E, 'empresasSel', {
+  get: () => new Set(escopoEmpresas()),
+  set: (v) => { filtroDaTela().empresas = new Set(v); },
+});
+Object.defineProperty(E, 'filiaisSel', {
+  get: () => filtroDaTela().filiais,
+  set: (v) => { filtroDaTela().filiais = new Set(v); },
+});
 
 const Loja = {
   async catalogos() {
@@ -221,23 +285,68 @@ const Loja = {
     E.sla.delete(empresa);
   },
   // ------------------------------------------------------------ integrações
-  async integracoesDa(empresa) {
-    if (E.integracoes.has(empresa)) return E.integracoes.get(empresa);
-    const s = await E.db.doc('integracoes/' + empresa).get();
-    const itens = s.exists ? (s.data().conexoes || []) : [];
-    E.integracoes.set(empresa, itens);
+  //
+  // A configuração é do CLIENTE, não da matriz: quem contrata o helpdesk é o
+  // contratante, e o endereço, o segredo e o interruptor são os mesmos para
+  // todas as unidades dele. Guardá-los por unidade obrigava a repetir a
+  // configuração uma vez por matriz e prendia a tela a um seletor de empresa.
+  //
+  // A leitura ainda olha os documentos por empresa: é a MIGRAÇÃO da base que
+  // já existe. A primeira gravação consolida no documento do cliente, e o
+  // antigo deixa de ser consultado.
+  async integracoesDa(cliente) {
+    if (E.integracoes.has(cliente)) return E.integracoes.get(cliente);
+    const s = await E.db.doc('integracoes/cliente__' + cliente).get();
+    let itens = s.exists ? (s.data().conexoes || []) : [];
+    if (!s.exists) itens = await Loja.integracoesHerdadas(cliente);
+    E.integracoes.set(cliente, itens);
     return itens;
   },
-  async gravarIntegracoes(empresa, conexoes) {
-    await E.db.doc('integracoes/' + empresa).set({ conexoes });
-    E.integracoes.set(empresa, conexoes);
+  /**
+   * As conexões que estavam guardadas por matriz, promovidas ao cliente.
+   *
+   * Duas unidades podiam ter conexão para o mesmo sistema: fica a que está EM
+   * USO — a que tem segredo e, entre elas, a de evento mais recente. Descartar
+   * a que nunca recebeu nada não perde nada; descartar a ativa quebraria a
+   * integração em produção.
+   */
+  async integracoesHerdadas(cliente) {
+    const porSistema = new Map();
+    for (const e of (E.clientes.length ? empresasDoCliente(cliente) : E.empresas)) {
+      const s = await E.db.doc('integracoes/' + e.id).get();
+      if (!s.exists) continue;
+      for (const c of s.data().conexoes || []) {
+        const atual = porSistema.get(c.sistema);
+        const melhor = !atual
+          || (!atual.segredo && c.segredo)
+          || (!!atual.segredo === !!c.segredo && String(c.ultimoEventoEm || '') > String(atual.ultimoEventoEm || ''));
+        if (melhor) porSistema.set(c.sistema, c);
+      }
+    }
+    return [...porSistema.values()];
   },
+  async gravarIntegracoes(cliente, conexoes) {
+    await E.db.doc('integracoes/cliente__' + cliente).set({ conexoes, cliente });
+    E.integracoes.set(cliente, conexoes);
+  },
+  /**
+   * O log é por UNIDADE — o chamado é sempre de uma, porque cada unidade tem a
+   * própria instância do helpdesk — e a tela soma as do cliente.
+   */
   async eventosDa(empresa) {
     if (E.eventos.has(empresa)) return E.eventos.get(empresa);
     const s = await E.db.doc('eventos-integracao/' + empresa).get();
     const itens = s.exists ? (s.data().itens || []) : [];
     E.eventos.set(empresa, itens);
     return itens;
+  },
+  /** Todos os eventos do cliente, com a unidade em cada linha. */
+  async eventosDoCliente(cliente) {
+    const saida = [];
+    for (const e of empresasDoCliente(cliente)) {
+      for (const ev of await Loja.eventosDa(e.id)) saida.push({ ...ev, empresa: e.id });
+    }
+    return saida.sort((a, b) => String(b.quando || '').localeCompare(String(a.quando || '')));
   },
   async gravarEventos(empresa, itens) {
     await E.db.doc('eventos-integracao/' + empresa).set({ itens });

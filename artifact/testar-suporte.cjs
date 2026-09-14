@@ -23,8 +23,12 @@ const { irPara } = require('./ajuda-testes.cjs');
 
   // Semeia chamados dos dois sistemas, com e sem setor.
   const semear = async () => {
-    await pag.evaluate(async () => {
-      const dono = [...E.empresasSel][0];
+    await irPara(pag, 'Chamados', 900);
+    // O escopo é o CLIENTE: a tela mostra todas as unidades. Para conferir a
+    // lista semeada, o filtro DESTA tela recorta a unidade em que ela entrou —
+    // que é o uso normal do filtro local, e não um artifício do teste.
+    const dono = await pag.evaluate(async () => {
+      const dono = escopoEmpresas()[0];
       const comp = [...E.competencias][0];
       await Loja.gravarSlaMes(dono, comp, [
         { id: 'c1', fila: 'Infraestrutura', topico: 'Rede', total: 1, dentro: 1, ticketId: 111, numero: '111',
@@ -39,8 +43,13 @@ const { irPara } = require('./ajuda-testes.cjs');
       ]);
       E.filtrosSla.sistemas = new Set();
       E.filtrosSla.setores = new Set();
+      return dono;
     });
-    await irPara(pag, 'Chamados', 900);
+    await pag.evaluate(async (d) => {
+      filtroDaTela('chamados').empresas = new Set([d]);
+      await render();
+    }, dono);
+    await pag.waitForTimeout(700);
   };
   await semear();
 
@@ -83,6 +92,14 @@ const { irPara } = require('./ajuda-testes.cjs');
   const kpis = async () => pag.$$eval('.kpi', (ks) =>
     ks.map((k) => k.querySelector('.r').textContent + '=' + k.querySelector('.n').textContent));
   await irPara(pag, 'Indicadores', 800);
+  // Cada tela tem o SEU filtro: o recorte feito em Chamados não vale aqui —
+  // é justamente essa a independência. Para comparar o mesmo conjunto, o
+  // filtro desta tela é ajustado também.
+  await pag.evaluate(async () => {
+    filtroDaTela('sla').empresas = new Set(filtroDaTela('chamados').empresas);
+    await render();
+  });
+  await pag.waitForTimeout(700);
   const todosKpis = await kpis();
   console.log('   ', todosKpis.join(' · '));
   confere('3 chamados no total, 2 dentro do SLA',

@@ -41,6 +41,13 @@ const BASE = process.env.BASE_URL || 'http://127.0.0.1:3333';
       await pag.fill('input[type="password"], input[name="senha"]', process.env.SENHA || '');
       await pag.click('button[type="submit"], form button');
       await pag.waitForTimeout(2200);
+      // A sessão começa escolhendo o cliente. Sem esse clique a varredura
+      // ficaria na tela de boas-vindas e acusaria "menu vazio" em toda página.
+      const escolha = await pag.$('.cartao button');
+      if (escolha && !(await pag.$('.menu a'))) {
+        await escolha.click();
+        await pag.waitForTimeout(1800);
+      }
 
       console.log(`\n== ${tema} · ${largura}px ==`);
       for (const [rota, nome] of PAGINAS) {

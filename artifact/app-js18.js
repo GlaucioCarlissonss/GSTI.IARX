@@ -111,11 +111,39 @@ function viewBoasVindas() {
         ? `<div class="lista-clientes">${cartoes}</div>`
         : `<div class="msg">Nenhum cliente cadastrado nesta base. Cadastre o primeiro em
              <strong>Sistema → Cadastros</strong>.</div>`}
+      ${(() => {
+        // Os contratantes que o enunciado pediu e ainda não estão aqui. O aviso
+        // fica NESTA tela porque é onde a ausência se nota — dentro de
+        // "Clientes e unidades" ele só seria visto por quem já sabia procurar.
+        // Continua sendo um botão: escrever na base de todo mundo é um ato de
+        // alguém, não algo que a abertura da página faça sozinha.
+        const faltam = CLIENTES_INICIAIS.filter((n) => !E.clientes.some((c) => c.nome === n));
+        return faltam.length
+          ? `<div class="msg alerta" style="margin-top:4px">
+               <strong>${esc(faltam.join(' e '))} ainda não ${faltam.length > 1 ? 'estão' : 'está'} nesta base.</strong>
+               Cadastrar cria o contratante e a matriz de mesmo nome — nada é sobrescrito, e repetir não duplica.
+               <div style="margin-top:8px"><button type="button" class="bt" id="bv-iniciais">Cadastrar
+                 ${esc(faltam.join(' e '))}</button></div></div>`
+          : '';
+      })()}
     </section>`;
 
   el('#pagina').querySelectorAll('[data-cliente]').forEach((b) => {
     b.onclick = () => abrirCliente(b.dataset.cliente);
   });
+
+  const btIniciais = el('#bv-iniciais');
+  if (btIniciais) {
+    btIniciais.onclick = async () => {
+      btIniciais.disabled = true;
+      try { await cadastrarClientesIniciais(); viewBoasVindas(); }
+      catch (e) {
+        btIniciais.disabled = false;
+        btIniciais.insertAdjacentHTML('afterend',
+          `<p class="msg erro" style="margin-top:8px">${esc(e.message || e)}</p>`);
+      }
+    };
+  }
 }
 
 /** Entra no cliente: define o escopo inicial e monta a primeira tela. */
@@ -126,14 +154,17 @@ async function abrirCliente(id, guardar = true) {
   if (guardar) guardarCliente(id);
   document.body.removeAttribute('data-sem-cliente');
 
+  // O escopo é o CLIENTE INTEIRO, não a primeira matriz: nenhuma tela começa
+  // recortada por uma escolha que ninguém fez. Cada tela filtra por conta
+  // própria, e os filtros começam vazios.
   const matrizes = empresasDoCliente(id);
-  E.empresasSel = new Set(matrizes.length ? [matrizes[0].id] : []);
-  E.filiaisSel = new Set();
+  E.filtrosTela = new Map();
+  E.empresaFoco = matrizes.length ? matrizes[0].id : null;
   await garantirEscopo();
   E.cenariosSel = new Set(['oficial']);
   E.competencias = new Set([competenciaPadrao()]);
   pintarCliente();
-  pintarSeletores();
+  pintarFiltrosDaTela();
   await restaurarPrevia();
   await render();
 }
@@ -142,7 +173,10 @@ async function abrirCliente(id, guardar = true) {
 function trocarCliente() {
   E.clienteSel = null;
   guardarCliente(null);
-  E.empresasSel = new Set();
+  // Os filtros de tela morrem junto: o recorte de um contratante não significa
+  // nada no próximo.
+  E.filtrosTela = new Map();
+  E.empresaFoco = null;
   pintarCliente();
   viewBoasVindas();
 }
@@ -451,7 +485,7 @@ async function viewClientes() {
     try {
       await criarUnidadeNoCliente(alvo, E.unidadeNova);
       E.unidadeNova = { ...UNIDADE_NOVA };
-      pintarSeletores();
+      pintarFiltrosDaTela();
       render();
     } catch (e) { mostrarErro('#un-erro', e); }
   };
@@ -463,11 +497,14 @@ function pintarCliente() {
   const c = clienteAtual();
   caixa.hidden = !c;
   if (!c) { caixa.innerHTML = ''; return; }
-  // Com um cliente só, trocar não teria para onde ir — o botão prometeria uma
-  // escolha inexistente.
-  const podeTrocar = E.clientes.filter((x) => x.ativo !== false).length > 1;
+  // O botão aparece SEMPRE, inclusive com um cliente só: quem ganha acesso a
+  // um segundo contratante no meio da semana precisa achar a saída sem
+  // descobrir que ela só existe depois de ter dois. E ele é também o caminho
+  // para a tela de seleção, onde a estrutura de cada cliente aparece.
+  const unidades = E.clienteSel ? empresasDoCliente(E.clienteSel).length : 0;
   caixa.innerHTML = `<span>Cliente</span><b title="${esc(c.nome)}">${esc(c.nome)}</b>` +
-    (podeTrocar ? `<button type="button" id="bt-trocar-cliente">Trocar cliente</button>` : '');
+    `<small>${inteiro(unidades)} unidade${unidades === 1 ? '' : 's'}</small>` +
+    `<button type="button" id="bt-trocar-cliente" title="Volta à tela de seleção para escolher outro contratante">Trocar cliente</button>`;
   const bt = el('#bt-trocar-cliente');
   if (bt) bt.onclick = () => trocarCliente();
 }

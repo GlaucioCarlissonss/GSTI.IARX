@@ -116,56 +116,165 @@ function ligarTema() {
   };
 }
 
-function pintarSeletores() {
-  // Só as matrizes do cliente aberto. Uma matriz de outro contratante no
-  // seletor juntaria dois clientes na mesma tela — é o que a camada impede.
-  const doCliente = E.clienteSel ? empresasDoCliente(E.clienteSel) : E.empresas;
+/**
+ * Textos de apoio dos filtros que se repetem no sistema.
+ *
+ * Ficam num lugar só porque a mesma pergunta aparece em várias telas, e
+ * respostas ligeiramente diferentes ensinariam regras diferentes.
+ */
+const EXPLICA = {
+  empresa: 'Escolhe as unidades (matrizes) deste cliente que entram nesta tela. Vazio traz todas juntas.',
+  filial: 'Restringe aos registros das filiais marcadas. "Sem filial" traz o que foi lançado no nível da matriz.',
+  base: 'Procedência do dado: planilha do cliente, folha de TI rateada, projeção ou lançado no sistema. Vazio soma tudo.',
+};
+
+/**
+ * Quais filtros cada tela tem.
+ *
+ * A tela de Integrações é do CLIENTE — configurar a conexão não depende de
+ * unidade nenhuma —, e as de cadastro, acessos e clientes operam sobre uma
+ * unidade escolhida ali dentro. Nenhuma delas leva filtro de empresa, e essa é
+ * exatamente a dependência que precisava cair.
+ */
+const FILTROS_DA_TELA = {
+  indicadores_gerais: { empresa: true, filial: false, base: false },
+  painel:      { empresa: true, filial: true, base: true },
+  lancamentos: { empresa: true, filial: true, base: true },
+  relatorio:   { empresa: true, filial: true, base: true },
+  conferencia: { empresa: true, filial: true, base: true },
+  projetos:    { empresa: true, filial: true, base: false },
+  sla:         { empresa: true, filial: true, base: false },
+  chamados:    { empresa: true, filial: true, base: false },
+  OSTICK:      { empresa: true, filial: true, base: false },
+  BITRIX24:    { empresa: true, filial: true, base: false },
+  // Estas não CONSULTAM o cliente: elas escrevem numa unidade. O campo é uma
+  // escolha única, e diz o que governa — antes essa escolha vinha do filtro
+  // global, o que fazia um recorte de leitura virar pré-requisito de escrita.
+  cadastros:   { foco: 'Filiais, tipos de despesa, filas e cenários pertencem a esta unidade e valem só nela.' },
+  acessos:     { foco: 'O papel e o perfil concedidos aqui valem só nesta unidade, e não nas demais do cliente.' },
+  dados:       { foco: 'A carga e a exportação são desta unidade: o arquivo traz os cadastros dela, e reimportá-lo volta para a mesma.' },
+};
+
+/**
+ * A barra de filtros DA TELA em foco.
+ *
+ * O que se marca aqui vale nesta tela e em mais nenhuma: o estado mora em
+ * `E.filtrosTela`, por aba, e morre com a sessão — recorte de leitura não é
+ * configuração. Cada campo diz o que filtra, sobre quais dados atua e o efeito
+ * esperado; um seletor vazio que traz tudo é justamente o que confunde quem
+ * chega.
+ */
+function pintarFiltrosDaTela() {
+  const caixa = el('#filtros-tela');
+  if (!caixa) return;
+  const conf = FILTROS_DA_TELA[E.aba];
+  if (!conf || !E.clienteSel) {
+    caixa.hidden = true;
+    caixa.innerHTML = '';
+    return;
+  }
+  const doCliente = empresasDoCliente(E.clienteSel);
+  const local = filtroDaTela();
+
+  // Tela de unidade única: um seletor de escolha, não um filtro.
+  if (conf.foco) {
+    const atual = empresaAtiva();
+    caixa.hidden = false;
+    caixa.innerHTML = doCliente.length > 1
+      ? `<div class="campo" style="min-width:230px"><label for="f-foco">Unidade em foco</label>
+           <select id="f-foco">${doCliente.map((e) =>
+             `<option value="${esc(e.id)}"${e.id === atual ? ' selected' : ''}>${esc(e.nome)}</option>`).join('')}</select>
+           <small class="dica-filtro">${esc(conf.foco)}</small></div>`
+      : `<p class="dica-filtro">Unidade: <b>${esc(atual ? nomeEmpresa(atual) : '—')}</b>. ${esc(conf.foco)}</p>`;
+    const sel = el('#f-foco');
+    if (sel) {
+      sel.onchange = async () => {
+        E.empresaFoco = sel.value;
+        await garantirDados(E.empresaFoco);
+        render();
+      };
+    }
+    pintarFichas(el('#f-fichas'), []);
+    return;
+  }
   const itensEmpresa = doCliente.map((e) => ({ valor: e.id, rotulo: e.nome }));
-  const itensFilial = [
-    { valor: '(empresa)', rotulo: 'Sem filial (nível empresa)' },
-    ...filiaisDoEscopo().map((f) => ({ valor: f.nome, rotulo: f.nome })),
-  ];
+  const itensFilial = itensFilialAtuais();
   const itensBase = ORDEM_BASE.map((o) => ({ valor: o, rotulo: ORIGENS[o].rotulo }));
+  // Com uma unidade só não há escolha a oferecer: o cliente inteiro e a única
+  // unidade são a mesma coisa.
+  const temEmpresa = conf.empresa && doCliente.length > 1;
 
-  seletorMulti(el('[data-sel="empresa"]'), {
-    id: 'f-empresa', rotulo: 'Empresa', itens: itensEmpresa, selecionados: E.empresasSel, minimo: 1,
-    aviso: 'Com mais de uma empresa o sistema consolida. Para lançar, deixe só uma.',
-    aoMudar: async (novo) => {
-      E.empresasSel = novo;
-      // filial e cenário pertencem a uma empresa: ao trocar o conjunto, o que
-      // não existe mais no escopo precisa cair, senão o filtro esconde tudo
-      for (const e of novo) await garantirDados(e);
-      const filiaisValidas = new Set(itensFilialAtuais().map((f) => f.valor));
-      E.filiaisSel = new Set([...E.filiaisSel].filter((f) => filiaisValidas.has(f)));
-      const cenariosValidos = new Set(cenariosDoEscopo().map((c) => c.chave));
-      const cen = [...E.cenariosSel].filter((c) => cenariosValidos.has(c));
-      E.cenariosSel = new Set(cen.length ? cen : ['oficial']);
-      ajustarCompetencias();
-      pintarSeletores(); render();
-    },
-  });
+  caixa.hidden = false;
+  caixa.innerHTML =
+    (temEmpresa
+      ? `<div class="campo" style="min-width:210px"><label for="f-empresa">Empresa (matriz)</label>
+           <div data-sel="empresa"></div><small class="dica-filtro">${esc(EXPLICA.empresa)}</small></div>`
+      : '') +
+    (conf.filial
+      ? `<div class="campo" style="min-width:190px"><label for="f-filial">Filial</label>
+           <div data-sel="filial"></div><small class="dica-filtro">${esc(EXPLICA.filial)}</small></div>`
+      : '') +
+    (conf.base
+      ? `<div class="campo" style="min-width:200px"><label for="f-base">Base considerada</label>
+           <div data-sel="base"></div><small class="dica-filtro">${esc(EXPLICA.base)}</small></div>`
+      : '') +
+    `<p class="resumo">Filtro desta tela. ${
+      local.empresas.size
+        ? esc(inteiro(local.empresas.size) + ' de ' + inteiro(doCliente.length) + ' unidades')
+        : 'Todas as unidades de ' + esc(clienteAtual() ? clienteAtual().nome : 'cliente')
+    }.${local.empresas.size || local.filiais.size ? ' <button type="button" class="bt fant peq" id="bt-limpar-filtros">Limpar filtros</button>' : ''}</p>`;
 
-  seletorMulti(el('[data-sel="filial"]'), {
-    id: 'f-filial', rotulo: 'Filial', itens: itensFilial, selecionados: E.filiaisSel,
-    aoMudar: (novo) => { E.filiaisSel = novo; pintarSeletores(); render(); },
-  });
-
-  seletorMulti(el('[data-sel="base"]'), {
-    id: 'f-base', rotulo: 'Base considerada', itens: itensBase, selecionados: E.origens,
-    aviso: 'Nada marcado = tudo. Marque só "Planilhas do cliente" para comparar com a sua planilha.',
-    aoMudar: (novo) => { E.origens = novo; pintarSeletores(); render(); },
-  });
+  if (temEmpresa) {
+    seletorMulti(el('[data-sel="empresa"]'), {
+      id: 'f-empresa', rotulo: 'Empresa (matriz)', itens: itensEmpresa, selecionados: local.empresas,
+      aviso: 'Nada marcado = todas as unidades do cliente.',
+      aoMudar: async (novo) => {
+        local.empresas = novo;
+        for (const e of escopoEmpresas()) await garantirDados(e);
+        // Filial e cenário pertencem a uma unidade: o que saiu do escopo cai,
+        // senão o filtro esconderia tudo sem dizer por quê.
+        const validas = new Set(itensFilialAtuais().map((f) => f.valor));
+        local.filiais = new Set([...local.filiais].filter((f) => validas.has(f)));
+        const cenariosValidos = new Set(cenariosDoEscopo().map((c) => c.chave));
+        const cen = [...E.cenariosSel].filter((c) => cenariosValidos.has(c));
+        E.cenariosSel = new Set(cen.length ? cen : ['oficial']);
+        ajustarCompetencias();
+        pintarFiltrosDaTela(); render();
+      },
+    });
+  }
+  if (conf.filial) {
+    seletorMulti(el('[data-sel="filial"]'), {
+      id: 'f-filial', rotulo: 'Filial', itens: itensFilial, selecionados: local.filiais,
+      aoMudar: (novo) => { local.filiais = novo; pintarFiltrosDaTela(); render(); },
+    });
+  }
+  if (conf.base) {
+    seletorMulti(el('[data-sel="base"]'), {
+      id: 'f-base', rotulo: 'Base considerada', itens: itensBase, selecionados: E.origens,
+      aviso: 'Nada marcado = tudo. Marque só "Planilhas do cliente" para comparar com a sua planilha.',
+      aoMudar: (novo) => { E.origens = novo; pintarFiltrosDaTela(); render(); },
+    });
+  }
+  const limpar = el('#bt-limpar-filtros');
+  if (limpar) {
+    limpar.onclick = () => {
+      local.empresas = new Set();
+      local.filiais = new Set();
+      pintarFiltrosDaTela(); render();
+    };
+  }
 
   pintarFichas(el('#f-fichas'), [
-    { chave:'empresa', rotulo:'Empresa', itens:itensEmpresa, selecionados:E.empresasSel, minimo:1,
-      ocultarSeTudo:false, total:itensEmpresa.length,
-      aoMudar:(n) => { E.empresasSel = n; ajustarCompetencias(); pintarSeletores(); render(); } },
-    { chave:'filial', rotulo:'Filial', itens:itensFilial, selecionados:E.filiaisSel,
+    ...(temEmpresa ? [{ chave:'empresa', rotulo:'Empresa', itens:itensEmpresa, selecionados:local.empresas,
+      ocultarSeTudo:true, total:itensEmpresa.length,
+      aoMudar:(n) => { local.empresas = n; ajustarCompetencias(); pintarFiltrosDaTela(); render(); } }] : []),
+    ...(conf.filial ? [{ chave:'filial', rotulo:'Filial', itens:itensFilial, selecionados:local.filiais,
       ocultarSeTudo:true, total:itensFilial.length,
-      aoMudar:(n) => { E.filiaisSel = n; pintarSeletores(); render(); } },
-    { chave:'base', rotulo:'Base', itens:itensBase, selecionados:E.origens,
+      aoMudar:(n) => { local.filiais = n; pintarFiltrosDaTela(); render(); } }] : []),
+    ...(conf.base ? [{ chave:'base', rotulo:'Base', itens:itensBase, selecionados:E.origens,
       ocultarSeTudo:true, total:itensBase.length,
-      aoMudar:(n) => { E.origens = n; pintarSeletores(); render(); } },
+      aoMudar:(n) => { E.origens = n; pintarFiltrosDaTela(); render(); } }] : []),
   ]);
 }
 
@@ -186,6 +295,9 @@ async function render() {
     const aba = ABAS.find((a)=>a.id===E.aba) || ABAS[0];
     pintarModulos();
     pintarAbas();
+    // A barra de filtros é DA TELA: trocar de aba troca o recorte exibido, e
+    // cada aba lembra o seu.
+    pintarFiltrosDaTela();
     pintarPrevia();
     await aba.view();
     aplicarPreviaNaTela();

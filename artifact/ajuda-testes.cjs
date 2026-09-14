@@ -5,17 +5,27 @@
 // é mais estável do que encenar cliques — `testar-multi.cjs` cobre a interação
 // pela interface.
 
-/** Deixa exatamente estas empresas selecionadas, carregando o que faltar. */
+/**
+ * Deixa exatamente estas empresas no recorte, carregando o que faltar.
+ *
+ * O filtro deixou de ser global: ele é por tela. Uma suíte que percorre várias
+ * telas conferindo os mesmos números precisa do mesmo recorte em todas, então
+ * o auxiliar marca TODAS as telas — e a unidade de escrita vai junto, porque
+ * criar não depende mais de filtro nenhum. A independência entre as telas é o
+ * objeto de `testar-multi.cjs` e de `web/verificar-cliente.cjs`, que a
+ * exercitam pela interface.
+ */
 async function usarEmpresas(pag, ids) {
   await pag.evaluate(async (lista) => {
-    E.empresasSel = new Set(lista);
-    for (const e of E.empresasSel) await garantirDados(e);
+    for (const aba of ABAS) filtroDaTela(aba.id).empresas = new Set(lista);
+    E.empresaFoco = lista[0];
+    for (const e of escopoEmpresas()) await garantirDados(e);
     E.filiaisSel = new Set();
     const validos = new Set(cenariosDoEscopo().map((c) => c.chave));
     const cen = [...E.cenariosSel].filter((c) => validos.has(c));
     E.cenariosSel = new Set(cen.length ? cen : ['oficial']);
     ajustarCompetencias();
-    pintarSeletores();
+    pintarFiltrosDaTela();
     await render();
   }, [].concat(ids));
   await pag.waitForTimeout(500);
@@ -25,7 +35,7 @@ async function usarEmpresas(pag, ids) {
 async function usarBase(pag, origens) {
   await pag.evaluate(async (lista) => {
     E.origens = new Set(lista);
-    pintarSeletores();
+    pintarFiltrosDaTela();
     await render();
   }, [].concat(origens || []));
   await pag.waitForTimeout(400);

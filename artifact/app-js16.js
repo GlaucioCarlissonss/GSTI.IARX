@@ -199,10 +199,11 @@ function aplicarPreviaNaTela() {
 async function viewAcessos() {
   const emp = empresaAtiva();
   if (!emp) {
-    el('#pagina').innerHTML = `<div class="msg alerta"><strong>O acesso é de uma empresa por vez.</strong>
-      Há ${inteiro(E.empresasSel.size)} empresas selecionadas — o perfil mora no vínculo da pessoa com a empresa, e a
-      mesma pessoa pode ser gestora numa e leitora em outra. Deixe uma só marcada no seletor
-      <strong>Empresa</strong>.</div>`;
+    // O perfil mora no vínculo da pessoa com a UNIDADE — a mesma pessoa pode
+    // ser gestora numa e leitora em outra —, e a unidade se escolhe na barra
+    // desta tela.
+    el('#pagina').innerHTML = `<div class="msg alerta"><strong>Este cliente ainda não tem unidade cadastrada.</strong>
+      O acesso é concedido por unidade. Cadastre a matriz em <strong>Clientes e unidades</strong>.</div>`;
     return;
   }
   const perfis = await garantirPerfisPadrao(emp);

@@ -30,9 +30,12 @@ function refrescarHistoricoCargas(empresa) {
 async function viewDados() {
   const emp = empresaAtiva();
   if (!emp) {
-    el('#pagina').innerHTML = '<div class="msg alerta"><strong>Importar e exportar é de uma empresa por vez.</strong> '
-      + 'Há ' + inteiro(E.empresasSel.size) + ' empresas selecionadas, e o arquivo precisa ter dono — filiais, '
-      + 'tipos e cenários pertencem a cada empresa. Deixe uma só marcada no seletor <strong>Empresa</strong>.</div>';
+    // Sem unidade não há arquivo: filiais, tipos e cenários pertencem a uma
+    // matriz, e reimportar precisa voltar para a mesma. A escolha da unidade
+    // fica na barra desta tela — não num filtro no topo do sistema.
+    el('#pagina').innerHTML = '<div class="msg alerta"><strong>Este cliente ainda não tem unidade cadastrada.</strong> '
+      + 'Importar e exportar são de uma unidade: o arquivo traz as filiais, os tipos e os cenários dela. '
+      + 'Cadastre a matriz em <strong>Clientes e unidades</strong>.</div>';
     return;
   }
   const nomeEmp = nomeEmpresa(emp);
