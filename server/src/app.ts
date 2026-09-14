@@ -14,6 +14,7 @@ import { rotasProjetos } from './routes/projetos.js';
 import { rotasSla } from './routes/sla.js';
 import { rotasDashboards } from './routes/dashboards.js';
 import { rotasIndicadores } from './routes/indicadores.js';
+import { rotasClientes, rotasClienteDaSessao } from './routes/clientes.js';
 import { rotasPlanilhas } from './routes/planilhas.js';
 import { rotasWebhooks } from './routes/webhooks.js';
 import { rotasSuporte } from './routes/suporte.js';
@@ -50,6 +51,10 @@ export function criarApp() {
     });
   });
 
+  // A escolha do cliente é ANTERIOR a haver empresa em contexto: é o que a tela
+  // de boas-vindas pergunta. Exige sessão, e só.
+  app.use('/api/clientes', autenticado, rotasClienteDaSessao);
+
   // Tudo abaixo exige sessão e empresa em contexto: nenhum dado vive fora do tenant.
   const protegido = express.Router();
   protegido.use(autenticado, comEmpresa);
@@ -60,6 +65,7 @@ export function criarApp() {
   protegido.use('/suporte', rotasSuporte);
   protegido.use('/integracoes', rotasIntegracoes);
   protegido.use('/acesso', rotasAcesso);
+  protegido.use('/clientes', rotasClientes);
   protegido.use('/dashboards', rotasDashboards);
   protegido.use('/indicadores', rotasIndicadores);
   protegido.use('/planilhas', rotasPlanilhas);

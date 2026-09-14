@@ -1,4 +1,5 @@
 import { abrirBanco, definirBanco, db } from '../src/db/index.js';
+import { clienteDaEmpresa } from '../src/domain/clientes.js';
 import { criarEmpresa } from '../src/domain/empresas.js';
 import { registrar } from '../src/domain/auth.js';
 import type { Contexto } from '../src/domain/contexto.js';
@@ -13,7 +14,13 @@ export function ambienteLimpo(): { ctx: Contexto; empresaId: number } {
   const empresa = criarEmpresa(usuario.id, { nome: 'Empresa Teste' });
   return {
     empresaId: empresa.id,
-    ctx: { empresaId: empresa.id, usuarioId: usuario.id, usuarioEmail: usuario.email, papel: 'gestor' },
+    ctx: {
+      clienteId: clienteDaEmpresa(empresa.id),
+      empresaId: empresa.id,
+      usuarioId: usuario.id,
+      usuarioEmail: usuario.email,
+      papel: 'gestor',
+    },
   };
 }
 

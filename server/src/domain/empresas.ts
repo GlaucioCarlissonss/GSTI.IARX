@@ -31,15 +31,37 @@ export function acessoDoUsuario(usuarioId: number, empresaId: number): 'gestor' 
  * Cria a empresa, vincula o criador como gestor e semeia os tipos de despesa
  * padrão — a empresa nasce pronta para receber lançamentos.
  */
+/**
+ * Cria a empresa (matriz) e garante que ela tenha DONO.
+ *
+ * Sem `clienteId`, a empresa vira cliente de si mesma — é o caso de quem
+ * contrata uma matriz só, como Limas IT e SoulCoop. Deixar a empresa sem
+ * cliente não é opção: o cliente é o recorte mais externo de toda consulta, e
+ * uma empresa órfã ficaria invisível para o sistema inteiro.
+ */
 export function criarEmpresa(
   usuarioId: number,
-  dados: { nome: string; cnpj?: string | null },
+  dados: { nome: string; cnpj?: string | null; clienteId?: number },
 ): EmpresaDoUsuario {
   if (!dados.nome?.trim()) throw erroValidacao('O nome da empresa é obrigatório.');
   return emTransacao(() => {
+    const nome = dados.nome.trim();
+    let clienteId = dados.clienteId;
+    if (clienteId === undefined) {
+      const existente = db().prepare('SELECT id FROM clientes WHERE nome = ?').get(nome) as
+        | { id: number }
+        | undefined;
+      clienteId =
+        existente?.id ??
+        Number(db().prepare('INSERT INTO clientes (nome) VALUES (?)').run(nome).lastInsertRowid);
+    }
+    db()
+      .prepare('INSERT OR IGNORE INTO usuario_clientes (usuario_id, cliente_id) VALUES (?, ?)')
+      .run(usuarioId, clienteId);
+
     const info = db()
-      .prepare('INSERT INTO empresas (nome, cnpj) VALUES (?, ?)')
-      .run(dados.nome.trim(), dados.cnpj?.trim() || null);
+      .prepare('INSERT INTO empresas (cliente_id, nome, cnpj) VALUES (?, ?, ?)')
+      .run(clienteId, nome, dados.cnpj?.trim() || null);
     const empresaId = Number(info.lastInsertRowid);
     db()
       .prepare("INSERT INTO usuario_empresas (usuario_id, empresa_id, papel) VALUES (?, ?, 'gestor')")

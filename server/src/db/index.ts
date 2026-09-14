@@ -26,6 +26,14 @@ export function abrirBanco(caminho: string): Conexao {
  * NOT EXISTS` não altera tabela criada, então cada coluna acrescentada depois
  * precisa entrar aqui — de forma idempotente, porque roda em toda abertura.
  */
+/**
+ * Cliente ao qual a base anterior ao multi-cliente pertence.
+ *
+ * Não é um nome escolhido: as cinco empresas que a base já tinha — Aliança,
+ * Milagres, Moove, Residencial e Union Care — são as matrizes deste grupo.
+ */
+export const CLIENTE_HISTORICO = 'Grupo Brasil Home Care';
+
 function migrar(db: Conexao): void {
   const colunas = new Set(
     (db.prepare('PRAGMA table_info(lancamentos)').all() as Array<{ name: string }>).map((c) => c.name),
@@ -121,6 +129,121 @@ function migrar(db: Conexao): void {
              ON tickets_sla(empresa_id, source_system, external_id)
              WHERE external_id IS NOT NULL AND excluido_em IS NULL`);
   db.exec('CREATE INDEX IF NOT EXISTS ix_sla_setor ON tickets_sla(setor_id)');
+
+  // ------------------------------------------------------------- multi-cliente
+  //
+  // O CLIENTE é a camada nova, acima da empresa. A base que existia é de um
+  // cliente só — as cinco "empresas" dela são as matrizes do Grupo Brasil Home
+  // Care —, então a migração cria o cliente, pendura as empresas nele e carimba
+  // o dono nos registros. Nada é renomeado: `empresas` passa a ser lida como
+  // MATRIZ e `filiais` como unidade, que é o que sempre foram no negócio.
+  const colunasEmpresa = new Set(
+    (db.prepare('PRAGMA table_info(empresas)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  for (const [nome, tipo] of [
+    ['cliente_id', 'INTEGER'],
+    ['codigo', 'TEXT'],
+    ['endereco', 'TEXT'],
+    ['cep', 'TEXT'],
+  ] as Array<[string, string]>) {
+    if (!colunasEmpresa.has(nome)) db.exec(`ALTER TABLE empresas ADD COLUMN ${nome} ${tipo}`);
+  }
+  const colunasFilial = new Set(
+    (db.prepare('PRAGMA table_info(filiais)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  for (const [nome, tipo] of [
+    ['codigo', 'TEXT'],
+    ['cnpj', 'TEXT'],
+    ['endereco', 'TEXT'],
+    ['cep', 'TEXT'],
+  ] as Array<[string, string]>) {
+    if (!colunasFilial.has(nome)) db.exec(`ALTER TABLE filiais ADD COLUMN ${nome} ${tipo}`);
+  }
+  for (const tabela of ['lancamentos', 'tickets_sla', 'projetos']) {
+    const colunas = new Set(
+      (db.prepare(`PRAGMA table_info(${tabela})`).all() as Array<{ name: string }>).map((c) => c.name),
+    );
+    if (!colunas.has('cliente_id')) db.exec(`ALTER TABLE ${tabela} ADD COLUMN cliente_id INTEGER`);
+  }
+
+  // Adoção: empresa sem dono vai para o cliente da base histórica. Só acontece
+  // uma vez — depois disso toda empresa nasce com cliente.
+  const orfas = (
+    db.prepare('SELECT COUNT(*) AS n FROM empresas WHERE cliente_id IS NULL').get() as { n: number }
+  ).n;
+  if (orfas > 0) {
+    db.prepare('INSERT OR IGNORE INTO clientes (nome) VALUES (?)').run(CLIENTE_HISTORICO);
+    const dono = db.prepare('SELECT id FROM clientes WHERE nome = ?').get(CLIENTE_HISTORICO) as { id: number };
+    db.prepare('UPDATE empresas SET cliente_id = ? WHERE cliente_id IS NULL').run(dono.id);
+    // Quem já tinha acesso à empresa passa a ter acesso ao cliente dela: a
+    // migração não pode tirar de ninguém o que já estava aberto.
+    db.exec(`INSERT OR IGNORE INTO usuario_clientes (usuario_id, cliente_id)
+               SELECT DISTINCT ue.usuario_id, e.cliente_id
+                 FROM usuario_empresas ue JOIN empresas e ON e.id = ue.empresa_id
+                WHERE e.cliente_id IS NOT NULL`);
+  }
+
+  // Carimbo do dono nos registros, sempre pela empresa — é a única fonte, e
+  // deixá-lo divergir dela seria vazamento entre clientes.
+  for (const tabela of ['lancamentos', 'tickets_sla', 'projetos']) {
+    db.exec(`UPDATE ${tabela} SET cliente_id = (
+               SELECT e.cliente_id FROM empresas e WHERE e.id = ${tabela}.empresa_id)
+              WHERE cliente_id IS NULL`);
+  }
+
+  // Índices e gatilhos do recorte por cliente vivem AQUI, e não no schema: numa
+  // base que já existia, `cliente_id` só nasce nas linhas acima, e o schema roda
+  // antes delas. É a mesma razão de `ux_sla_ticket` estar aqui.
+  db.exec(`CREATE INDEX IF NOT EXISTS ix_usuario_clientes_cliente ON usuario_clientes(cliente_id);
+CREATE INDEX IF NOT EXISTS ix_empresas_cliente ON empresas(cliente_id);
+CREATE INDEX IF NOT EXISTS ix_lanc_cliente_comp ON lancamentos(cliente_id, competencia);
+CREATE INDEX IF NOT EXISTS ix_lanc_cliente_tipo ON lancamentos(cliente_id, tipo_despesa_id);
+CREATE INDEX IF NOT EXISTS ix_lanc_cliente_criado ON lancamentos(cliente_id, criado_em);
+CREATE INDEX IF NOT EXISTS ix_lanc_cliente_reconhecido ON lancamentos(cliente_id, reconhecido);
+CREATE INDEX IF NOT EXISTS ix_proj_cliente ON projetos(cliente_id, status);
+CREATE INDEX IF NOT EXISTS ix_proj_cliente_criado ON projetos(cliente_id, criado_em);
+CREATE INDEX IF NOT EXISTS ix_sla_cliente_comp ON tickets_sla(cliente_id, competencia);
+CREATE INDEX IF NOT EXISTS ix_sla_cliente_status ON tickets_sla(cliente_id, status);
+CREATE INDEX IF NOT EXISTS ix_sla_cliente_externo ON tickets_sla(cliente_id, source_system, external_id);
+CREATE INDEX IF NOT EXISTS ix_sla_cliente_aberto ON tickets_sla(cliente_id, aberto_em);
+
+-- ============================================================
+-- Carimbo do cliente: invariante do BANCO, não de cada consulta
+-- ============================================================
+-- O dono é desnormalizado da empresa por performance. Deixar cada INSERT
+-- lembrar de preenchê-lo seria pedir para um deles esquecer — e um registro sem
+-- dono, ou com o dono errado, é vazamento entre clientes. O gatilho tira a
+-- escolha de quem escreve: importador, webhook e tela caem todos na mesma
+-- regra, e ela vale para o código que ainda nem foi escrito.
+CREATE TRIGGER IF NOT EXISTS tg_lanc_cliente_novo AFTER INSERT ON lancamentos
+WHEN NEW.cliente_id IS NULL BEGIN
+  UPDATE lancamentos SET cliente_id = (SELECT cliente_id FROM empresas WHERE id = NEW.empresa_id)
+   WHERE id = NEW.id;
+END;
+CREATE TRIGGER IF NOT EXISTS tg_lanc_cliente_mudou AFTER UPDATE OF empresa_id ON lancamentos BEGIN
+  UPDATE lancamentos SET cliente_id = (SELECT cliente_id FROM empresas WHERE id = NEW.empresa_id)
+   WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS tg_sla_cliente_novo AFTER INSERT ON tickets_sla
+WHEN NEW.cliente_id IS NULL BEGIN
+  UPDATE tickets_sla SET cliente_id = (SELECT cliente_id FROM empresas WHERE id = NEW.empresa_id)
+   WHERE id = NEW.id;
+END;
+CREATE TRIGGER IF NOT EXISTS tg_sla_cliente_mudou AFTER UPDATE OF empresa_id ON tickets_sla BEGIN
+  UPDATE tickets_sla SET cliente_id = (SELECT cliente_id FROM empresas WHERE id = NEW.empresa_id)
+   WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS tg_proj_cliente_novo AFTER INSERT ON projetos
+WHEN NEW.cliente_id IS NULL BEGIN
+  UPDATE projetos SET cliente_id = (SELECT cliente_id FROM empresas WHERE id = NEW.empresa_id)
+   WHERE id = NEW.id;
+END;
+CREATE TRIGGER IF NOT EXISTS tg_proj_cliente_mudou AFTER UPDATE OF empresa_id ON projetos BEGIN
+  UPDATE projetos SET cliente_id = (SELECT cliente_id FROM empresas WHERE id = NEW.empresa_id)
+   WHERE id = NEW.id;
+END;`);
 
   // ------------------------------------------------------------------ acesso
   //

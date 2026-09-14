@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { ErroHttp, erroNaoAutenticado, erroSemPermissao, erroValidacao } from '../lib/erros.js';
 import { verificarToken, type Sessao } from '../domain/auth.js';
 import { acessoDoUsuario } from '../domain/empresas.js';
+import { clienteDaEmpresa, usuarioTemCliente } from '../domain/clientes.js';
 import type { Contexto } from '../domain/contexto.js';
 import { exigirPermissao, type Acao } from '../domain/acesso.js';
 import { auditar } from '../domain/auditoria.js';
@@ -41,7 +42,18 @@ export function comEmpresa(req: Request, _res: Response, next: NextFunction) {
   }
   const papel = acessoDoUsuario(req.sessao.usuarioId, empresaId);
   if (!papel) return next(erroSemPermissao('Você não tem acesso a esta empresa.'));
+
+  // O cliente vem da EMPRESA, não do cabeçalho: o cabeçalho é a pergunta, e a
+  // resposta está gravada. Quem mandasse um cliente pela requisição estaria
+  // afirmando o que o servidor tem de conferir.
+  const clienteId = clienteDaEmpresa(empresaId);
+  if (clienteId !== null && !usuarioTemCliente(req.sessao.usuarioId, clienteId)) {
+    // Acesso à empresa sem acesso ao cliente dela não existe: o cliente é o
+    // recorte mais externo, e deixar passar aqui furaria o isolamento inteiro.
+    return next(erroSemPermissao('Você não tem acesso a este cliente.'));
+  }
   req.contexto = {
+    clienteId,
     empresaId,
     usuarioId: req.sessao.usuarioId,
     usuarioEmail: req.sessao.email,

@@ -7,6 +7,7 @@
  *   npm run seed -- --recriar
  */
 import { randomBytes } from 'node:crypto';
+import { clienteDaEmpresa } from '../domain/clientes.js';
 import ExcelJS from 'exceljs';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -144,7 +145,13 @@ function prepararAmbiente(usuarioId: number, email: string): Ambiente {
   const amb: Ambiente = { contextos: new Map(), filiais: new Map(), tipos: new Map() };
   for (const nome of EMPRESAS) {
     const empresa = criarEmpresa(usuarioId, { nome });
-    const ctx: Contexto = { empresaId: empresa.id, usuarioId, usuarioEmail: email, papel: 'gestor' };
+    const ctx: Contexto = {
+      clienteId: clienteDaEmpresa(empresa.id),
+      empresaId: empresa.id,
+      usuarioId,
+      usuarioEmail: email,
+      papel: 'gestor',
+    };
     amb.contextos.set(nome, ctx);
     for (const linha of db()
       .prepare('SELECT id, nome FROM tipos_despesa WHERE empresa_id = ?')

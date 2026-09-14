@@ -20,12 +20,42 @@ CREATE TABLE IF NOT EXISTS usuarios (
 );
 
 -- ============================================================
--- Multi-tenant: Empresa -> Filial
+-- Multi-cliente: Cliente -> Matriz (empresa) -> Filial
 -- ============================================================
-CREATE TABLE IF NOT EXISTS empresas (
+-- O CLIENTE é o contratante. Abaixo dele, a hierarquia que o sistema já tinha
+-- passa a ser lida com os nomes do negócio: `empresas` é a MATRIZ (CNPJ base,
+-- 0001) e `filiais` são as unidades (CNPJ completo). Não foi renomeada nada:
+-- a base inteira que existia é de um cliente só, e trocar os nomes das tabelas
+-- quebraria todo o código por uma palavra.
+CREATE TABLE IF NOT EXISTS clientes (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   nome       TEXT NOT NULL,
+  documento  TEXT,
+  ativo      INTEGER NOT NULL DEFAULT 1,
+  criado_em  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (nome)
+);
+
+-- Vínculo usuário <-> cliente. Um usuário acessa vários clientes; um cliente
+-- tem vários usuários. É contra ESTA tabela que o backend valida o cliente da
+-- requisição — nunca contra o que a tela mandou.
+CREATE TABLE IF NOT EXISTS usuario_clientes (
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  criado_em  TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (usuario_id, cliente_id)
+);
+
+CREATE TABLE IF NOT EXISTS empresas (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- O dono. Anulável só para o banco que existia antes do cliente existir; a
+  -- migração preenche, e a criação exige.
+  cliente_id INTEGER REFERENCES clientes(id) ON DELETE CASCADE,
+  nome       TEXT NOT NULL,
+  codigo     TEXT,
   cnpj       TEXT,
+  endereco   TEXT,
+  cep        TEXT,
   status     TEXT NOT NULL DEFAULT 'ativa' CHECK (status IN ('ativa','inativa')),
   criado_em  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -40,8 +70,15 @@ CREATE TABLE IF NOT EXISTS usuario_empresas (
 
 CREATE TABLE IF NOT EXISTS filiais (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- `empresa_id` É a matriz-pai: a filial pendura na matriz, e a matriz no
+  -- cliente. Não há auto-relacionamento porque as duas já são tabelas
+  -- distintas, e juntá-las numa só trocaria clareza por uma coluna `tipo`.
   empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   nome       TEXT NOT NULL,
+  codigo     TEXT,
+  cnpj       TEXT,
+  endereco   TEXT,
+  cep        TEXT,
   cidade     TEXT,
   uf         TEXT,
   ativo      INTEGER NOT NULL DEFAULT 1,
@@ -95,6 +132,10 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   -- Reconhecimento: o gestor confirmou que esta despesa é dele e está correta.
   -- Nasce 0 em tudo que entra por carga — a base do cliente veio sem essa
   -- conferência, e presumir reconhecido apagaria justamente o trabalho a fazer.
+  -- Dono, desnormalizado da empresa. Existe pela PERFORMANCE: toda consulta de
+  -- tela recorta por cliente, e escopar por join a cada uma custa caro. A
+  -- migração preenche e a gravação mantém — divergir dele seria vazamento.
+  cliente_id          INTEGER REFERENCES clientes(id) ON DELETE CASCADE,
   reconhecido         INTEGER NOT NULL DEFAULT 0 CHECK (reconhecido IN (0,1)),
   reconhecido_em      TEXT,
   reconhecido_por     INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
@@ -108,6 +149,8 @@ CREATE INDEX IF NOT EXISTS ix_lanc_filial ON lancamentos(filial_id);
 CREATE INDEX IF NOT EXISTS ix_lanc_origem ON lancamentos(lancamento_origem_id);
 -- Idempotência de importação: a mesma linha não entra duas vezes
 CREATE UNIQUE INDEX IF NOT EXISTS ux_lanc_dedup ON lancamentos(dedup_hash) WHERE dedup_hash IS NOT NULL;
+-- Índices compostos do recorte por cliente: é por eles que a tela de
+-- indicadores deixa de varrer a base inteira.
 
 -- Fechamento de competência: bloqueia alterações no mês fechado
 -- Cenários de projeção (o 'oficial' é imutável e sempre existe)
@@ -136,6 +179,7 @@ CREATE TABLE IF NOT EXISTS fechamentos (
 -- ============================================================
 CREATE TABLE IF NOT EXISTS projetos (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id        INTEGER REFERENCES clientes(id) ON DELETE CASCADE,
   empresa_id        INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   filial_id         INTEGER REFERENCES filiais(id) ON DELETE RESTRICT,
   nome              TEXT NOT NULL,
@@ -175,6 +219,12 @@ CREATE TABLE IF NOT EXISTS tarefas (
 );
 CREATE INDEX IF NOT EXISTS ix_tarefas_projeto ON tarefas(projeto_id, excluido_em);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_tarefa_dedup ON tarefas(dedup_hash) WHERE dedup_hash IS NOT NULL;
+-- Tarefa não guarda cliente: ela sempre entra pela junção com o projeto, e
+-- duplicar o dono nela criaria um segundo lugar para ele divergir. O índice do
+-- projeto é o que a consulta usa.
+CREATE INDEX IF NOT EXISTS ix_tarefas_fim ON tarefas(mes_fim_planejado, excluido_em);
+
+
 
 -- O índice de filhos é criado em db/index.ts, junto das migrações: um banco
 -- anterior a esta coluna ainda não tem `parent_task_id` quando este arquivo roda.
@@ -226,6 +276,7 @@ CREATE TABLE IF NOT EXISTS filas_ticket (
 
 CREATE TABLE IF NOT EXISTS tickets_sla (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id      INTEGER REFERENCES clientes(id) ON DELETE CASCADE,
   empresa_id      INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   filial_id       INTEGER REFERENCES filiais(id) ON DELETE RESTRICT,
   competencia     TEXT NOT NULL CHECK (competencia GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'),
