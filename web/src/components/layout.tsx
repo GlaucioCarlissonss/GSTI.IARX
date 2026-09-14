@@ -42,6 +42,7 @@ const NAVEGACAO = [
     grupo: 'Sistema',
     itens: [
       { para: '/planilhas', glifo: '⇅', rotulo: 'Importar / Exportar', modulo: 'configuracoes' },
+      { para: '/clientes', glifo: '⬢', rotulo: 'Clientes e unidades', modulo: 'configuracoes' },
       { para: '/cadastros', glifo: '⚙', rotulo: 'Cadastros', modulo: 'configuracoes' },
       { para: '/acessos', glifo: '◈', rotulo: 'Usuários e acessos', modulo: 'usuarios' },
       { para: '/auditoria', glifo: '◉', rotulo: 'Auditoria', modulo: 'configuracoes' },

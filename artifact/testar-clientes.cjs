@@ -105,8 +105,71 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
   conferir('trocar volta à pergunta e esquece a escolha',
     aoTrocar.cliente === null && aoTrocar.guardado === null, JSON.stringify(aoTrocar));
 
+  // ---------------------------------------------------------------- cadastro
+  console.log('\nCADASTRO — a regra do CNPJ decide onde a unidade entra');
+  // A seção anterior terminou trocando de cliente: a pergunta está de volta.
+  await pag.goto(URL_LIMPA);
+  await pag.waitForSelector('.cartao-cliente', { timeout: 15000 });
+  await pag.click('.cartao-cliente');
+  await pag.waitForSelector('#modulos button', { timeout: 15000 });
+  await pag.click('#modulos button:text-is("Sistema")');
+  await pag.waitForTimeout(200);
+  await pag.click('#abas button:text-is("Clientes e unidades")');
+  await pag.waitForTimeout(600);
+
+  const naTela = await pag.$$eval('.rol table tbody tr', (rs) => rs.map((r) => r.textContent.replace(/\s+/g, ' ').trim()));
+  conferir('a tela lista o cliente com a estrutura dele',
+    naTela.some((l) => /Grupo Brasil Home Care/.test(l)), naTela[0] || '(vazio)');
+
+  // Matriz de raiz nova entra; unidade da MESMA raiz tem de virar filial dela.
+  await pag.fill('#un-nome', 'Sede Teste');
+  await pag.fill('#un-cnpj', '11.222.333/0001-44');
+  await pag.click('#un-criar');
+  await pag.waitForTimeout(700);
+  const comSede = await pag.evaluate(() => empresasDoCliente(E.clienteCad).map((m) => m.nome));
+  conferir('a matriz nova entra na estrutura do cliente', comSede.includes('Sede Teste'), comSede.join(', '));
+
+  await pag.fill('#un-nome', 'Unidade Teste 2');
+  await pag.fill('#un-cnpj', '11.222.333/0002-25');
+  await pag.waitForTimeout(300);
+  const alerta = await pag.$eval('#un-aviso', (m) => m.textContent.replace(/\s+/g, ' ').trim()).catch(() => null);
+  conferir('a tela avisa da raiz repetida ANTES de enviar', /mesma raiz/i.test(String(alerta)), String(alerta));
+
+  await pag.click('#un-criar');
+  await pag.waitForTimeout(600);
+  const recusa = await pag.$eval('#un-erro', (m) => m.textContent.trim()).catch(() => null);
+  conferir('cadastrar como matriz uma raiz conhecida é recusado', /mesma raiz/i.test(String(recusa)), String(recusa));
+
+  await pag.selectOption('#un-tipo', 'FILIAL');
+  await pag.waitForTimeout(400);
+  await pag.click('#un-criar');
+  await pag.waitForTimeout(700);
+  const ondeEntrou = await pag.evaluate(() => {
+    const sede = empresasDoCliente(E.clienteCad).find((m) => m.nome === 'Sede Teste');
+    return sede ? filiaisDa(sede.id).map((f) => f.nome) : [];
+  });
+  conferir('a unidade de mesma raiz entra como filial da matriz dela',
+    ondeEntrou.includes('Unidade Teste 2'), ondeEntrou.join(', ') || 'nenhuma');
+
+  // Os dois clientes do enunciado entram por um botão, não sozinhos ao abrir.
+  await pag.click('#cl-iniciais');
+  await pag.waitForTimeout(800);
+  const depoisIniciais = await pag.evaluate(() => ({
+    clientes: E.clientes.map((c) => c.nome),
+    matrizes: E.clientes.map((c) => empresasDoCliente(c.id).length),
+  }));
+  conferir('Limas IT e SoulCoop entram, cada um com a matriz dele',
+    ['Limas IT', 'SoulCoop'].every((n) => depoisIniciais.clientes.includes(n)) &&
+      depoisIniciais.matrizes.every((n) => n >= 1),
+    depoisIniciais.clientes.join(', '));
+
+  // Com três clientes, a pergunta de boas-vindas passa a ter sentido.
+  const podeTrocarAgora = await pag.evaluate(() => !!document.querySelector('#bt-trocar-cliente'));
+  conferir('havendo mais de um cliente, trocar aparece', podeTrocarAgora === true, String(podeTrocarAgora));
+
   // --------------------------------------------------------- somente leitura
   console.log('\nSOMENTE LEITURA — quem não escreve também precisa entrar');
+  await pag.evaluate(() => { try { localStorage.removeItem('iarx-cliente'); } catch (e) {} });
   await pag.goto(URL_LIMPA + '&somenteLeitura=1');
   await pag.waitForSelector('.boas-vindas', { timeout: 15000 });
   const semEscrita = await pag.evaluate(() => ({

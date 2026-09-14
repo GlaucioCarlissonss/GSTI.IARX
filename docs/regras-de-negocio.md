@@ -42,6 +42,42 @@ saídas são opostas: carregando, **nenhum cliente vinculado** (peça acesso) e
 **falha ao buscar** (tentar de novo) — duas telas vazias iguais esconderiam essa
 diferença.
 
+### Onde uma unidade entra: quem decide é o CNPJ
+
+Mesma raiz (os oito primeiros dígitos), mesma matriz — as unidades de uma raiz
+são a mesma pessoa jurídica. A regra vive no servidor
+(`criarUnidadeDoCliente`), e não na tela: duas telas escrevendo a mesma regra
+viram duas regras no dia em que uma delas mudar. Quando a tela não informa o
+tipo, o CNPJ decide — raiz conhecida entra como filial da matriz dela, raiz
+nova abre matriz. Pedir **matriz** para uma raiz já cadastrada é **recusado**,
+dizendo de qual matriz ela é; as duas telas avisam disso enquanto se digita,
+porque descobrir depois, com a unidade pendurada no lugar errado, custa
+correção manual no organograma.
+
+A matriz que agrupa por operação (MILAGRES abriga HM-CE, HM-DF e HM-MT) não tem
+CNPJ próprio: a raiz está nas filiais dela, e `matrizPeloCnpj` procura nos dois
+lugares. Sem isso, cada unidade nova abriria uma matriz para a mesma empresa.
+
+Toda matriz criada — por qualquer porta — passa por `prepararMatriz`: catálogos
+de despesa e filas padrão, mais o vínculo de quem criou. Sem isso ela existiria
+no banco sem aparecer no seletor de ninguém e sem tipo de despesa para receber
+o primeiro lançamento.
+
+### O cadastro inicial dos clientes completa, não duplica
+
+`npm --workspace server run semear-clientes -- --usuario=<login>` cadastra o
+Grupo Brasil Home Care, a Limas IT e a SoulCoop. Numa base que **já carregou**
+as unidades pelas planilhas, a tabela do gestor descreve as mesmas unidades com
+o CNPJ e o endereço que faltavam: a unidade existente é **completada** nos
+campos em branco (nunca sobrescrita) e nada é criado em dobro — `AHC RN` e
+`AHC-RN` são a mesma unidade, separadas por pontuação. Só o que não tem
+correspondente é cadastrado, e o resumo diz o que foi criado, o que foi
+completado e o que ficou sem correspondente.
+
+O CNPJ de uma unidade **não** é copiado para a matriz que a abriga: RESIDENCIAL
+agrupa unidades de três pessoas jurídicas diferentes, e carimbar uma delas na
+matriz afirmaria algo falso.
+
 Na versão hospedada, as matrizes carregadas antes desta camada existir foram
 **adotadas** pelo cliente histórico (Grupo Brasil Home Care): sem dono, elas
 sumiriam no instante em que a tela passasse a filtrar por cliente. A adoção

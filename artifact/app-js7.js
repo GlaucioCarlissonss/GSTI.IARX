@@ -15,7 +15,7 @@ const MODULOS_NAV = [
   { id:'financeiro', rotulo:'Controle Financeiro',  abas:['painel', 'lancamentos', 'relatorio', 'conferencia'] },
   { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos'] },
   { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados', 'OSTICK', 'BITRIX24', 'integracoes'] },
-  { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'cadastros', 'acessos', 'auditoria'] },
+  { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'clientes', 'cadastros', 'acessos', 'auditoria'] },
 ];
 
 const ABAS = [
@@ -34,6 +34,7 @@ const ABAS = [
   { id:'BITRIX24',    rotulo:'Sistema Bitrix24', view: () => viewSla('BITRIX24') },
   { id:'integracoes', rotulo:'Integrações',  view: viewIntegracoes },
   { id:'dados',       rotulo:'Dados',        view: viewDados },
+  { id:'clientes',    rotulo:'Clientes e unidades', view: viewClientes },
   { id:'cadastros',   rotulo:'Cadastros',    view: viewCadastros },
   { id:'acessos',     rotulo:'Usuários e acessos', view: viewAcessos },
   { id:'auditoria',   rotulo:'Auditoria',    view: viewAuditoria },

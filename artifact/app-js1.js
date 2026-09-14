@@ -50,6 +50,8 @@ const E = {
   db: null, pronto: false, erro: null,
   clientes: [],             // contratantes; a matriz pertence a um deles
   clienteSel: null,         // o cliente aberto; nulo = tela de boas-vindas
+  clienteCad: null,         // o cliente em foco na tela de cadastro
+  unidadeNova: null,        // rascunho do cadastro de unidade
   empresas: [], filiais: [], tipos: [], filas: [], cenarios: [],
   aba: 'painel',
   lanc: new Map(),          // 'empresa__comp' -> {itens:[...]}

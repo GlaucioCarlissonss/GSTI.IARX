@@ -20,7 +20,7 @@ const MODULOS_ACESSO = [
   { id:'suporte_bitrix24',  rotulo:'Suporte (Bitrix24)',abas:['BITRIX24'] },
   { id:'integracoes',       rotulo:'Integrações',       abas:['integracoes'] },
   { id:'usuarios',          rotulo:'Usuários e Acessos',abas:['acessos'] },
-  { id:'configuracoes',     rotulo:'Configurações',     abas:['dados','cadastros','auditoria'] },
+  { id:'configuracoes',     rotulo:'Configurações',     abas:['dados','clientes','cadastros','auditoria'] },
 ];
 
 const ACOES_ACESSO = [

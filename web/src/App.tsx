@@ -3,6 +3,7 @@ import { ProvedorSessao, useSessao } from './lib/sessao';
 import { Layout } from './components/layout';
 import { Login, PrimeiraEmpresa, RedefinirSenha } from './pages/Login';
 import { PaginaSelecaoCliente } from './pages/SelecaoCliente';
+import { PaginaClientes } from './pages/Clientes';
 import { PaginaPainelExecutivo } from './pages/PainelExecutivo';
 import { PaginaFinanceiro } from './pages/Financeiro';
 import { PaginaLancamentos } from './pages/Lancamentos';
@@ -52,6 +53,7 @@ function Rotas() {
         <Route path="suporte/integracoes" element={<PaginaIntegracoes />} />
         <Route path="planilhas" element={<PaginaPlanilhas />} />
         <Route path="cadastros" element={<PaginaCadastros />} />
+        <Route path="clientes" element={<PaginaClientes />} />
         <Route path="acessos" element={<PaginaAcessos />} />
         <Route path="auditoria" element={<PaginaAuditoria />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -30,9 +30,34 @@ export function acessoDoUsuario(usuarioId: number, empresaId: number): 'gestor' 
 }
 
 /**
- * Cria a empresa, vincula o criador como gestor e semeia os tipos de despesa
- * padrão — a empresa nasce pronta para receber lançamentos.
+ * Deixa a matriz recém-criada PRONTA para receber dado: catálogos padrão e,
+ * quando há um usuário criando, o vínculo que a faz aparecer no seletor.
+ *
+ * Toda porta de criação de matriz passa por aqui — é o que evita a matriz que
+ * existe no banco, não aparece para ninguém e não aceita lançamento por falta
+ * de tipo de despesa.
  */
+export function prepararMatriz(empresaId: number, usuarioId?: number): void {
+  if (usuarioId) {
+    db()
+      .prepare(
+        `INSERT INTO usuario_empresas (usuario_id, empresa_id, papel) VALUES (?, ?, 'gestor')
+         ON CONFLICT (usuario_id, empresa_id) DO NOTHING`,
+      )
+      .run(usuarioId, empresaId);
+  }
+  const temTipo = db().prepare('SELECT id FROM tipos_despesa WHERE empresa_id = ?').get(empresaId);
+  if (!temTipo) {
+    const inserirTipo = db().prepare('INSERT INTO tipos_despesa (empresa_id, nome) VALUES (?, ?)');
+    for (const tipo of TIPOS_DESPESA_PADRAO) inserirTipo.run(empresaId, tipo);
+  }
+  const temFila = db().prepare('SELECT id FROM filas_ticket WHERE empresa_id = ?').get(empresaId);
+  if (!temFila) {
+    const inserirFila = db().prepare('INSERT INTO filas_ticket (empresa_id, nome, ordem) VALUES (?, ?, ?)');
+    FILAS_PADRAO.forEach((fila, i) => inserirFila.run(empresaId, fila, i + 1));
+  }
+}
+
 /**
  * Cria a empresa (matriz) e garante que ela tenha DONO.
  *
@@ -65,13 +90,7 @@ export function criarEmpresa(
       .prepare('INSERT INTO empresas (cliente_id, nome, cnpj) VALUES (?, ?, ?)')
       .run(clienteId, nome, dados.cnpj?.trim() || null);
     const empresaId = Number(info.lastInsertRowid);
-    db()
-      .prepare("INSERT INTO usuario_empresas (usuario_id, empresa_id, papel) VALUES (?, ?, 'gestor')")
-      .run(usuarioId, empresaId);
-    const inserirTipo = db().prepare('INSERT INTO tipos_despesa (empresa_id, nome) VALUES (?, ?)');
-    for (const tipo of TIPOS_DESPESA_PADRAO) inserirTipo.run(empresaId, tipo);
-    const inserirFila = db().prepare('INSERT INTO filas_ticket (empresa_id, nome, ordem) VALUES (?, ?, ?)');
-    FILAS_PADRAO.forEach((fila, i) => inserirFila.run(empresaId, fila, i + 1));
+    prepararMatriz(empresaId, usuarioId);
     return {
       id: empresaId,
       nome: dados.nome.trim(),

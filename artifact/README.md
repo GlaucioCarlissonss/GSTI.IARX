@@ -112,6 +112,18 @@ UNION) foram adotadas pelo **Grupo Brasil Home Care**, que é de quem elas são.
 A adoção vale em memória mesmo quando o armazenamento recusa escrita: quem abriu
 o link só para ver enxerga o mesmo sistema, sem alterar a base.
 
+## Cadastrar cliente, matriz e filial
+
+Em **Sistema → Clientes e unidades**. Quem decide onde a unidade entra é o CNPJ:
+mesma raiz (os oito primeiros dígitos), mesma matriz. A tela avisa disso
+enquanto se digita, e cadastrar como **matriz** uma raiz já conhecida é
+recusado, dizendo de qual matriz aquela unidade é.
+
+A matriz que agrupa por operação não tem CNPJ próprio — a raiz está nas filiais
+dela, e é lá que ela também é procurada. Limas IT e SoulCoop entram por um
+botão, e não sozinhas ao abrir: escrever na base que todo mundo enxerga tem de
+ser um ato de alguém.
+
 ## Tooltips e drill-down
 
 `app-js14.js` concentra as três peças do padrão: o texto do tooltip, a abertura

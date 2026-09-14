@@ -147,6 +147,316 @@ function trocarCliente() {
   viewBoasVindas();
 }
 
+// ===========================================================================
+// Cadastro de clientes, matrizes e filiais
+// ===========================================================================
+
+/** Só dígitos: é assim que dois CNPJs se comparam sem discutir pontuação. */
+const digitosCnpj = (v) => String(v || '').replace(/\D/g, '');
+/** A raiz — oito primeiros dígitos — é o que diz que duas unidades são a mesma. */
+const raizCnpj = (v) => digitosCnpj(v).slice(0, 8);
+const ehMatrizCnpj = (v) => digitosCnpj(v).slice(8, 12) === '0001';
+
+/**
+ * A matriz do cliente que já tem esta raiz — pela dela ou pela de uma filial.
+ *
+ * A matriz que agrupa por operação (MILAGRES abriga HM-CE, HM-DF e HM-MT) não
+ * tem CNPJ próprio: a raiz está nas filiais, e é lá que ela precisa ser
+ * procurada. Sem isso, cada nova unidade abriria uma matriz para a mesma
+ * pessoa jurídica.
+ */
+function matrizPelaRaiz(clienteId, cnpj) {
+  const raiz = raizCnpj(cnpj);
+  if (raiz.length < 8) return null;
+  const matrizes = empresasDoCliente(clienteId);
+  return (
+    matrizes.find((m) => raizCnpj(m.cnpj) === raiz) ||
+    matrizes.find((m) => filiaisDa(m.id).some((f) => raizCnpj(f.cnpj) === raiz)) ||
+    null
+  );
+}
+
+async function criarClienteNovo(dados) {
+  const nome = String(dados.nome || '').trim();
+  if (!nome) throw new Error('O nome do cliente é obrigatório.');
+  if (E.clientes.some((c) => c.nome.toLowerCase() === nome.toLowerCase())) {
+    throw new Error('Já existe um cliente chamado "' + nome + '".');
+  }
+  const novo = { id: novoId(), nome, documento: digitosCnpj(dados.documento) || null, ativo: true };
+  await Loja.gravarClientes([...E.clientes, novo]);
+  await Loja.auditar({ acao: 'criar', entidade: 'cliente', descricao: nome });
+  return novo;
+}
+
+/**
+ * Cadastra a unidade aplicando a regra do CNPJ: mesma raiz, mesma matriz.
+ *
+ * A regra é uma só e mora aqui — a tela apenas informa o que a pessoa escolheu.
+ */
+async function criarUnidadeNoCliente(clienteId, dados) {
+  const nome = String(dados.nome || '').trim();
+  if (!nome) throw new Error('O nome da unidade é obrigatório.');
+  const irma = dados.cnpj ? matrizPelaRaiz(clienteId, dados.cnpj) : null;
+  const tipo = dados.tipo || (irma ? 'FILIAL' : 'MATRIZ');
+  const comum = {
+    codigo: String(dados.codigo || '').trim() || null,
+    cnpj: digitosCnpj(dados.cnpj) || null,
+    endereco: String(dados.endereco || '').trim() || null,
+    cep: String(dados.cep || '').trim() || null,
+  };
+
+  if (tipo === 'MATRIZ') {
+    if (irma) {
+      throw new Error('O CNPJ informado tem a mesma raiz de "' + irma.nome + '". Unidades da mesma raiz são a ' +
+        'mesma pessoa jurídica: cadastre esta como filial de "' + irma.nome + '".');
+    }
+    if (empresasDoCliente(clienteId).some((m) => m.nome.toLowerCase() === nome.toLowerCase())) {
+      throw new Error('Já existe uma matriz "' + nome + '" neste cliente.');
+    }
+    const nova = { id: novoId(), nome, cliente: clienteId, ...comum };
+    await Loja.gravarCatalogo('empresas', [...E.empresas, nova]);
+    await Loja.auditar({ acao: 'criar', entidade: 'matriz', descricao: nome });
+    return nova;
+  }
+
+  const paiId = dados.matrizPaiId || (irma && irma.id) || null;
+  if (!paiId) {
+    throw new Error('Informe a matriz desta filial. Sem CNPJ de raiz conhecida, não há como deduzir onde ela entra.');
+  }
+  // A matriz tem de ser DESTE cliente: sem a conferência, um id alheio
+  // penduraria a filial na estrutura de outro contratante.
+  if (!empresasDoCliente(clienteId).some((m) => m.id === paiId)) {
+    throw new Error('Matriz não encontrada neste cliente.');
+  }
+  if (filiaisDa(paiId).some((f) => String(f.nome).toLowerCase() === nome.toLowerCase())) {
+    throw new Error('Já existe uma filial "' + nome + '" nesta matriz.');
+  }
+  const nova = { empresa: paiId, nome, uf: String(dados.uf || '').trim().toUpperCase() || null, ...comum };
+  await Loja.gravarCatalogo('filiais', [...E.filiais, nova]);
+  await Loja.auditar({ acao: 'criar', entidade: 'filial', descricao: nome });
+  return nova;
+}
+
+/** Os clientes que o enunciado pediu, além do grupo já cadastrado. */
+const CLIENTES_INICIAIS = ['Limas IT', 'SoulCoop'];
+
+/**
+ * Cadastra Limas IT e SoulCoop, cada um com a matriz de mesmo nome.
+ *
+ * É um botão, e não algo que o sistema faça ao abrir: escrever na base de todo
+ * mundo tem de ser um ato de alguém. Idempotente — rodar de novo não duplica.
+ */
+async function cadastrarClientesIniciais() {
+  const clientes = [...E.clientes];
+  const empresas = [...E.empresas];
+  let novos = 0;
+  for (const nome of CLIENTES_INICIAIS) {
+    let c = clientes.find((x) => x.nome === nome);
+    if (!c) {
+      c = { id: novoId(), nome, documento: null, ativo: true };
+      clientes.push(c);
+      novos += 1;
+    }
+    if (!empresas.some((e) => e.cliente === c.id)) {
+      empresas.push({ id: novoId(), nome, cliente: c.id, codigo: null, cnpj: null, endereco: null, cep: null });
+    }
+  }
+  if (!novos && empresas.length === E.empresas.length) return 0;
+  await Loja.gravarClientes(clientes);
+  await Loja.gravarCatalogo('empresas', empresas);
+  await Loja.auditar({ acao: 'criar', entidade: 'cliente', descricao: CLIENTES_INICIAIS.join(', ') });
+  return novos;
+}
+
+const UNIDADE_NOVA = { tipo: 'MATRIZ', matrizPaiId: '', nome: '', codigo: '', cnpj: '', endereco: '', cep: '', uf: '' };
+
+function cnpjExib(bruto) {
+  const d = digitosCnpj(bruto);
+  if (d.length !== 14) return String(bruto || '').trim() || '—';
+  return d.slice(0,2) + '.' + d.slice(2,5) + '.' + d.slice(5,8) + '/' + d.slice(8,12) + '-' + d.slice(12);
+}
+
+async function viewClientes() {
+  const alvo = E.clienteCad || E.clienteSel || (E.clientes[0] && E.clientes[0].id) || null;
+  E.clienteCad = alvo;
+  const rascunho = E.unidadeNova || { ...UNIDADE_NOVA };
+  E.unidadeNova = rascunho;
+
+  const linhaCliente = (c) => {
+    const matrizes = empresasDoCliente(c.id);
+    const filiais = matrizes.reduce((n, m) => n + filiaisDa(m.id).length, 0);
+    return `<tr${c.id === alvo ? ' class="ativo"' : ''}>
+      <td><button type="button" class="lk" data-abrir="${esc(c.id)}">${esc(c.nome)}</button></td>
+      <td>${esc(cnpjExib(c.documento))}</td>
+      <td class="num">${inteiro(matrizes.length)}</td>
+      <td class="num">${inteiro(filiais)}</td>
+      <td>${c.ativo === false ? '<span class="tag">Inativo</span>' : '<span class="tag bom">Ativo</span>'}</td>
+      <td><button type="button" class="bt pequeno" data-escreve="edit" data-ativar="${esc(c.id)}">
+        ${c.ativo === false ? 'Reativar' : 'Desativar'}</button></td>
+    </tr>`;
+  };
+
+  const matrizes = alvo ? empresasDoCliente(alvo) : [];
+  const linhasEstrutura = matrizes.flatMap((m) => [
+    `<tr><td><strong>${esc(m.nome)}</strong></td><td><span class="tag">Matriz</span></td>
+      <td>${esc(m.codigo || '—')}</td><td>${esc(cnpjExib(m.cnpj))}</td>
+      <td>${esc(m.endereco || '—')}</td><td>${esc(m.cep || '—')}</td></tr>`,
+    ...filiaisDa(m.id).map((f) => `<tr><td style="padding-left:24px;color:var(--tinta2)">${esc(f.nome)}</td>
+      <td>Filial</td><td>${esc(f.codigo || '—')}</td><td>${esc(cnpjExib(f.cnpj))}</td>
+      <td>${esc(f.endereco || '—')}</td><td>${esc(f.cep || '—')}</td></tr>`),
+  ]);
+
+  const faltam = CLIENTES_INICIAIS.filter((n) => !E.clientes.some((c) => c.nome === n));
+
+  el('#pagina').innerHTML = `
+    <section class="bloco">
+      <header><h2>Clientes</h2><span class="nota">${inteiro(E.clientes.length)}</span></header>
+      <div class="msg">O contratante é o recorte mais externo: toda matriz, toda filial e todo registro
+        pertencem a um cliente, e nenhuma tela soma dois.</div>
+      <div class="rol" style="margin-top:12px"><table>
+        <thead><tr><th>Cliente</th><th>Documento</th><th class="num">Matrizes</th><th class="num">Filiais</th>
+          <th>Situação</th><th></th></tr></thead>
+        <tbody>${E.clientes.map(linhaCliente).join('') || '<tr><td colspan="6" class="vazio">Nenhum cliente.</td></tr>'}</tbody>
+      </table></div>
+      <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
+        <div class="campo"><label for="cl-nome">Novo cliente</label><input id="cl-nome" style="min-width:220px"></div>
+        <div class="campo"><label for="cl-doc">CNPJ (opcional)</label><input id="cl-doc" style="width:180px"></div>
+        <button class="bt primario" id="cl-criar" data-escreve="create">Cadastrar cliente</button>
+        ${faltam.length ? `<button class="bt" id="cl-iniciais" data-escreve="create">Cadastrar ${esc(faltam.join(' e '))}</button>` : ''}
+      </div>
+      <div class="msg erro" id="cl-erro" hidden style="margin-top:10px"></div>
+    </section>
+
+    <section class="bloco">
+      <header><h2>Estrutura${alvo ? ' de ' + esc((clientePorId(alvo) || {}).nome || '') : ''}</h2></header>
+      <div class="msg">Matriz é a pessoa jurídica; filial é a unidade dela. É o CNPJ que diz qual é qual:
+        mesma raiz, mesma matriz.</div>
+      <div class="rol" style="margin-top:12px"><table>
+        <thead><tr><th>Unidade</th><th>Tipo</th><th>Código</th><th>CNPJ</th><th>Endereço</th><th>CEP</th></tr></thead>
+        <tbody>${linhasEstrutura.join('') || '<tr><td colspan="6" class="vazio">Nenhuma matriz cadastrada.</td></tr>'}</tbody>
+      </table></div>
+
+      <!-- O formulário é montado UMA vez e atualizado no lugar. Remontá-lo a
+           cada tecla trocaria os elementos sob o cursor, e o clique no botão
+           se perderia entre o "mouse desce" e o "mouse sobe". -->
+      <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
+        <div class="campo"><label for="un-tipo">Tipo</label><select id="un-tipo">
+          <option value="MATRIZ"${rascunho.tipo==='MATRIZ'?' selected':''}>Matriz</option>
+          <option value="FILIAL"${rascunho.tipo==='FILIAL'?' selected':''}>Filial</option></select></div>
+        <div class="campo" id="campo-pai"${rascunho.tipo === 'FILIAL' ? '' : ' hidden'}>
+          <label for="un-pai">Matriz</label><select id="un-pai">
+          <option value="">Pelo CNPJ</option>
+          ${matrizes.map((m)=>`<option value="${esc(m.id)}"${rascunho.matrizPaiId===m.id?' selected':''}>${esc(m.nome)}</option>`).join('')}
+          </select></div>
+        <div class="campo"><label for="un-nome">Nome</label><input id="un-nome" value="${esc(rascunho.nome)}" style="min-width:200px"></div>
+        <div class="campo"><label for="un-codigo">Código</label><input id="un-codigo" value="${esc(rascunho.codigo)}" style="width:110px"></div>
+        <div class="campo"><label for="un-cnpj">CNPJ</label><input id="un-cnpj" value="${esc(rascunho.cnpj)}" style="width:175px"></div>
+        <div class="campo"><label for="un-endereco">Endereço</label><input id="un-endereco" value="${esc(rascunho.endereco)}" style="min-width:300px"></div>
+        <div class="campo"><label for="un-cep">CEP</label><input id="un-cep" value="${esc(rascunho.cep)}" style="width:110px"></div>
+        <div class="campo" id="campo-uf"${rascunho.tipo === 'FILIAL' ? '' : ' hidden'}>
+          <label for="un-uf">UF</label><input id="un-uf" value="${esc(rascunho.uf)}" maxlength="2" style="width:60px"></div>
+        <button class="bt primario" id="un-criar" data-escreve="create">Cadastrar unidade</button>
+      </div>
+      <div class="msg" id="un-aviso" hidden style="margin-top:10px"></div>
+      <div class="msg erro" id="un-erro" hidden style="margin-top:10px"></div>
+    </section>`;
+
+  // ------------------------------------------------------------- interação
+  const mostrarErro = (id, e) => {
+    const caixa = el(id);
+    caixa.hidden = false;
+    caixa.textContent = e.message || String(e);
+  };
+
+  el('#pagina').querySelectorAll('[data-abrir]').forEach((b) => {
+    b.onclick = () => { E.clienteCad = b.dataset.abrir; render(); };
+  });
+  el('#pagina').querySelectorAll('[data-ativar]').forEach((b) => {
+    b.onclick = async () => {
+      const c = clientePorId(b.dataset.ativar);
+      if (!c) return;
+      try {
+        await Loja.gravarClientes(E.clientes.map((x) => (x.id === c.id ? { ...x, ativo: c.ativo === false } : x)));
+        // Desativar o cliente aberto tiraria o chão da sessão: volta à escolha.
+        if (c.id === E.clienteSel && c.ativo !== false) trocarCliente();
+        else { pintarCliente(); render(); }
+      } catch (e) { mostrarErro('#cl-erro', e); }
+    };
+  });
+
+  const bt = el('#cl-criar');
+  if (bt) bt.onclick = async () => {
+    try {
+      const novo = await criarClienteNovo({ nome: el('#cl-nome').value, documento: el('#cl-doc').value });
+      E.clienteCad = novo.id;
+      pintarCliente();
+      render();
+    } catch (e) { mostrarErro('#cl-erro', e); }
+  };
+
+  const btIniciais = el('#cl-iniciais');
+  if (btIniciais) btIniciais.onclick = async () => {
+    try { await cadastrarClientesIniciais(); pintarCliente(); render(); }
+    catch (e) { mostrarErro('#cl-erro', e); }
+  };
+
+  const guardar = () => {
+    E.unidadeNova = {
+      tipo: el('#un-tipo').value,
+      matrizPaiId: el('#un-pai') ? el('#un-pai').value : '',
+      nome: el('#un-nome').value,
+      codigo: el('#un-codigo').value,
+      cnpj: el('#un-cnpj').value,
+      endereco: el('#un-endereco').value,
+      cep: el('#un-cep').value,
+      uf: el('#un-uf') ? el('#un-uf').value : '',
+    };
+  };
+
+  /**
+   * O aviso da regra do CNPJ, atualizado no lugar enquanto se digita.
+   *
+   * Vem ANTES do envio porque descobrir depois, com a unidade já pendurada na
+   * matriz errada, custa correção manual no organograma.
+   */
+  const pintarAvisoRaiz = () => {
+    const caixa = el('#un-aviso');
+    if (!caixa) return;
+    const tipo = el('#un-tipo').value;
+    const irma = matrizPelaRaiz(alvo, el('#un-cnpj').value);
+    caixa.hidden = !irma;
+    caixa.classList.toggle('erro', !!irma && tipo === 'MATRIZ');
+    if (!irma) return (caixa.innerHTML = '');
+    caixa.innerHTML = 'Este CNPJ tem a mesma raiz de <strong>' + esc(irma.nome) + '</strong>. ' +
+      (tipo === 'MATRIZ'
+        ? 'Unidades da mesma raiz são a mesma pessoa jurídica — o cadastro será recusado como matriz.'
+        : 'A filial entrará em ' + esc(irma.nome) + '.');
+  };
+
+  el('#un-tipo').onchange = () => {
+    const filial = el('#un-tipo').value === 'FILIAL';
+    el('#campo-pai').hidden = !filial;
+    el('#campo-uf').hidden = !filial;
+    guardar();
+    pintarAvisoRaiz();
+  };
+  // `input`, e não `change`: `change` dispara ao sair do campo, inclusive
+  // quando quem sai está clicando no botão de cadastrar.
+  el('#un-cnpj').oninput = pintarAvisoRaiz;
+  pintarAvisoRaiz();
+
+  const btUnidade = el('#un-criar');
+  if (btUnidade) btUnidade.onclick = async () => {
+    guardar();
+    try {
+      await criarUnidadeNoCliente(alvo, E.unidadeNova);
+      E.unidadeNova = { ...UNIDADE_NOVA };
+      pintarSeletores();
+      render();
+    } catch (e) { mostrarErro('#un-erro', e); }
+  };
+}
+
 function pintarCliente() {
   const caixa = el('#cliente-atual');
   if (!caixa) return;

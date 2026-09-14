@@ -12,6 +12,7 @@ import {
   criarCliente,
   criarMatriz,
   criarUnidade,
+  criarUnidadeDoCliente,
   estruturaDoCliente,
   exigirCliente,
   listarClientes,
@@ -77,7 +78,25 @@ rotasClientes.patch('/:id', exigir('configuracoes', 'edit'), (req, res) => {
 });
 
 rotasClientes.post('/:id/matrizes', exigir('configuracoes', 'create'), (req, res) => {
-  res.status(201).json(criarMatriz(Number(req.params.id), req.body ?? {}));
+  res.status(201).json(criarMatriz(Number(req.params.id), req.body ?? {}, ctx(req).usuarioId));
+});
+
+/**
+ * Cadastro de unidade com a regra do CNPJ aplicada no servidor: a tela informa
+ * o que a pessoa escolheu, e é aqui que "mesma raiz, mesma matriz" vale.
+ */
+rotasClientes.post('/:id/unidades', exigir('configuracoes', 'create'), (req, res) => {
+  const corpo = req.body ?? {};
+  res.status(201).json(
+    criarUnidadeDoCliente(
+      Number(req.params.id),
+      {
+        ...corpo,
+        matrizPaiId: corpo.matriz_pai_id === undefined ? corpo.matrizPaiId : Number(corpo.matriz_pai_id) || null,
+      },
+      ctx(req).usuarioId,
+    ),
+  );
 });
 
 rotasClientes.post('/matrizes/:matrizId/filiais', exigir('configuracoes', 'create'), (req, res) => {
