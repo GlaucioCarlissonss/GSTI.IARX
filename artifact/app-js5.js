@@ -391,8 +391,87 @@ async function viewProjetos() {
   });
 }
 
+/**
+ * Unidades escolhidas no formulário: uma linha por empresa × filial.
+ *
+ * `(empresa)` é a unidade de nível empresa, sem filial — e é uma unidade como
+ * qualquer outra, não a ausência de uma. Sem filial marcada, a empresa entra
+ * inteira nesse nível: é o que o gestor quer dizer ao escolher só a empresa.
+ */
+function unidadesEscolhidas(empresas, filiais) {
+  const saida = [];
+  for (const emp of empresas) {
+    const daEmpresa = filiaisDa(emp).map((f) => f.nome);
+    const marcadas = [...filiais].filter((f) => f === '(empresa)' || daEmpresa.includes(f));
+    if (!marcadas.length) saida.push({ empresa: emp, filial: null });
+    else for (const f of marcadas) saida.push({ empresa: emp, filial: f === '(empresa)' ? null : f });
+  }
+  return saida;
+}
+
+/** A conta em voz alta: "3 projetos, um por unidade" não pode ser adivinhado. */
+function resumoDeLote(unidades, substantivo) {
+  if (unidades.length <= 1) return '';
+  const porEmpresa = new Map();
+  for (const u of unidades) porEmpresa.set(u.empresa, (porEmpresa.get(u.empresa) || 0) + 1);
+  const empresas = [...porEmpresa.keys()].map((e) => nomeEmpresa(e)).join(', ');
+  return `<div class="msg alerta" style="margin-top:10px"><strong>${inteiro(unidades.length)} ${substantivo}</strong>,
+    um por unidade, em ${inteiro(porEmpresa.size)} empresa(s): ${esc(empresas)}.
+    Cada um nasce com vínculo próprio — nada é compartilhado entre unidades.</div>`;
+}
+
+/**
+ * Executa o lote mostrando progresso e devolve o relatório por unidade.
+ *
+ * Sem relatório, um lote de 30 com 2 erros pareceria ter dado certo: a soma
+ * "criou" não diz onde não criou.
+ */
+async function executarLote(unidades, faz, barra) {
+  const relatorio = [];
+  for (let i = 0; i < unidades.length; i++) {
+    const u = unidades[i];
+    const onde = `${nomeEmpresa(u.empresa)}${u.filial ? ' · ' + u.filial : ' · nível empresa'}`;
+    try {
+      await faz(u);
+      relatorio.push({ onde, ok: true });
+    } catch (e) {
+      relatorio.push({ onde, ok: false, motivo: e.message || String(e) });
+    }
+    if (barra) {
+      const pct = Math.round(((i + 1) / unidades.length) * 100);
+      barra.innerHTML = `<div class="msg"><strong>${inteiro(i + 1)} de ${inteiro(unidades.length)}</strong>
+        <div style="margin-top:6px;height:8px;border-radius:4px;background:var(--sup2);overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:var(--s1)"></div></div></div>`;
+      barra.hidden = false;
+      // Um quadro por unidade: sem isto a barra só apareceria pronta no fim.
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+  }
+  return relatorio;
+}
+
+/** O relatório final, unidade a unidade, com o motivo de cada recusa. */
+function mostrarRelatorioDeLote(relatorio, substantivo) {
+  const erros = relatorio.filter((r) => !r.ok);
+  abrirModal({
+    titulo: 'Relatório do lote', tipo: 'lote',
+    corpo: `<div class="msg ${erros.length ? 'alerta' : 'bom'}">
+        <strong>${inteiro(relatorio.length - erros.length)} de ${inteiro(relatorio.length)} ${substantivo} criado(s).</strong>
+        ${erros.length ? `${inteiro(erros.length)} unidade(s) recusada(s) — abaixo, o motivo de cada uma.` : ''}</div>
+      <div class="rol" style="margin-top:10px"><table>
+        <thead><tr><th>Unidade</th><th>Resultado</th></tr></thead>
+        <tbody>${relatorio.map((r) => `<tr>
+          <td>${esc(r.onde)}</td>
+          <td>${r.ok ? '<span class="tag bom">criado</span>'
+                     : `<span class="tag crit">recusado</span> ${esc(r.motivo)}`}</td></tr>`).join('')}</tbody>
+      </table></div>`,
+    acoes: '<button type="button" class="bt pri" data-c>Fechar</button>',
+    aoMontar({ raiz, fechar }) { raiz.querySelector('[data-c]').onclick = () => { fechar(); render(); }; },
+  });
+}
+
 function formProjeto(existente) {
-  const dono = (existente && existente.empresa) || exigirEmpresaUnica();
+  const dono = (existente && existente.empresa) || (E.empresasSel.size ? [...E.empresasSel][0] : (E.empresas[0] || {}).id);
   const fils = filiaisDa(dono), ed = !!existente;
   const v = existente || { nome:'', descricao:'', filial:null, inicio:mesHoje(), fimPlanejado:'', fimReal:null, status:'planejado' };
   abrirModal({
@@ -400,9 +479,19 @@ function formProjeto(existente) {
     corpo: `
       <div class="campo"><label for="q-nome">Nome do projeto</label><input id="q-nome" name="nome" value="${esc(v.nome)}"></div>
       <div class="campo"><label for="q-desc">Descrição</label><textarea id="q-desc" name="descricao">${esc(v.descricao||'')}</textarea></div>
+      ${ed ? `
       <div class="grade g3">
         <div class="campo"><label for="q-fil">Filial</label><select id="q-fil" name="filial">
-          <option value="">— empresa —</option>${fils.map((f)=>`<option${f.nome===v.filial?' selected':''}>${esc(f.nome)}</option>`).join('')}</select></div>
+          <option value="">— empresa —</option>${fils.map((f)=>`<option${f.nome===v.filial?' selected':''}>${esc(f.nome)}</option>`).join('')}</select></div>`
+      : `
+      <div class="msg">Onde criar não depende do filtro do topo: escolha aqui as empresas e filiais. Marcando mais de
+        uma, o projeto nasce replicado — um por unidade, com vínculo próprio.</div>
+      <div class="grade g2" style="margin-top:12px">
+        <div class="campo"><label>Empresas</label><div data-sel="q-emp"></div></div>
+        <div class="campo"><label>Filiais</label><div data-sel="q-fil-multi"></div></div>
+      </div>
+      <div id="q-resumo"></div>
+      <div class="grade g3" style="margin-top:12px">`}
         <div class="campo"><label for="q-ini">Mês de início</label><input id="q-ini" name="inicio" value="${mesExib(v.inicio)}"></div>
         <div class="campo"><label for="q-fim">Fim planejado</label><input id="q-fim" name="fimPlanejado" value="${v.fimPlanejado?mesExib(v.fimPlanejado):''}" placeholder="MM/AAAA"></div>
       </div>
@@ -415,6 +504,41 @@ function formProjeto(existente) {
     acoes:`<button type="button" class="bt" data-c>Cancelar</button><button type="button" class="bt pri" data-s>${ed?'Salvar':'Criar projeto'}</button>`,
     aoMontar({ raiz, fechar, erro, campo }) {
       raiz.querySelector('[data-c]').onclick = fechar;
+      // Seleção própria de unidade, só na criação: editar é de um projeto, que
+      // já tem dono. Começa nas empresas em foco, mas não fica preso a elas.
+      const escolha = { empresas: new Set(E.empresasSel.size ? E.empresasSel : [dono]), filiais: new Set() };
+      const resumo = raiz.querySelector('#q-resumo');
+      const repintarResumo = () => {
+        if (!resumo) return;
+        resumo.innerHTML = resumoDeLote(unidadesEscolhidas(escolha.empresas, escolha.filiais), 'projetos');
+      };
+      const filiaisDasEmpresas = () => {
+        const nomes = new Set();
+        for (const e of escolha.empresas) for (const f of filiaisDa(e)) nomes.add(f.nome);
+        return [{ valor:'(empresa)', rotulo:'Sem filial (nível empresa)' },
+          ...[...nomes].sort((a, b) => a.localeCompare(b, 'pt-BR')).map((n) => ({ valor:n, rotulo:n }))];
+      };
+      const alvoEmp = raiz.querySelector('[data-sel="q-emp"]');
+      if (alvoEmp) {
+        const pintarFiliais = () => seletorMulti(raiz.querySelector('[data-sel="q-fil-multi"]'), {
+          id:'q-fil-multi', rotulo:'Filial', itens: filiaisDasEmpresas(), selecionados: escolha.filiais,
+          aviso:'Sem filial marcada, o projeto nasce no nível empresa.',
+          aoMudar: (novo) => { escolha.filiais = novo; repintarResumo(); },
+        });
+        seletorMulti(alvoEmp, {
+          id:'q-emp', rotulo:'Empresa', minimo: 1,
+          itens: E.empresas.map((e) => ({ valor: e.id, rotulo: e.nome })),
+          selecionados: escolha.empresas,
+          aoMudar: (novo) => {
+            escolha.empresas = novo;
+            // Filial de empresa que saiu da escolha não pode ficar marcada.
+            const validas = new Set(filiaisDasEmpresas().map((i) => i.valor));
+            escolha.filiais = new Set([...escolha.filiais].filter((f) => validas.has(f)));
+            pintarFiliais(); repintarResumo();
+          },
+        });
+        pintarFiliais(); repintarResumo();
+      }
       raiz.querySelector('[data-s]').onclick = async (ev) => {
         ev.target.disabled = true; erro('');
         try {
@@ -429,14 +553,40 @@ function formProjeto(existente) {
           let status = campo('status').value;
           if (fimReal && status !== 'cancelado') status = 'concluido';
           if (status === 'concluido' && !fimReal) throw new Error('Um projeto concluído exige o mês de fim real.');
-          const itens = [...(await Loja.projetosDa(dono))];
-          const corpo = { nome, descricao: campo('descricao').value.trim() || null,
-            filial: campo('filial').value || null, inicio, fimPlanejado: fimP, fimReal, status };
-          if (ed) { const i = itens.findIndex((x)=>x.id===existente.id); itens[i] = { ...itens[i], ...corpo }; }
-          else itens.push({ id: novoId(), ...corpo, tarefas: [], envolvidos: [] });
-          await Loja.gravarProjetos(dono, itens);
-          await Loja.auditar({ acao: ed?'atualizar':'criar', entidade:'projeto', id: ed?existente.id:corpo.nome, depois: corpo });
-          fechar(); render();
+          const base = { nome, descricao: campo('descricao').value.trim() || null,
+            inicio, fimPlanejado: fimP, fimReal, status };
+
+          if (ed) {
+            const itens = [...(await Loja.projetosDa(dono))];
+            const corpo = { ...base, filial: campo('filial').value || null };
+            const i = itens.findIndex((x) => x.id === existente.id);
+            itens[i] = { ...itens[i], ...corpo };
+            await Loja.gravarProjetos(dono, itens);
+            await Loja.auditar({ acao:'atualizar', entidade:'projeto', id: existente.id, depois: corpo }, dono);
+            fechar(); render();
+            return;
+          }
+
+          const unidades = unidadesEscolhidas(escolha.empresas, escolha.filiais);
+          if (!unidades.length) throw new Error('Escolha ao menos uma empresa.');
+          const barra = raiz.querySelector('#q-resumo');
+          const relatorio = await executarLote(unidades, async (u) => {
+            const itens = [...(await Loja.projetosDa(u.empresa))];
+            if (itens.some((x) => x.nome.toLowerCase() === nome.toLowerCase() && (x.filial || null) === u.filial)) {
+              throw new Error('Já existe projeto com este nome nesta unidade.');
+            }
+            itens.push({ id: novoId(), ...base, filial: u.filial, tarefas: [], envolvidos: [] });
+            await Loja.gravarProjetos(u.empresa, itens);
+            await Loja.auditar({ acao:'criar', entidade:'projeto', id: nome,
+              depois: { ...base, filial: u.filial } }, u.empresa);
+          }, unidades.length > 1 ? barra : null);
+
+          fechar();
+          // Uma unidade só não merece relatório: o resultado é a própria tela.
+          if (unidades.length === 1) {
+            if (!relatorio[0].ok) throw new Error(relatorio[0].motivo);
+            render();
+          } else mostrarRelatorioDeLote(relatorio, 'projetos');
         } catch (e) { erro(e.message); ev.target.disabled = false; }
       };
     },
@@ -465,6 +615,7 @@ function abrirProjeto(p) {
         <div class="campo" style="width:104px"><label for="t-fim">Fim planejado</label><input id="t-fim" name="tfim" placeholder="MM/AAAA" required></div>
         <button class="bt pri" type="submit">Adicionar</button>
       </form>
+      <div data-replicar hidden style="margin-top:6px"></div>
       <h3 style="font-size:14px;margin-top:8px">Envolvidos</h3>
       <div data-env style="display:flex;gap:7px;flex-wrap:wrap"></div>
       <form class="filtros" data-formenv style="margin-top:4px">
@@ -474,6 +625,39 @@ function abrirProjeto(p) {
       </form>`,
     acoes: `<button type="button" class="bt" data-c>Fechar</button>`,
     aoMontar({ raiz, fechar, erro }) {
+      // Onde mais este projeto existe: mesmo nome, outra unidade. É o que
+      // permite a tarefa nova acompanhar as réplicas criadas em lote, sem
+      // obrigar o gestor a abrir cinco projetos e digitar cinco vezes.
+      //
+      // A busca não segura a montagem da tela: ela é um acréscimo, e prender o
+      // primeiro desenho a ela atrasaria tudo por causa de um extra.
+      const procurarGemeos = async () => {
+        const gemeos = [];
+        for (const e of escopoEmpresas()) {
+          for (const outro of await Loja.projetosDa(e)) {
+            if (outro.nome.toLowerCase() !== p.nome.toLowerCase()) continue;
+            if (e === p.empresa && (outro.filial || null) === (p.filial || null)) continue;
+            gemeos.push({ empresa: e, filial: outro.filial || null });
+          }
+        }
+        return gemeos;
+      };
+      procurarGemeos().then((gemeos) => {
+      const caixaReplicar = raiz.querySelector('[data-replicar]');
+      if (gemeos.length && caixaReplicar) {
+        caixaReplicar.hidden = false;
+        caixaReplicar.innerHTML = `<div class="msg">
+          <strong>Este projeto também existe em ${inteiro(gemeos.length)} outra(s) unidade(s).</strong>
+          Marque onde a tarefa nova deve nascer junto — cada cópia com vínculo próprio, e sem tarefa principal,
+          porque a principal escolhida aqui é deste projeto.
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px">
+            ${gemeos.map((g) => `<label style="display:flex;gap:6px;align-items:center;font-size:13px">
+              <input type="checkbox" data-outro="${esc(g.empresa)}" data-filial="${esc(g.filial || '')}">
+              ${esc(nomeEmpresa(g.empresa))}${g.filial ? ' · ' + esc(g.filial) : ' · nível empresa'}</label>`).join('')}
+          </div></div>`;
+      }
+      });
+
       const pintar = () => {
         const t = raiz.querySelector('[data-tar]');
         const emOrdem = tarefasEmOrdem(tarefas);
@@ -574,9 +758,35 @@ function abrirProjeto(p) {
         let paiId = null;
         try { paiId = validarPrincipal(tarefas, f.tpai.value || null, null); }
         catch (e) { return erro(e.message); }
-        tarefas.push({ id: novoId(), nome: f.tnome.value.trim(), inicio: ini, fimPlanejado: fim,
-          fimReal: null, responsavel: f.tresp.value.trim() || null, paiId });
-        await persistir(); f.reset(); f.tini.value = mesExib(p.inicio); pintar();
+        const nome = f.tnome.value.trim();
+        const responsavel = f.tresp.value.trim() || null;
+        tarefas.push({ id: novoId(), nome, inicio: ini, fimPlanejado: fim, fimReal: null, responsavel, paiId });
+        await persistir();
+
+        // Replicação: o mesmo projeto pode existir em várias unidades, com o
+        // mesmo nome. A tarefa nova pode acompanhar — cada cópia com id próprio
+        // e SEM tarefa principal, porque o pai escolhido é deste projeto e não
+        // existe nos outros.
+        const marcadas = [...raiz.querySelectorAll('input[data-outro]:checked')];
+        if (marcadas.length) {
+          const alvos = marcadas.map((c) => ({ empresa: c.dataset.outro, filial: c.dataset.filial || null }));
+          const relatorio = await executarLote(alvos, async (u) => {
+            const itens = [...(await Loja.projetosDa(u.empresa))];
+            const destino = itens.find((x) => x.nome.toLowerCase() === p.nome.toLowerCase()
+              && (x.filial || null) === u.filial);
+            if (!destino) throw new Error('Projeto de mesmo nome não existe mais nesta unidade.');
+            if ((destino.tarefas || []).some((t) => t.nome.toLowerCase() === nome.toLowerCase())) {
+              throw new Error('Já existe tarefa com este nome no projeto desta unidade.');
+            }
+            destino.tarefas = [...(destino.tarefas || []),
+              { id: novoId(), nome, inicio: ini, fimPlanejado: fim, fimReal: null, responsavel, paiId: null }];
+            await Loja.gravarProjetos(u.empresa, itens);
+            await Loja.auditar({ acao:'criar', entidade:'tarefa', id: nome,
+              depois: { projeto: p.nome, filial: u.filial, replicada: true } }, u.empresa);
+          }, null);
+          if (relatorio.some((x) => !x.ok)) { fechar(); return mostrarRelatorioDeLote(relatorio, 'tarefas'); }
+        }
+        f.reset(); f.tini.value = mesExib(p.inicio); pintar();
       });
       raiz.querySelector('[data-formenv]').addEventListener('submit', async (ev) => {
         ev.preventDefault();
