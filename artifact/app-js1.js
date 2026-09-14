@@ -52,6 +52,8 @@ const E = {
   clienteSel: null,         // o cliente aberto; nulo = tela de boas-vindas
   clienteCad: null,         // o cliente em foco na tela de cadastro
   unidadeNova: null,        // rascunho do cadastro de unidade
+  cargas: new Map(),        // empresa -> registro das importações
+  mapeamentos: [],          // apelidos de cabeçalho, por cliente
   empresas: [], filiais: [], tipos: [], filas: [], cenarios: [],
   aba: 'painel',
   lanc: new Map(),          // 'empresa__comp' -> {itens:[...]}

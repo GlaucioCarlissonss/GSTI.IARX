@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { importarPlanilha, listarImportacoes } from '../domain/importacao.js';
+import { importarPlanilha, listarImportacoes, obterImportacao } from '../domain/importacao.js';
+import { criarMapeamento, listarMapeamentos, removerMapeamento } from '../domain/mapeamentos.js';
+import { escreverXlsx } from '../lib/planilha.js';
 import { exportarCsv, exportarXlsx, nomeArquivoExportacao } from '../domain/exportacao.js';
 import { ABAS, ABAS_POR_MODULO, TEMPLATE_VERSAO_ATUAL, type Modulo, type NomeAba } from '../domain/templates.js';
 import { erroValidacao } from '../lib/erros.js';
@@ -103,9 +105,63 @@ rotasPlanilhas.post(
       arquivoNome: req.file.originalname,
       criarCadastrosAusentes: req.body?.criar_cadastros !== 'false',
       simular: req.body?.simular === 'true' || req.query.simular === 'true',
+      modo: req.body?.modo === 'inicial' ? 'inicial' : 'incremental',
+      confirmarSobrescrita: req.body?.confirmar === 'true',
     });
     res.status(resultado.com_erro > 0 ? 207 : 200).json(resultado);
   }),
 );
 
 rotasPlanilhas.get('/importacoes', (req, res) => res.json(listarImportacoes(ctx(req))));
+
+rotasPlanilhas.get('/importacoes/:id', (req, res) =>
+  res.json(obterImportacao(ctx(req), Number(req.params.id))),
+);
+
+/**
+ * As linhas recusadas de uma carga, em planilha.
+ *
+ * É com este arquivo que o gestor corrige a origem: cada linha traz o número
+ * que o Excel mostra e o motivo da recusa, lado a lado.
+ */
+rotasPlanilhas.get(
+  '/importacoes/:id/erros.xlsx',
+  assincrono(async (req, res) => {
+    const registro = obterImportacao(ctx(req), Number(req.params.id));
+    const buffer = await escreverXlsx([
+      {
+        nome: 'Erros',
+        colunas: ['Aba', 'Linha', 'Motivo'],
+        linhas: registro.relatorio.erros.map((e) => ({ Aba: e.aba, Linha: e.linha, Motivo: e.mensagem })),
+      },
+    ]);
+    res
+      .status(200)
+      .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .setHeader('Content-Disposition', `attachment; filename="erros-importacao-${registro.id}.xlsx"`);
+    res.send(buffer);
+  }),
+);
+
+// ------------------------------------------------- adaptador de cabeçalhos
+
+rotasPlanilhas.get('/mapeamentos', exigir('configuracoes', 'view'), (req, res) => {
+  const cliente = ctx(req).clienteId;
+  res.json({
+    cliente_id: cliente,
+    abas: Object.fromEntries((Object.keys(ABAS) as NomeAba[]).map((a) => [a, ABAS[a].colunas])),
+    mapeamentos: cliente ? listarMapeamentos(cliente) : [],
+  });
+});
+
+rotasPlanilhas.post('/mapeamentos', exigir('configuracoes', 'edit'), (req, res) => {
+  const cliente = ctx(req).clienteId;
+  if (!cliente) throw erroValidacao('Esta empresa ainda não pertence a um cliente.');
+  res.status(201).json(criarMapeamento(cliente, req.body ?? {}));
+});
+
+rotasPlanilhas.delete('/mapeamentos/:id', exigir('configuracoes', 'edit'), (req, res) => {
+  const cliente = ctx(req).clienteId;
+  if (!cliente) throw erroValidacao('Esta empresa ainda não pertence a um cliente.');
+  res.json(removerMapeamento(cliente, Number(req.params.id)));
+});

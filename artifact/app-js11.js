@@ -1,7 +1,33 @@
 // ===========================================================================
 // Aba Dados — a ponte com o Excel, que é onde o gestor já trabalha.
 // ===========================================================================
-function viewDados() {
+/** As linhas do histórico de cargas. Serve à montagem e ao refresco no lugar. */
+function linhasHistoricoCargas(cargas) {
+  if (!cargas.length) return '<tr><td colspan="8" class="vazio">Nenhuma carga registrada nesta empresa.</td></tr>';
+  return cargas
+    .map(
+      (c) => `<tr${c.status === 'recusada' ? ' title="' + esc(c.mensagem || '') + '"' : ''}>
+        <td>${esc(new Date(c.quando).toLocaleString('pt-BR'))}</td>
+        <td>${c.modo === 'inicial' ? 'Inicial' : 'Incremental'}</td>
+        <td>${esc(c.arquivo || '—')}</td>
+        <td>${c.status === 'recusada' ? '<span class="tag crit">Recusada</span>' : '<span class="tag bom">Concluída</span>'}</td>
+        <td class="num">${inteiro(c.lidas)}</td><td class="num">${inteiro(c.criadas)}</td>
+        <td class="num">${inteiro(c.duplicadas)}</td><td class="num">${inteiro(c.invalidas)}</td>
+      </tr>`,
+    )
+    .join('');
+}
+
+/**
+ * Atualiza o histórico SEM remontar a tela: o relatório da carga que acabou de
+ * rodar está logo acima, e remontar apagaria justamente o que a pessoa foi ler.
+ */
+function refrescarHistoricoCargas(empresa) {
+  const corpo = el('#d-historico');
+  if (corpo) corpo.innerHTML = linhasHistoricoCargas(E.cargas.get(empresa) || []);
+}
+
+async function viewDados() {
   const emp = empresaAtiva();
   if (!emp) {
     el('#pagina').innerHTML = '<div class="msg alerta"><strong>Importar e exportar é de uma empresa por vez.</strong> '
@@ -11,6 +37,9 @@ function viewDados() {
   }
   const nomeEmp = nomeEmpresa(emp);
   const total = Loja.todos(emp).length;
+  const cargas = await cargasDaEmpresa(emp);
+  if (!E.mapeamentos.length) await carregarMapeamentos();
+  const meusMapas = (E.mapeamentos || []).filter((m) => m.cliente === E.clienteSel);
 
   el('#pagina').innerHTML = `
     <div class="msg">O mesmo modelo serve para exportar e importar. Exporte, edite no Excel e reimporte:
@@ -46,6 +75,13 @@ function viewDados() {
           <label for="d-arquivo">Arquivo .xlsx ou .csv</label>
           <input type="file" id="d-arquivo" accept=".xlsx,.csv,.txt" data-escreve="import">
         </div>
+        <div class="campo" style="margin-bottom:12px">
+          <label for="d-modo">Tipo de carga</label>
+          <select id="d-modo">
+            <option value="incremental">Incremental (arquivo do período)</option>
+            <option value="inicial">Inicial (histórico completo)</option>
+          </select>
+        </div>
         <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;font-size:13px">
           <input type="checkbox" id="d-criar" checked style="margin-top:2px">
           <span>Criar filiais, tipos de despesa e cenários que ainda não existirem</span></label>
@@ -56,6 +92,42 @@ function viewDados() {
         <div id="d-saida-imp"></div>
       </section>
     </div>
+
+    <section class="bloco">
+      <header><h2>Histórico de cargas</h2><span class="nota">${inteiro(cargas.length)}</span></header>
+      <div class="msg">Toda tentativa entra aqui — inclusive a recusada, que é justamente a que se investiga
+        depois. A conferência (“só conferir”) não entra: prévia não é carga.</div>
+      <div class="rol" style="margin-top:12px"><table>
+        <thead><tr><th>Quando</th><th>Tipo</th><th>Arquivo</th><th>Situação</th>
+          <th class="num">Lidas</th><th class="num">Criadas</th><th class="num">Duplicadas</th><th class="num">Inválidas</th></tr></thead>
+        <tbody id="d-historico">${linhasHistoricoCargas(cargas)}</tbody></table></div>
+      ${cargas.filter((c) => c.status === 'recusada' && c.mensagem).slice(0, 2).map((c) =>
+        `<div class="msg erro" style="margin-top:10px">${esc(new Date(c.quando).toLocaleString('pt-BR'))} —
+          ${esc(c.arquivo || 'arquivo')}: ${esc(c.mensagem)}</div>`).join('')}
+    </section>
+
+    <section class="bloco">
+      <header><h2>Cabeçalhos deste cliente</h2><span class="nota">${inteiro(meusMapas.length)}</span></header>
+      <div class="msg">Onde o modelo diz <strong>Valor</strong>, a planilha de um cliente pode dizer
+        <em>Vlr Total</em>. Cadastrar a equivalência evita reescrever o cabeçalho a cada carga — e o nome do
+        modelo continua sendo aceito do mesmo jeito. Vale para todas as matrizes deste cliente.</div>
+      ${meusMapas.length ? `<div class="rol" style="margin-top:12px"><table>
+        <thead><tr><th>Aba</th><th>Coluna do modelo</th><th>Cabeçalho aceito</th><th></th></tr></thead>
+        <tbody>${meusMapas.map((m) => `<tr><td>${esc(m.aba)}</td><td>${esc(m.coluna)}</td>
+          <td>${esc(m.apelido)}</td>
+          <td><button type="button" class="bt pequeno" data-escreve="edit" data-remover-mapa="${esc(m.id)}">Remover</button></td>
+        </tr>`).join('')}</tbody></table></div>` : ''}
+      <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
+        <div class="campo"><label for="mp-aba">Aba</label><select id="mp-aba">
+          ${Object.keys(ABAS_MODELO).filter((n) => n !== 'Modelo').map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
+        </select></div>
+        <div class="campo"><label for="mp-coluna">Coluna do modelo</label><select id="mp-coluna"></select></div>
+        <div class="campo"><label for="mp-apelido">Cabeçalho na planilha do cliente</label>
+          <input id="mp-apelido" style="min-width:220px"></div>
+        <button type="button" class="bt pri" id="mp-criar" data-escreve="edit">Cadastrar cabeçalho</button>
+      </div>
+      <div class="msg erro" id="mp-erro" hidden style="margin-top:10px"></div>
+    </section>
 
     <section class="bloco">
       <header><h2>Colunas do modelo</h2><span class="nota">versão ${MODELO_VERSAO}</span></header>
@@ -69,6 +141,37 @@ function viewDados() {
 
   const fmt = el('#d-formato');
   fmt.onchange = () => { el('#d-nota-csv').hidden = fmt.value !== 'csv'; };
+
+  // --------------------------------------------- adaptador de cabeçalho
+  const selAba = el('#mp-aba'), selColuna = el('#mp-coluna');
+  const pintarColunas = () => {
+    selColuna.innerHTML = (ABAS_MODELO[selAba.value] || { colunas: [] }).colunas
+      .map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  };
+  selAba.onchange = pintarColunas;
+  pintarColunas();
+
+  el('#mp-criar').onclick = async () => {
+    const caixa = el('#mp-erro');
+    caixa.hidden = true;
+    try {
+      if (!E.clienteSel) throw new Error('Escolha um cliente antes de cadastrar cabeçalhos.');
+      await criarMapeamento(E.clienteSel, {
+        aba: selAba.value, coluna: selColuna.value, apelido: el('#mp-apelido').value,
+      });
+      render();
+    } catch (e) {
+      caixa.hidden = false;
+      caixa.textContent = e.message || String(e);
+    }
+  };
+
+  el('#pagina').querySelectorAll('[data-remover-mapa]').forEach((b) => {
+    b.onclick = async () => {
+      try { await removerMapeamento(b.dataset.removerMapa); render(); }
+      catch (e) { const c = el('#mp-erro'); c.hidden = false; c.textContent = e.message || String(e); }
+    };
+  });
 
   el('#d-exportar').onclick = async (ev) => {
     const bt = ev.currentTarget, saida = el('#d-saida-exp');
@@ -121,9 +224,18 @@ function viewDados() {
         const { colunas, linhas } = lerCsv(texto);
         abas = [{ nome: nomeDeAbaPeloCabecalho(colunas), colunas, linhas }];
       }
-      const rel = await importarArquivo(emp, abas, { criarCadastros: el('#d-criar').checked, simular });
+      const rel = await importarArquivo(emp, abas, {
+        criarCadastros: el('#d-criar').checked,
+        simular,
+        modo: el('#d-modo').value,
+        modulo: 'completo',
+        arquivo: arq.name,
+        confirmar: bt.dataset.confirmar === '1',
+      });
+      delete bt.dataset.confirmar;
       if (!simular) { E.lanc.clear(); E.mesesCarregados.clear(); E.projetos.clear(); E.sla.clear(); await garantirDados(emp); }
       saida.innerHTML = relatorioHtml(rel, simular, arq.name);
+      if (!simular) refrescarHistoricoCargas(emp);
       if (!simular) {
         await Loja.auditar({ acao:'importar', entidade:'planilha', id:arq.name,
           depois:{ abas: rel.abas.map((a) => a.nome + ':' + (a.criadas ?? 0)).join(', '),
@@ -132,7 +244,18 @@ function viewDados() {
       const btGravar = el('#d-gravar');
       if (btGravar) btGravar.onclick = () => { el('#d-simular').checked = false; btImp.click(); };
     } catch (e) {
-      saida.innerHTML = `<div class="msg erro" style="margin-top:14px"><strong>Não foi possível ler o arquivo.</strong> ${esc(e.message || e)}</div>`;
+      // A recusa da carga inicial não é um beco: ela existe para a confirmação
+      // ser informada, e o botão de confirmar vem junto do motivo.
+      if (e && e.precisaConfirmar) {
+        saida.innerHTML = `<div class="msg erro" style="margin-top:14px">${esc(e.message)}
+          <div style="margin-top:10px"><button type="button" class="bt" id="d-confirmar" data-escreve="import">
+            Confirmar a carga inicial mesmo assim</button></div></div>`;
+        refrescarHistoricoCargas(emp);
+        const btConf = el('#d-confirmar');
+        if (btConf) btConf.onclick = () => { bt.dataset.confirmar = '1'; el('#d-simular').checked = false; bt.click(); };
+      } else {
+        saida.innerHTML = `<div class="msg erro" style="margin-top:14px"><strong>Não foi possível ler o arquivo.</strong> ${esc(e.message || e)}</div>`;
+      }
     } finally { bt.disabled = false; bt.textContent = 'Processar arquivo'; }
   };
 }
@@ -146,13 +269,23 @@ async function lerTextoDoArquivo(arq) {
 }
 
 /** CSV não tem nome de aba: descobre pelo cabeçalho a qual modelo pertence. */
+/**
+ * Qual aba este CSV é, pelo cabeçalho.
+ *
+ * Vence a aba que EXPLICA MAIS COLUNAS DO ARQUIVO, e só depois disso conta ter
+ * todas as obrigatórias. A ordem importa: um financeiro com a coluna de valor
+ * escrita de outro jeito tem todas as colunas de `TiposDespesa` presentes
+ * (é só "Tipo de Despesa"), e pela regra anterior entrava como catálogo — o
+ * arquivo virava cadastro de tipo, em silêncio. Melhor apontar a coluna que
+ * falta no Financeiro do que acertar a aba errada sem avisar.
+ */
 function nomeDeAbaPeloCabecalho(colunas) {
   let melhor = 'Financeiro', pontos = -1;
   for (const [nome, def] of Object.entries(ABAS_MODELO)) {
     if (nome === 'Modelo') continue;
     const mapa = mapearColunas(nome, colunas);
     const faltando = def.obrigatorias.filter((c) => !mapa.has(c)).length;
-    const p = faltando === 0 ? mapa.size * 10 : -faltando;
+    const p = mapa.size + (faltando === 0 ? 0.5 : 0);
     if (p > pontos) { pontos = p; melhor = nome; }
   }
   return melhor;

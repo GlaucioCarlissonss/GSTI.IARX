@@ -112,6 +112,21 @@ UNION) foram adotadas pelo **Grupo Brasil Home Care**, que é de quem elas são.
 A adoção vale em memória mesmo quando o armazenamento recusa escrita: quem abriu
 o link só para ver enxerga o mesmo sistema, sem alterar a base.
 
+## Carga de dados
+
+Em **Sistema → Dados**. O tipo de carga é escolhido antes de processar:
+**incremental** (o arquivo do período, padrão) ou **inicial** (o histórico
+inteiro). A inicial sobre uma empresa que já tem dado é recusada com o número na
+frente, e a tela oferece confirmar.
+
+Toda carga entra no **histórico** logo abaixo — inclusive a recusada, que é a
+que se investiga depois. A conferência ("só conferir") não entra: prévia não é
+carga.
+
+Quando a planilha do cliente chama uma coluna de outro jeito, cadastre a
+equivalência em **Cabeçalhos deste cliente**. O apelido vale só para aquele
+contratante e se soma ao nome do modelo, que continua sendo aceito.
+
 ## Cadastrar cliente, matriz e filial
 
 Em **Sistema → Clientes e unidades**. Quem decide onde a unidade entra é o CNPJ:

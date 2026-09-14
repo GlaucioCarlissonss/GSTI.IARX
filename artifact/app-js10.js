@@ -93,11 +93,15 @@ const normalizarCabecalho = (t) => String(t || '').normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /** Mapeia cabeçalho do arquivo para as colunas canônicas, aceitando apelidos. */
-function mapearColunas(aba, cabecalho) {
+function mapearColunas(aba, cabecalho, extras) {
   const def = ABAS_MODELO[aba], mapa = new Map();
+  const doCliente = extras || apelidosDoCliente(E.clienteSel, aba);
   const disponiveis = new Map(cabecalho.map((c) => [normalizarCabecalho(c), c]));
   for (const coluna of def.colunas) {
-    for (const chave of [normalizarCabecalho(coluna), ...(def.apelidos[coluna] || [])]) {
+    // O apelido do cliente vem ANTES dos fixos: ele foi cadastrado olhando o
+    // arquivo real daquele contratante, e é o que descreve a planilha dele.
+    const doDono = (doCliente[coluna] || []).map(normalizarCabecalho);
+    for (const chave of [...doDono, normalizarCabecalho(coluna), ...(def.apelidos[coluna] || [])]) {
       const achado = disponiveis.get(chave);
       if (achado) { mapa.set(coluna, achado); break; }
     }
@@ -205,7 +209,69 @@ async function montarAbas(empresa, modulo) {
       'Aberto em':s.criadoEm||'', 'Fechado em':s.fechadoEm||'', Prazo:s.prazoEm||'',
       Horas:(s.horas ?? ''), 'Observações':s.obs||'' })),
   };
-  return MODULOS[modulo].abas.map((nome) => ({ nome, colunas: ABAS_MODELO[nome].colunas, linhas: conteudo[nome] || [] }));
+  const abas = MODULOS[modulo].abas.map((nome) => ({
+    nome, colunas: ABAS_MODELO[nome].colunas, linhas: conteudo[nome] || [],
+  }));
+  // A aba de instruções fecha o arquivo: quem preenche à mão descobre as regras
+  // nela, e não errando uma linha por vez. É derivada da definição das abas,
+  // então não tem como divergir do que a importação aceita.
+  return [...abas, { nome: ABA_INSTRUCOES, colunas: COLUNAS_INSTRUCOES, linhas: linhasDeInstrucoes(modulo) }];
+}
+
+const ABA_INSTRUCOES = 'Instruções';
+const COLUNAS_INSTRUCOES = ['Aba', 'Coluna', 'Obrigatória', 'O que preencher', 'Também aceita como cabeçalho'];
+
+/**
+ * O que cada coluna espera, para quem preenche à mão. Só as regras que não se
+ * adivinham pelo nome da coluna: formato, valores fechados, campo derivado.
+ */
+const NOTAS_MODELO = {
+  Financeiro: {
+    'Competência': 'Mês de referência no formato MM/AAAA (ex.: 03/2026).',
+    Valor: 'Em reais, com vírgula ou ponto decimal (1.234,56 ou 1234.56). Sem "R$".',
+    Natureza: 'Fixa | Pontual única | Pontual parcelada.',
+    'Classificação': 'Despesa | Investimento.',
+    'Qtd Parcelas': 'Só para natureza parcelada; o sistema gera as parcelas seguintes.',
+    Grupo: 'Identificador que liga as parcelas de uma mesma compra.',
+    'Cenário': 'Em branco entra no cenário "oficial".',
+    Origem: 'Procedência do dado (planilha, folha de TI, projeção).',
+    Filial: 'Em branco, o lançamento fica no nível empresa (consolidado).',
+  },
+  Projetos: {
+    'Mês Início': 'MM/AAAA.', 'Mês Fim Planejado': 'MM/AAAA.',
+    'Mês Fim Real': 'MM/AAAA. Em branco enquanto não terminou.',
+    Status: 'Planejado | Em andamento | Concluído | Cancelado.',
+  },
+  Tarefas: {
+    'Mês Fim Real': 'MM/AAAA. O atraso é calculado a partir dele — nunca digitado.',
+    Status: 'Pendente | Em andamento | Concluída | Cancelada.',
+  },
+  SLA: {
+    'Competência': 'MM/AAAA.',
+    'Total Atendidos': 'No agregado mensal, quantos chamados. Numa linha de chamado único, 1.',
+    'Dentro SLA': 'Quantos dentro do prazo. Nunca maior que o total.',
+    'Fora SLA': 'NÃO preencha: é sempre total − dentro, e é calculado na entrada.',
+    Ticket: 'Id do chamado no helpdesk. Junto com a Origem, é o que evita duplicar ao reimportar.',
+    'Aberto em': 'dd/mm/aaaa hh:mm ou AAAA-MM-DDThh:mm.',
+  },
+};
+
+function linhasDeInstrucoes(modulo) {
+  const saida = [];
+  for (const nome of MODULOS[modulo].abas) {
+    const def = ABAS_MODELO[nome];
+    if (!def || nome === 'Modelo') continue;
+    for (const coluna of def.colunas) {
+      saida.push({
+        Aba: nome,
+        Coluna: coluna,
+        'Obrigatória': def.obrigatorias.includes(coluna) ? 'Sim' : 'Não',
+        'O que preencher': (NOTAS_MODELO[nome] || {})[coluna] || '',
+        'Também aceita como cabeçalho': (def.apelidos[coluna] || []).join(', '),
+      });
+    }
+  }
+  return saida;
 }
 
 // ---------------------------------------------------------------- importação
@@ -474,7 +540,25 @@ async function importarCatalogos(empresa, abas, opcoes, rel) {
 
 /** Roda o lote inteiro; nenhuma aba interrompe as outras. */
 async function importarArquivo(empresa, abas, opcoes) {
-  const rel = { invalidas: [], abas: [], criouCadastros: null };
+  const rel = { invalidas: [], abas: [], criouCadastros: null, modo: opcoes.modo === 'inicial' ? 'inicial' : 'incremental' };
+
+  // A carga inicial é o histórico inteiro entrando de uma vez. Sobre um módulo
+  // que já tem dado, ela quase sempre é engano de quem escolheu o modo — e a
+  // recusa vem com o número na frente, para a confirmação ser informada.
+  if (rel.modo === 'inicial' && !opcoes.simular && !opcoes.confirmar) {
+    const existentes = jaTemDados(empresa, opcoes.modulo || 'completo');
+    if (existentes > 0) {
+      const mensagem = 'Esta empresa já tem ' + inteiro(existentes) + ' registro(s), e a carga foi marcada como ' +
+        'INICIAL. Use a carga incremental, ou confirme a inicial se a intenção é recarregar o histórico ' +
+        '(nada é duplicado: as linhas que já existem continuam sendo reconhecidas).';
+      await registrarCarga(empresa, {
+        modulo: opcoes.modulo, modo: 'inicial', status: 'recusada', mensagem, arquivo: opcoes.arquivo,
+      });
+      const erro = new Error(mensagem);
+      erro.precisaConfirmar = true;
+      throw erro;
+    }
+  }
   const modelo = abas.find((a) => normalizarCabecalho(a.nome) === 'modelo');
   if (modelo) {
     const v = modelo.linhas.find((l) => normalizarCabecalho(l.Chave || l[modelo.colunas[0]]) === 'versaodomodelo');
@@ -487,5 +571,21 @@ async function importarArquivo(empresa, abas, opcoes) {
   const sla = abas.find((a) => normalizarCabecalho(a.nome) === 'sla');
   if (sla) await importarSla(empresa, sla, opcoes, rel);
   if (!rel.abas.length) rel.semAbasConhecidas = true;
+
+  // Simulação não é carga: registrar a prévia encheria o histórico de linhas
+  // que não mudaram nada, e a pergunta "o que entrou?" ficaria mais difícil.
+  if (!opcoes.simular) {
+    await registrarCarga(empresa, {
+      modulo: opcoes.modulo,
+      modo: rel.modo,
+      status: 'concluida',
+      arquivo: opcoes.arquivo,
+      lidas: rel.abas.reduce((s, a) => s + (a.lidas || 0), 0),
+      criadas: rel.abas.reduce((s, a) => s + (a.criadas || 0), 0),
+      duplicadas: rel.abas.reduce((s, a) => s + (a.duplicadas || 0), 0),
+      invalidas: rel.invalidas.length,
+      erros: rel.invalidas.map((i) => ({ aba: i.aba, linha: i.linha, mensagem: i.motivo || i.mensagem })),
+    });
+  }
   return rel;
 }

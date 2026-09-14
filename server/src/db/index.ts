@@ -159,11 +159,26 @@ function migrar(db: Conexao): void {
   ] as Array<[string, string]>) {
     if (!colunasFilial.has(nome)) db.exec(`ALTER TABLE filiais ADD COLUMN ${nome} ${tipo}`);
   }
-  for (const tabela of ['lancamentos', 'tickets_sla', 'projetos']) {
+  for (const tabela of ['lancamentos', 'tickets_sla', 'projetos', 'importacoes']) {
     const colunas = new Set(
       (db.prepare(`PRAGMA table_info(${tabela})`).all() as Array<{ name: string }>).map((c) => c.name),
     );
     if (!colunas.has('cliente_id')) db.exec(`ALTER TABLE ${tabela} ADD COLUMN cliente_id INTEGER`);
+  }
+
+  // Registro da carga: como ela foi pedida e como terminou. A carga que FALHOU
+  // é a que mais precisa de rastro — sem `status`, uma importação recusada não
+  // deixava linha nenhuma, e a pergunta "por que os dados não entraram?" não
+  // tinha onde ser respondida.
+  const colunasImport = new Set(
+    (db.prepare('PRAGMA table_info(importacoes)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  for (const [nome, tipo] of [
+    ['modo', "TEXT NOT NULL DEFAULT 'incremental'"],
+    ['status', "TEXT NOT NULL DEFAULT 'concluida'"],
+    ['mensagem', 'TEXT'],
+  ] as Array<[string, string]>) {
+    if (!colunasImport.has(nome)) db.exec(`ALTER TABLE importacoes ADD COLUMN ${nome} ${tipo}`);
   }
 
   // Adoção: empresa sem dono vai para o cliente da base histórica. Só acontece
@@ -185,7 +200,7 @@ function migrar(db: Conexao): void {
 
   // Carimbo do dono nos registros, sempre pela empresa — é a única fonte, e
   // deixá-lo divergir dela seria vazamento entre clientes.
-  for (const tabela of ['lancamentos', 'tickets_sla', 'projetos']) {
+  for (const tabela of ['lancamentos', 'tickets_sla', 'projetos', 'importacoes']) {
     db.exec(`UPDATE ${tabela} SET cliente_id = (
                SELECT e.cliente_id FROM empresas e WHERE e.id = ${tabela}.empresa_id)
               WHERE cliente_id IS NULL`);
@@ -206,6 +221,22 @@ CREATE INDEX IF NOT EXISTS ix_sla_cliente_comp ON tickets_sla(cliente_id, compet
 CREATE INDEX IF NOT EXISTS ix_sla_cliente_status ON tickets_sla(cliente_id, status);
 CREATE INDEX IF NOT EXISTS ix_sla_cliente_externo ON tickets_sla(cliente_id, source_system, external_id);
 CREATE INDEX IF NOT EXISTS ix_sla_cliente_aberto ON tickets_sla(cliente_id, aberto_em);
+CREATE INDEX IF NOT EXISTS ix_import_cliente ON importacoes(cliente_id, criado_em DESC);
+
+-- Adaptador de colunas por cliente: cada contratante manda a planilha com os
+-- cabeçalhos dele ("Vlr Total" onde o template diz "Valor"). Guardar a
+-- equivalência é o que evita pedir a ele que reescreva o arquivo todo mês — e
+-- é por cliente porque o apelido de um não vale para outro.
+CREATE TABLE IF NOT EXISTS mapeamentos_importacao (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  aba        TEXT NOT NULL,
+  coluna     TEXT NOT NULL,
+  apelido    TEXT NOT NULL,
+  criado_em  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (cliente_id, aba, apelido)
+);
+CREATE INDEX IF NOT EXISTS ix_mapeamento_cliente ON mapeamentos_importacao(cliente_id, aba);
 
 -- ============================================================
 -- Carimbo do cliente: invariante do BANCO, não de cada consulta

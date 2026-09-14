@@ -1,16 +1,18 @@
 import { db, emTransacao } from '../db/index.js';
 import { chaveDedup, hashArquivo } from '../lib/hash.js';
-import { erroValidacao } from '../lib/erros.js';
+import { erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
 import { auditar } from './auditoria.js';
 import { ehCompetenciaValida, paraInterno } from './competencia.js';
 import type { Contexto } from './contexto.js';
 import { paraCentavos } from './dinheiro.js';
 import { criarLancamento, garantirCenario, interpretarOrigem, type Origem } from './financeiro.js';
 import { criarFilial, resolverFila, resolverTipoDespesa, resolverTopicoAjuda } from './cadastros.js';
+import { apelidosDoCliente } from './mapeamentos.js';
 import { atualizarTarefa } from './projetos.js';
 import { competenciaEstaFechada } from './fechamento.js';
 import { lerCsv, lerXlsx, type Aba } from '../lib/planilha.js';
 import {
+  ABA_INSTRUCOES,
   ABAS,
   ABAS_POR_MODULO,
   colunasFaltantes,
@@ -28,8 +30,20 @@ export interface ErroLinha {
   dados?: Record<string, unknown>;
 }
 
+/**
+ * Como a carga foi pedida.
+ *
+ * `inicial` é o histórico inteiro do cliente entrando de uma vez, e só faz
+ * sentido numa base ainda sem aquele módulo. `incremental` é o arquivo do mês.
+ * A distinção não muda o que é gravado — a deduplicação por linha já protege —,
+ * ela muda o que o sistema DEIXA acontecer sem confirmação, e fica no registro
+ * para quem for entender depois de onde veio cada bloco de dado.
+ */
+export type ModoCarga = 'inicial' | 'incremental';
+
 export interface ResultadoImportacao {
   template_versao: string;
+  modo: ModoCarga;
   arquivo: string | null;
   arquivo_ja_importado: boolean;
   total_linhas: number;
@@ -50,6 +64,80 @@ interface OpcoesImportacao {
   criarCadastrosAusentes?: boolean;
   /** Valida sem gravar nada (pré-visualização). */
   simular?: boolean;
+  /** Carga inicial (histórico) ou incremental (o arquivo do período). */
+  modo?: ModoCarga;
+  /** Autoriza a carga inicial mesmo com o módulo já povoado. */
+  confirmarSobrescrita?: boolean;
+}
+
+/**
+ * Grava a linha do registro de importação (o ImportLog).
+ *
+ * Toda tentativa de carga que não é simulação passa por aqui — a concluída e a
+ * recusada. O registro é o que responde, semanas depois, de onde veio cada
+ * bloco de dado e por que uma carga não entrou.
+ */
+function registrarImportacao(
+  ctx: Contexto,
+  dados: {
+    modulo: Modulo;
+    modo: ModoCarga;
+    versao: string;
+    arquivoNome: string | null;
+    arquivoHash: string;
+    status: 'concluida' | 'recusada';
+    mensagem: string | null;
+    contagens: { total: number; importadas: number; duplicadas: number; com_erro: number };
+    relatorio: { erros: ErroLinha[]; avisos: string[] };
+  },
+): number {
+  const info = db()
+    .prepare(
+      `INSERT INTO importacoes
+         (empresa_id, usuario_id, modulo, modo, status, mensagem, template_versao, arquivo_nome, arquivo_hash,
+          total_linhas, importadas, duplicadas, com_erro, relatorio)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      ctx.empresaId,
+      ctx.usuarioId,
+      dados.modulo === 'completo' ? 'financeiro' : dados.modulo,
+      dados.modo,
+      dados.status,
+      dados.mensagem,
+      dados.versao,
+      dados.arquivoNome,
+      dados.arquivoHash,
+      dados.contagens.total,
+      dados.contagens.importadas,
+      dados.contagens.duplicadas,
+      dados.contagens.com_erro,
+      JSON.stringify({ erros: dados.relatorio.erros.slice(0, 500), avisos: dados.relatorio.avisos }),
+    );
+  const id = Number(info.lastInsertRowid);
+  auditar(ctx, {
+    entidade: 'importacao',
+    entidadeId: id,
+    acao: 'importar',
+    depois: {
+      modulo: dados.modulo,
+      modo: dados.modo,
+      status: dados.status,
+      arquivo: dados.arquivoNome,
+      importadas: dados.contagens.importadas,
+      duplicadas: dados.contagens.duplicadas,
+      com_erro: dados.contagens.com_erro,
+    },
+  });
+  return id;
+}
+
+/** Quantos registros o módulo já tem — é o que decide se a carga é inicial. */
+function jaTemDados(ctx: Contexto, modulo: Modulo): number {
+  const conta = (sql: string) => (db().prepare(sql).get(ctx.empresaId) as { n: number }).n;
+  if (modulo === 'sla') return conta('SELECT COUNT(*) n FROM tickets_sla WHERE empresa_id = ?');
+  if (modulo === 'projetos') return conta('SELECT COUNT(*) n FROM projetos WHERE empresa_id = ?');
+  return conta('SELECT COUNT(*) n FROM lancamentos WHERE empresa_id = ? AND excluido_em IS NULL');
 }
 
 const NATUREZAS = new Set(['fixa', 'pontual_unica', 'pontual_parcelada']);
@@ -172,12 +260,60 @@ export async function importarPlanilha(
   opcoes: OpcoesImportacao,
 ): Promise<ResultadoImportacao> {
   if (ctx.papel !== 'gestor') throw erroValidacao('Apenas gestores podem importar dados.');
+  const modo: ModoCarga = opcoes.modo === 'inicial' ? 'inicial' : 'incremental';
 
   const abasEsperadas = ABAS_POR_MODULO[opcoes.modulo];
   const abaPadrao = abasEsperadas[abasEsperadas.length - 1];
-  const abas = await interpretarArquivo(buffer, opcoes.arquivoNome ?? null, abaPadrao);
-  const versao = detectarVersao(abas);
   const arquivoHash = hashArquivo(buffer);
+
+  // Arquivo ilegível é tentativa de carga, e tentativa de carga deixa rastro:
+  // sem a linha de registro, "por que os dados não entraram?" não teria onde
+  // ser respondido depois — e é justamente a carga que falha que se investiga.
+  let abas;
+  try {
+    abas = await interpretarArquivo(buffer, opcoes.arquivoNome ?? null, abaPadrao);
+  } catch (erro) {
+    if (!opcoes.simular) {
+      registrarImportacao(ctx, {
+        modulo: opcoes.modulo,
+        modo,
+        versao: TEMPLATE_VERSAO_ATUAL,
+        arquivoNome: opcoes.arquivoNome ?? null,
+        arquivoHash,
+        status: 'recusada',
+        mensagem: erro instanceof Error ? erro.message : String(erro),
+        contagens: { total: 0, importadas: 0, duplicadas: 0, com_erro: 0 },
+        relatorio: { erros: [], avisos: [] },
+      });
+    }
+    throw erro;
+  }
+  const versao = detectarVersao(abas);
+
+  // A carga inicial é o histórico inteiro entrando de uma vez. Sobre um módulo
+  // que já tem dado, ela quase sempre é engano de quem escolheu o modo — e a
+  // recusa vem com o número na frente, para a confirmação ser informada.
+  if (modo === 'inicial' && !opcoes.simular && !opcoes.confirmarSobrescrita) {
+    const existentes = jaTemDados(ctx, opcoes.modulo);
+    if (existentes > 0) {
+      const mensagem =
+        `Esta empresa já tem ${existentes} registro(s) neste módulo, e a carga foi marcada como INICIAL. ` +
+        `Use a carga incremental, ou confirme a inicial se a intenção é recarregar o histórico ` +
+        `(nada é duplicado: a deduplicação por linha continua valendo).`;
+      registrarImportacao(ctx, {
+        modulo: opcoes.modulo,
+        modo,
+        versao,
+        arquivoNome: opcoes.arquivoNome ?? null,
+        arquivoHash,
+        status: 'recusada',
+        mensagem,
+        contagens: { total: 0, importadas: 0, duplicadas: 0, com_erro: 0 },
+        relatorio: { erros: [], avisos: [] },
+      });
+      throw erroValidacao(mensagem);
+    }
+  }
 
   const jaImportado =
     db()
@@ -186,6 +322,7 @@ export async function importarPlanilha(
 
   const resultado: ResultadoImportacao = {
     template_versao: versao,
+    modo,
     arquivo: opcoes.arquivoNome ?? null,
     arquivo_ja_importado: jaImportado,
     total_linhas: 0,
@@ -209,10 +346,15 @@ export async function importarPlanilha(
     for (const aba of abas) {
       const reconhecida = reconhecerAba(aba.nome);
       if (!reconhecida || !abasEsperadas.includes(reconhecida)) {
-        if (normalizarCabecalho(aba.nome) !== 'meta') resultado.abas_ignoradas.push(aba.nome);
+        // `_meta` e `Instruções` são partes do próprio template: avisar que
+        // foram ignoradas faria o relatório apontar problema onde não há.
+        const chave = normalizarCabecalho(aba.nome);
+        if (chave !== 'meta' && chave !== normalizarCabecalho(ABA_INSTRUCOES)) resultado.abas_ignoradas.push(aba.nome);
         continue;
       }
-      const mapa = mapearColunas(reconhecida, aba.colunas);
+      // O adaptador do cliente entra aqui: o cabeçalho que ELE usa passa a ser
+      // aceito, sem que ninguém precise reescrever a planilha antes de enviar.
+      const mapa = mapearColunas(reconhecida, aba.colunas, apelidosDoCliente(ctx.clienteId, reconhecida));
       const faltantes = colunasFaltantes(reconhecida, mapa);
       if (faltantes.length > 0) {
         resultado.erros.push({
@@ -234,37 +376,21 @@ export async function importarPlanilha(
     }
 
     if (!opcoes.simular) {
-      const info = db()
-        .prepare(
-          `INSERT INTO importacoes
-             (empresa_id, usuario_id, modulo, template_versao, arquivo_nome, arquivo_hash,
-              total_linhas, importadas, duplicadas, com_erro, relatorio)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          ctx.empresaId,
-          ctx.usuarioId,
-          opcoes.modulo === 'completo' ? 'financeiro' : opcoes.modulo,
-          versao,
-          opcoes.arquivoNome ?? null,
-          arquivoHash,
-          resultado.total_linhas,
-          resultado.importadas,
-          resultado.duplicadas,
-          resultado.com_erro,
-          JSON.stringify({ erros: resultado.erros.slice(0, 200), avisos: resultado.avisos }),
-        );
-      auditar(ctx, {
-        entidade: 'importacao',
-        entidadeId: Number(info.lastInsertRowid),
-        acao: 'importar',
-        depois: {
-          modulo: opcoes.modulo,
-          arquivo: opcoes.arquivoNome,
+      registrarImportacao(ctx, {
+        modulo: opcoes.modulo,
+        modo,
+        versao,
+        arquivoNome: opcoes.arquivoNome ?? null,
+        arquivoHash,
+        status: 'concluida',
+        mensagem: null,
+        contagens: {
+          total: resultado.total_linhas,
           importadas: resultado.importadas,
           duplicadas: resultado.duplicadas,
           com_erro: resultado.com_erro,
         },
+        relatorio: { erros: resultado.erros, avisos: resultado.avisos },
       });
     }
     return resultado;
@@ -960,8 +1086,34 @@ function importarSla(
 export function listarImportacoes(ctx: Contexto) {
   return db()
     .prepare(
-      `SELECT id, modulo, template_versao, arquivo_nome, total_linhas, importadas, duplicadas, com_erro, criado_em
-         FROM importacoes WHERE empresa_id = ? ORDER BY id DESC LIMIT 50`,
+      `SELECT i.id, i.modulo, i.modo, i.status, i.mensagem, i.template_versao, i.arquivo_nome,
+              i.total_linhas, i.importadas, i.duplicadas, i.com_erro, i.criado_em, u.nome AS usuario
+         FROM importacoes i LEFT JOIN usuarios u ON u.id = i.usuario_id
+        WHERE i.empresa_id = ? ORDER BY i.id DESC LIMIT 50`,
     )
     .all(ctx.empresaId);
+}
+
+/**
+ * Uma carga, com o relatório inteiro. É de onde sai a lista de linhas
+ * recusadas — o gestor corrige o arquivo olhando o motivo de cada uma.
+ */
+export function obterImportacao(
+  ctx: Contexto,
+  id: number,
+): Record<string, unknown> & { id: number; relatorio: { erros: ErroLinha[]; avisos: string[] } } {
+  const linha = db()
+    .prepare(
+      `SELECT i.*, u.nome AS usuario FROM importacoes i LEFT JOIN usuarios u ON u.id = i.usuario_id
+        WHERE i.id = ? AND i.empresa_id = ?`,
+    )
+    .get(id, ctx.empresaId) as (Record<string, unknown> & { id: number; relatorio: string | null }) | undefined;
+  if (!linha) throw erroNaoEncontrado(`Importação ${id} não encontrada nesta empresa.`);
+  let relatorio: { erros: ErroLinha[]; avisos: string[] } = { erros: [], avisos: [] };
+  try {
+    if (linha.relatorio) relatorio = JSON.parse(linha.relatorio);
+  } catch {
+    // Relatório ilegível não pode esconder a carga: o resto da linha vale.
+  }
+  return { ...linha, relatorio };
 }

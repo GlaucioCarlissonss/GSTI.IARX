@@ -4,7 +4,16 @@ import type { Contexto } from './contexto.js';
 import { paraReais } from './dinheiro.js';
 import { ROTULO_ORIGEM, type Origem } from './financeiro.js';
 import { escreverCsv, escreverXlsx, type Aba } from '../lib/planilha.js';
-import { ABAS, ABAS_POR_MODULO, TEMPLATE_VERSAO_ATUAL, type Modulo, type NomeAba } from './templates.js';
+import {
+  ABA_INSTRUCOES,
+  ABAS,
+  ABAS_POR_MODULO,
+  COLUNAS_INSTRUCOES,
+  linhasDeInstrucoes,
+  TEMPLATE_VERSAO_ATUAL,
+  type Modulo,
+  type NomeAba,
+} from './templates.js';
 
 /** Valor no formato brasileiro, pronto para o Excel pt-BR. */
 function valorBR(centavos: number): string {
@@ -265,7 +274,14 @@ export function montarAbas(ctx: Contexto, modulo: Modulo, apenasTemplate = false
     colunas: ABAS[nome].colunas,
     linhas: apenasTemplate ? [] : GERADORES[nome](ctx),
   }));
-  return [abaMeta(nomeEmpresa(ctx)), ...abas];
+  // A aba de instruções fecha o arquivo: quem preenche à mão descobre as regras
+  // nela, e não errando uma linha por vez. Ela é derivada da definição das
+  // abas, então não tem como divergir do que a importação aceita.
+  return [
+    abaMeta(nomeEmpresa(ctx)),
+    ...abas,
+    { nome: ABA_INSTRUCOES, colunas: COLUNAS_INSTRUCOES, linhas: linhasDeInstrucoes(modulo) },
+  ];
 }
 
 export async function exportarXlsx(ctx: Contexto, modulo: Modulo, apenasTemplate = false): Promise<Buffer> {

@@ -22,6 +22,9 @@ interface ResultadoImportacao {
 interface Importacao {
   id: number;
   modulo: string;
+  modo: 'inicial' | 'incremental';
+  status: 'concluida' | 'recusada';
+  mensagem: string | null;
   template_versao: string;
   arquivo_nome: string | null;
   total_linhas: number;
@@ -29,6 +32,20 @@ interface Importacao {
   duplicadas: number;
   com_erro: number;
   criado_em: string;
+  usuario: string | null;
+}
+
+interface Mapeamento {
+  id: number;
+  aba: string;
+  coluna: string;
+  apelido: string;
+}
+
+interface Adaptador {
+  cliente_id: number | null;
+  abas: Record<string, string[]>;
+  mapeamentos: Mapeamento[];
 }
 
 interface Templates {
@@ -48,16 +65,21 @@ export function PaginaPlanilhas() {
   // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
   const podeEditar = pode('configuracoes', 'import');
   const [modulo, setModulo] = useState('financeiro');
+  const [modo, setModo] = useState<'inicial' | 'incremental'>('incremental');
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [criarCadastros, setCriarCadastros] = useState(true);
   const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [precisaConfirmar, setPrecisaConfirmar] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [novoMapa, setNovoMapa] = useState({ aba: 'Financeiro', coluna: '', apelido: '' });
+  const [erroMapa, setErroMapa] = useState<string | null>(null);
 
   const templates = useDados<Templates>(() => api.get('/api/planilhas/templates'), []);
   const historico = useDados<Importacao[]>(() => api.get('/api/planilhas/importacoes'), [empresa?.id]);
+  const adaptador = useDados<Adaptador>(() => api.get('/api/planilhas/mapeamentos'), [empresa?.id]);
 
-  const importar = async (simular: boolean) => {
+  const importar = async (simular: boolean, confirmar = false) => {
     if (!arquivo) return setErro('Selecione uma planilha .xlsx ou .csv.');
     setEnviando(true);
     setErro(null);
@@ -66,13 +88,42 @@ export function PaginaPlanilhas() {
       const r = await api.enviarArquivo<ResultadoImportacao>(`/api/planilhas/importacao/${modulo}`, arquivo, {
         criar_cadastros: String(criarCadastros),
         simular: String(simular),
+        modo,
+        confirmar: String(confirmar),
       });
       setResultado(r);
+      setPrecisaConfirmar(false);
       if (!simular) historico.recarregar();
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Falha na importação.');
+      const mensagem = e instanceof Error ? e.message : 'Falha na importação.';
+      setErro(mensagem);
+      // A recusa da carga inicial não é um beco: ela existe para a confirmação
+      // ser informada, e o botão de confirmar vem junto do motivo.
+      setPrecisaConfirmar(/carga foi marcada como INICIAL/i.test(mensagem));
+      if (!simular) historico.recarregar();
     } finally {
       setEnviando(false);
+    }
+  };
+
+  const criarMapa = async () => {
+    setErroMapa(null);
+    try {
+      await api.post('/api/planilhas/mapeamentos', novoMapa);
+      setNovoMapa({ ...novoMapa, apelido: '' });
+      adaptador.recarregar();
+    } catch (e) {
+      setErroMapa(e instanceof Error ? e.message : 'Falha ao cadastrar o cabeçalho.');
+    }
+  };
+
+  const removerMapa = async (id: number) => {
+    setErroMapa(null);
+    try {
+      await api.remover(`/api/planilhas/mapeamentos/${id}`);
+      adaptador.recarregar();
+    } catch (e) {
+      setErroMapa(e instanceof Error ? e.message : 'Falha ao remover.');
     }
   };
 
@@ -99,6 +150,21 @@ export function PaginaPlanilhas() {
                     ))}
                   </select>
                 </Campo>
+                <Campo
+                  rotulo="Tipo de carga"
+                  dica={
+                    modo === 'inicial'
+                      ? 'O histórico inteiro, de uma vez. Sobre um módulo já povoado, pede confirmação.'
+                      : 'O arquivo do período, somado ao que já existe.'
+                  }
+                >
+                  <select value={modo} onChange={(e) => setModo(e.target.value as 'inicial' | 'incremental')}>
+                    <option value="incremental">Incremental (arquivo do período)</option>
+                    <option value="inicial">Inicial (histórico completo)</option>
+                  </select>
+                </Campo>
+              </div>
+              <div className="grade c2">
                 <Campo rotulo="Arquivo (.xlsx ou .csv)">
                   <input
                     type="file"
@@ -132,6 +198,11 @@ export function PaginaPlanilhas() {
                 relatório de erros sem abortar o lote.
               </Aviso>
               {erro && <Aviso tipo="erro">{erro}</Aviso>}
+              {precisaConfirmar && (
+                <button type="button" className="botao" disabled={enviando} onClick={() => importar(false, true)}>
+                  Confirmar a carga inicial mesmo assim
+                </button>
+              )}
             </div>
           )}
         </Cartao>
@@ -246,41 +317,165 @@ export function PaginaPlanilhas() {
         </Cartao>
       )}
 
-      <Cartao titulo="Histórico de importações">
+      <Cartao
+        titulo="Histórico de cargas"
+        descricao="Toda tentativa entra aqui — inclusive a recusada, que é a que se investiga"
+      >
         {(historico.dados ?? []).length === 0 ? (
-          <p className="vazio">Nenhuma importação registrada nesta empresa.</p>
+          <p className="vazio">Nenhuma carga registrada nesta empresa.</p>
         ) : (
           <div className="tabela-envolucro">
             <table>
               <thead>
                 <tr>
                   <th>Quando</th>
+                  <th>Quem</th>
                   <th>Módulo</th>
+                  <th>Tipo</th>
                   <th>Arquivo</th>
-                  <th>Template</th>
+                  <th>Situação</th>
                   <th className="num">Lidas</th>
                   <th className="num">Importadas</th>
                   <th className="num">Duplicadas</th>
                   <th className="num">Erros</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {(historico.dados ?? []).map((i) => (
                   <tr key={i.id}>
                     <td>{dataHora(i.criado_em)}</td>
+                    <td>{i.usuario ?? '—'}</td>
                     <td>{i.modulo}</td>
-                    <td>{i.arquivo_nome ?? '—'}</td>
-                    <td>{i.template_versao}</td>
+                    <td>{i.modo === 'inicial' ? 'Inicial' : 'Incremental'}</td>
+                    <td title={i.mensagem ?? undefined}>{i.arquivo_nome ?? '—'}</td>
+                    <td>
+                      <Etiqueta
+                        texto={i.status === 'recusada' ? 'Recusada' : 'Concluída'}
+                        tom={i.status === 'recusada' ? 'critico' : 'bom'}
+                      />
+                    </td>
                     <td className="num">{inteiro(i.total_linhas)}</td>
                     <td className="num">{inteiro(i.importadas)}</td>
                     <td className="num">{inteiro(i.duplicadas)}</td>
                     <td className="num">{inteiro(i.com_erro)}</td>
+                    <td>
+                      {i.com_erro > 0 && (
+                        <button
+                          type="button"
+                          className="botao discreto pequeno"
+                          onClick={() =>
+                            api.baixar(
+                              `/api/planilhas/importacoes/${i.id}/erros.xlsx`,
+                              `erros-importacao-${i.id}.xlsx`,
+                            )
+                          }
+                        >
+                          Baixar erros
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+        {/* O motivo da recusa fica junto da linha, e não escondido num título:
+            é a informação que a pessoa veio buscar ao abrir o histórico. */}
+        {(historico.dados ?? [])
+          .filter((i) => i.status === 'recusada' && i.mensagem)
+          .slice(0, 3)
+          .map((i) => (
+            <Aviso key={i.id} tipo="erro">
+              {dataHora(i.criado_em)} — {i.arquivo_nome ?? 'arquivo'}: {i.mensagem}
+            </Aviso>
+          ))}
+      </Cartao>
+
+      <Cartao
+        titulo="Cabeçalhos deste cliente"
+        descricao="O que a planilha dele chama de outro jeito. Vale para todas as matrizes do cliente."
+      >
+        <Aviso>
+          Onde o template diz <strong>Valor</strong>, a planilha de um cliente pode dizer <em>Vlr Total</em>. Cadastrar
+          a equivalência evita reescrever o cabeçalho do arquivo a cada carga — e o nome do template continua sendo
+          aceito do mesmo jeito.
+        </Aviso>
+
+        {(adaptador.dados?.mapeamentos ?? []).length > 0 && (
+          <div className="tabela-envolucro" style={{ marginTop: 12 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Aba</th>
+                  <th>Coluna do template</th>
+                  <th>Cabeçalho aceito</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {(adaptador.dados?.mapeamentos ?? []).map((m) => (
+                  <tr key={m.id}>
+                    <td>{m.aba}</td>
+                    <td>{m.coluna}</td>
+                    <td>{m.apelido}</td>
+                    <td>
+                      {podeEditar && (
+                        <button type="button" className="botao discreto pequeno" onClick={() => removerMapa(m.id)}>
+                          Remover
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {podeEditar && (
+          <div className="barra-filtros" style={{ marginTop: 12 }}>
+            <Campo rotulo="Aba">
+              <select
+                value={novoMapa.aba}
+                onChange={(e) => setNovoMapa({ ...novoMapa, aba: e.target.value, coluna: '' })}
+              >
+                {Object.keys(adaptador.dados?.abas ?? {}).map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+            <Campo rotulo="Coluna do template">
+              <select value={novoMapa.coluna} onChange={(e) => setNovoMapa({ ...novoMapa, coluna: e.target.value })}>
+                <option value="">Escolha…</option>
+                {(adaptador.dados?.abas?.[novoMapa.aba] ?? []).map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+            <Campo rotulo="Cabeçalho na planilha do cliente">
+              <input
+                value={novoMapa.apelido}
+                onChange={(e) => setNovoMapa({ ...novoMapa, apelido: e.target.value })}
+                style={{ minWidth: 220 }}
+              />
+            </Campo>
+            <button
+              type="button"
+              className="botao primario"
+              disabled={!novoMapa.coluna || !novoMapa.apelido.trim()}
+              onClick={criarMapa}
+            >
+              Cadastrar cabeçalho
+            </button>
+          </div>
+        )}
+        {erroMapa && <Aviso tipo="erro">{erroMapa}</Aviso>}
       </Cartao>
 
       <Cartao titulo="Layout do template" descricao={`Módulo ${modulo} — versão ${templates.dados?.versao ?? '—'}`}>

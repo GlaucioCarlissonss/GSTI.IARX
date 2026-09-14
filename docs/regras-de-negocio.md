@@ -734,6 +734,57 @@ versão do layout, e o leitor aceita apelidos de cabeçalho (`Competência`,
 `competencia`, `mes`, `mês de competência`…), de modo que planilhas de versões
 anteriores continuam importáveis.
 
+**A aba `Instruções`** fecha o arquivo: uma linha por coluna, dizendo se é
+obrigatória, o que preencher e quais cabeçalhos são aceitos no lugar dela. Ela é
+**derivada da definição das abas**, e não escrita à mão — assim a explicação não
+tem como divergir do que a importação aceita. Junto com `_meta`, ela é parte do
+template e não conta como "aba desconhecida" na releitura.
+
+### Carga inicial e carga incremental
+
+A carga **incremental** é o arquivo do período, somado ao que já existe; é o
+padrão. A carga **inicial** é o histórico inteiro entrando de uma vez, e sobre
+um módulo que já tem dado quase sempre é engano de quem escolheu o modo: ela é
+**recusada**, com o número de registros existentes na frente, e a tela oferece
+confirmar — a confirmação existe para ser informada, não para virar um beco. O
+modo fica gravado no registro da carga: é o que diz, meses depois, se aquele
+bloco de dados veio da migração ou da rotina do mês.
+
+O modo não muda o que é gravado. A deduplicação por conteúdo continua valendo
+nos dois casos, e é ela — não o modo — que impede duplicar.
+
+### Registro de carga (ImportLog)
+
+**Toda tentativa de carga deixa linha**, com quem carregou, o modo, o arquivo, a
+versão do template, as contagens e o relatório de erros. Inclusive a que
+**falhou**: arquivo ilegível e carga inicial recusada entram como `recusada`,
+com o motivo. Era justamente o caso sem rastro — e é o que alguém investiga
+quando pergunta "por que os dados não entraram?".
+
+A **simulação não entra**: prévia não é carga, e registrá-la encheria o
+histórico de linhas que não mudaram nada. O histórico fica na tela de
+Importar/Exportar, com o motivo da recusa ao lado da linha e o download das
+linhas rejeitadas em planilha (aba, número da linha como o Excel mostra, e o
+motivo).
+
+### Adaptador de cabeçalho por cliente
+
+Cada contratante manda a planilha com os cabeçalhos dele: onde o template diz
+`Valor`, a planilha de um diz `Vlr Total` e a de outro diz `Custo Mensal`.
+O apelido é cadastrado **por cliente** — o vocabulário de um não descreve a
+planilha do outro — e se **soma** aos nomes aceitos, sem substituir o nome
+canônico: uma planilha já no padrão continua entrando sem cadastro nenhum.
+
+Duas recusas no cadastro, ambas contra o mesmo estrago: um apelido que já é o
+nome de **outra** coluna da aba, e um apelido que já aponta para outra coluna.
+Nos dois casos o dado entraria na coluna errada **sem erro nenhum**, que é o
+pior jeito de errar.
+
+Na versão hospedada, o CSV de uma aba só é identificado pelo cabeçalho, e a aba
+que vence é a que **explica mais colunas do arquivo**. Antes vencia a que tinha
+todas as obrigatórias presentes, e um financeiro com a coluna de valor escrita
+de outro jeito entrava como cadastro de tipo de despesa, em silêncio.
+
 **Validação.** Competência fora de `MM/AAAA`, valor inválido, natureza ou
 classificação desconhecida e tipo de despesa inexistente são reportados linha a
 linha, com o motivo — e as linhas válidas do mesmo lote entram normalmente.
