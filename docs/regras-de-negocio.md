@@ -38,6 +38,20 @@ pelo login; o botão aparece **sempre**, inclusive com um cliente só, porque
 quem ganha acesso a um segundo contratante no meio da semana precisa achar a
 saída sem descobrir que ela só existe depois de ter dois.
 
+**Cadastrar um cliente é ato da porta de entrada.** O cadastro morava só em
+*Clientes e unidades*, que é uma tela **dentro** de um cliente: para criar o
+segundo era preciso entrar no primeiro, e numa base sem nenhum a tela de
+boas-vindas mandava a um lugar que não existe sem cliente. Na versão hospedada
+a tela de escolha cadastra, e o formulário traz junto a **primeira matriz** —
+um contratante sem unidade abre o sistema inteiro vazio, porque não há onde
+lançar, importar nem receber chamado. Dar nome à unidade é opcional, e ela vem
+sugerida com o nome do cliente enquanto ninguém a escreve à mão. Em acesso de
+leitura o botão não aparece: oferecer o que o armazenamento vai recusar é
+prometer o que não se cumpre, e a tela diz por quê. No app local a criação
+continua sendo do servidor, sob `configuracoes.create`, e quem cria passa a
+enxergar o cliente — sem o vínculo, criar seria a forma mais rápida de produzir
+um contratante que ninguém abre.
+
 A escolha fica no `localStorage`, o que faz a tela aparecer uma vez por
 navegador e não a cada recarregamento. O que fica guardado é a última escolha,
 nunca uma permissão: se o vínculo tiver sido revogado, a escolha guardada é

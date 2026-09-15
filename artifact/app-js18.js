@@ -109,8 +109,12 @@ function viewBoasVindas() {
          pelo topo da página.</p>
       ${ativos.length
         ? `<div class="lista-clientes">${cartoes}</div>`
-        : `<div class="msg">Nenhum cliente cadastrado nesta base. Cadastre o primeiro em
-             <strong>Sistema → Cadastros</strong>.</div>`}
+        : `<div class="msg">Nenhum cliente cadastrado nesta base. Cadastre o primeiro aqui mesmo —
+             as telas do sistema só existem dentro de um contratante.</div>`}
+      ${E.somenteLeitura
+        ? `<p class="nota" style="margin-top:4px">Este acesso é de leitura: dá para abrir qualquer
+             contratante acima, mas não para cadastrar um novo.</p>`
+        : `<div style="margin-top:4px"><button type="button" class="bt pri" id="bv-novo">Cadastrar novo cliente</button></div>`}
       ${(() => {
         // Os contratantes que o enunciado pediu e ainda não estão aqui. O aviso
         // fica NESTA tela porque é onde a ausência se nota — dentro de
@@ -132,6 +136,9 @@ function viewBoasVindas() {
     b.onclick = () => abrirCliente(b.dataset.cliente);
   });
 
+  const btNovo = el('#bv-novo');
+  if (btNovo) btNovo.onclick = () => formClienteNovo();
+
   const btIniciais = el('#bv-iniciais');
   if (btIniciais) {
     btIniciais.onclick = async () => {
@@ -144,6 +151,67 @@ function viewBoasVindas() {
       }
     };
   }
+}
+
+/**
+ * Cadastra um contratante novo daqui mesmo — e entra nele.
+ *
+ * O cadastro morava só em "Clientes e unidades", que é uma tela DENTRO de um
+ * cliente: para criar o segundo era preciso entrar no primeiro, e numa base sem
+ * nenhum não havia por onde começar — a mensagem mandava a uma tela que não
+ * existe sem cliente. A porta de entrada é o lugar da porta de entrada.
+ *
+ * A primeira matriz vem junto porque um cliente sem unidade abre o sistema
+ * inteiro vazio: não há onde lançar, importar nem receber chamado. Fica
+ * opcional, para quem prefere montar a estrutura depois.
+ */
+function formClienteNovo() {
+  abrirModal({
+    titulo: 'Cadastrar novo cliente',
+    tipo: 'cliente-novo',
+    corpo: `
+      <div class="msg">O <strong>cliente</strong> é o contratante — o recorte mais externo do sistema, e o que
+        nenhuma tela mistura com outro. A <strong>unidade</strong> abaixo é a primeira matriz dele: é a ela que
+        lançamento, projeto e chamado se prendem. Deixar em branco cria só o contratante, e a estrutura se monta
+        depois em <strong>Sistema → Clientes e unidades</strong>.</div>
+      <div class="campo"><label for="nc-nome">Nome do cliente</label>
+        <input id="nc-nome" name="nome" placeholder="como o contratante é chamado"></div>
+      <div class="campo"><label for="nc-doc">CNPJ do cliente (opcional)</label>
+        <input id="nc-doc" name="doc" placeholder="00.000.000/0000-00"></div>
+      <div class="campo"><label for="nc-matriz">Primeira unidade (matriz)</label>
+        <input id="nc-matriz" name="matriz" placeholder="em branco = cadastrar a estrutura depois"></div>`,
+    acoes: `<button type="button" class="bt" data-c>Cancelar</button>
+      <button type="button" class="bt pri" data-s>Cadastrar e entrar</button>`,
+    aoMontar({ raiz, fechar, erro, campo }) {
+      const nome = campo('nome'), matriz = campo('matriz');
+      // Enquanto ninguém escreveu a unidade à mão, ela acompanha o nome do
+      // cliente: é o caso comum — e é o que o cadastro dos iniciais já fazia.
+      nome.oninput = () => { if (!matriz.dataset.tocado) matriz.value = nome.value; };
+      matriz.oninput = () => { matriz.dataset.tocado = '1'; };
+
+      raiz.querySelector('[data-c]').onclick = fechar;
+      raiz.querySelector('[data-s]').onclick = async (ev) => {
+        ev.target.disabled = true; erro('');
+        try {
+          const novo = await criarClienteNovo({ nome: nome.value, documento: campo('doc').value });
+          const unidade = matriz.value.trim();
+          if (unidade) {
+            try {
+              await criarUnidadeNoCliente(novo.id, { tipo: 'MATRIZ', nome: unidade });
+            } catch (e) {
+              // O cliente já está gravado: repetir o formulário esbarraria no
+              // "já existe". Dizer o que ficou pela metade é o que deixa a
+              // pessoa continuar, em vez de tentar de novo e travar.
+              throw new Error(`O cliente "${novo.nome}" foi criado, mas a unidade não: ${e.message || e} ` +
+                'Feche e cadastre a unidade em Sistema → Clientes e unidades.');
+            }
+          }
+          fechar();
+          await abrirCliente(novo.id);
+        } catch (e) { erro(e.message || e); ev.target.disabled = false; }
+      };
+    },
+  });
 }
 
 /** Entra no cliente: define o escopo inicial e monta a primeira tela. */

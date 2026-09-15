@@ -175,6 +175,50 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
   const podeTrocarAgora = await pag.evaluate(() => !!document.querySelector('#bt-trocar-cliente'));
   conferir('havendo mais de um cliente, trocar aparece', podeTrocarAgora === true, String(podeTrocarAgora));
 
+  // ------------------------------------------ cadastrar cliente na porta de entrada
+  // Cadastrar morava só DENTRO de um cliente: para criar o segundo era preciso
+  // entrar no primeiro, e numa base sem nenhum não havia por onde começar.
+  console.log('\nCLIENTE NOVO — a porta de entrada cadastra');
+  await pag.evaluate(() => { try { localStorage.removeItem('iarx-cliente'); } catch (e) {} });
+  await pag.goto(URL_LIMPA);
+  await pag.waitForSelector('.boas-vindas', { timeout: 15000 });
+  const temBotaoNovo = await pag.evaluate(() => !!document.querySelector('#bv-novo'));
+  conferir('a tela de escolha oferece cadastrar um cliente novo', temBotaoNovo === true, String(temBotaoNovo));
+
+  await pag.click('#bv-novo');
+  await pag.waitForSelector('#nc-nome', { timeout: 8000 });
+  await pag.fill('#nc-nome', 'Contratante Novo');
+  await pag.waitForTimeout(200);
+  // A unidade acompanha o nome do cliente enquanto ninguém a escreve à mão.
+  const matrizSugerida = await pag.inputValue('#nc-matriz');
+  conferir('a primeira unidade vem sugerida com o nome do cliente',
+    matrizSugerida === 'Contratante Novo', matrizSugerida);
+
+  await pag.click('.fundo .acoes .bt.pri');
+  await pag.waitForTimeout(1200);
+  const depoisDeCriar = await pag.evaluate(() => ({
+    aberto: E.clienteSel ? (clientePorId(E.clienteSel) || {}).nome : null,
+    matrizes: E.clienteSel ? empresasDoCliente(E.clienteSel).map((m) => m.nome) : [],
+    boasVindas: !!document.querySelector('.boas-vindas'),
+  }));
+  conferir('cadastrar entra no cliente novo, já com a primeira matriz',
+    depoisDeCriar.aberto === 'Contratante Novo' && depoisDeCriar.matrizes.includes('Contratante Novo') &&
+      depoisDeCriar.boasVindas === false,
+    JSON.stringify(depoisDeCriar));
+
+  // Nome repetido é recusado com a frase de sempre, e o cliente aberto não muda.
+  await pag.click('#bt-trocar-cliente');
+  await pag.waitForSelector('.boas-vindas', { timeout: 8000 });
+  await pag.click('#bv-novo');
+  await pag.waitForSelector('#nc-nome', { timeout: 8000 });
+  await pag.fill('#nc-nome', 'Contratante Novo');
+  await pag.click('.fundo .acoes .bt.pri');
+  await pag.waitForTimeout(800);
+  const recusaNome = await pag.$eval('.fundo [data-erro]', (m) => m.textContent.trim()).catch(() => null);
+  conferir('nome repetido é recusado, sem criar um segundo contratante',
+    /já existe/i.test(String(recusaNome)), String(recusaNome));
+  await pag.keyboard.press('Escape');
+
   // --------------------------------------------------------- somente leitura
   console.log('\nSOMENTE LEITURA — quem não escreve também precisa entrar');
   await pag.evaluate(() => { try { localStorage.removeItem('iarx-cliente'); } catch (e) {} });
@@ -184,10 +228,14 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
     soLeitura: E.somenteLeitura,
     clientes: E.clientes.length,
     orfas: E.empresas.filter((e) => !e.cliente).length,
+    // Oferecer o cadastro a quem o armazenamento vai recusar é prometer o que
+    // não se cumpre: a tela diz por que não, em vez de mostrar o botão.
+    botaoNovo: !!document.querySelector('#bv-novo'),
   }));
   conferir('sem poder gravar, a adoção vale em memória e a tela abre',
     semEscrita.soLeitura === true && semEscrita.clientes >= 1 && semEscrita.orfas === 0,
     JSON.stringify(semEscrita));
+  conferir('em leitura, cadastrar não é oferecido', semEscrita.botaoNovo === false, String(semEscrita.botaoNovo));
 
   console.log(`\n=== erros de console: ${erros.length ? erros.join(' | ') : 'nenhum'} ===`);
   if (erros.length) falhas.push('erros de console');
