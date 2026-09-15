@@ -1,0 +1,480 @@
+<title>Gestão de TI IARX</title>
+<script>
+// Aplica o tema escolhido antes de o resto da página pintar. Sem isto a tela
+// aparece no tema do sistema e só depois troca, e a piscada é visível.
+(function () {
+  try {
+    var t = localStorage.getItem('iarx-tema');
+    if (t === 'claro' || t === 'escuro') {
+      document.documentElement.setAttribute('data-theme', t === 'claro' ? 'light' : 'dark');
+    }
+  } catch (e) { /* armazenamento bloqueado: fica no tema do sistema */ }
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --plano:#eef1f6; --sup:#fff; --sup2:#f5f7fa; --sup3:#e9edf4;
+  --tinta:#111721; --tinta2:#4a5464; --tinta3:#8892a4;
+  --linha:#dfe4ec; --linha2:#c4ccd9;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+  --bom:#0ca30c; --bomtxt:#056605; --alerta:#b26a00; --crit:#c0392f;
+  --sombra:0 1px 2px rgba(17,23,33,.05),0 8px 24px rgba(17,23,33,.06);
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
+  --plano:#0b0e14; --sup:#141a24; --sup2:#1b2230; --sup3:#232c3c;
+  --tinta:#eef2f8; --tinta2:#a9b4c4; --tinta3:#7a8597;
+  --linha:#27303f; --linha2:#39455a;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
+  --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --plano:#0b0e14; --sup:#141a24; --sup2:#1b2230; --sup3:#232c3c;
+  --tinta:#eef2f8; --tinta2:#a9b4c4; --tinta3:#7a8597;
+  --linha:#27303f; --linha2:#39455a;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
+  --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--plano);color:var(--tinta);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.02em}
+a{color:var(--s1)}
+code{font-family:var(--mono);font-size:.92em;background:var(--sup2);padding:1px 5px;border-radius:4px}
+
+/* ---------------------------------------------------------------- topo */
+.barra{position:sticky;top:0;z-index:20;background:var(--sup);border-bottom:1px solid var(--linha)}
+.barra .linha1{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 20px 0}
+.marca{display:flex;flex-direction:column;margin-right:auto}
+.marca b{font-size:15px;letter-spacing:-.02em}
+.marca span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--tinta3)}
+
+/* Cliente em contexto: fica junto da marca porque governa TODAS as telas. */
+.cliente-atual{display:flex;flex-direction:column;gap:1px;padding:6px 10px;border:1px solid var(--linha2);
+  border-radius:9px;background:var(--sup2);max-width:280px}
+.cliente-atual span{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--tinta3)}
+.cliente-atual b{font-size:13px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cliente-atual small{font-size:10.5px;color:var(--tinta3)}
+.cliente-atual button{align-self:flex-start;margin-top:3px;padding:0;border:0;background:none;color:var(--s1);
+  font-size:11.5px;cursor:pointer}
+.cliente-atual button:hover{text-decoration:underline}
+
+/* Antes de escolher o cliente não há recorte: filtro e navegação não têm
+   sobre o que operar, e mostrá-los ofereceria escolha sem efeito. */
+body[data-sem-cliente] .barra .campo,
+body[data-sem-cliente] #cliente-atual,
+body[data-sem-cliente] #f-fichas,
+body[data-sem-cliente] #filtros-tela,
+body[data-sem-cliente] #modulos,
+body[data-sem-cliente] #abas{display:none!important}
+
+/* A barra de filtros DA TELA. Fica abaixo do menu, e não no topo do sistema:
+   o que se marca aqui vale nesta tela e em mais nenhuma. */
+.filtros-tela{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;
+  padding:12px 20px;border-bottom:1px solid var(--linha);background:var(--sup2)}
+.filtros-tela .campo{min-width:0}
+/* A linha de apoio de cada filtro: o que ele filtra, sobre quais dados atua e o
+   efeito esperado. É texto de leitura, não decoração. */
+.dica-filtro{font-size:11.5px;line-height:1.35;color:var(--tinta2);max-width:250px}
+.filtros-tela .resumo{margin-left:auto;font-size:12px;color:var(--tinta2);max-width:340px}
+
+.boas-vindas{max-width:620px;margin:40px auto;display:flex;flex-direction:column;gap:14px}
+.boas-vindas h1{font-size:23px;letter-spacing:-.03em}
+.boas-vindas p{color:var(--tinta2);font-size:13.5px;margin:-6px 0 4px}
+.lista-clientes{display:flex;flex-direction:column;gap:8px}
+.cartao-cliente{display:flex;flex-direction:column;gap:3px;align-items:flex-start;text-align:left;
+  padding:13px 15px;border:1px solid var(--linha2);border-radius:11px;background:var(--sup);
+  cursor:pointer;color:inherit;font:inherit;box-shadow:var(--sombra)}
+.cartao-cliente:hover{border-color:var(--s1)}
+.cartao-cliente strong{font-size:15px}
+.cartao-cliente small{color:var(--tinta3);font-size:12px}
+/* Barra de módulos: o primeiro nível da navegação. As telas de cada módulo
+   ficam na barra de abas logo abaixo. */
+.modulos{display:flex;gap:6px;padding:12px 20px 0;overflow-x:auto}
+.modulos button{
+  font-family:inherit;font-size:13.5px;font-weight:600;padding:8px 15px;border:1px solid var(--linha);
+  background:var(--sup2);color:var(--tinta2);cursor:pointer;white-space:nowrap;border-radius:8px;
+  display:inline-flex;align-items:center;gap:7px;
+}
+.modulos button:hover{border-color:var(--linha2);color:var(--tinta)}
+.modulos button[aria-current="page"]{background:var(--s1);border-color:var(--s1);color:#fff}
+.modulos button .pt{width:7px;height:7px;border-radius:50%;background:var(--s1);flex:none}
+.modulos button[aria-current="page"] .pt{background:#fff}
+.modulos button[data-mod="projetos"] .pt{background:var(--s3)}
+.modulos button[data-mod="suporte"] .pt{background:var(--s2)}
+.modulos button[data-mod="sistema"] .pt{background:var(--tinta3)}
+.modulos button[aria-current="page"][data-mod="projetos"]{background:var(--s3);border-color:var(--s3)}
+.modulos button[aria-current="page"][data-mod="suporte"]{background:var(--s2);border-color:var(--s2)}
+.modulos button[aria-current="page"][data-mod="sistema"]{background:var(--tinta2);border-color:var(--tinta2)}
+
+.bt-tema{
+  font-family:inherit;font-size:13px;font-weight:500;padding:7px 12px;border:1px solid var(--linha);
+  background:var(--sup2);color:var(--tinta2);cursor:pointer;border-radius:8px;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:7px;align-self:flex-end;
+}
+.bt-tema:hover{border-color:var(--linha2);color:var(--tinta)}
+
+/* Gatilho de drill-down: qualquer indicador ou item que abre os registros por
+   trás do número. Afordância visível, foco de teclado e alvo inteiro. */
+.drill{cursor:pointer;position:relative}
+.drill:hover{border-color:var(--linha2)}
+.kpi.drill:hover{background:var(--sup2)}
+.drill:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+.drill::after{
+  content:'↗';position:absolute;top:6px;right:8px;font-size:11px;color:var(--tinta3);opacity:0;transition:opacity .12s}
+.drill:hover::after,.drill:focus-visible::after{opacity:1}
+
+/* ------------------------------------------------------ tabela dinâmica */
+/* O relatório tem 24 colunas de mês e centenas de linhas: rolar a tela faz
+   perder de vista de que competência é a coluna e quanto dá o total. Cabeçalho,
+   rodapé e a coluna de rótulos ficam presos no lugar.
+
+   A caixa precisa de altura própria para rolar por dentro — sem isso quem rola
+   é a página, e não há de que grudar. */
+.rol-fixo{overflow:auto;max-height:calc(100vh - 300px);min-height:260px}
+.pivot thead th{position:sticky;top:0;z-index:3;background:var(--sup)}
+.pivot tfoot th, .pivot tfoot td{position:sticky;bottom:0;z-index:3}
+/* A primeira coluna diz de que filial ou categoria é a linha: some antes de
+   tudo quando se rola para o 12º mês. */
+.pivot thead th:first-child, .pivot tbody th:first-child, .pivot tbody td:first-child,
+.pivot tfoot th:first-child{position:sticky;left:0;background:var(--sup)}
+.pivot tbody tr.grupo-1 > th:first-child, .pivot tbody tr.grupo-1 > td:first-child{background:var(--sup2)}
+.pivot tbody tr:hover > th:first-child, .pivot tbody tr:hover > td:first-child{background:var(--sup2)}
+/* Os quatro cantos se cruzam: o canto superior e o inferior esquerdos precisam
+   ficar acima das duas faixas, ou um deles passa por baixo da outra. */
+.pivot thead th:first-child{z-index:4}
+.pivot tfoot th:first-child, .pivot tfoot td:first-child{z-index:4;background:var(--sup2)}
+/* `border-collapse: collapse` descola a borda da célula presa; a sombra faz o
+   papel da linha sem depender disso. */
+.pivot thead th{box-shadow:inset 0 -1px 0 var(--linha2)}
+.pivot tfoot th, .pivot tfoot td{box-shadow:inset 0 2px 0 var(--linha2)}
+.pivot thead th:first-child, .pivot tbody th:first-child, .pivot tbody td:first-child{
+  box-shadow:inset -1px 0 0 var(--linha)}
+.pivot thead th:first-child{box-shadow:inset -1px 0 0 var(--linha), inset 0 -1px 0 var(--linha2)}
+.pivot tfoot th:first-child{box-shadow:inset -1px 0 0 var(--linha), inset 0 2px 0 var(--linha2)}
+
+/* Tela cheia: a mesa inteira para analisar, sem o cabeçalho do sistema. */
+.bloco.tela-cheia{
+  position:fixed;inset:0;z-index:60;margin:0;border-radius:0;
+  display:flex;flex-direction:column;overflow:hidden}
+.bloco.tela-cheia .rol-fixo{max-height:none;flex:1 1 auto}
+
+/* Hierarquia por peso e fundo, não só por indentação. */
+.pivot tr.grupo-1 > th, .pivot tr.grupo-1 > td{background:var(--sup2)}
+.pivot tr.lancamento{cursor:pointer}
+.pivot tr.lancamento:hover > th, .pivot tr.lancamento:hover > td{background:var(--sup2)}
+.pivot tr.soma-detalhe > th, .pivot tr.soma-detalhe > td{border-top:1px solid var(--linha2);font-size:12.5px}
+.pivot tfoot tr.total-geral > th, .pivot tfoot tr.total-geral > td{
+  background:var(--sup2);font-weight:600;border-top:2px solid var(--linha2)}
+.pivot-grupo{
+  flex:none;width:18px;height:18px;padding:0;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;
+  font:600 14px/1 inherit;cursor:pointer;
+  color:var(--tinta2);background:var(--sup);
+  border:1px solid var(--linha2);border-radius:4px;
+}
+.pivot-grupo:hover{color:var(--tinta);border-color:var(--tinta3)}
+.pivot-grupo:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
+
+/* Ficha de detalhe: rótulo e valor em duas colunas, empilhando no estreito. */
+.ficha{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:6px 0}
+.ficha dt{color:var(--tinta3);font-size:12.5px}
+.ficha dd{margin:0;font-size:13.5px}
+@media (max-width:560px){.ficha{grid-template-columns:1fr;gap:0}.ficha dd{margin-bottom:8px}}
+
+/* Botão de expandir/comprimir grupo do Gantt: alvo de 20px, foco visível e
+   contraste AA nos dois temas. */
+.gantt-grupo{
+  flex:none;width:20px;height:20px;padding:0;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;
+  font:600 15px/1 inherit;cursor:pointer;
+  color:var(--tinta2);background:var(--sup2);
+  border:1px solid var(--linha2);border-radius:5px;
+}
+.gantt-grupo:hover{color:var(--tinta);border-color:var(--tinta3)}
+.gantt-grupo:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
+/* Reserva o mesmo espaço numa linha sem grupo, para os nomes alinharem. */
+.gantt-vazio{flex:none;width:20px;height:20px;display:inline-block}
+
+.abas{display:flex;gap:2px;padding:8px 20px 0;overflow-x:auto}
+.abas button{
+  font-family:inherit;font-size:13.5px;font-weight:500;padding:8px 14px;border:0;border-bottom:2px solid transparent;
+  background:transparent;color:var(--tinta2);cursor:pointer;white-space:nowrap;border-radius:6px 6px 0 0;
+}
+.abas button:hover{background:var(--sup2);color:var(--tinta)}
+.abas button[aria-current="page"]{color:var(--tinta);border-bottom-color:var(--s1);font-weight:600}
+/* Ponto discreto: esta aba vale para o cliente inteiro, não só a unidade em
+   foco. O `title` no botão explica por extenso ao passar o mouse. */
+.abas button[data-escopo="cliente"]{display:inline-flex;align-items:center;gap:5px}
+.abas button[data-escopo="cliente"]::after{content:"";width:5px;height:5px;border-radius:50%;background:var(--tinta3)}
+.abas button[data-escopo="cliente"][aria-current="page"]::after{background:var(--s1)}
+.pagina{max-width:1280px;margin:0 auto;padding-inline:20px;padding-block:22px 60px;display:flex;flex-direction:column;gap:16px}
+
+/* ----------------------------------------------------------- controles */
+.campo{display:flex;flex-direction:column;gap:5px;min-width:0}
+.campo>label{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tinta3)}
+input,select,textarea{
+  font-family:var(--sans);font-size:13.5px;padding:8px 10px;border:1px solid var(--linha2);border-radius:8px;
+  background:var(--sup);color:var(--tinta);width:100%;
+}
+select{appearance:none;padding-right:28px;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238892a4' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center}
+textarea{min-height:62px;resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
+.bt{font-family:inherit;font-size:13.5px;font-weight:550;padding:8px 13px;border:1px solid var(--linha2);border-radius:8px;background:var(--sup);color:var(--tinta);cursor:pointer;white-space:nowrap}
+.bt:hover:not(:disabled){background:var(--sup2)}
+.bt:disabled{opacity:.5;cursor:not-allowed}
+.bt.pri{background:var(--s1);border-color:var(--s1);color:#fff}
+.bt.pri:hover:not(:disabled){filter:brightness(1.08)}
+.bt.peq{padding:5px 9px;font-size:12.5px}
+.bt.fant{border-color:transparent;background:transparent;color:var(--tinta2)}
+.bt.fant:hover:not(:disabled){background:var(--sup2)}
+.bt.perigo{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 40%,transparent)}
+
+.filtros{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;background:var(--sup);border:1px solid var(--linha);border-radius:12px;padding:12px 14px;box-shadow:var(--sombra)}
+.filtros .campo{flex:0 1 auto;max-width:100%}
+/* Campo com largura mínima declarada não pode empurrar a página numa tela
+   estreita: o pedido de largura vale enquanto couber. */
+.filtros .campo>input,.filtros .campo>select,.filtros .campo>textarea{max-width:100%}
+
+/* ------------------------------------------------- seletor de múltipla escolha */
+/* Caixas de seleção em formulário: lançar a mesma despesa em várias filiais
+   de uma vez. Rola quando a empresa tem muitas unidades, em vez de esticar o
+   modal até o campo seguinte sumir da tela. */
+.multi-caixas{display:flex;flex-direction:column;gap:3px;max-height:132px;overflow-y:auto;
+  border:1px solid var(--borda);border-radius:7px;padding:6px 8px;background-color:var(--sup)}
+.multi-caixas label{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap}
+.multi-caixas input{margin:0;flex:none}
+
+.multi{position:relative;min-width:0}
+.multi>button{
+  font-family:var(--sans);font-size:13.5px;padding:8px 28px 8px 10px;border:1px solid var(--linha2);
+  border-radius:8px;background:var(--sup);color:var(--tinta);width:100%;text-align:left;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238892a4' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
+.multi>button:hover{background-color:var(--sup2)}
+.multi>button[aria-expanded="true"]{border-color:var(--s1)}
+.multi .cont{color:var(--tinta3);font-variant-numeric:tabular-nums}
+.multi .painel{
+  position:absolute;z-index:40;top:calc(100% + 4px);left:0;min-width:100%;max-width:min(340px,92vw);
+  background:var(--sup);border:1px solid var(--linha2);border-radius:10px;box-shadow:0 10px 34px rgba(0,0,0,.22);
+  padding:8px;display:flex;flex-direction:column;gap:6px;
+}
+.multi .painel[hidden]{display:none}
+.multi .painel .busca{font-size:13px;padding:6px 9px}
+.multi .painel .acoes{display:flex;gap:6px}
+.multi .painel .acoes .bt{flex:1;padding:4px 8px;font-size:12px}
+.multi .lista{max-height:262px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;margin:0;padding:0;list-style:none}
+.multi .lista li{margin:0}
+.multi .lista label{
+  display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;
+  font-size:13.5px;cursor:pointer;white-space:nowrap;
+}
+.multi .lista label:hover{background:var(--sup2)}
+.multi .lista label input{flex:none;margin:0}
+.multi .lista label .rot{overflow:hidden;text-overflow:ellipsis}
+.multi .lista label .ap{margin-left:auto;font-size:11.5px;color:var(--tinta3);font-variant-numeric:tabular-nums}
+.multi .nada{padding:10px 8px;font-size:12.5px;color:var(--tinta3);text-align:center}
+.multi .aviso{font-size:11.5px;color:var(--alerta);padding:0 8px 2px}
+
+/* fichas do que está selecionado, para a escolha aparecer sem abrir o seletor */
+.fichas{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.fichas .ficha{
+  display:inline-flex;align-items:center;gap:6px;padding:3px 5px 3px 9px;border-radius:999px;
+  border:1px solid var(--linha2);background:var(--sup2);font-size:12px;color:var(--tinta2);max-width:230px;
+}
+.fichas .ficha>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fichas .ficha button{
+  border:0;background:transparent;color:var(--tinta3);cursor:pointer;font-size:14px;line-height:1;
+  padding:0 3px;border-radius:50%;
+}
+.fichas .ficha button:hover{background:var(--linha2);color:var(--tinta)}
+.fichas .rotgrupo{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tinta3)}
+
+/* -------------------------------------------------------------- blocos */
+.bloco{background:var(--sup);border:1px solid var(--linha);border-radius:12px;padding:16px 18px;box-shadow:var(--sombra);min-width:0}
+.bloco>header{display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.bloco>header h2{font-size:15px}
+.bloco>header .nota{font-size:12px;color:var(--tinta3);margin-left:auto}
+.grade{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(400px,1fr));align-items:start}
+.g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));background:var(--sup);border:1px solid var(--linha);border-radius:12px;overflow:hidden;box-shadow:var(--sombra)}
+.kpi{padding:15px 17px;border-right:1px solid var(--linha);display:flex;flex-direction:column;gap:2px}
+.kpi:last-child{border-right:0}
+.kpi .r{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tinta3)}
+.kpi .n{font-size:25px;font-weight:600;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.kpi .a{font-size:12px;color:var(--tinta2)}
+.delta{font-size:12px;font-weight:600}
+.delta.sobe{color:var(--crit)} .delta.desce{color:var(--bomtxt)} .delta.zero{color:var(--tinta3)}
+
+/* -------------------------------------------------------------- tabela */
+.rol{overflow-x:auto;max-width:100%;min-width:0}
+/* O contêiner de rolagem só segura a tabela se ele PRÓPRIO puder encolher: num
+   pai flex ou grid, a largura mínima automática do filho o empurra para fora e
+   a página inteira ganha rolagem horizontal. */
+.bloco{min-width:0}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--tinta3);font-weight:500;padding:7px 9px;border-bottom:1px solid var(--linha2);white-space:nowrap}
+td{padding:8px 9px;border-bottom:1px solid var(--linha);vertical-align:top}
+tbody tr:hover td{background:var(--sup2)}
+th.n,td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tfoot td{font-weight:600;border-top:1px solid var(--linha2);border-bottom:0}
+tr.tot td{border-top:1px solid var(--linha2);background:var(--sup2)}
+.pastilha{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:7px;vertical-align:baseline}
+
+.tag{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid var(--linha2);color:var(--tinta2);white-space:nowrap}
+.tag i{width:7px;height:7px;border-radius:50%}
+.tag.bom{color:var(--bomtxt);border-color:color-mix(in srgb,var(--bom) 45%,transparent)}
+.tag.crit{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 45%,transparent)}
+.tag.alerta{color:var(--alerta);border-color:color-mix(in srgb,var(--alerta) 50%,transparent)}
+
+.vazio{color:var(--tinta3);text-align:center;padding:26px 12px}
+/* Despesa por reconhecer: negrito e laranja onde o gestor procura — a
+   descrição e o valor. Pintar a linha inteira faria a tabela gritar. */
+tr[data-sem-reconhecer] td:nth-child(4),
+tr[data-sem-reconhecer] td.n{color:var(--alerta);font-weight:700}
+.tag.rec{color:var(--alerta);border-color:color-mix(in srgb,var(--alerta) 50%,transparent)}
+/* Lista de pares rótulo/valor — o cartão de situação das integrações. */
+.par{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;align-items:baseline}
+.par dt{color:var(--tinta3);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono)}
+.par dd{color:var(--tinta2);min-width:0;overflow-wrap:anywhere}
+.par code{font-size:12px}
+.vazio2{color:var(--tinta3);font-style:italic}
+/* Faixa da pré-visualização de perfil: precisa ser impossível de não ver. */
+.faixa-previa{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 20px -6px;
+  padding:10px 14px;border-radius:9px;font-size:13px;color:var(--alerta);
+  border:1px solid color-mix(in srgb,var(--alerta) 55%,transparent);
+  background:color-mix(in srgb,var(--alerta) 10%,var(--sup))}
+.faixa-previa strong{color:var(--tinta)}
+.faixa-previa button{margin-left:auto}
+.msg{padding:11px 13px;border-radius:9px;font-size:13px;border:1px solid var(--linha2);background:var(--sup2);color:var(--tinta2)}
+.msg.erro{border-color:color-mix(in srgb,var(--crit) 50%,transparent);color:var(--crit)}
+.msg.ok{border-color:color-mix(in srgb,var(--bom) 50%,transparent);color:var(--bomtxt)}
+.msg.bom{border-color:color-mix(in srgb,var(--bom) 50%,transparent);color:var(--bomtxt)}
+.msg.alerta{border-color:color-mix(in srgb,var(--alerta) 50%,transparent);color:var(--alerta)}
+input[type=file]{font:inherit;font-size:13px;color:var(--tinta2)}
+input[type=file]::file-selector-button{font:inherit;font-size:13px;margin-right:10px;padding:6px 12px;border-radius:8px;border:1px solid var(--linha2);background:var(--sup2);color:var(--tinta);cursor:pointer}
+input[type=checkbox]{width:auto;accent-color:var(--s1)}
+.msg strong{color:var(--tinta)}
+
+/* --------------------------------------------------------------- modal */
+/* ------------------------------------------------------- telas flutuantes */
+/* Toda tela flutuante é a mesma peça: cabeçalho preso em cima, rodapé preso
+   embaixo e só o miolo rolando. Quem rola é o miolo justamente para que o
+   título — que carrega o recorte — e o botão de fechar nunca saiam de vista. */
+.fundo{position:fixed;inset:0;z-index:60;background:rgba(11,14,20,.5);
+  display:flex;align-items:flex-start;justify-content:center;padding:36px 14px;overflow:hidden}
+.modal{position:relative;background:var(--sup);border:1px solid var(--linha);border-radius:14px;
+  width:min(680px,100%);max-width:100%;max-height:calc(100vh - 72px);
+  padding:20px 22px;box-shadow:0 16px 56px rgba(0,0,0,.3);
+  display:flex;flex-direction:column;gap:14px}
+.modal>header{display:flex;align-items:center;gap:10px;flex:none}
+.modal>header h2{margin-right:auto;font-size:17px}
+.modal>[data-corpo]{flex:1 1 auto;min-height:0;overflow:auto;
+  display:flex;flex-direction:column;gap:14px}
+.modal>[data-erro]{flex:none}
+.acoes{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;flex:none}
+
+/* Redimensionar: borda direita, borda de baixo e o canto entre as duas. A
+   esquerda e o topo ficam de fora de propósito — a tela é centralizada, e
+   arrastar por lá a faria andar em vez de crescer. */
+.puxador{position:absolute;z-index:2;touch-action:none}
+.puxador.dir{top:10px;right:-3px;width:8px;bottom:14px;cursor:ew-resize}
+.puxador.baixo{left:10px;right:14px;bottom:-3px;height:8px;cursor:ns-resize}
+.puxador.canto{right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize}
+/* O canto ganha a marca de três riscos: sem ela ninguém descobre que arrasta. */
+.puxador.canto::after{content:'';position:absolute;right:3px;bottom:3px;width:9px;height:9px;
+  background:linear-gradient(135deg,transparent 42%,var(--tinta3) 42%,var(--tinta3) 52%,transparent 52%,
+    transparent 68%,var(--tinta3) 68%,var(--tinta3) 78%,transparent 78%)}
+.puxador:hover, .puxador.arrastando{background:color-mix(in srgb,var(--s1) 35%,transparent);border-radius:4px}
+.modal.cheia{width:100%!important;height:100%!important;max-height:100%;border-radius:0}
+/* Ações dentro de um formulário não podem sair dele — o submit depende disso.
+   Em vez de movê-las para o rodapé, grudam no fundo da área de dados: mesmo
+   resultado, ficam sempre à vista. */
+.modal [data-corpo] .acoes{position:sticky;bottom:0;z-index:2;
+  background:var(--sup);padding:10px 0;box-shadow:inset 0 1px 0 var(--linha)}
+.modal.cheia .puxador{display:none}
+
+/* Barra de rolagem no tom do tema: a do navegador entra branca no escuro e
+   corta o fundo da tela flutuante. */
+.modal [data-corpo], .modal .rol, .rol-fixo{scrollbar-width:thin;scrollbar-color:var(--linha2) transparent}
+.modal [data-corpo]::-webkit-scrollbar, .modal .rol::-webkit-scrollbar,
+.rol-fixo::-webkit-scrollbar{width:11px;height:11px}
+.modal [data-corpo]::-webkit-scrollbar-track, .modal .rol::-webkit-scrollbar-track,
+.rol-fixo::-webkit-scrollbar-track{background:transparent}
+.modal [data-corpo]::-webkit-scrollbar-thumb, .modal .rol::-webkit-scrollbar-thumb,
+.rol-fixo::-webkit-scrollbar-thumb{background:var(--linha2);border-radius:6px;
+  border:3px solid transparent;background-clip:content-box}
+.modal [data-corpo]::-webkit-scrollbar-thumb:hover, .modal .rol::-webkit-scrollbar-thumb:hover,
+.rol-fixo::-webkit-scrollbar-thumb:hover{background:var(--tinta3);background-clip:content-box}
+
+/* Dentro da tela flutuante, o cabeçalho da tabela também fica preso: rolar
+   centenas de registros sem os nomes das colunas é ler número sem rótulo. */
+.modal .rol thead th{position:sticky;top:0;z-index:2;background:var(--sup);
+  box-shadow:inset 0 -1px 0 var(--linha2)}
+
+/* Coluna ajustável: a alça fica na divisa, dentro do cabeçalho. */
+th.ajustavel{position:relative}
+/* Dentro da célula, não sobre a divisa: a caixa de rolagem da tabela recorta
+   o que passa da borda, e a alça ficava inalcançável pelo ponteiro. */
+th .puxa-col{position:absolute;top:0;right:0;width:9px;height:100%;cursor:col-resize;touch-action:none}
+th .puxa-col:hover, th .puxa-col.arrastando{background:color-mix(in srgb,var(--s1) 45%,transparent)}
+/* Texto longo deixa de ser cortado quando a tela cresce: em vez de reticências
+   numa largura fixa, a célula quebra em linha e usa o espaço que houver. */
+.modal table.larga td.texto{white-space:normal;word-break:break-word;min-width:150px}
+
+/* ------------------------------------------------------------ gráficos */
+svg{display:block;width:100%;height:auto}
+.eixo{font-family:var(--mono);font-size:9.5px;fill:var(--tinta3)}
+.leg{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--tinta2);margin-bottom:4px}
+.leg span{display:inline-flex;align-items:center;gap:6px}
+.leg i{width:10px;height:10px;border-radius:3px}
+.rank{display:flex;flex-direction:column;gap:10px}
+.rank .it{display:grid;gap:4px}
+.rank .tp{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.rank .nm{font-size:13px;color:var(--tinta2)}
+.rank .vl{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rank .vl em{font-style:normal;color:var(--tinta3);font-weight:400}
+.trilho{height:7px;background:var(--sup2);border-radius:4px;overflow:hidden}
+.trilho>div{height:100%;border-radius:4px;background:var(--s1)}
+
+.gantt{overflow-x:auto}
+.gantt table{border-collapse:separate;border-spacing:0}
+.gantt th.m{font-size:9.5px;font-family:var(--mono);padding:4px 2px;text-align:center;min-width:36px}
+.gantt td.faixa{position:relative;height:30px;border-bottom:1px solid var(--linha);padding:0}
+.gantt .barra{position:absolute;height:10px;top:6px;border-radius:5px;background:var(--s1)}
+.gantt .barra.real{height:6px;top:18px;background:var(--s3)}
+.gantt .hoje{position:absolute;top:0;bottom:0;width:2px;background:var(--s2);opacity:.6}
+.gantt .nome{white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.gantt .nome.tarefa{color:var(--tinta2);font-size:12.5px}
+
+.dica{position:fixed;z-index:70;pointer-events:none;background:var(--sup);border:1px solid var(--linha2);border-radius:9px;padding:8px 10px;font-size:12.5px;box-shadow:0 8px 28px rgba(0,0,0,.18);opacity:0;transition:opacity .1s;min-width:140px}
+.dica.on{opacity:1}
+.dica b{display:block;margin-bottom:4px}
+.dica .l{display:flex;justify-content:space-between;gap:12px}
+.dica .l var{font-style:normal;font-weight:600;font-variant-numeric:tabular-nums}
+
+.carregando{display:flex;align-items:center;gap:9px;color:var(--tinta3);padding:26px}
+.giro{width:15px;height:15px;border:2px solid var(--linha2);border-top-color:var(--s1);border-radius:50%;animation:girar .7s linear infinite}
+@keyframes girar{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.giro{animation:none}*{transition:none!important}}
+@media (max-width:640px){
+  .g2{grid-template-columns:1fr}
+  .kpi{border-right:0;border-bottom:1px solid var(--linha)}
+  .kpi:last-child{border-bottom:0}
+  .filtros .campo{flex:1 1 140px}
+}
+</style>
