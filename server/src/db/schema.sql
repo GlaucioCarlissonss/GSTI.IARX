@@ -39,12 +39,24 @@ CREATE TABLE IF NOT EXISTS clientes (
 -- Vínculo usuário <-> cliente. Um usuário acessa vários clientes; um cliente
 -- tem vários usuários. É contra ESTA tabela que o backend valida o cliente da
 -- requisição — nunca contra o que a tela mandou.
+--
+-- `papel`/`perfil_id` são o que o usuário PODE, e valem para TODAS as matrizes
+-- e filiais do cliente de uma vez: o contratante tem uma permissão só, não uma
+-- por unidade. Antes disso morava em `usuario_empresas` (por matriz individual,
+-- ver o comentário dela abaixo); a migração de bases antigas está em
+-- `db/index.ts`.
 CREATE TABLE IF NOT EXISTS usuario_clientes (
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
   cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  papel      TEXT NOT NULL DEFAULT 'leitor' CHECK (papel IN ('gestor','leitor')),
+  perfil_id  INTEGER REFERENCES perfis(id) ON DELETE SET NULL,
   criado_em  TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (usuario_id, cliente_id)
 );
+-- Os índices desta tabela (e os de `perfis`/`auditoria` mais abaixo) vivem em
+-- `db/index.ts`, não aqui: numa base que já existia antes desta camada, a
+-- coluna só nasce na migração, que roda DEPOIS deste arquivo — um índice
+-- sobre ela aqui quebraria a abertura dessa base.
 
 CREATE TABLE IF NOT EXISTS empresas (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,7 +72,14 @@ CREATE TABLE IF NOT EXISTS empresas (
   criado_em  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Vínculo de acesso do usuário à empresa (isolamento multi-tenant)
+-- Vínculo de acesso do usuário à MATRIZ individual — histórico, congelado.
+--
+-- A permissão passou a ser do cliente inteiro (`usuario_clientes.papel`/
+-- `perfil_id`, acima). Esta tabela continua existindo só pelo rastro forense
+-- de quem tinha acesso a qual matriz antes da migração; nenhum código volta a
+-- gravar ou ler daqui para decidir permissão. Fica no schema.sql (em vez de
+-- ser removida) porque uma base que já a tem não pode perder a coluna, e uma
+-- base nova não sofre por ter uma tabela extra e vazia.
 CREATE TABLE IF NOT EXISTS usuario_empresas (
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
   empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
@@ -340,9 +359,16 @@ CREATE TABLE IF NOT EXISTS configuracoes (
   PRIMARY KEY (empresa_id, chave)
 );
 
+-- `cliente_id` é a dimensão PRIMÁRIA — todo evento pertence a um cliente, e é
+-- por ele que a trilha se filtra primeiro. `empresa_id` é só CONTEXTO do
+-- evento: fica nulo para o que é do cliente inteiro (criar usuário, criar
+-- perfil, criar matriz) e preenchido para o que pertence a uma matriz de fato
+-- (lançamento, filial, tipo de despesa). `ON DELETE SET NULL`, não CASCADE: a
+-- trilha não pode desaparecer se a matriz um dia puder ser removida.
 CREATE TABLE IF NOT EXISTS auditoria (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  empresa_id    INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  cliente_id    INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  empresa_id    INTEGER REFERENCES empresas(id) ON DELETE SET NULL,
   usuario_id    INTEGER REFERENCES usuarios(id),
   usuario_email TEXT,
   entidade      TEXT NOT NULL,
@@ -353,15 +379,17 @@ CREATE TABLE IF NOT EXISTS auditoria (
   dados_depois  TEXT,
   criado_em     TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS ix_auditoria_escopo ON auditoria(empresa_id, criado_em DESC);
+-- Índices em `db/index.ts` — mesma razão do comentário em `usuario_clientes`.
 
 -- Tentativa de acesso a um cliente que não é do usuário.
 --
--- Fica fora de `auditoria` por um motivo de fato: aquela tabela é por empresa, e
--- uma tentativa recusada não tem empresa nenhuma — ela morre antes de o contexto
--- existir. E `cliente_id` aqui NÃO tem chave estrangeira de propósito: quem
--- sonda ids manda números que não existem, e é justamente essa tentativa que
--- precisa ficar registrada.
+-- Fica fora de `auditoria` por um motivo de fato: a recusa acontece ANTES de
+-- existir contexto nenhum — nem cliente, nem empresa, nem sessão validada.
+-- Guardar em `auditoria` (que exige `cliente_id NOT NULL`) obrigaria a inventar
+-- um dono para a linha, e um dono inventado na trilha vale menos que nenhum. E
+-- `cliente_id` aqui NÃO tem chave estrangeira de propósito: quem sonda ids
+-- manda números que não existem, e é justamente essa tentativa que precisa
+-- ficar registrada.
 CREATE TABLE IF NOT EXISTS acesso_negado (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   cliente_id    INTEGER,
@@ -450,19 +478,22 @@ CREATE INDEX IF NOT EXISTS ix_evento_status ON integracao_evento(empresa_id, sta
 -- ============================================================
 -- Acesso: perfis, permissões e recuperação de senha
 -- ============================================================
--- O perfil fica no VÍNCULO com a empresa, e não no usuário: o sistema é
--- multi-tenant por regra, e o mesmo usuário já podia ser gestor numa empresa e
--- leitor em outra. Um perfil por usuário faria quem é administrador numa
--- empresa virar administrador em todas.
+-- O perfil fica no VÍNCULO com o CLIENTE, e não no usuário: o sistema é
+-- multi-tenant por regra, e o mesmo usuário já podia ser gestor num cliente e
+-- leitor em outro. Um perfil por usuário faria quem administra um contratante
+-- virar administrador em todos. Já foi por EMPRESA (matriz individual) — a
+-- migração de bases antigas, com a consolidação dos perfis duplicados por
+-- matriz do mesmo cliente, está em `db/index.ts`.
 CREATE TABLE IF NOT EXISTS perfis (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  empresa_id   INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  cliente_id   INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
   nome         TEXT NOT NULL,
   tipo         TEXT NOT NULL CHECK (tipo IN ('VIEW_ONLY','EDIT')),
   padrao       INTEGER NOT NULL DEFAULT 0 CHECK (padrao IN (0,1)),
   criado_em    TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (empresa_id, nome)
+  UNIQUE (cliente_id, nome)
 );
+-- Índice em `db/index.ts` — mesma razão do comentário em `usuario_clientes`.
 
 -- Uma linha por (perfil, módulo, ação). A ausência da linha é negação: o
 -- padrão de um perfil novo é não poder nada além do que foi marcado.

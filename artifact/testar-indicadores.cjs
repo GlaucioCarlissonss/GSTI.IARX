@@ -139,7 +139,7 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   await pag.click('.modal [data-reconhecer]');
   await pag.waitForTimeout(1500);
   const depoisRec = await pag.evaluate(async () => {
-    const trilha = await E.db.doc('auditoria/' + empresaAtiva()).get();
+    const trilha = await E.db.doc('auditoria/cliente__' + E.clienteSel).get();
     return {
       kpi: document.querySelectorAll('.kpi .n')[1].textContent.trim(),
       auditado: (trilha.exists ? trilha.data().itens : []).some((a) => a.acao === 'reconhecer'),

@@ -396,6 +396,344 @@ END;`);
   );
   if (!colunasVinculo.has('perfil_id')) db.exec('ALTER TABLE usuario_empresas ADD COLUMN perfil_id INTEGER');
 
+  // ---------------------------------------------------- acesso por CLIENTE
+  //
+  // Usuário, perfil e permissão deixam de ser por MATRIZ e passam a valer para
+  // TODAS as matrizes e filiais do cliente. Detecta a base antiga por uma
+  // marca só (`usuario_clientes` sem `papel`) e faz o resto — `perfis` e
+  // `auditoria` — na mesma passada, porque as três mudam juntas.
+  const colunasUsuarioClientes = new Set(
+    (db.prepare('PRAGMA table_info(usuario_clientes)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!colunasUsuarioClientes.has('papel')) {
+    migrarAcessoParaCliente(db);
+  }
+
+  // Índices que dependem de colunas que só existem depois do schema atual OU
+  // da migração acima — não podem estar em `schema.sql` (que roda ANTES desta
+  // função: numa base antiga, indexar `usuario_clientes.papel` antes de ele
+  // nascer quebraria a abertura) nem só dentro do `if`, porque uma base NOVA
+  // já nasce com a coluna via `schema.sql` e nunca entra nesse bloco.
+  db.exec(`
+CREATE INDEX IF NOT EXISTS ix_usuario_clientes_papel ON usuario_clientes(cliente_id, papel);
+CREATE INDEX IF NOT EXISTS ix_usuario_clientes_perfil ON usuario_clientes(perfil_id);
+CREATE INDEX IF NOT EXISTS ix_perfis_cliente ON perfis(cliente_id, padrao, nome);
+CREATE INDEX IF NOT EXISTS ix_auditoria_cliente ON auditoria(cliente_id, criado_em DESC);
+CREATE INDEX IF NOT EXISTS ix_auditoria_empresa ON auditoria(empresa_id, criado_em DESC);
+`);
+}
+
+/**
+ * Migra Usuários/Perfis/Permissões e a ESCRITA de Auditoria de escopo-por-
+ * -matriz para escopo-por-cliente, sem perder nada do que já existia.
+ *
+ * Chamada uma vez só, quando `usuario_clientes` ainda não tem `papel` — a
+ * marca de que a base é anterior a esta camada.
+ */
+function migrarAcessoParaCliente(db: Conexao): void {
+  db.transaction(() => {
+    // ------------------------------------------------------------- perfis
+    //
+    // Cada matriz tinha os PRÓPRIOS perfis "Somente Visualização"/"Edição",
+    // mais os que alguém customizou. Consolidar por (cliente, nome):
+    // - perfis PADRÃO do mesmo nome sempre mesclam — é a mesma pessoa lógica,
+    //   só existiam duplicados porque a criação era por matriz;
+    // - perfis CUSTOMIZADOS nunca mesclam entre si, mesmo com nome igual —
+    //   não há hoje um caminho que produza intencionalmente "o mesmo perfil
+    //   custom" em duas matrizes, então a coincidência é sempre acidental.
+    interface PerfilAntigo {
+      id: number;
+      empresa_id: number;
+      nome: string;
+      tipo: 'VIEW_ONLY' | 'EDIT';
+      padrao: number;
+      cliente_id: number;
+    }
+    const perfisAntigos = db
+      .prepare(
+        `SELECT p.id, p.empresa_id, p.nome, p.tipo, p.padrao, e.cliente_id
+           FROM perfis p JOIN empresas e ON e.id = p.empresa_id
+          WHERE e.cliente_id IS NOT NULL`,
+      )
+      .all() as PerfilAntigo[];
+    const permissoesAntigas = db
+      .prepare('SELECT perfil_id, modulo, acao FROM perfil_permissoes WHERE permitido = 1')
+      .all() as Array<{ perfil_id: number; modulo: string; acao: string }>;
+    const camposAntigos = db
+      .prepare('SELECT perfil_id, modulo, campo FROM perfil_campos WHERE pode_editar = 0')
+      .all() as Array<{ perfil_id: number; modulo: string; campo: string }>;
+    const nomesDaMatriz = new Map(
+      (db.prepare('SELECT id, nome FROM empresas').all() as Array<{ id: number; nome: string }>).map((e) => [
+        e.id,
+        e.nome,
+      ]),
+    );
+
+    interface PlanoPerfil {
+      clienteId: number;
+      nome: string;
+      tipo: 'VIEW_ONLY' | 'EDIT';
+      padrao: number;
+      origens: number[];
+    }
+    const porGrupo = new Map<string, PerfilAntigo[]>();
+    for (const p of perfisAntigos) {
+      const chave = `${p.cliente_id}::${p.nome}`;
+      const lista = porGrupo.get(chave);
+      if (lista) lista.push(p);
+      else porGrupo.set(chave, [p]);
+    }
+
+    const plano: PlanoPerfil[] = [];
+    for (const grupo of porGrupo.values()) {
+      const clienteId = grupo[0]!.cliente_id;
+      const padroes = grupo.filter((p) => p.padrao === 1);
+      const customizados = grupo.filter((p) => p.padrao !== 1);
+      if (padroes.length) {
+        // Mescla TODOS os padrão do grupo (mesmo cliente, mesmo nome) num só.
+        plano.push({
+          clienteId,
+          nome: padroes[0]!.nome,
+          tipo: padroes[0]!.tipo,
+          padrao: 1,
+          origens: padroes.map((p) => p.id),
+        });
+      }
+      // Customizados NUNCA mesclam — cada cópia vira linha própria. A de menor
+      // id mantém o nome puro (se não colidir com o padrão do grupo); as
+      // demais recebem sufixo com a matriz de origem, determinístico.
+      const ordenado = [...customizados].sort((a, b) => a.id - b.id);
+      ordenado.forEach((p, i) => {
+        const nomeMatriz = nomesDaMatriz.get(p.empresa_id) ?? `matriz ${p.empresa_id}`;
+        const nome = i === 0 && !padroes.length ? p.nome : `${p.nome} — ${nomeMatriz}`;
+        plano.push({ clienteId, nome, tipo: p.tipo, padrao: 0, origens: [p.id] });
+      });
+    }
+
+    // Desambiguação final: garante nomes únicos por cliente, incluindo o caso
+    // raro de duas cópias gerarem o mesmo sufixo (mesma matriz de origem citada
+    // duas vezes não acontece, mas dois clientes com matrizes de mesmo nome sim
+    // — aqui o agrupamento já é por clienteId, então só colisões DENTRO do
+    // mesmo cliente importam).
+    const nomesUsadosPorCliente = new Map<number, Set<string>>();
+    for (const item of plano) {
+      const usados = nomesUsadosPorCliente.get(item.clienteId) ?? new Set<string>();
+      let nomeFinal = item.nome;
+      let sufixo = 2;
+      while (usados.has(nomeFinal)) nomeFinal = `${item.nome} (${sufixo++})`;
+      usados.add(nomeFinal);
+      nomesUsadosPorCliente.set(item.clienteId, usados);
+      item.nome = nomeFinal;
+    }
+
+    db.exec(`CREATE TABLE perfis_nova (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+      nome TEXT NOT NULL,
+      tipo TEXT NOT NULL CHECK (tipo IN ('VIEW_ONLY','EDIT')),
+      padrao INTEGER NOT NULL DEFAULT 0 CHECK (padrao IN (0,1)),
+      criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (cliente_id, nome)
+    )`);
+    const inserirPerfilNovo = db.prepare(
+      'INSERT INTO perfis_nova (cliente_id, nome, tipo, padrao) VALUES (?, ?, ?, ?)',
+    );
+    const oldParaNovo = new Map<number, number>();
+    const origensPorNovo = new Map<number, number>();
+    for (const item of plano) {
+      const novoId = Number(
+        inserirPerfilNovo.run(item.clienteId, item.nome, item.tipo, item.padrao).lastInsertRowid,
+      );
+      for (const origemId of item.origens) oldParaNovo.set(origemId, novoId);
+      origensPorNovo.set(novoId, item.origens.length);
+    }
+
+    // Drop das filhas primeiro (não depende de cascade: já lemos tudo para a
+    // memória), depois a mãe — nessa ordem não há FK pendente em nenhum passo.
+    db.exec('DROP TABLE perfil_permissoes');
+    db.exec('DROP TABLE perfil_campos');
+    db.exec('DROP TABLE perfis');
+    db.exec('ALTER TABLE perfis_nova RENAME TO perfis');
+    db.exec('CREATE INDEX IF NOT EXISTS ix_perfis_cliente ON perfis(cliente_id, padrao, nome)');
+    db.exec(`CREATE TABLE perfil_permissoes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      perfil_id INTEGER NOT NULL REFERENCES perfis(id) ON DELETE CASCADE,
+      modulo TEXT NOT NULL,
+      acao TEXT NOT NULL CHECK (acao IN ('view','create','edit','delete','export','import')),
+      permitido INTEGER NOT NULL DEFAULT 0 CHECK (permitido IN (0,1)),
+      UNIQUE (perfil_id, modulo, acao)
+    )`);
+    db.exec(`CREATE TABLE perfil_campos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      perfil_id INTEGER NOT NULL REFERENCES perfis(id) ON DELETE CASCADE,
+      modulo TEXT NOT NULL,
+      campo TEXT NOT NULL,
+      pode_editar INTEGER NOT NULL DEFAULT 1 CHECK (pode_editar IN (0,1)),
+      UNIQUE (perfil_id, modulo, campo)
+    )`);
+
+    // Permissões: UNIÃO — o padrão é negado, então unir nunca reduz acesso.
+    const gravarPermissao = db.prepare(
+      `INSERT INTO perfil_permissoes (perfil_id, modulo, acao, permitido) VALUES (?, ?, ?, 1)
+         ON CONFLICT(perfil_id, modulo, acao) DO NOTHING`,
+    );
+    for (const linha of permissoesAntigas) {
+      const novoId = oldParaNovo.get(linha.perfil_id);
+      if (novoId) gravarPermissao.run(novoId, linha.modulo, linha.acao);
+    }
+
+    // Campos bloqueados: INTERSEÇÃO — a ausência de linha já significa "pode
+    // editar"; unir bloqueios tiraria edição de quem podia numa das matrizes.
+    // Um campo só continua bloqueado se estava bloqueado em TODAS as cópias.
+    const contagemBloqueio = new Map<string, { novoId: number; modulo: string; campo: string; count: number }>();
+    for (const linha of camposAntigos) {
+      const novoId = oldParaNovo.get(linha.perfil_id);
+      if (!novoId) continue;
+      const chave = `${novoId}::${linha.modulo}::${linha.campo}`;
+      const atual = contagemBloqueio.get(chave) ?? { novoId, modulo: linha.modulo, campo: linha.campo, count: 0 };
+      atual.count += 1;
+      contagemBloqueio.set(chave, atual);
+    }
+    const gravarCampo = db.prepare(
+      'INSERT INTO perfil_campos (perfil_id, modulo, campo, pode_editar) VALUES (?, ?, ?, 0)',
+    );
+    for (const b of contagemBloqueio.values()) {
+      if (b.count >= (origensPorNovo.get(b.novoId) ?? 1)) gravarCampo.run(b.novoId, b.modulo, b.campo);
+    }
+
+    // ---------------------------------------------------- usuario_clientes
+    //
+    // Ganha `papel`/`perfil_id`: o que o usuário PODE, agora do cliente
+    // inteiro. Backfill a partir de `usuario_empresas`, agrupado por
+    // (usuario_id, cliente_id) — nunca reduz o que a pessoa já tinha.
+    db.exec('ALTER TABLE usuario_clientes ADD COLUMN papel TEXT');
+    db.exec('ALTER TABLE usuario_clientes ADD COLUMN perfil_id INTEGER');
+
+    interface VinculoAntigo {
+      usuario_id: number;
+      empresa_id: number;
+      papel: 'gestor' | 'leitor';
+      perfil_id: number | null;
+      cliente_id: number;
+    }
+    const vinculos = db
+      .prepare(
+        `SELECT ue.usuario_id, ue.empresa_id, ue.papel, ue.perfil_id, e.cliente_id
+           FROM usuario_empresas ue JOIN empresas e ON e.id = ue.empresa_id
+          WHERE e.cliente_id IS NOT NULL`,
+      )
+      .all() as VinculoAntigo[];
+
+    const contarPermissoesDoPerfil = (perfilId: number): number =>
+      (
+        db
+          .prepare('SELECT COUNT(*) AS n FROM perfil_permissoes WHERE perfil_id = ? AND permitido = 1')
+          .get(perfilId) as { n: number }
+      ).n;
+    const perfilPadraoDoCliente = (clienteId: number, papel: 'gestor' | 'leitor'): number | null => {
+      const nome = papel === 'gestor' ? 'Edição' : 'Somente Visualização';
+      const linha = db.prepare('SELECT id FROM perfis WHERE cliente_id = ? AND nome = ?').get(clienteId, nome) as
+        | { id: number }
+        | undefined;
+      return linha?.id ?? null;
+    };
+
+    const porUsuarioCliente = new Map<string, VinculoAntigo[]>();
+    for (const v of vinculos) {
+      const chave = `${v.usuario_id}::${v.cliente_id}`;
+      const lista = porUsuarioCliente.get(chave);
+      if (lista) lista.push(v);
+      else porUsuarioCliente.set(chave, [v]);
+    }
+
+    const upsertVinculo = db.prepare(
+      `INSERT INTO usuario_clientes (usuario_id, cliente_id, papel, perfil_id) VALUES (?, ?, ?, ?)
+         ON CONFLICT(usuario_id, cliente_id) DO UPDATE SET papel = excluded.papel, perfil_id = excluded.perfil_id`,
+    );
+    for (const grupo of porUsuarioCliente.values()) {
+      const { usuario_id, cliente_id } = grupo[0]!;
+      // Nunca reduz: gestor em QUALQUER matriz do cliente vence.
+      const papel: 'gestor' | 'leitor' = grupo.some((v) => v.papel === 'gestor') ? 'gestor' : 'leitor';
+
+      let melhor: { perfilId: number | null; pontos: number; explicito: boolean; empresaId: number } | null = null;
+      for (const v of grupo) {
+        const perfilNovoId = v.perfil_id ? (oldParaNovo.get(v.perfil_id) ?? null) : null;
+        const efetivoId = perfilNovoId ?? perfilPadraoDoCliente(cliente_id, v.papel);
+        const pontos = efetivoId ? contarPermissoesDoPerfil(efetivoId) : 0;
+        const candidato = {
+          perfilId: perfilNovoId,
+          pontos,
+          explicito: perfilNovoId !== null,
+          empresaId: v.empresa_id,
+        };
+        if (
+          !melhor ||
+          candidato.pontos > melhor.pontos ||
+          (candidato.pontos === melhor.pontos && candidato.explicito && !melhor.explicito) ||
+          (candidato.pontos === melhor.pontos &&
+            candidato.explicito === melhor.explicito &&
+            candidato.empresaId < melhor.empresaId)
+        ) {
+          melhor = candidato;
+        }
+      }
+      upsertVinculo.run(usuario_id, cliente_id, papel, melhor!.perfilId);
+    }
+
+    // Vínculos de cliente que a adoção de órfãs já criou (acima, sem papel) e
+    // que não têm nenhum `usuario_empresas` correspondente: ganham o mínimo —
+    // leitor, perfil padrão implícito. É a ÚNICA situação desta migração que é
+    // estritamente um GANHO de acesso (antes viam zero matrizes do cliente),
+    // não uma preservação exata — fica registrado para revisão.
+    const semPapel = db.prepare('SELECT usuario_id, cliente_id FROM usuario_clientes WHERE papel IS NULL').all() as Array<{
+      usuario_id: number;
+      cliente_id: number;
+    }>;
+    for (const v of semPapel) {
+      db.prepare('UPDATE usuario_clientes SET papel = ? WHERE usuario_id = ? AND cliente_id = ?').run(
+        'leitor',
+        v.usuario_id,
+        v.cliente_id,
+      );
+      console.warn(
+        `[migração acesso-por-cliente] usuário ${v.usuario_id} tinha vínculo com o cliente ${v.cliente_id} sem ` +
+          'nenhum acesso a matriz específica; recebeu papel "leitor" em todas as matrizes do cliente. Revise se é o esperado.',
+      );
+    }
+
+    // -------------------------------------------------------------- auditoria
+    //
+    // `cliente_id` vira a dimensão primária (NOT NULL); `empresa_id` vira
+    // contexto opcional (nullable) — é o rebuild inteiro porque as duas coisas
+    // mudam de coluna-chave ao mesmo tempo.
+    db.prepare('INSERT OR IGNORE INTO clientes (nome) VALUES (?)').run(CLIENTE_HISTORICO);
+    const donoHistorico = db.prepare('SELECT id FROM clientes WHERE nome = ?').get(CLIENTE_HISTORICO) as {
+      id: number;
+    };
+    db.exec(`CREATE TABLE auditoria_nova (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      cliente_id    INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+      empresa_id    INTEGER REFERENCES empresas(id) ON DELETE SET NULL,
+      usuario_id    INTEGER REFERENCES usuarios(id),
+      usuario_email TEXT,
+      entidade      TEXT NOT NULL,
+      entidade_id   INTEGER,
+      acao          TEXT NOT NULL,
+      justificativa TEXT,
+      dados_antes   TEXT,
+      dados_depois  TEXT,
+      criado_em     TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    db.prepare(
+      `INSERT INTO auditoria_nova
+         (id, cliente_id, empresa_id, usuario_id, usuario_email, entidade, entidade_id, acao, justificativa, dados_antes, dados_depois, criado_em)
+       SELECT a.id, COALESCE(e.cliente_id, ?), a.empresa_id, a.usuario_id, a.usuario_email,
+              a.entidade, a.entidade_id, a.acao, a.justificativa, a.dados_antes, a.dados_depois, a.criado_em
+         FROM auditoria a LEFT JOIN empresas e ON e.id = a.empresa_id`,
+    ).run(donoHistorico.id);
+    db.exec('DROP TABLE auditoria');
+    db.exec('ALTER TABLE auditoria_nova RENAME TO auditoria');
+  })();
 }
 
 export function db(): Conexao {

@@ -570,21 +570,41 @@ function formCadastro(tipo) {
   });
 }
 
+/**
+ * A trilha é do CLIENTE — um documento só, não um por matriz. `empresa` em
+ * cada linha é o CONTEXTO do evento: presente para o que pertence a uma
+ * matriz, ausente para o que é do cliente inteiro (usuário, perfil). Já foi
+ * por matriz; sem o documento novo, promove os antigos na primeira leitura —
+ * o mesmo padrão já usado para integrações e para usuários/perfis.
+ */
 async function viewAuditoria() {
-  const itens = [];
-  for (const e of escopoEmpresas()) {
-    const s = await E.db.doc('auditoria/' + e).get();
-    for (const a of (s.exists ? (s.data().itens || []) : [])) itens.push({ ...a, empresa: e });
+  const cliente = E.clienteSel;
+  const s = await E.db.doc('auditoria/cliente__' + cliente).get();
+  let itens = s.exists ? (s.data().itens || []) : [];
+  if (!s.exists) {
+    for (const e of matrizesDoClienteAtivo()) {
+      const antigo = await E.db.doc('auditoria/' + e).get();
+      for (const a of (antigo.exists ? (antigo.data().itens || []) : [])) itens.push({ ...a, empresa: e });
+    }
   }
-  itens.sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
+  itens.sort((a, b) => String(b.quando || '').localeCompare(String(a.quando || '')));
+
+  // Filtro local de matriz: refinamento OPCIONAL dentro do cliente, nunca o
+  // contrário. Com o filtro ativo, o evento sem matriz (do cliente inteiro)
+  // não aparece — não há como dizer que ele "é" de uma das matrizes escolhidas.
+  const filtroAtivo = filtroDaTela().empresas.size > 0;
+  const escopo = new Set(escopoEmpresas());
+  const filtrados = filtroAtivo ? itens.filter((a) => a.empresa && escopo.has(a.empresa)) : itens;
+  const mostrarColuna = escopo.size > 1 || filtrados.some((a) => !a.empresa);
+
   el('#pagina').innerHTML = `
     <div class="msg">Nenhuma alteração relevante ocorre sem trilha: quem, quando e o quê. Registros mais recentes primeiro.</div>
-    <section class="bloco"><header><h2>Trilha de auditoria</h2><span class="nota">${inteiro(itens.length)} eventos</span></header>
-      ${itens.length===0 ? '<p class="vazio">Nenhum evento registrado nesta empresa ainda.</p>' : `
-      <div class="rol"><table><thead><tr><th>Quando</th>${E.empresasSel.size>1?'<th>Empresa</th>':''}<th>Entidade</th><th>Ação</th><th>Justificativa</th><th>Alteração</th></tr></thead>
-      <tbody>${itens.slice(0,250).map((a)=>`<tr>
+    <section class="bloco"><header><h2>Trilha de auditoria</h2><span class="nota">${inteiro(filtrados.length)} eventos</span></header>
+      ${filtrados.length===0 ? '<p class="vazio">Nenhum evento registrado neste cliente ainda.</p>' : `
+      <div class="rol"><table><thead><tr><th>Quando</th>${mostrarColuna?'<th>Unidade</th>':''}<th>Entidade</th><th>Ação</th><th>Justificativa</th><th>Alteração</th></tr></thead>
+      <tbody>${filtrados.slice(0,250).map((a)=>`<tr>
         <td style="white-space:nowrap">${new Date(a.quando).toLocaleString('pt-BR')}</td>
-        ${E.empresasSel.size>1?`<td>${esc(nomeEmpresa(a.empresa))}</td>`:''}
+        ${mostrarColuna?`<td>${a.empresa ? esc(nomeEmpresa(a.empresa)) : '<span class="nota">todo o cliente</span>'}</td>`:''}
         <td>${esc(a.entidade||'')}</td>
         <td><span class="tag ${a.acao==='excluir'?'crit':a.acao==='criar'?'bom':''}">${esc(a.acao)}</span></td>
         <td style="max-width:220px">${esc(a.justificativa||'—')}</td>

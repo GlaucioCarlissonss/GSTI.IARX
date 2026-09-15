@@ -162,13 +162,25 @@ export function atualizarCliente(id: number, dados: Partial<EntradaCliente>) {
   return obterCliente(id);
 }
 
-/** Dá acesso de um usuário a um cliente. Idempotente. */
-export function vincularUsuario(usuarioId: number, clienteId: number) {
+/**
+ * Dá acesso de um usuário a um cliente — vale em TODA matriz e filial dele.
+ * Idempotente na existência do vínculo: chamar de novo não pisa num papel já
+ * concedido (mudar papel/perfil é `atualizarUsuario`, não isto).
+ */
+export function vincularUsuario(
+  usuarioId: number,
+  clienteId: number,
+  papel: 'gestor' | 'leitor' = 'leitor',
+  perfilId: number | null = null,
+) {
   obterCliente(clienteId);
   db()
-    .prepare('INSERT OR IGNORE INTO usuario_clientes (usuario_id, cliente_id) VALUES (?, ?)')
-    .run(usuarioId, clienteId);
-  return { usuario_id: usuarioId, cliente_id: clienteId };
+    .prepare(
+      `INSERT INTO usuario_clientes (usuario_id, cliente_id, papel, perfil_id) VALUES (?, ?, ?, ?)
+         ON CONFLICT (usuario_id, cliente_id) DO NOTHING`,
+    )
+    .run(usuarioId, clienteId, papel, perfilId);
+  return { usuario_id: usuarioId, cliente_id: clienteId, papel, perfil_id: perfilId };
 }
 
 export function desvincularUsuario(usuarioId: number, clienteId: number) {

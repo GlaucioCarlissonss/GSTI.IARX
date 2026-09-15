@@ -240,13 +240,23 @@ const Loja = {
     await E.db.doc('lanc/' + k).set(corpo);
     E.lanc.set(k, corpo);
   },
+  /**
+   * A trilha é do CLIENTE — dimensão primária, sempre presente. `empresa` é
+   * só o CONTEXTO do evento: preenchido para o que pertence a uma matriz
+   * (lançamento, filial, projeto...), ausente para o que é do cliente inteiro
+   * (usuário, perfil — chame com `null` nesses casos). Já foi um documento por
+   * matriz; a leitura antiga (`auditoria/<empresa>`) é promovida sob demanda em
+   * `viewAuditoria`, o mesmo padrão já usado para integrações e acesso.
+   */
   async auditar(entrada, empresa = empresaAtiva()) {
     try {
-      if (!empresa) return;
-      const ref = E.db.doc('auditoria/' + empresa);
+      const obj = empresa ? E.empresas.find((e) => e.id === empresa) : null;
+      const cliente = obj ? clienteDaEmpresa(obj) : E.clienteSel;
+      if (!cliente) return;
+      const ref = E.db.doc('auditoria/cliente__' + cliente);
       const s = await ref.get();
       const itens = s.exists ? (s.data().itens || []) : [];
-      itens.unshift({ ...entrada, quando: new Date().toISOString() });
+      itens.unshift({ ...entrada, empresa: empresa || undefined, quando: new Date().toISOString() });
       await ref.set({ itens: itens.slice(0, 400) });   // trilha limitada, sem crescer sem fim
     } catch { /* a trilha nunca bloqueia a operação de negócio */ }
   },
@@ -353,27 +363,91 @@ const Loja = {
     E.eventos.set(empresa, itens);
   },
   // ----------------------------------------------------------------- acesso
-  async usuariosDa(empresa) {
-    if (E.usuarios.has(empresa)) return E.usuarios.get(empresa);
-    const s = await E.db.doc('usuarios/' + empresa).get();
-    const itens = s.exists ? (s.data().itens || []) : [];
-    E.usuarios.set(empresa, itens);
+  //
+  // Usuário e perfil são do CLIENTE, não da matriz: a permissão vale em toda
+  // unidade dele. Já foram por empresa — mesma migração-por-leitura das
+  // integrações (ver `integracoesDa`/`integracoesHerdadas` acima): o documento
+  // do cliente é consultado primeiro, e só na ausência dele os documentos
+  // antigos por matriz são promovidos e consolidados.
+  async usuariosDoCliente(cliente) {
+    if (E.usuarios.has(cliente)) return E.usuarios.get(cliente);
+    const s = await E.db.doc('usuarios/cliente__' + cliente).get();
+    let itens = s.exists ? (s.data().itens || []) : [];
+    if (!s.exists) itens = await Loja.usuariosHerdados(cliente);
+    E.usuarios.set(cliente, itens);
     return itens;
   },
-  async gravarUsuarios(empresa, itens) {
-    await E.db.doc('usuarios/' + empresa).set({ itens });
-    E.usuarios.set(empresa, itens);
+  /**
+   * Usuários que estavam por matriz, promovidos ao cliente.
+   *
+   * A mesma pessoa podia estar cadastrada em mais de uma matriz do mesmo
+   * cliente, com papéis diferentes — nunca deveria, mas o cadastro antigo não
+   * impedia. Uma linha por e-mail, e o papel mais permissivo vence: perder
+   * acesso que alguém já tinha na migração seria pior que duplicar.
+   */
+  async usuariosHerdados(cliente) {
+    const porEmail = new Map();
+    for (const e of empresasDoCliente(cliente)) {
+      const s = await E.db.doc('usuarios/' + e.id).get();
+      for (const u of (s.exists ? (s.data().itens || []) : [])) {
+        const atual = porEmail.get(u.email);
+        const vence = !atual || (atual.perfil !== 'gestor' && u.perfil === 'gestor');
+        if (vence) porEmail.set(u.email, u);
+      }
+    }
+    return [...porEmail.values()];
   },
-  async perfisDa(empresa) {
-    if (E.perfis.has(empresa)) return E.perfis.get(empresa);
-    const s = await E.db.doc('perfis/' + empresa).get();
-    const itens = s.exists ? (s.data().itens || []) : [];
-    E.perfis.set(empresa, itens);
+  async gravarUsuarios(cliente, itens) {
+    await E.db.doc('usuarios/cliente__' + cliente).set({ itens, cliente });
+    E.usuarios.set(cliente, itens);
+  },
+  async perfisDoCliente(cliente) {
+    if (E.perfis.has(cliente)) return E.perfis.get(cliente);
+    const s = await E.db.doc('perfis/cliente__' + cliente).get();
+    let itens = s.exists ? (s.data().itens || []) : [];
+    if (!s.exists) itens = await Loja.perfisHerdados(cliente);
+    E.perfis.set(cliente, itens);
     return itens;
   },
-  async gravarPerfis(empresa, itens) {
-    await E.db.doc('perfis/' + empresa).set({ itens });
-    E.perfis.set(empresa, itens);
+  /**
+   * Perfis por matriz, promovidos ao cliente.
+   *
+   * Os dois perfis PADRÃO de cada matriz mesclam num só por nome: a
+   * permissão é a UNIÃO das cópias (o padrão é negar, então unir nunca tira
+   * acesso de quem já tinha). Perfis CUSTOMIZADOS nunca mesclam entre si —
+   * mesmo nome em duas matrizes é coincidência, não a mesma coisa — e ganham
+   * sufixo da matriz de origem se colidirem com o nome escolhido.
+   */
+  async perfisHerdados(cliente) {
+    const porNomePadrao = new Map();
+    const customizados = [];
+    for (const e of empresasDoCliente(cliente)) {
+      const s = await E.db.doc('perfis/' + e.id).get();
+      for (const p of (s.exists ? (s.data().itens || []) : [])) {
+        if (!p.padrao) { customizados.push({ ...p, origemMatriz: e.id }); continue; }
+        const atual = porNomePadrao.get(p.nome);
+        if (!atual) { porNomePadrao.set(p.nome, { ...p, id: novoId() }); continue; }
+        for (const mod of Object.keys(p.permissoes || {})) {
+          atual.permissoes[mod] = atual.permissoes[mod] || {};
+          for (const acao of Object.keys(p.permissoes[mod] || {})) {
+            atual.permissoes[mod][acao] = atual.permissoes[mod][acao] || p.permissoes[mod][acao];
+          }
+        }
+      }
+    }
+    const nomesUsados = new Set([...porNomePadrao.values()].map((p) => p.nome));
+    const finalCustom = [];
+    for (const p of customizados) {
+      let nome = p.nome;
+      if (nomesUsados.has(nome)) nome = `${p.nome} — ${nomeEmpresa(p.origemMatriz)}`;
+      nomesUsados.add(nome);
+      finalCustom.push({ ...p, id: novoId(), origemMatriz: undefined, nome });
+    }
+    return [...porNomePadrao.values(), ...finalCustom];
+  },
+  async gravarPerfis(cliente, itens) {
+    await E.db.doc('perfis/cliente__' + cliente).set({ itens, cliente });
+    E.perfis.set(cliente, itens);
   },
   async gravarCatalogo(nome, itens) {
     await E.db.doc('catalogo/' + nome).set({ itens });

@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { abrirBanco, definirBanco } from '../src/db/index.js';
+import { abrirBanco, db, definirBanco } from '../src/db/index.js';
 import { autenticar, registrar, registroAberto, verificarToken } from '../src/domain/auth.js';
-import { acessoDoUsuario, concederAcesso, criarEmpresa, listarEmpresasDoUsuario } from '../src/domain/empresas.js';
+import { acessoDoUsuario, criarEmpresa, listarEmpresasDoUsuario } from '../src/domain/empresas.js';
+import { clienteDaEmpresa, vincularUsuario } from '../src/domain/clientes.js';
 import { listarTiposDespesa, TIPOS_DESPESA_PADRAO } from '../src/domain/cadastros.js';
 import { SEGREDO_DE_TESTE } from './apoio.js';
 
@@ -111,6 +112,7 @@ test('a primeira empresa nasce com os tipos padrão e o criador como gestor', ()
   assert.deepEqual(listarEmpresasDoUsuario(usuario.id).map((e) => e.nome), ['Minha Empresa']);
 
   const ctx = {
+    clienteId: clienteDaEmpresa(empresa.id),
     empresaId: empresa.id,
     empresaIds: [empresa.id],
     usuarioId: usuario.id,
@@ -121,7 +123,7 @@ test('a primeira empresa nasce com os tipos padrão e o criador como gestor', ()
   assert.deepEqual(tipos, [...TIPOS_DESPESA_PADRAO].sort());
 });
 
-test('acesso concedido a outro usuário respeita o papel', () => {
+test('acesso concedido a outro usuário respeita o papel, em toda matriz do cliente', () => {
   bancoVazio();
   const dono = registrar({ nome: 'Gestor', email: 'gestor@exemplo.com', senha: 'senha-bem-forte-1' });
   process.env.REGISTRO_ABERTO = 'true';
@@ -129,11 +131,18 @@ test('acesso concedido a outro usuário respeita o papel', () => {
   delete process.env.REGISTRO_ABERTO;
 
   const empresa = criarEmpresa(dono.id, { nome: 'Minha Empresa' });
+  const clienteId = clienteDaEmpresa(empresa.id)!;
   assert.equal(acessoDoUsuario(convidado.id, empresa.id), null, 'sem vínculo, sem acesso');
 
-  concederAcesso(empresa.id, 'leitor@exemplo.com', 'leitor');
+  // O acesso é do CLIENTE: uma vez concedido, vale na matriz — e valeria em
+  // qualquer outra que o mesmo cliente viesse a ter.
+  vincularUsuario(convidado.id, clienteId, 'leitor');
   assert.equal(acessoDoUsuario(convidado.id, empresa.id), 'leitor');
 
-  concederAcesso(empresa.id, 'leitor@exemplo.com', 'gestor');
+  // `vincularUsuario` não pisa num papel já concedido — é `atualizarUsuario`
+  // quem muda; aqui a conferência é direta no banco, sem passar pela rota.
+  db()
+    .prepare('UPDATE usuario_clientes SET papel = ? WHERE usuario_id = ? AND cliente_id = ?')
+    .run('gestor', convidado.id, clienteId);
   assert.equal(acessoDoUsuario(convidado.id, empresa.id), 'gestor', 'o papel é atualizado, não duplicado');
 });

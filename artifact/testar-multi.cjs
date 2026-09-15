@@ -124,7 +124,7 @@ const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||''));
   await ir('Auditoria');
   const cabAud = await pag.$$eval('#pagina thead th', (ts) => ts.map((t) => t.textContent));
   console.log('    colunas da auditoria:', cabAud.join(' | '));
-  confere('auditoria ganha coluna de empresa', cabAud.includes('Empresa'), true);
+  confere('auditoria ganha coluna de unidade', cabAud.includes('Unidade'), true);
   confere('auditoria junta as duas trilhas', await pag.$$eval('#pagina tbody tr', (r) => r.length), 2);
 
   // O filtro de empresa vive na barra DA TELA: em Auditoria ele nem existe.

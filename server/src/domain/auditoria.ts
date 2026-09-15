@@ -1,6 +1,6 @@
 import { db } from '../db/index.js';
 import type { Contexto } from './contexto.js';
-import { escopoSql } from './escopo.js';
+import { escopoDeLeitura } from './escopo.js';
 
 export interface RegistroAuditoria {
   entidade: string;
@@ -9,20 +9,33 @@ export interface RegistroAuditoria {
   justificativa?: string | null;
   antes?: unknown;
   depois?: unknown;
+  /**
+   * Falso para eventos de nível de CLIENTE (usuário, perfil, cliente) — a
+   * matriz em foco no cabeçalho da requisição não é o alvo real do evento, e
+   * gravá-la seria um metadado arbitrário, não contexto de verdade. Default
+   * `true`: preserva o comportamento de hoje para tudo o que continua ligado
+   * a uma matriz (lançamento, filial, tipo de despesa, fila, tópico...).
+   */
+  comEmpresa?: boolean;
 }
 
 /**
  * Nenhuma alteração relevante ocorre sem trilha: quem, quando e o quê.
+ *
+ * `cliente_id` é sempre gravado — é a dimensão que toda leitura filtra
+ * primeiro. `empresa_id` é só CONTEXTO do evento, e fica nulo quando o alvo
+ * não é uma matriz específica (ver `comEmpresa` acima).
  */
 export function auditar(ctx: Contexto, registro: RegistroAuditoria): void {
   db()
     .prepare(
       `INSERT INTO auditoria
-         (empresa_id, usuario_id, usuario_email, entidade, entidade_id, acao, justificativa, dados_antes, dados_depois)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (cliente_id, empresa_id, usuario_id, usuario_email, entidade, entidade_id, acao, justificativa, dados_antes, dados_depois)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
-      ctx.empresaId,
+      ctx.clienteId,
+      registro.comEmpresa === false ? null : ctx.empresaId,
       ctx.usuarioId,
       ctx.usuarioEmail,
       registro.entidade,
@@ -87,11 +100,17 @@ export interface FiltroAuditoria {
 }
 
 export function listarAuditoria(ctx: Contexto, filtro: FiltroAuditoria = {}) {
-  // A trilha é do cliente: quem audita procura um registro, e não sabe de
-  // antemão em qual unidade ele foi alterado.
-  const alcance = escopoSql(ctx, filtro.empresas);
-  const condicoes = [alcance.sql];
-  const params: unknown[] = [...alcance.params];
+  // A trilha é do CLIENTE — primeiro e sempre. O filtro de matriz é um
+  // refinamento OPCIONAL por dentro dele, nunca o contrário: um evento de
+  // nível de cliente (empresa_id nulo) só aparece quando nenhum filtro de
+  // matriz está ativo, por definição.
+  const condicoes = ['cliente_id = ?'];
+  const params: unknown[] = [ctx.clienteId];
+  if (filtro.empresas && filtro.empresas.length) {
+    const dentro = escopoDeLeitura(ctx, filtro.empresas); // 403 se fora do cliente
+    condicoes.push(`empresa_id IN (${dentro.map(() => '?').join(',')})`);
+    params.push(...dentro);
+  }
   if (filtro.entidade) {
     condicoes.push('entidade = ?');
     params.push(filtro.entidade);

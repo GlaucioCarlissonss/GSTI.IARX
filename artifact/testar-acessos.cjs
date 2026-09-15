@@ -159,7 +159,7 @@ const { irPara } = require('./ajuda-testes.cjs');
   console.log('\n--- acessos: perfis padrão nascem com a tela ---');
   await irPara(pag, 'Usuários e acessos', 900);
   const inicio = await pag.evaluate(async () => {
-    const perfis = await Loja.perfisDa(empresaAtiva());
+    const perfis = await Loja.perfisDoCliente(E.clienteSel);
     const leitura = perfis.find((p) => p.tipo === 'VIEW_ONLY');
     const edicao = perfis.find((p) => p.tipo === 'EDIT');
     return { quantos: perfis.length, padrao: perfis.every((p) => p.padrao),
@@ -170,7 +170,7 @@ const { irPara } = require('./ajuda-testes.cjs');
       edicaoCria: perfilPode(edicao, 'financeiro', 'create'),
       edicaoAdministra: perfilPode(edicao, 'usuarios', 'edit') };
   });
-  ok('a empresa ganha os dois perfis padrão', inicio.quantos === 2 && inicio.padrao, `${inicio.quantos}`);
+  ok('o cliente ganha os dois perfis padrão', inicio.quantos === 2 && inicio.padrao, `${inicio.quantos}`);
   ok('quem só lê vê o financeiro', inicio.leituraVeFinanceiro);
   ok('mas não escreve nele', inicio.leituraEscreve === false);
   ok('e nem enxerga as telas administrativas',
@@ -188,13 +188,38 @@ const { irPara } = require('./ajuda-testes.cjs');
   await pag.click('.modal [data-s]');
   await pag.waitForTimeout(700);
   const criado = await pag.evaluate(async () => {
-    const u = (await Loja.usuariosDa(empresaAtiva()))[0];
-    return { quantos: (await Loja.usuariosDa(empresaAtiva())).length, username: u && u.username,
+    const u = (await Loja.usuariosDoCliente(E.clienteSel))[0];
+    return { quantos: (await Loja.usuariosDoCliente(E.clienteSel)).length, username: u && u.username,
       email: u && u.email, ativo: u && u.ativo };
   });
   ok('o usuário fica gravado', criado.quantos === 1 && criado.ativo === true);
   ok('com login e e-mail separados', criado.username === 'maria.souza' && criado.email === 'maria.souza@exemplo.com.br',
     `${criado.username} · ${criado.email}`);
+
+  console.log('\n--- o mesmo usuário e perfil aparecem em qualquer matriz do cliente ---');
+  const duasMatrizes = await pag.evaluate(async () => {
+    const doCliente = matrizesDoClienteAtivo();
+    if (doCliente.length < 2) return { pulou: true };
+    const daqui = { usuarios: (await Loja.usuariosDoCliente(E.clienteSel)).length,
+      perfis: (await Loja.perfisDoCliente(E.clienteSel)).length };
+    // Troca a unidade em foco (não o cliente) — Usuários e acessos não lê mais
+    // a matriz em foco nenhuma, então o resultado não pode mudar.
+    E.empresaFoco = doCliente.find((id) => id !== E.empresaFoco) || doCliente[1];
+    await render();
+    const dali = { usuarios: (await Loja.usuariosDoCliente(E.clienteSel)).length,
+      perfis: (await Loja.perfisDoCliente(E.clienteSel)).length };
+    return { pulou: false, daqui, dali };
+  });
+  if (duasMatrizes.pulou) {
+    console.log('  (cliente de teste com uma matriz só — cenário pulado)');
+  } else {
+    ok('mesma contagem de usuários trocando a unidade em foco',
+      duasMatrizes.daqui.usuarios === duasMatrizes.dali.usuarios && duasMatrizes.dali.usuarios > 0,
+      `${duasMatrizes.daqui.usuarios} → ${duasMatrizes.dali.usuarios}`);
+    ok('mesma contagem de perfis, sem duplicar',
+      duasMatrizes.daqui.perfis === duasMatrizes.dali.perfis, `${duasMatrizes.daqui.perfis} → ${duasMatrizes.dali.perfis}`);
+  }
+  await irPara(pag, 'Usuários e acessos', 900);
 
   console.log('\n--- login repetido é recusado ---');
   await pag.click('#u-novo');
@@ -225,14 +250,18 @@ const { irPara } = require('./ajuda-testes.cjs');
   await pag.click('.modal [data-sim]');
   await pag.waitForTimeout(800);
   const inativado = await pag.evaluate(async () => {
-    const lista = await Loja.usuariosDa(empresaAtiva());
-    const trilha = await E.db.doc('auditoria/' + empresaAtiva()).get();
+    const lista = await Loja.usuariosDoCliente(E.clienteSel);
+    const trilha = await E.db.doc('auditoria/cliente__' + E.clienteSel).get();
     const reg = (trilha.exists ? trilha.data().itens : []).find((a) => a.entidade === 'usuario' && a.acao === 'inativar');
-    return { quantos: lista.length, ativo: lista[0].ativo, justificativa: reg && reg.justificativa };
+    return { quantos: lista.length, ativo: lista[0].ativo, justificativa: reg && reg.justificativa,
+      // Evento de nível de cliente: sem matriz de contexto — `empresa` não
+      // pode ter sido carimbado com a unidade em foco por engano.
+      semMatrizDeContexto: reg && reg.empresa === undefined };
   });
   ok('o cadastro continua na base', inativado.quantos === 1);
   ok('apenas inativo', inativado.ativo === false);
   ok('e a trilha guarda o porquê', /Desligamento/.test(inativado.justificativa || ''), inativado.justificativa);
+  ok('evento de usuário não carimba uma matriz que não é dele', inativado.semMatrizDeContexto);
 
   console.log('\n--- a matriz de permissões se ajusta caixa a caixa ---');
   await pag.click('tr[data-p]:last-child [data-perm]');
@@ -254,7 +283,7 @@ const { irPara } = require('./ajuda-testes.cjs');
   await pag.click('.modal [data-s]');
   await pag.waitForTimeout(800);
   const salva = await pag.evaluate(async () => {
-    const p = (await Loja.perfisDa(empresaAtiva())).find((x) => x.tipo === 'EDIT');
+    const p = (await Loja.perfisDoCliente(E.clienteSel)).find((x) => x.tipo === 'EDIT');
     return { ve: perfilPode(p, 'projetos', 'view'), cria: perfilPode(p, 'projetos', 'create'),
       financeiro: perfilPode(p, 'financeiro', 'create') };
   });
@@ -265,9 +294,9 @@ const { irPara } = require('./ajuda-testes.cjs');
   await pag.evaluate(async () => {
     // Volta o perfil de edição ao padrão, para a pré-visualização medir o que
     // o perfil de leitura esconde, e não o ajuste do teste anterior.
-    const lista = (await Loja.perfisDa(empresaAtiva())).map((p) =>
+    const lista = (await Loja.perfisDoCliente(E.clienteSel)).map((p) =>
       p.tipo === 'EDIT' ? { ...p, permissoes: permissoesPadrao('EDIT') } : p);
-    await Loja.gravarPerfis(empresaAtiva(), lista);
+    await Loja.gravarPerfis(E.clienteSel, lista);
     await render();
   });
   await pag.waitForTimeout(500);

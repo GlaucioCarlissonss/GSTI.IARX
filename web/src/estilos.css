@@ -131,10 +131,14 @@ a { color: var(--serie-1); }
 }
 .menu a:hover { background: var(--superficie-2); color: var(--tinta); }
 .menu a.ativo { background: var(--superficie-2); color: var(--tinta); font-weight: 550; }
+.menu a:focus-visible { outline: 2px solid var(--serie-1); outline-offset: -2px; }
 .menu a .glifo { width: 16px; text-align: center; opacity: 0.75; }
 /* Submenu: rótulo do agrupamento e as entradas indentadas sob ele. */
 .menu-sub { font-size: 11px; color: var(--tinta-fraca); padding: 8px 8px 2px 30px; }
 .menu a.aninhado { padding-left: 30px; font-size: 13px; }
+/* Discreto: diz se o item olha a unidade em foco ou o cliente inteiro, sem
+   competir visualmente com o rótulo do módulo. */
+.menu-escopo { margin-left: auto; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tinta-fraca); }
 
 .conteudo { display: flex; flex-direction: column; min-width: 0; }
 

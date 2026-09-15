@@ -1,5 +1,5 @@
 import { db, emTransacao } from '../db/index.js';
-import { erroConflito, erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
+import { erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
 import { FILAS_PADRAO, TIPOS_DESPESA_PADRAO } from './cadastros.js';
 
 export interface EmpresaDoUsuario {
@@ -15,9 +15,9 @@ export interface EmpresaDoUsuario {
 export function listarEmpresasDoUsuario(usuarioId: number): EmpresaDoUsuario[] {
   return db()
     .prepare(
-      `SELECT e.id, e.nome, e.cnpj, e.status, e.cliente_id, ue.papel
-         FROM empresas e JOIN usuario_empresas ue ON ue.empresa_id = e.id
-        WHERE ue.usuario_id = ? ORDER BY e.nome`,
+      `SELECT e.id, e.nome, e.cnpj, e.status, e.cliente_id, uc.papel
+         FROM empresas e JOIN usuario_clientes uc ON uc.cliente_id = e.cliente_id
+        WHERE uc.usuario_id = ? ORDER BY e.nome`,
     )
     .all(usuarioId) as EmpresaDoUsuario[];
 }
@@ -26,47 +26,44 @@ export function listarEmpresasDoUsuario(usuarioId: number): EmpresaDoUsuario[] {
  * As matrizes DESTE cliente a que esta pessoa tem acesso — o escopo de leitura
  * de todas as telas.
  *
- * O cruzamento é o ponto: nem todas as empresas do cliente (haveria vazamento
- * entre usuários do mesmo contratante), nem todas as empresas do usuário (elas
- * podem ser de clientes diferentes, e o recorte externo é o cliente).
+ * O acesso é do CLIENTE, não da matriz individual: uma vez vinculado, o
+ * usuário vê TODAS as matrizes dele — não há mais como restringir a um
+ * subconjunto. (Consulta em SQL puro, em vez de importar `usuarioTemCliente`/
+ * `empresasDoCliente` de `clientes.ts`, para não fechar um ciclo de import —
+ * aquele módulo já importa deste.)
  */
 export function empresasAcessiveis(usuarioId: number, clienteId: number): number[] {
+  const tem = db()
+    .prepare('SELECT 1 FROM usuario_clientes WHERE usuario_id = ? AND cliente_id = ?')
+    .get(usuarioId, clienteId);
+  if (!tem) return [];
   return (
-    db()
-      .prepare(
-        `SELECT e.id
-           FROM empresas e JOIN usuario_empresas ue ON ue.empresa_id = e.id
-          WHERE ue.usuario_id = ? AND e.cliente_id = ?
-          ORDER BY e.nome`,
-      )
-      .all(usuarioId, clienteId) as Array<{ id: number }>
+    db().prepare('SELECT id FROM empresas WHERE cliente_id = ? ORDER BY nome').all(clienteId) as Array<{
+      id: number;
+    }>
   ).map((e) => e.id);
 }
 
 export function acessoDoUsuario(usuarioId: number, empresaId: number): 'gestor' | 'leitor' | null {
   const linha = db()
-    .prepare('SELECT papel FROM usuario_empresas WHERE usuario_id = ? AND empresa_id = ?')
+    .prepare(
+      `SELECT uc.papel FROM usuario_clientes uc
+         JOIN empresas e ON e.cliente_id = uc.cliente_id
+        WHERE uc.usuario_id = ? AND e.id = ?`,
+    )
     .get(usuarioId, empresaId) as { papel: 'gestor' | 'leitor' } | undefined;
   return linha?.papel ?? null;
 }
 
 /**
- * Deixa a matriz recém-criada PRONTA para receber dado: catálogos padrão e,
- * quando há um usuário criando, o vínculo que a faz aparecer no seletor.
+ * Deixa a matriz recém-criada PRONTA para receber dado: catálogos padrão.
  *
+ * O vínculo de acesso não é mais daqui: é do cliente (`usuario_clientes`), e
+ * uma vez concedido vale para toda matriz dele — inclusive as criadas depois.
  * Toda porta de criação de matriz passa por aqui — é o que evita a matriz que
- * existe no banco, não aparece para ninguém e não aceita lançamento por falta
- * de tipo de despesa.
+ * existe no banco e não aceita lançamento por falta de tipo de despesa.
  */
-export function prepararMatriz(empresaId: number, usuarioId?: number): void {
-  if (usuarioId) {
-    db()
-      .prepare(
-        `INSERT INTO usuario_empresas (usuario_id, empresa_id, papel) VALUES (?, ?, 'gestor')
-         ON CONFLICT (usuario_id, empresa_id) DO NOTHING`,
-      )
-      .run(usuarioId, empresaId);
-  }
+export function prepararMatriz(empresaId: number, _usuarioId?: number): void {
   const temTipo = db().prepare('SELECT id FROM tipos_despesa WHERE empresa_id = ?').get(empresaId);
   if (!temTipo) {
     const inserirTipo = db().prepare('INSERT INTO tipos_despesa (empresa_id, nome) VALUES (?, ?)');
@@ -103,8 +100,13 @@ export function criarEmpresa(
         existente?.id ??
         Number(db().prepare('INSERT INTO clientes (nome) VALUES (?)').run(nome).lastInsertRowid);
     }
+    // Quem cria a empresa é gestor do cliente dela — sem isso, criar seria a
+    // forma mais rápida de produzir uma empresa que ninguém administra.
     db()
-      .prepare('INSERT OR IGNORE INTO usuario_clientes (usuario_id, cliente_id) VALUES (?, ?)')
+      .prepare(
+        `INSERT INTO usuario_clientes (usuario_id, cliente_id, papel) VALUES (?, ?, 'gestor')
+           ON CONFLICT (usuario_id, cliente_id) DO NOTHING`,
+      )
       .run(usuarioId, clienteId);
 
     const info = db()
@@ -137,28 +139,3 @@ export function atualizarEmpresa(
   return db().prepare('SELECT id, nome, cnpj, status FROM empresas WHERE id = ?').get(empresaId);
 }
 
-export function concederAcesso(empresaId: number, email: string, papel: 'gestor' | 'leitor') {
-  const usuario = db().prepare('SELECT id FROM usuarios WHERE email = ?').get(email.trim()) as
-    | { id: number }
-    | undefined;
-  if (!usuario) throw erroNaoEncontrado(`Nenhum usuário cadastrado com o e-mail ${email}.`);
-  const existente = acessoDoUsuario(usuario.id, empresaId);
-  if (existente === papel) throw erroConflito(`O usuário já possui o papel "${papel}" nesta empresa.`);
-  db()
-    .prepare(
-      `INSERT INTO usuario_empresas (usuario_id, empresa_id, papel) VALUES (?, ?, ?)
-       ON CONFLICT (usuario_id, empresa_id) DO UPDATE SET papel = excluded.papel`,
-    )
-    .run(usuario.id, empresaId, papel);
-  return { usuario_id: usuario.id, email, papel };
-}
-
-export function listarAcessos(empresaId: number) {
-  return db()
-    .prepare(
-      `SELECT u.id AS usuario_id, u.nome, u.email, ue.papel
-         FROM usuario_empresas ue JOIN usuarios u ON u.id = ue.usuario_id
-        WHERE ue.empresa_id = ? ORDER BY u.nome`,
-    )
-    .all(empresaId);
-}

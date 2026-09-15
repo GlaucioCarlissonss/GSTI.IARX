@@ -40,6 +40,12 @@ const ABAS = [
   { id:'auditoria',   rotulo:'Auditoria',    view: viewAuditoria },
 ];
 
+// As abas do módulo "Sistema" não têm todas o mesmo escopo: Dados e Cadastros
+// olham a unidade em foco, trocável na própria tela; Clientes e unidades,
+// Usuários e acessos e Auditoria olham o cliente inteiro. Um selo único no
+// grupo seria impreciso — por isso o ponto vai por aba, só nestas três.
+const ESCOPO_CLIENTE = new Set(['clientes', 'acessos', 'auditoria']);
+
 /** Módulo a que a aba pertence. */
 const moduloDaAba = (aba) => MODULOS_NAV.find((m) => m.abas.includes(aba)) || MODULOS_NAV[0];
 
@@ -68,7 +74,9 @@ function pintarAbas() {
   if (barra.hidden) { barra.innerHTML = ''; return; }
   barra.innerHTML = visiveis.map((id) => {
     const a = ABAS.find((x) => x.id === id);
-    return `<button type="button" data-aba="${a.id}"${a.id===E.aba?' aria-current="page"':''}>${a.rotulo}</button>`;
+    const doCliente = mod.id === 'sistema' && ESCOPO_CLIENTE.has(a.id);
+    const escopo = doCliente ? ' data-escopo="cliente" title="Vale para todo o cliente: toda matriz e toda filial."' : '';
+    return `<button type="button" data-aba="${a.id}"${escopo}${a.id===E.aba?' aria-current="page"':''}>${a.rotulo}</button>`;
   }).join('');
   barra.querySelectorAll('button').forEach((b) => b.onclick = () => { E.aba = b.dataset.aba; render(); });
 }
@@ -132,9 +140,15 @@ const EXPLICA = {
  * Quais filtros cada tela tem.
  *
  * A tela de Integrações é do CLIENTE — configurar a conexão não depende de
- * unidade nenhuma —, e as de cadastro, acessos e clientes operam sobre uma
- * unidade escolhida ali dentro. Nenhuma delas leva filtro de empresa, e essa é
+ * unidade nenhuma —, e as de cadastro e dados operam sobre uma unidade
+ * escolhida ali dentro. Nenhuma delas leva filtro de empresa, e essa é
  * exatamente a dependência que precisava cair.
+ *
+ * "Clientes e unidades", "Usuários e acessos" e "Auditoria" NÃO aparecem
+ * aqui de propósito: as três são do cliente inteiro, sem seletor de unidade
+ * nenhum — nem filtro, nem foco. Usuários e acessos já foi "foco de unidade"
+ * (o perfil valia só numa matriz); a permissão passou a valer em todas de
+ * uma vez, e o seletor que sobraria não teria mais o que fazer.
  */
 const FILTROS_DA_TELA = {
   indicadores_gerais: { empresa: true, filial: false, base: false },
@@ -151,7 +165,6 @@ const FILTROS_DA_TELA = {
   // escolha única, e diz o que governa — antes essa escolha vinha do filtro
   // global, o que fazia um recorte de leitura virar pré-requisito de escrita.
   cadastros:   { foco: 'Filiais, tipos de despesa, filas e cenários pertencem a esta unidade e valem só nela.' },
-  acessos:     { foco: 'O papel e o perfil concedidos aqui valem só nesta unidade, e não nas demais do cliente.' },
   dados:       { foco: 'A carga e a exportação são desta unidade: o arquivo traz os cadastros dela, e reimportá-lo volta para a mesma.' },
 };
 

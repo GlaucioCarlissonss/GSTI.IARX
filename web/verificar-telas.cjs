@@ -15,7 +15,7 @@ const PAGINAS = [
   ['/projetos/cadastro', 'Cadastro de projetos'], ['/sla', 'Indicadores de SLA'], ['/sla/registros', 'Chamados'],
   ['/suporte/ostick', 'Sistema OStick'], ['/suporte/bitrix24', 'Sistema Bitrix24'],
   ['/suporte/integracoes', 'Integrações'],
-  ['/planilhas', 'Planilhas'], ['/cadastros', 'Cadastros'],
+  ['/planilhas', 'Planilhas'], ['/clientes', 'Clientes e unidades'], ['/cadastros', 'Cadastros'],
   ['/acessos', 'Usuários e acessos'], ['/auditoria', 'Auditoria'],
 ];
 
@@ -116,6 +116,45 @@ const BASE = process.env.BASE_URL || 'http://127.0.0.1:3333';
       if (!ok) falhas.push(`${preferencia}+${escolha}/${nome}: data-tema=${d.marca} claro=${d.claro} contraste=${d.contraste}`);
     }
     if (erros.length) falhas.push(...erros.map((e) => `${preferencia}+${escolha}: ${e}`));
+    await pag.close();
+  }
+
+  // ------------------------------------------------------ árvore de clientes
+  // A árvore de "Clientes e unidades" precisa expandir/recolher pelo teclado,
+  // não só clique — e o número de linhas da tabela tem de acompanhar. Bloco à
+  // parte porque só faz sentido havendo uma matriz com filial na base.
+  {
+    const pag = await nav.newPage({ viewport: { width: 1400, height: 1000 } });
+    const erros = [];
+    pag.on('pageerror', (e) => erros.push(e.message));
+    await pag.goto(BASE + '/');
+    await pag.waitForLoadState('networkidle');
+    await pag.fill('input[autocomplete="username"], input[name="usuario"]', process.env.USUARIO || 'gestor');
+    await pag.fill('input[type="password"], input[name="senha"]', process.env.SENHA || '');
+    await pag.click('button[type="submit"], form button');
+    await pag.waitForTimeout(2200);
+    const escolha = await pag.$('.cartao button');
+    if (escolha && !(await pag.$('.menu a'))) { await escolha.click(); await pag.waitForTimeout(1800); }
+
+    await pag.goto(BASE + '/clientes');
+    await pag.waitForTimeout(1300);
+    console.log('\n== árvore de clientes ==');
+    const botao = await pag.$('[aria-expanded]');
+    if (!botao) {
+      console.log('  (nenhuma matriz com filial nesta base — bloco pulado)');
+    } else {
+      const antes = await botao.getAttribute('aria-expanded');
+      const linhasAntes = await pag.$$eval('table tbody tr', (rs) => rs.length);
+      await botao.focus();
+      await pag.keyboard.press('Enter');
+      await pag.waitForTimeout(400);
+      const depois = await botao.getAttribute('aria-expanded');
+      const linhasDepois = await pag.$$eval('table tbody tr', (rs) => rs.length);
+      const ok = depois !== antes && linhasDepois !== linhasAntes;
+      console.log(`  Enter alterna aria-expanded (${antes} → ${depois}) e as linhas (${linhasAntes} → ${linhasDepois}) ${ok ? 'ok' : 'FALHOU'}`);
+      if (!ok) falhas.push(`árvore de clientes: Enter não alternou estado/linhas (${antes}→${depois}, ${linhasAntes}→${linhasDepois})`);
+    }
+    if (erros.length) { console.log('  erros:', erros.join(' | ')); falhas.push(...erros.map((e) => `árvore de clientes: ${e}`)); }
     await pag.close();
   }
 

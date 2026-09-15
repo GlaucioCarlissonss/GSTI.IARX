@@ -12,7 +12,7 @@ import {
   listarTiposDespesa,
   listarTopicosAjuda,
 } from '../domain/cadastros.js';
-import { atualizarEmpresa, concederAcesso, listarAcessos } from '../domain/empresas.js';
+import { atualizarEmpresa } from '../domain/empresas.js';
 import { listarAuditoria } from '../domain/auditoria.js';
 import { fecharCompetencia, listarFechamentos, reabrirCompetencia } from '../domain/fechamento.js';
 import { paraInterno } from '../domain/competencia.js';
@@ -24,15 +24,6 @@ export const rotasCadastros = Router();
 // ------------------------------------------------------------------ Empresa
 rotasCadastros.patch('/empresa', exigir('configuracoes', 'edit'), (req, res) => {
   res.json(atualizarEmpresa(ctx(req).empresaId, req.body ?? {}));
-});
-
-rotasCadastros.get('/empresa/acessos', (req, res) => {
-  res.json(listarAcessos(ctx(req).empresaId));
-});
-
-rotasCadastros.post('/empresa/acessos', exigir('configuracoes', 'create'), (req, res) => {
-  const { email, papel } = req.body ?? {};
-  res.status(201).json(concederAcesso(ctx(req).empresaId, email, papel === 'leitor' ? 'leitor' : 'gestor'));
 });
 
 // ------------------------------------------------------------------ Filiais
@@ -107,6 +98,10 @@ rotasCadastros.post('/fechamentos/reabrir', exigir('configuracoes', 'create'), (
 rotasCadastros.get('/auditoria', (req, res) => {
   res.json(
     listarAuditoria(ctx(req), {
+      // O filtro local de matriz que a tela manda — antes ficava para trás
+      // aqui, e a auditoria sempre voltava o cliente inteiro mesmo com uma
+      // unidade escolhida (compare com `/filiais`, que já chama isto).
+      empresas: empresasDoPedido(req.query as Record<string, unknown>),
       entidade: req.query.entidade ? String(req.query.entidade) : undefined,
       entidadeId: req.query.entidade_id ? Number(req.query.entidade_id) : undefined,
       limite: req.query.limite ? Number(req.query.limite) : undefined,

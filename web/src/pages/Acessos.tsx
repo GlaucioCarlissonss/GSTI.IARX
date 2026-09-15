@@ -1,6 +1,11 @@
 /**
  * Usuários e acessos.
  *
+ * O acesso é do CLIENTE, não da matriz: concedido uma vez, vale em toda
+ * unidade e filial dele — já foi por matriz individual, e o seletor que
+ * sobraria não teria mais o que fazer (por isso esta tela não tem barra de
+ * filtro nenhuma, ao lado de "Clientes e unidades" e "Auditoria").
+ *
  * A tela esconde o que o perfil não permite — mas é conveniência, não defesa:
  * toda regra daqui é reaplicada no servidor, e uma chamada direta recusada
  * volta 403 e entra na auditoria.
@@ -8,7 +13,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
-import { SeletorUnidadeFoco } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal } from '../components/base';
 import { dataHora } from '../lib/formato';
 
@@ -50,13 +54,13 @@ interface Minhas {
 }
 
 export function PaginaAcessos() {
-  const { empresa, empresas, trocarEmpresa } = useSessao();
-  const usuarios = useDados<Usuario[]>(() => api.get('/api/acesso/usuarios'), [empresa?.id]);
-  const perfis = useDados<Perfil[]>(() => api.get('/api/acesso/perfis'), [empresa?.id]);
-  const meta = useDados<Minhas>(() => api.get('/api/acesso/minhas-permissoes'), [empresa?.id]);
+  const { cliente } = useSessao();
+  const usuarios = useDados<Usuario[]>(() => api.get('/api/acesso/usuarios'), [cliente?.id]);
+  const perfis = useDados<Perfil[]>(() => api.get('/api/acesso/perfis'), [cliente?.id]);
+  const meta = useDados<Minhas>(() => api.get('/api/acesso/minhas-permissoes'), [cliente?.id]);
   const email = useDados<{ configurado: boolean; aviso: string | null }>(
     () => api.get('/api/acesso/email/situacao'),
-    [empresa?.id],
+    [cliente?.id],
   );
 
   const [erro, setErro] = useState<string | null>(null);
@@ -89,22 +93,13 @@ export function PaginaAcessos() {
 
   return (
     <>
-      <div className="barra-filtros">
-        <SeletorUnidadeFoco
-          empresas={empresas}
-          empresaId={empresa?.id ?? null}
-          aoTrocar={trocarEmpresa}
-          explicacao="O acesso é por unidade: o papel e o perfil concedidos aqui valem só nesta, e não nas demais do cliente."
-        />
-      </div>
-
       {erro && <Aviso tipo="erro">{erro}</Aviso>}
       {aviso && <Aviso tipo="ok">{aviso}</Aviso>}
       {email.dados && !email.dados.configurado && <Aviso tipo="erro">{email.dados.aviso}</Aviso>}
 
       <Cartao
         titulo="Usuários"
-        descricao={`O acesso é por unidade: papel e perfil valem só em ${empresa?.nome ?? 'esta unidade'}`}
+        descricao={`Concedido uma vez, o acesso vale em toda matriz e filial de ${cliente?.nome ?? 'este cliente'}`}
         acoes={
           <button type="button" className="botao primario" onClick={() => setNovoUsuario(true)}>
             Novo usuário
@@ -289,7 +284,7 @@ export function PaginaAcessos() {
         )}
         <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
           Os perfis padrão não são renomeados nem excluídos — <strong>duplique</strong> para criar uma variação. O
-          gestor da empresa administra acessos por definição: fosse preciso um perfil para isso, uma configuração
+          gestor do cliente administra acessos por definição: fosse preciso um perfil para isso, uma configuração
           errada trancaria todo mundo para fora.
         </p>
       </Cartao>
@@ -341,7 +336,9 @@ export function PaginaAcessos() {
       {removendo && (
         <ConfirmarAcao
           titulo={`Remover o acesso de ${removendo.nome}`}
-          mensagem="A conta continua existindo e o acesso às outras empresas não muda. Só o acesso a esta empresa é retirado."
+          mensagem={`A conta continua existindo e o acesso a outros clientes não muda. Só o acesso a ${
+            cliente?.nome ?? 'este cliente'
+          } — em todas as matrizes e filiais dele — é retirado.`}
           rotuloConfirmar="Remover acesso"
           aberto
           aoFechar={() => setRemovendo(null)}

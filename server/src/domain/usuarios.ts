@@ -1,9 +1,9 @@
 /**
  * Usuários e acessos — a tela do administrador.
  *
- * O usuário é global (uma conta, um login); o ACESSO é por empresa, com papel
- * e perfil próprios. É o que permite a mesma pessoa administrar uma empresa e
- * só olhar outra, que é como a operação de fato funciona.
+ * O usuário é global (uma conta, um login); o ACESSO é por CLIENTE, com papel
+ * e perfil próprios, valendo em toda matriz e filial dele. É o que permite a
+ * mesma pessoa administrar um contratante e só olhar outro.
  */
 import bcrypt from 'bcryptjs';
 import { db } from '../db/index.js';
@@ -43,45 +43,52 @@ function apresentar(l: LinhaUsuario) {
 
 const SQL_BASE = `
   SELECT u.id, u.nome, u.username, u.email, u.ativo, u.ultimo_login_em, u.criado_em,
-         ue.papel, ue.perfil_id, p.nome AS perfil_nome
-    FROM usuario_empresas ue
-    JOIN usuarios u ON u.id = ue.usuario_id
-    LEFT JOIN perfis p ON p.id = ue.perfil_id`;
+         uc.papel, uc.perfil_id, p.nome AS perfil_nome
+    FROM usuario_clientes uc
+    JOIN usuarios u ON u.id = uc.usuario_id
+    LEFT JOIN perfis p ON p.id = uc.perfil_id`;
+
+/** O cliente em contexto, ou recusa — mesma regra de `acesso.ts`. */
+function exigirClienteEmContexto(ctx: Contexto): number {
+  if (ctx.clienteId === null) throw erroValidacao('Não há cliente em contexto para esta operação.');
+  return ctx.clienteId;
+}
 
 export function listarUsuarios(ctx: Contexto) {
-  garantirPerfisPadrao(ctx.empresaId);
+  const clienteId = exigirClienteEmContexto(ctx);
+  garantirPerfisPadrao(clienteId);
   const linhas = db()
-    .prepare(`${SQL_BASE} WHERE ue.empresa_id = ? ORDER BY u.nome`)
-    .all(ctx.empresaId) as LinhaUsuario[];
+    .prepare(`${SQL_BASE} WHERE uc.cliente_id = ? ORDER BY u.nome`)
+    .all(clienteId) as LinhaUsuario[];
   return linhas.map(apresentar);
 }
 
 function obter(ctx: Contexto, usuarioId: number): LinhaUsuario {
   const linha = db()
-    .prepare(`${SQL_BASE} WHERE ue.empresa_id = ? AND u.id = ?`)
-    .get(ctx.empresaId, usuarioId) as LinhaUsuario | undefined;
-  // Quem não tem acesso a esta empresa não existe para ela: responder
-  // "usuário X não está nesta empresa" já contaria que a conta existe.
-  if (!linha) throw erroNaoEncontrado('Usuário não encontrado nesta empresa.');
+    .prepare(`${SQL_BASE} WHERE uc.cliente_id = ? AND u.id = ?`)
+    .get(exigirClienteEmContexto(ctx), usuarioId) as LinhaUsuario | undefined;
+  // Quem não tem acesso a este cliente não existe para ele: responder
+  // "usuário X não está neste cliente" já contaria que a conta existe.
+  if (!linha) throw erroNaoEncontrado('Usuário não encontrado neste cliente.');
   return linha;
 }
 
 /** Perfil padrão correspondente ao papel, quando o admin não escolhe um. */
-function perfilPadrao(empresaId: number, papel: string): number | null {
+function perfilPadrao(clienteId: number, papel: string): number | null {
   const nome = papel === 'gestor' ? PERFIL_EDICAO : PERFIL_LEITURA;
   const p = db()
-    .prepare('SELECT id FROM perfis WHERE empresa_id = ? AND nome = ?')
-    .get(empresaId, nome) as { id: number } | undefined;
+    .prepare('SELECT id FROM perfis WHERE cliente_id = ? AND nome = ?')
+    .get(clienteId, nome) as { id: number } | undefined;
   return p?.id ?? null;
 }
 
-function validarPerfil(empresaId: number, perfilId: number | null | undefined): number | null | undefined {
+function validarPerfil(clienteId: number, perfilId: number | null | undefined): number | null | undefined {
   if (perfilId === undefined) return undefined;
   if (perfilId === null) return null;
   const existe = db()
-    .prepare('SELECT id FROM perfis WHERE id = ? AND empresa_id = ?')
-    .get(perfilId, empresaId);
-  if (!existe) throw erroValidacao('O perfil escolhido não existe nesta empresa.');
+    .prepare('SELECT id FROM perfis WHERE id = ? AND cliente_id = ?')
+    .get(perfilId, clienteId);
+  if (!existe) throw erroValidacao('O perfil escolhido não existe neste cliente.');
   return perfilId;
 }
 
@@ -100,6 +107,7 @@ export interface EntradaUsuario {
  * em branco esperando alguém entrar por ela.
  */
 export function criarUsuario(ctx: Contexto, entrada: EntradaUsuario) {
+  const clienteId = exigirClienteEmContexto(ctx);
   const nome = entrada.nome?.trim();
   if (!nome) throw erroValidacao('O nome é obrigatório.');
   const email = entrada.email?.trim().toLowerCase();
@@ -114,9 +122,9 @@ export function criarUsuario(ctx: Contexto, entrada: EntradaUsuario) {
     throw erroConflito(`O usuário "${username}" já está em uso.`);
   }
 
-  garantirPerfisPadrao(ctx.empresaId);
+  garantirPerfisPadrao(clienteId);
   const papel = entrada.papel === 'gestor' ? 'gestor' : 'leitor';
-  const perfilId = validarPerfil(ctx.empresaId, entrada.perfil_id) ?? perfilPadrao(ctx.empresaId, papel);
+  const perfilId = validarPerfil(clienteId, entrada.perfil_id) ?? perfilPadrao(clienteId, papel);
 
   const info = db()
     .prepare(`INSERT INTO usuarios (nome, username, email, senha_hash, senha_em)
@@ -125,8 +133,8 @@ export function criarUsuario(ctx: Contexto, entrada: EntradaUsuario) {
   const id = Number(info.lastInsertRowid);
 
   db()
-    .prepare('INSERT INTO usuario_empresas (usuario_id, empresa_id, papel, perfil_id) VALUES (?, ?, ?, ?)')
-    .run(id, ctx.empresaId, papel, perfilId);
+    .prepare('INSERT INTO usuario_clientes (usuario_id, cliente_id, papel, perfil_id) VALUES (?, ?, ?, ?)')
+    .run(id, clienteId, papel, perfilId);
 
   auditar(ctx, {
     entidade: 'usuario',
@@ -134,6 +142,7 @@ export function criarUsuario(ctx: Contexto, entrada: EntradaUsuario) {
     acao: 'criar',
     // A senha não entra na auditoria, nem como hash.
     depois: { nome, username, email, papel, perfil_id: perfilId },
+    comEmpresa: false,
   });
   return apresentar(obter(ctx, id));
 }
@@ -143,6 +152,7 @@ export function atualizarUsuario(
   usuarioId: number,
   dados: { nome?: string; email?: string; ativo?: boolean; papel?: 'gestor' | 'leitor'; perfil_id?: number | null },
 ) {
+  const clienteId = exigirClienteEmContexto(ctx);
   const antes = obter(ctx, usuarioId);
 
   if (dados.nome?.trim()) db().prepare('UPDATE usuarios SET nome = ? WHERE id = ?').run(dados.nome.trim(), usuarioId);
@@ -165,18 +175,25 @@ export function atualizarUsuario(
       throw erroValidacao('Você não pode retirar o próprio papel de gestor. Peça a outro gestor.');
     }
     db()
-      .prepare('UPDATE usuario_empresas SET papel = ? WHERE usuario_id = ? AND empresa_id = ?')
-      .run(dados.papel, usuarioId, ctx.empresaId);
+      .prepare('UPDATE usuario_clientes SET papel = ? WHERE usuario_id = ? AND cliente_id = ?')
+      .run(dados.papel, usuarioId, clienteId);
   }
-  const perfil = validarPerfil(ctx.empresaId, dados.perfil_id);
+  const perfil = validarPerfil(clienteId, dados.perfil_id);
   if (perfil !== undefined) {
     db()
-      .prepare('UPDATE usuario_empresas SET perfil_id = ? WHERE usuario_id = ? AND empresa_id = ?')
-      .run(perfil, usuarioId, ctx.empresaId);
+      .prepare('UPDATE usuario_clientes SET perfil_id = ? WHERE usuario_id = ? AND cliente_id = ?')
+      .run(perfil, usuarioId, clienteId);
   }
 
   const depois = apresentar(obter(ctx, usuarioId));
-  auditar(ctx, { entidade: 'usuario', entidadeId: usuarioId, acao: 'atualizar', antes: apresentar(antes), depois });
+  auditar(ctx, {
+    entidade: 'usuario',
+    entidadeId: usuarioId,
+    acao: 'atualizar',
+    antes: apresentar(antes),
+    depois,
+    comEmpresa: false,
+  });
   return depois;
 }
 
@@ -199,24 +216,37 @@ export function redefinirSenhaDeUsuario(ctx: Contexto, usuarioId: number, novaSe
     acao: 'atualizar',
     justificativa: 'senha redefinida pelo administrador',
     depois: { senha_redefinida: true },
+    comEmpresa: false,
   });
   return { redefinida: true };
 }
 
-/** Tira o acesso do usuário a ESTA empresa; a conta segue existindo. */
+/**
+ * Tira o acesso do usuário a ESTE CLIENTE; a conta segue existindo.
+ *
+ * Não há mais "remover só de uma matriz" — o acesso é do cliente inteiro, e
+ * removê-lo tira todas as matrizes e filiais dele de uma vez.
+ */
 export function removerAcesso(ctx: Contexto, usuarioId: number) {
+  const clienteId = exigirClienteEmContexto(ctx);
   const antes = obter(ctx, usuarioId);
-  if (usuarioId === ctx.usuarioId) throw erroValidacao('Você não pode remover o próprio acesso a esta empresa.');
+  if (usuarioId === ctx.usuarioId) throw erroValidacao('Você não pode remover o próprio acesso a este cliente.');
   const gestores = db()
-    .prepare(`SELECT COUNT(*) AS n FROM usuario_empresas WHERE empresa_id = ? AND papel = 'gestor'`)
-    .get(ctx.empresaId) as { n: number };
+    .prepare(`SELECT COUNT(*) AS n FROM usuario_clientes WHERE cliente_id = ? AND papel = 'gestor'`)
+    .get(clienteId) as { n: number };
   if (antes.papel === 'gestor' && gestores.n <= 1) {
-    // Empresa sem gestor não tem quem conceda acesso de volta.
-    throw erroValidacao('Esta é a última conta com papel de gestor na empresa. Promova outra antes de remover.');
+    // Cliente sem gestor não tem quem conceda acesso de volta.
+    throw erroValidacao('Esta é a última conta com papel de gestor neste cliente. Promova outra antes de remover.');
   }
   db()
-    .prepare('DELETE FROM usuario_empresas WHERE usuario_id = ? AND empresa_id = ?')
-    .run(usuarioId, ctx.empresaId);
-  auditar(ctx, { entidade: 'usuario', entidadeId: usuarioId, acao: 'excluir', antes: apresentar(antes) });
+    .prepare('DELETE FROM usuario_clientes WHERE usuario_id = ? AND cliente_id = ?')
+    .run(usuarioId, clienteId);
+  auditar(ctx, {
+    entidade: 'usuario',
+    entidadeId: usuarioId,
+    acao: 'excluir',
+    antes: apresentar(antes),
+    comEmpresa: false,
+  });
   return { removido: true };
 }

@@ -17,7 +17,7 @@ const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-te
   const ir = (r) => irPara(pag, r, 450);
   const conta = () => pag.evaluate(() => Loja.todos(empresaAtiva()).length);
   const soma = () => pag.evaluate(() => Loja.todos(empresaAtiva()).reduce((s, l) => s + Math.round(l.valor * 100), 0));
-  const auditoria = () => pag.evaluate(async () => (await E.db.doc('auditoria/' + empresaAtiva()).get()).data()?.itens?.length ?? 0);
+  const auditoria = () => pag.evaluate(async () => (await E.db.doc('auditoria/cliente__' + E.clienteSel).get()).data()?.itens?.length ?? 0);
   const confere = (nome, obtido, esperado) => {
     const ok = obtido === esperado;
     console.log(`  ${ok ? '✓' : '✗'} ${nome}: ${obtido}${ok ? '' : ' (esperado ' + esperado + ')'}`);

@@ -9,6 +9,30 @@
 const CHAVE_CLIENTE = 'iarx-cliente';
 
 /**
+ * Estado de expansão das matrizes na árvore "Clientes e unidades".
+ *
+ * O padrão é EXPANDIDO — é cadastro pequeno, não uma lista de lançamentos —
+ * ao contrário do relatório financeiro (`CHAVE_RELATORIO`), que abre
+ * recolhido. Por isso o que fica guardado é a exceção ao padrão: os
+ * IDs *recolhidos*, e não os abertos.
+ */
+const CHAVE_MATRIZES_RECOLHIDAS = 'iarx-clientes-matrizes-recolhidas';
+function matrizesRecolhidas() {
+  try { return new Set(JSON.parse(localStorage.getItem(CHAVE_MATRIZES_RECOLHIDAS) || '[]')); }
+  catch (e) { return new Set(); }
+}
+function gravarRecolhidas(conjunto) {
+  try { localStorage.setItem(CHAVE_MATRIZES_RECOLHIDAS, JSON.stringify([...conjunto])); }
+  catch (e) { /* sem armazenamento: vale só nesta sessão */ }
+}
+const matrizAberta = (id) => !matrizesRecolhidas().has(id);
+function alternarMatriz(id) {
+  const atual = matrizesRecolhidas();
+  if (atual.has(id)) atual.delete(id); else atual.add(id);
+  gravarRecolhidas(atual);
+}
+
+/**
  * O dono das empresas que já estavam na base antes de existir esta camada.
  *
  * As cinco matrizes carregadas (ALIANÇA, MILAGRES, MOOVE, RESIDENCIAL, UNION)
@@ -399,14 +423,26 @@ async function viewClientes() {
   };
 
   const matrizes = alvo ? empresasDoCliente(alvo) : [];
-  const linhasEstrutura = matrizes.flatMap((m) => [
-    `<tr><td><strong>${esc(m.nome)}</strong></td><td><span class="tag">Matriz</span></td>
-      <td>${esc(m.codigo || '—')}</td><td>${esc(cnpjExib(m.cnpj))}</td>
-      <td>${esc(m.endereco || '—')}</td><td>${esc(m.cep || '—')}</td></tr>`,
-    ...filiaisDa(m.id).map((f) => `<tr><td style="padding-left:24px;color:var(--tinta2)">${esc(f.nome)}</td>
-      <td>Filial</td><td>${esc(f.codigo || '—')}</td><td>${esc(cnpjExib(f.cnpj))}</td>
-      <td>${esc(f.endereco || '—')}</td><td>${esc(f.cep || '—')}</td></tr>`),
-  ]);
+  const linhasEstrutura = matrizes.flatMap((m) => {
+    const filiais = filiaisDa(m.id);
+    const aberta = matrizAberta(m.id);
+    return [
+      `<tr><td><div style="display:flex;align-items:center;gap:6px">
+          ${filiais.length
+            ? `<button type="button" class="gantt-grupo" data-mgrupo="${esc(m.id)}"
+                 aria-expanded="${aberta}" aria-label="${aberta ? 'Comprimir' : 'Expandir'} as filiais de ${esc(m.nome)}"
+                 title="${aberta ? 'Comprimir' : 'Expandir'}">${aberta ? '−' : '+'}</button>`
+            : `<span class="gantt-vazio" aria-hidden="true"></span>`}
+          <strong>${esc(m.nome)}</strong>
+          ${filiais.length ? `<span class="nota">${plural(filiais.length, 'filial', 'filiais')}</span>` : ''}
+        </div></td><td><span class="tag">Matriz</span></td>
+        <td>${esc(m.codigo || '—')}</td><td>${esc(cnpjExib(m.cnpj))}</td>
+        <td>${esc(m.endereco || '—')}</td><td>${esc(m.cep || '—')}</td></tr>`,
+      ...(aberta ? filiais.map((f) => `<tr><td style="padding-left:30px;color:var(--tinta2)">${esc(f.nome)}</td>
+        <td>Filial</td><td>${esc(f.codigo || '—')}</td><td>${esc(cnpjExib(f.cnpj))}</td>
+        <td>${esc(f.endereco || '—')}</td><td>${esc(f.cep || '—')}</td></tr>`) : []),
+    ];
+  });
 
   const faltam = CLIENTES_INICIAIS.filter((n) => !E.clientes.some((c) => c.nome === n));
 
@@ -430,7 +466,14 @@ async function viewClientes() {
     </section>
 
     <section class="bloco">
-      <header><h2>Estrutura${alvo ? ' de ' + esc((clientePorId(alvo) || {}).nome || '') : ''}</h2></header>
+      <header><h2>Estrutura${alvo ? ' de ' + esc((clientePorId(alvo) || {}).nome || '') : ''}</h2>
+        ${matrizes.length > 1
+          ? `<div style="display:flex;gap:8px;margin-left:auto">
+               <button type="button" class="bt pequeno" id="cl-expandir-tudo">Expandir tudo</button>
+               <button type="button" class="bt pequeno" id="cl-comprimir-tudo">Comprimir tudo</button>
+             </div>`
+          : ''}
+      </header>
       <div class="msg">Matriz é a pessoa jurídica; filial é a unidade dela. É o CNPJ que diz qual é qual:
         mesma raiz, mesma matriz.</div>
       <div class="rol" style="margin-top:12px"><table>
@@ -473,6 +516,13 @@ async function viewClientes() {
   el('#pagina').querySelectorAll('[data-abrir]').forEach((b) => {
     b.onclick = () => { E.clienteCad = b.dataset.abrir; render(); };
   });
+  el('#pagina').querySelectorAll('[data-mgrupo]').forEach((b) => {
+    b.onclick = () => { alternarMatriz(b.dataset.mgrupo); render(); };
+  });
+  const btExpandirTudo = el('#cl-expandir-tudo');
+  if (btExpandirTudo) btExpandirTudo.onclick = () => { gravarRecolhidas(new Set()); render(); };
+  const btComprimirTudo = el('#cl-comprimir-tudo');
+  if (btComprimirTudo) btComprimirTudo.onclick = () => { gravarRecolhidas(new Set(matrizes.map((m) => m.id))); render(); };
   el('#pagina').querySelectorAll('[data-ativar]').forEach((b) => {
     b.onclick = async () => {
       const c = clientePorId(b.dataset.ativar);

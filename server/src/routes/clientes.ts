@@ -62,9 +62,9 @@ rotasClientes.post('/', exigir('configuracoes', 'create'), (req, res) => {
     documento: corpo.documento ?? null,
     ativo: corpo.ativo,
   });
-  // Quem cria o cliente passa a enxergá-lo: sem isso, criar seria a forma mais
-  // rápida de produzir um cliente que ninguém abre.
-  vincularUsuario(ctx(req).usuarioId, cliente.id);
+  // Quem cria o cliente passa a enxergá-lo, como gestor: sem isso, criar seria
+  // a forma mais rápida de produzir um cliente que ninguém abre nem administra.
+  vincularUsuario(ctx(req).usuarioId, cliente.id, 'gestor');
   res.status(201).json(cliente);
 });
 
@@ -105,7 +105,14 @@ rotasClientes.post('/matrizes/:matrizId/filiais', exigir('configuracoes', 'creat
 
 rotasClientes.post('/:id/usuarios', exigir('usuarios', 'edit'), (req, res) => {
   const corpo = req.body ?? {};
-  res.json(vincularUsuario(Number(corpo.usuario_id), Number(req.params.id)));
+  res.json(
+    vincularUsuario(
+      Number(corpo.usuario_id),
+      Number(req.params.id),
+      corpo.papel === 'gestor' ? 'gestor' : 'leitor',
+      corpo.perfil_id ? Number(corpo.perfil_id) : null,
+    ),
+  );
 });
 
 rotasClientes.delete('/:id/usuarios/:usuarioId', exigir('usuarios', 'edit'), (req, res) => {

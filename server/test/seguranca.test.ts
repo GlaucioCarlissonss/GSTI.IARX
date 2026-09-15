@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { abrirBanco, db, definirBanco } from '../src/db/index.js';
 import { autenticar, registrar, segredoJwt, verificarToken } from '../src/domain/auth.js';
 import { criarEmpresa } from '../src/domain/empresas.js';
+import { clienteDaEmpresa } from '../src/domain/clientes.js';
 import { criarFila, listarFilas } from '../src/domain/cadastros.js';
 import { registrarTicketSla } from '../src/domain/sla.js';
 import { escreverCsv, lerCsv } from '../src/lib/planilha.js';
@@ -21,6 +22,7 @@ function ambiente() {
   const usuario = registrar({ nome: 'Gestor', email: 'gestor@exemplo.com', senha: 'senha-bem-forte-1' });
   const empresa = criarEmpresa(usuario.id, { nome: 'Empresa A' });
   const ctx: Contexto = {
+    clienteId: clienteDaEmpresa(empresa.id),
     empresaId: empresa.id,
     empresaIds: [empresa.id],
     usuarioId: usuario.id,

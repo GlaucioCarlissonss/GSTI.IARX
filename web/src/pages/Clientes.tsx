@@ -10,6 +10,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { Aviso, Campo, Carregando, Cartao, Etiqueta } from '../components/base';
+import { useExpansao } from '../lib/expansao';
 
 interface ClienteLista {
   id: number;
@@ -43,6 +44,26 @@ function cnpjExib(bruto: string | null): string {
   return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
 }
 
+/**
+ * Botão de expandir/comprimir uma matriz. Mesma classe `.gantt-grupo` já em
+ * produção no Gantt de projetos — o alvo de 20px, o foco visível e o
+ * `aria-expanded` são o mesmo contrato, só o rótulo muda.
+ */
+function BotaoExpandir({ aberto, rotulo, aoAlternar }: { aberto: boolean; rotulo: string; aoAlternar: () => void }) {
+  return (
+    <button
+      type="button"
+      className="gantt-grupo"
+      aria-expanded={aberto}
+      aria-label={`${aberto ? 'Comprimir' : 'Expandir'} ${rotulo}`}
+      title={aberto ? 'Comprimir' : 'Expandir'}
+      onClick={aoAlternar}
+    >
+      {aberto ? '−' : '+'}
+    </button>
+  );
+}
+
 const UNIDADE_VAZIA = {
   tipo: 'MATRIZ' as 'MATRIZ' | 'FILIAL',
   matriz_pai_id: '',
@@ -74,6 +95,7 @@ export function PaginaClientes() {
   );
 
   const matrizes = estrutura.dados?.matrizes ?? [];
+  const expansao = useExpansao('clientes-matrizes', 'expandido');
 
   /**
    * O que a regra do CNPJ fará com o que está digitado. É a mesma conta do
@@ -223,6 +245,26 @@ export function PaginaClientes() {
       <Cartao
         titulo={estrutura.dados?.cliente ? `Estrutura de ${estrutura.dados.cliente.nome}` : 'Estrutura'}
         descricao="Matriz é a pessoa jurídica; filial é a unidade dela. O CNPJ é quem diz qual é qual."
+        acoes={
+          matrizes.length > 1 ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                className="botao discreto pequeno"
+                onClick={() => expansao.expandirTudo(matrizes.map((m) => m.id))}
+              >
+                Expandir tudo
+              </button>
+              <button
+                type="button"
+                className="botao discreto pequeno"
+                onClick={() => expansao.comprimirTudo(matrizes.map((m) => m.id))}
+              >
+                Comprimir tudo
+              </button>
+            </div>
+          ) : undefined
+        }
       >
         {estrutura.erro && <Aviso tipo="erro">{estrutura.erro}</Aviso>}
         {estrutura.carregando ? (
@@ -243,30 +285,51 @@ export function PaginaClientes() {
                 </tr>
               </thead>
               <tbody>
-                {matrizes.flatMap((m) => [
-                  <tr key={`m${m.id}`}>
-                    <td>
-                      <strong>{m.nome}</strong>
-                    </td>
-                    <td>
-                      <Etiqueta texto="Matriz" tom="neutro" />
-                    </td>
-                    <td>{m.codigo ?? '—'}</td>
-                    <td>{cnpjExib(m.cnpj)}</td>
-                    <td>{m.endereco ?? '—'}</td>
-                    <td>{m.cep ?? '—'}</td>
-                  </tr>,
-                  ...m.filiais.map((f) => (
-                    <tr key={`f${f.id}`}>
-                      <td style={{ paddingLeft: 26, color: 'var(--tinta-2)' }}>{f.nome}</td>
-                      <td>Filial</td>
-                      <td>{f.codigo ?? '—'}</td>
-                      <td>{cnpjExib(f.cnpj)}</td>
-                      <td>{f.endereco ?? '—'}</td>
-                      <td>{f.cep ?? '—'}</td>
-                    </tr>
-                  )),
-                ])}
+                {matrizes.flatMap((m) => {
+                  const aberta = expansao.expandido(m.id);
+                  return [
+                    <tr key={`m${m.id}`}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {m.filiais.length > 0 ? (
+                            <BotaoExpandir
+                              aberto={aberta}
+                              rotulo={`as filiais de ${m.nome}`}
+                              aoAlternar={() => expansao.alternar(m.id)}
+                            />
+                          ) : (
+                            <span className="gantt-vazio" aria-hidden />
+                          )}
+                          <strong>{m.nome}</strong>
+                          {m.filiais.length > 0 && (
+                            <span style={{ fontSize: 11, color: 'var(--tinta-fraca)' }}>
+                              {m.filiais.length} {m.filiais.length === 1 ? 'filial' : 'filiais'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <Etiqueta texto="Matriz" tom="neutro" />
+                      </td>
+                      <td>{m.codigo ?? '—'}</td>
+                      <td>{cnpjExib(m.cnpj)}</td>
+                      <td>{m.endereco ?? '—'}</td>
+                      <td>{m.cep ?? '—'}</td>
+                    </tr>,
+                    ...(aberta
+                      ? m.filiais.map((f) => (
+                          <tr key={`f${f.id}`}>
+                            <td style={{ paddingLeft: 32, color: 'var(--tinta-2)' }}>{f.nome}</td>
+                            <td>Filial</td>
+                            <td>{f.codigo ?? '—'}</td>
+                            <td>{cnpjExib(f.cnpj)}</td>
+                            <td>{f.endereco ?? '—'}</td>
+                            <td>{f.cep ?? '—'}</td>
+                          </tr>
+                        ))
+                      : []),
+                  ];
+                })}
               </tbody>
             </table>
           </div>

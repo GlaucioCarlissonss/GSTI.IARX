@@ -5,10 +5,12 @@
  * permitida ou não; e, para quem edita, o CAMPO é alterável ou não. Todas as
  * três valem no servidor — o que o front esconde é conveniência, não defesa.
  *
- * O perfil fica no vínculo com a empresa, e não no usuário: o sistema é
- * multi-tenant por regra, e o mesmo usuário já podia ser gestor numa empresa e
- * leitor em outra. Um perfil por usuário faria quem é administrador numa
- * empresa virar administrador em todas.
+ * O perfil fica no vínculo com o CLIENTE, e não no usuário: o sistema é
+ * multi-tenant por regra, e o mesmo usuário já podia ser gestor num cliente e
+ * leitor em outro. Um perfil por usuário faria quem administra um contratante
+ * virar administrador em todos. Vale para TODAS as matrizes e filiais do
+ * cliente de uma vez — já foi por matriz individual; a migração de bases
+ * antigas está em `db/index.ts`.
  */
 import { db } from '../db/index.js';
 import { erroNaoEncontrado, erroSemPermissao, erroValidacao } from '../lib/erros.js';
@@ -37,9 +39,20 @@ const IDS_MODULO = MODULOS.map((m) => m.id) as string[];
 export const PERFIL_LEITURA = 'Somente Visualização';
 export const PERFIL_EDICAO = 'Edição';
 
+/**
+ * O cliente em contexto, ou recusa. `Contexto.clienteId` é nullable só para a
+ * base histórica anterior a esta camada — na prática, toda requisição
+ * autenticada já resolveu um cliente antes de chegar aqui, e este é o ponto
+ * único de falha explícita (fail-closed) quando isso não aconteceu.
+ */
+function exigirClienteEmContexto(ctx: Contexto): number {
+  if (ctx.clienteId === null) throw erroValidacao('Não há cliente em contexto para esta operação.');
+  return ctx.clienteId;
+}
+
 interface LinhaPerfil {
   id: number;
-  empresa_id: number;
+  cliente_id: number;
   nome: string;
   tipo: TipoPerfil;
   padrao: number;
@@ -49,23 +62,23 @@ interface LinhaPerfil {
 // ------------------------------------------------------------ perfis padrão
 
 /**
- * Garante os dois perfis de sistema da empresa. São criados na primeira
- * consulta, e não numa migração: empresa nova precisa deles igual.
+ * Garante os dois perfis de sistema do cliente. São criados na primeira
+ * consulta, e não numa migração: cliente novo precisa deles igual.
  */
-export function garantirPerfisPadrao(empresaId: number): void {
+export function garantirPerfisPadrao(clienteId: number): void {
   const existe = db()
-    .prepare('SELECT COUNT(*) AS n FROM perfis WHERE empresa_id = ? AND padrao = 1')
-    .get(empresaId) as { n: number };
+    .prepare('SELECT COUNT(*) AS n FROM perfis WHERE cliente_id = ? AND padrao = 1')
+    .get(clienteId) as { n: number };
   if (existe.n >= 2) return;
 
   const criar = db().prepare(
-    'INSERT OR IGNORE INTO perfis (empresa_id, nome, tipo, padrao) VALUES (?, ?, ?, 1)',
+    'INSERT OR IGNORE INTO perfis (cliente_id, nome, tipo, padrao) VALUES (?, ?, ?, 1)',
   );
-  criar.run(empresaId, PERFIL_LEITURA, 'VIEW_ONLY');
-  criar.run(empresaId, PERFIL_EDICAO, 'EDIT');
+  criar.run(clienteId, PERFIL_LEITURA, 'VIEW_ONLY');
+  criar.run(clienteId, PERFIL_EDICAO, 'EDIT');
 
   const idDe = (nome: string) =>
-    (db().prepare('SELECT id FROM perfis WHERE empresa_id = ? AND nome = ?').get(empresaId, nome) as
+    (db().prepare('SELECT id FROM perfis WHERE cliente_id = ? AND nome = ?').get(clienteId, nome) as
       | { id: number }
       | undefined)?.id;
 
@@ -139,32 +152,34 @@ export function apresentarPerfil(linha: LinhaPerfil) {
 }
 
 export function listarPerfis(ctx: Contexto) {
-  garantirPerfisPadrao(ctx.empresaId);
+  const clienteId = exigirClienteEmContexto(ctx);
+  garantirPerfisPadrao(clienteId);
   const linhas = db()
-    .prepare('SELECT * FROM perfis WHERE empresa_id = ? ORDER BY padrao DESC, nome')
-    .all(ctx.empresaId) as LinhaPerfil[];
+    .prepare('SELECT * FROM perfis WHERE cliente_id = ? ORDER BY padrao DESC, nome')
+    .all(clienteId) as LinhaPerfil[];
   return linhas.map(apresentarPerfil);
 }
 
-function obterPerfil(empresaId: number, perfilId: number): LinhaPerfil {
+function obterPerfil(clienteId: number, perfilId: number): LinhaPerfil {
   const linha = db()
-    .prepare('SELECT * FROM perfis WHERE id = ? AND empresa_id = ?')
-    .get(perfilId, empresaId) as LinhaPerfil | undefined;
-  if (!linha) throw erroNaoEncontrado(`Perfil ${perfilId} não encontrado nesta empresa.`);
+    .prepare('SELECT * FROM perfis WHERE id = ? AND cliente_id = ?')
+    .get(perfilId, clienteId) as LinhaPerfil | undefined;
+  if (!linha) throw erroNaoEncontrado(`Perfil ${perfilId} não encontrado neste cliente.`);
   return linha;
 }
 
 /**
- * O que o usuário pode nesta empresa. `gestor` mantém o papel antigo valendo:
- * quem é gestor pode tudo, e o perfil refina o resto. Sem isso, a migração
- * tiraria acesso de quem já tinha — e um sistema que tranca o próprio dono na
- * atualização não é mais seguro, é só inútil.
+ * O que o usuário pode neste cliente — vale em toda matriz e filial dele.
+ * `gestor` mantém o papel antigo valendo: quem é gestor pode tudo, e o perfil
+ * refina o resto. Sem isso, a migração tiraria acesso de quem já tinha — e um
+ * sistema que tranca o próprio dono na atualização não é mais seguro, é só
+ * inútil.
  */
-export function permissoesDoUsuario(usuarioId: number, empresaId: number) {
-  garantirPerfisPadrao(empresaId);
+export function permissoesDoUsuario(usuarioId: number, clienteId: number) {
+  garantirPerfisPadrao(clienteId);
   const vinculo = db()
-    .prepare('SELECT papel, perfil_id FROM usuario_empresas WHERE usuario_id = ? AND empresa_id = ?')
-    .get(usuarioId, empresaId) as { papel: string; perfil_id: number | null } | undefined;
+    .prepare('SELECT papel, perfil_id FROM usuario_clientes WHERE usuario_id = ? AND cliente_id = ?')
+    .get(usuarioId, clienteId) as { papel: string; perfil_id: number | null } | undefined;
   if (!vinculo) {
     return {
       papel: null as string | null,
@@ -178,7 +193,7 @@ export function permissoesDoUsuario(usuarioId: number, empresaId: number) {
     const perfil = db().prepare('SELECT * FROM perfis WHERE id = ?').get(vinculo.perfil_id) as
       | LinhaPerfil
       | undefined;
-    if (perfil && perfil.empresa_id === empresaId) {
+    if (perfil && perfil.cliente_id === clienteId) {
       return {
         papel: vinculo.papel,
         perfil: { id: perfil.id, nome: perfil.nome, tipo: perfil.tipo },
@@ -191,8 +206,8 @@ export function permissoesDoUsuario(usuarioId: number, empresaId: number) {
   // Sem perfil atribuído, o papel antigo responde: gestor edita, leitor lê.
   const nome = vinculo.papel === 'gestor' ? PERFIL_EDICAO : PERFIL_LEITURA;
   const padrao = db()
-    .prepare('SELECT * FROM perfis WHERE empresa_id = ? AND nome = ?')
-    .get(empresaId, nome) as LinhaPerfil | undefined;
+    .prepare('SELECT * FROM perfis WHERE cliente_id = ? AND nome = ?')
+    .get(clienteId, nome) as LinhaPerfil | undefined;
   return {
     papel: vinculo.papel,
     perfil: padrao ? { id: padrao.id, nome: padrao.nome, tipo: padrao.tipo } : null,
@@ -201,12 +216,13 @@ export function permissoesDoUsuario(usuarioId: number, empresaId: number) {
   };
 }
 
-/** Verdadeiro quando o usuário pode a ação no módulo, nesta empresa. */
+/** Verdadeiro quando o usuário pode a ação no módulo, neste cliente. */
 export function permitido(ctx: Contexto, modulo: string, acao: Acao): boolean {
-  // O gestor da empresa administra os acessos por definição: fosse preciso um
+  // O gestor do cliente administra os acessos por definição: fosse preciso um
   // perfil para isso, uma configuração errada trancaria todo mundo para fora.
   if (ctx.papel === 'gestor' && modulo === 'usuarios') return true;
-  const p = permissoesDoUsuario(ctx.usuarioId, ctx.empresaId);
+  if (ctx.clienteId === null) return false;
+  const p = permissoesDoUsuario(ctx.usuarioId, ctx.clienteId);
   return p.permissoes[modulo]?.[acao] === true;
 }
 
@@ -227,7 +243,7 @@ export function filtrarCampos<T extends Record<string, unknown>>(
   modulo: string,
   dados: T,
 ): { dados: Partial<T>; bloqueados: string[] } {
-  const { campos_bloqueados } = permissoesDoUsuario(ctx.usuarioId, ctx.empresaId);
+  const { campos_bloqueados } = permissoesDoUsuario(ctx.usuarioId, exigirClienteEmContexto(ctx));
   const proibidos = new Set(campos_bloqueados[modulo] ?? []);
   if (proibidos.size === 0) return { dados, bloqueados: [] };
   const saida: Partial<T> = {};
@@ -282,22 +298,30 @@ function gravarMatriz(perfilId: number, entrada: EntradaPerfil) {
 }
 
 export function criarPerfil(ctx: Contexto, entrada: EntradaPerfil) {
+  const clienteId = exigirClienteEmContexto(ctx);
   const nome = entrada.nome?.trim();
   if (!nome) throw erroValidacao('O nome do perfil é obrigatório.');
   if (entrada.tipo !== 'VIEW_ONLY' && entrada.tipo !== 'EDIT') {
     throw erroValidacao('O tipo do perfil precisa ser VIEW_ONLY ou EDIT.');
   }
   const info = db()
-    .prepare('INSERT INTO perfis (empresa_id, nome, tipo, padrao) VALUES (?, ?, ?, 0)')
-    .run(ctx.empresaId, nome, entrada.tipo);
+    .prepare('INSERT INTO perfis (cliente_id, nome, tipo, padrao) VALUES (?, ?, ?, 0)')
+    .run(clienteId, nome, entrada.tipo);
   const id = Number(info.lastInsertRowid);
   gravarMatriz(id, entrada);
-  auditar(ctx, { entidade: 'perfil', entidadeId: id, acao: 'criar', depois: { nome, tipo: entrada.tipo } });
-  return apresentarPerfil(obterPerfil(ctx.empresaId, id));
+  auditar(ctx, {
+    entidade: 'perfil',
+    entidadeId: id,
+    acao: 'criar',
+    depois: { nome, tipo: entrada.tipo },
+    comEmpresa: false,
+  });
+  return apresentarPerfil(obterPerfil(clienteId, id));
 }
 
 export function atualizarPerfil(ctx: Contexto, perfilId: number, entrada: Partial<EntradaPerfil>) {
-  const antes = obterPerfil(ctx.empresaId, perfilId);
+  const clienteId = exigirClienteEmContexto(ctx);
+  const antes = obterPerfil(clienteId, perfilId);
   if (antes.padrao === 1 && entrada.nome && entrada.nome.trim() !== antes.nome) {
     // Renomear um perfil de sistema quebraria a leitura que cai nele por nome
     // quando o vínculo ainda não tem perfil atribuído.
@@ -308,20 +332,21 @@ export function atualizarPerfil(ctx: Contexto, perfilId: number, entrada: Partia
   }
   if (entrada.tipo) db().prepare('UPDATE perfis SET tipo = ? WHERE id = ?').run(entrada.tipo, perfilId);
   gravarMatriz(perfilId, { nome: antes.nome, tipo: antes.tipo, ...entrada });
-  const depois = apresentarPerfil(obterPerfil(ctx.empresaId, perfilId));
+  const depois = apresentarPerfil(obterPerfil(clienteId, perfilId));
   auditar(ctx, {
     entidade: 'perfil',
     entidadeId: perfilId,
     acao: 'atualizar',
     antes: apresentarPerfil(antes),
     depois,
+    comEmpresa: false,
   });
   return depois;
 }
 
 /** Duplicar é o caminho para variar um perfil padrão sem mexer nele. */
 export function duplicarPerfil(ctx: Contexto, perfilId: number, nome: string) {
-  const origem = obterPerfil(ctx.empresaId, perfilId);
+  const origem = obterPerfil(exigirClienteEmContexto(ctx), perfilId);
   const novo = criarPerfil(ctx, {
     nome: nome?.trim() || `${origem.nome} (cópia)`,
     tipo: origem.tipo,
@@ -332,10 +357,10 @@ export function duplicarPerfil(ctx: Contexto, perfilId: number, nome: string) {
 }
 
 export function excluirPerfil(ctx: Contexto, perfilId: number) {
-  const perfil = obterPerfil(ctx.empresaId, perfilId);
+  const perfil = obterPerfil(exigirClienteEmContexto(ctx), perfilId);
   if (perfil.padrao === 1) throw erroValidacao('Os perfis padrão não podem ser excluídos.');
   const emUso = db()
-    .prepare('SELECT COUNT(*) AS n FROM usuario_empresas WHERE perfil_id = ?')
+    .prepare('SELECT COUNT(*) AS n FROM usuario_clientes WHERE perfil_id = ?')
     .get(perfilId) as { n: number };
   if (emUso.n > 0) {
     // Excluir levando os vínculos junto deixaria gente sem perfil em silêncio,
@@ -345,6 +370,12 @@ export function excluirPerfil(ctx: Contexto, perfilId: number) {
     );
   }
   db().prepare('DELETE FROM perfis WHERE id = ?').run(perfilId);
-  auditar(ctx, { entidade: 'perfil', entidadeId: perfilId, acao: 'excluir', antes: apresentarPerfil(perfil) });
+  auditar(ctx, {
+    entidade: 'perfil',
+    entidadeId: perfilId,
+    acao: 'excluir',
+    antes: apresentarPerfil(perfil),
+    comEmpresa: false,
+  });
   return { excluido: true };
 }

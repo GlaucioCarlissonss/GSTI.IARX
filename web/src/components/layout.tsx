@@ -41,14 +41,22 @@ const NAVEGACAO = [
   {
     grupo: 'Sistema',
     itens: [
-      { para: '/planilhas', glifo: '⇅', rotulo: 'Importar / Exportar', modulo: 'configuracoes' },
-      { para: '/clientes', glifo: '⬢', rotulo: 'Clientes e unidades', modulo: 'configuracoes' },
-      { para: '/cadastros', glifo: '⚙', rotulo: 'Cadastros', modulo: 'configuracoes' },
-      { para: '/acessos', glifo: '◈', rotulo: 'Usuários e acessos', modulo: 'usuarios' },
-      { para: '/auditoria', glifo: '◉', rotulo: 'Auditoria', modulo: 'configuracoes' },
+      // `escopo` diz se a tela olha só a unidade em foco ou o cliente
+      // inteiro — não é o mesmo em todo item deste grupo, então o rótulo
+      // vai por item, não um selo único no cabeçalho da seção.
+      { para: '/planilhas', glifo: '⇅', rotulo: 'Importar / Exportar', modulo: 'configuracoes', escopo: 'unidade' as const },
+      { para: '/clientes', glifo: '⬢', rotulo: 'Clientes e unidades', modulo: 'configuracoes', escopo: 'cliente' as const },
+      { para: '/cadastros', glifo: '⚙', rotulo: 'Cadastros', modulo: 'configuracoes', escopo: 'unidade' as const },
+      { para: '/acessos', glifo: '◈', rotulo: 'Usuários e acessos', modulo: 'usuarios', escopo: 'cliente' as const },
+      { para: '/auditoria', glifo: '◉', rotulo: 'Auditoria', modulo: 'configuracoes', escopo: 'cliente' as const },
     ],
   },
 ];
+
+const TITULO_ESCOPO = {
+  cliente: 'Vale para todo o cliente: toda matriz e toda filial.',
+  unidade: 'Vale só para a unidade em foco, escolhida na própria tela.',
+};
 
 export function Layout() {
   const { usuario, empresas, cliente, trocarCliente, sair, ehGestor, pode, permissoes } = useSessao();
@@ -118,6 +126,11 @@ export function Layout() {
                       {item.glifo}
                     </span>
                     {item.rotulo}
+                    {'escopo' in item && item.escopo && (
+                      <span className="menu-escopo" title={TITULO_ESCOPO[item.escopo]}>
+                        {item.escopo === 'cliente' ? 'cliente' : 'unidade'}
+                      </span>
+                    )}
                   </NavLink>
                 ),
               )}

@@ -29,11 +29,11 @@ import { criarEmpresa } from '../src/domain/empresas.js';
 import { db } from '../src/db/index.js';
 import type { Contexto } from '../src/domain/contexto.js';
 
-/** Contexto de um usuário criado pelo administrador, nesta empresa. */
+/** Contexto de um usuário criado pelo administrador, neste cliente. */
 function comoUsuario(ctx: Contexto, id: number): Contexto {
   const v = db()
-    .prepare('SELECT papel FROM usuario_empresas WHERE usuario_id = ? AND empresa_id = ?')
-    .get(id, ctx.empresaId) as { papel: string };
+    .prepare('SELECT papel FROM usuario_clientes WHERE usuario_id = ? AND cliente_id = ?')
+    .get(id, ctx.clienteId) as { papel: string };
   return { ...ctx, usuarioId: id, papel: v.papel as Contexto['papel'] };
 }
 
@@ -209,28 +209,31 @@ test('a última conta de gestor não é removida', () => {
   assert.throws(() => removerAcesso(comoUsuario(soUm, terceiro.id), outro.id), /última conta.*gestor/i);
 });
 
-test('usuário de outra empresa não aparece nem é alterável', () => {
+test('usuário de outro cliente não aparece nem é alterável', () => {
   const { ctx } = ambienteLimpo();
   const daqui = criarUsuario(ctx, {
     nome: 'Daqui', username: 'daqui', email: 'd@exemplo.com', senha: 'senha-forte-1',
   });
-  // Uma empresa de verdade, e não um id inventado: a segunda empresa tem os
-  // próprios perfis, e é isso que o isolamento precisa exercitar.
-  const outraEmpresa = criarEmpresa(ctx.usuarioId, { nome: 'Outra empresa' }) as { id: number };
+  // Um cliente de verdade, e não um id inventado: sem `clienteId`, `criarEmpresa`
+  // abre um contratante novo — o segundo cliente tem os próprios perfis, e é
+  // isso que o isolamento precisa exercitar. (Duas matrizes do MESMO cliente já
+  // compartilham usuários e perfis por regra — não há mais isolamento entre
+  // elas; ver `escopo.test.ts`.)
+  const outraEmpresa = criarEmpresa(ctx.usuarioId, { nome: 'Outro cliente' }) as { id: number };
   const outra: Contexto = contextoDe(ctx, outraEmpresa.id);
 
   assert.equal(listarUsuarios(outra).some((u) => u.id === daqui.id), false);
-  // Responder "não está nesta empresa" já contaria que a conta existe.
+  // Responder "não está neste cliente" já contaria que a conta existe.
   assert.throws(() => atualizarUsuario(outra, daqui.id, { nome: 'X' }), /não encontrado/);
 
-  // E os perfis de uma não valem na outra.
+  // E os perfis de um não valem no outro.
   const perfilDaqui = listarPerfis(ctx).find((p) => p.nome === PERFIL_EDICAO)!;
   assert.throws(
     () => criarUsuario(outra, {
       nome: 'X', username: 'xoutra', email: 'x@outra.com', senha: 'senha-forte-1',
       perfil_id: perfilDaqui.id,
     }),
-    /não existe nesta empresa/,
+    /não existe neste cliente/,
   );
 });
 
@@ -336,10 +339,10 @@ test('o corpo do e-mail não vaza no log estruturado', async () => {
   assert.equal(doEmail!.includes('token='), false);
 });
 
-test('as permissões do usuário acompanham a empresa em foco', () => {
+test('as permissões do usuário acompanham o cliente em foco', () => {
   const { ctx } = ambienteLimpo();
-  garantirPerfisPadrao(ctx.empresaId);
-  const p = permissoesDoUsuario(ctx.usuarioId, ctx.empresaId);
+  garantirPerfisPadrao(ctx.clienteId!);
+  const p = permissoesDoUsuario(ctx.usuarioId, ctx.clienteId!);
   assert.equal(p.papel, 'gestor');
   // Sem perfil atribuído, o papel antigo responde: a migração não pode tirar
   // acesso de quem já tinha.

@@ -211,6 +211,11 @@ body[data-sem-cliente] #abas{display:none!important}
 }
 .abas button:hover{background:var(--sup2);color:var(--tinta)}
 .abas button[aria-current="page"]{color:var(--tinta);border-bottom-color:var(--s1);font-weight:600}
+/* Ponto discreto: esta aba vale para o cliente inteiro, não só a unidade em
+   foco. O `title` no botão explica por extenso ao passar o mouse. */
+.abas button[data-escopo="cliente"]{display:inline-flex;align-items:center;gap:5px}
+.abas button[data-escopo="cliente"]::after{content:"";width:5px;height:5px;border-radius:50%;background:var(--tinta3)}
+.abas button[data-escopo="cliente"][aria-current="page"]::after{background:var(--s1)}
 .pagina{max-width:1280px;margin:0 auto;padding-inline:20px;padding-block:22px 60px;display:flex;flex-direction:column;gap:16px}
 
 /* ----------------------------------------------------------- controles */

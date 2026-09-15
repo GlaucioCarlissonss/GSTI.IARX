@@ -29,11 +29,13 @@ import { ctx } from '../middleware/index.js';
 
 export const rotasAcesso = Router();
 
-/** O que o usuário da sessão pode nesta empresa — o front usa para se ajustar. */
+/** O que o usuário da sessão pode neste cliente — o front usa para se ajustar. */
 rotasAcesso.get('/minhas-permissoes', (req, res) => {
   const c = ctx(req);
   res.json({
-    ...permissoesDoUsuario(c.usuarioId, c.empresaId),
+    ...(c.clienteId === null
+      ? { papel: null, perfil: null, permissoes: {}, campos_bloqueados: {} }
+      : permissoesDoUsuario(c.usuarioId, c.clienteId)),
     papel: c.papel,
     modulos: MODULOS,
     acoes: ACOES,

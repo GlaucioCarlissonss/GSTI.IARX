@@ -159,6 +159,60 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
   conferir('a unidade de mesma raiz entra como filial da matriz dela',
     ondeEntrou.includes('Unidade Teste 2'), ondeEntrou.join(', ') || 'nenhuma');
 
+  // -------------------------------------------------------------- árvore
+  // "Sede Teste" acabou de ganhar a filial "Unidade Teste 2" — é a matriz
+  // certa para testar expandir/recolher sem depender de dado pré-existente.
+  console.log('\nÁRVORE — expandir e recolher');
+  const grupoSede = 'button[data-mgrupo]';
+  const estadoInicial = await pag.evaluate((sel) => {
+    const b = document.querySelector(sel);
+    return b ? { existe: true, aberto: b.getAttribute('aria-expanded') === 'true' } : { existe: false };
+  }, grupoSede);
+  conferir('a matriz com filial nasce expandida', estadoInicial.existe && estadoInicial.aberto, JSON.stringify(estadoInicial));
+
+  const linhasAbertas = await pag.$$eval('#pagina > .bloco:nth-of-type(2) .rol tbody tr', (rs) => rs.length);
+  // Foco + Enter, não só clique: é o que prova que o teclado alcança o botão.
+  await pag.focus(grupoSede);
+  await pag.keyboard.press('Enter');
+  await pag.waitForTimeout(400);
+  const fechadoPorTeclado = await pag.$eval(grupoSede, (b) => b.getAttribute('aria-expanded'));
+  conferir('Enter no botão recolhe a matriz (teclado, não só clique)', fechadoPorTeclado === 'false', String(fechadoPorTeclado));
+  const linhasFechadas = await pag.$$eval('#pagina > .bloco:nth-of-type(2) .rol tbody tr', (rs) => rs.length);
+  conferir('recolher tira a linha da filial da tabela', linhasFechadas < linhasAbertas, `${linhasAbertas} → ${linhasFechadas}`);
+
+  // O recolhimento é por localStorage: sobrevive a um F5 na mesma tela.
+  await pag.reload();
+  await pag.waitForSelector('#modulos button', { timeout: 15000 });
+  await pag.click('#modulos button:text-is("Sistema")');
+  await pag.waitForTimeout(200);
+  await pag.click('#abas button:text-is("Clientes e unidades")');
+  await pag.waitForTimeout(600);
+  const persistiu = await pag.$eval(grupoSede, (b) => b.getAttribute('aria-expanded')).catch(() => null);
+  conferir('o recolhimento sobrevive ao F5', persistiu === 'false', String(persistiu));
+
+  const btExpandirTudo = await pag.$('#cl-expandir-tudo');
+  conferir('com mais de uma matriz, há botão de expandir tudo', !!btExpandirTudo, String(!!btExpandirTudo));
+  if (btExpandirTudo) {
+    await btExpandirTudo.click();
+    await pag.waitForTimeout(400);
+    const todasAbertas = await pag.$$eval('[data-mgrupo]', (bs) => bs.every((b) => b.getAttribute('aria-expanded') === 'true'));
+    conferir('"Expandir tudo" reabre todas as matrizes com filial', todasAbertas, String(todasAbertas));
+  }
+
+  // Guarda-corpo: só Clientes/Acessos/Auditoria carregam o ponto de escopo —
+  // Dados e Cadastros continuam por unidade em foco, e uma futura mudança que
+  // rotule um deles por engano como "cliente" tem de quebrar este teste.
+  const escopos = await pag.evaluate(() => {
+    const mapa = {};
+    document.querySelectorAll('#abas button').forEach((b) => { mapa[b.dataset.aba] = b.dataset.escopo || null; });
+    return mapa;
+  });
+  conferir('clientes e auditoria têm data-escopo="cliente"',
+    escopos.clientes === 'cliente' && escopos.auditoria === 'cliente', JSON.stringify(escopos));
+  conferir('acessos também tem, agora que a Frente A terminou', escopos.acessos === 'cliente', String(escopos.acessos));
+  conferir('dados e cadastros não carregam o escopo de cliente',
+    !escopos.dados && !escopos.cadastros, JSON.stringify(escopos));
+
   // Os dois clientes do enunciado entram por um botão, não sozinhos ao abrir.
   await pag.click('#cl-iniciais');
   await pag.waitForTimeout(800);

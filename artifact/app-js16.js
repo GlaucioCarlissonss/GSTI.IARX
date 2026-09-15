@@ -2,9 +2,11 @@
 // Usuários e acessos — quem entra, com qual perfil, e o que cada perfil faz
 // ===========================================================================
 /**
- * O perfil mora no vínculo do usuário com a EMPRESA, não no usuário: o sistema
- * é multi-tenant por regra, e a mesma pessoa pode ser gestora numa empresa e
- * leitora em outra.
+ * O perfil mora no vínculo do usuário com o CLIENTE, não com a matriz: o
+ * sistema é multi-tenant por regra, e a mesma pessoa pode ser gestora num
+ * cliente e leitora em outro — mas vale em TODA matriz e filial de um mesmo
+ * cliente, de uma vez. Já foi por empresa; a migração dos documentos antigos
+ * está em `Loja.usuariosHerdados`/`perfisHerdados` (app-js1.js).
  *
  * Autenticação de verdade — senha, sessão, bloqueio — é do servidor local, que
  * é quem recusa a requisição. Esta tela é o cadastro que governa aquele
@@ -52,9 +54,9 @@ function permissoesPadrao(tipo) {
   return m;
 }
 
-/** Os dois perfis que toda empresa tem ao abrir a tela pela primeira vez. */
-async function garantirPerfisPadrao(empresa) {
-  const atuais = await Loja.perfisDa(empresa);
+/** Os dois perfis que todo cliente tem ao abrir a tela pela primeira vez. */
+async function garantirPerfisPadrao(cliente) {
+  const atuais = await Loja.perfisDoCliente(cliente);
   const falta = [
     { nome: PERFIL_LEITURA, tipo: 'VIEW_ONLY' },
     { nome: PERFIL_EDICAO,  tipo: 'EDIT' },
@@ -65,7 +67,7 @@ async function garantirPerfisPadrao(empresa) {
   const novos = falta.map((p) => ({ id: novoId(), nome: p.nome, tipo: p.tipo, padrao: true,
     permissoes: permissoesPadrao(p.tipo), criadoEm: new Date().toISOString() }));
   const lista = [...atuais, ...novos];
-  await Loja.gravarPerfis(empresa, lista);
+  await Loja.gravarPerfis(cliente, lista);
   return lista;
 }
 
@@ -197,17 +199,9 @@ function aplicarPreviaNaTela() {
 
 // ----------------------------------------------------------------- a tela
 async function viewAcessos() {
-  const emp = empresaAtiva();
-  if (!emp) {
-    // O perfil mora no vínculo da pessoa com a UNIDADE — a mesma pessoa pode
-    // ser gestora numa e leitora em outra —, e a unidade se escolhe na barra
-    // desta tela.
-    el('#pagina').innerHTML = `<div class="msg alerta"><strong>Este cliente ainda não tem unidade cadastrada.</strong>
-      O acesso é concedido por unidade. Cadastre a matriz em <strong>Clientes e unidades</strong>.</div>`;
-    return;
-  }
-  const perfis = await garantirPerfisPadrao(emp);
-  const usuarios = (await Loja.usuariosDa(emp)).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const cli = E.clienteSel;
+  const perfis = await garantirPerfisPadrao(cli);
+  const usuarios = (await Loja.usuariosDoCliente(cli)).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   const ativos = usuarios.filter((u) => u.ativo !== false);
   const semPerfil = usuarios.filter((u) => !perfilDe(perfis, u.perfil)).length;
 
@@ -217,11 +211,12 @@ async function viewAcessos() {
   el('#pagina').innerHTML = `
     <div class="msg"><strong>Quem recusa o acesso é o servidor.</strong>
       Esta tela é o cadastro que governa essa recusa — usuários, perfis e a matriz de permissões — e a
-      pré-visualização do que cada perfil enxerga. A senha nunca passa por aqui: ela é definida no primeiro acesso,
-      pelo próprio usuário, e guardada apenas como hash no servidor.</div>
+      pré-visualização do que cada perfil enxerga. Concedido uma vez, o acesso vale em toda matriz e filial deste
+      cliente. A senha nunca passa por aqui: ela é definida no primeiro acesso, pelo próprio usuário, e guardada
+      apenas como hash no servidor.</div>
 
     <div class="kpis">
-      ${kpi('Usuários', inteiro(usuarios.length), 'vinculados a esta empresa')}
+      ${kpi('Usuários', inteiro(usuarios.length), 'vinculados a este cliente')}
       ${kpi('Ativos', inteiro(ativos.length), 'podem entrar hoje')}
       ${kpi('Perfis', inteiro(perfis.length), inteiro(perfis.filter((p)=>p.padrao).length) + ' padrão')}
       ${kpi('Sem perfil válido', inteiro(semPerfil), semPerfil ? 'não entram até receber um' : 'nenhum pendente', semPerfil ? 'crit' : '')}
@@ -230,7 +225,7 @@ async function viewAcessos() {
     <section class="bloco" style="margin-top:16px">
       <header><h2>Usuários</h2><span class="nota">${inteiro(usuarios.length)} cadastrado(s)</span>
         <button class="bt pri" id="u-novo">Novo usuário</button></header>
-      ${usuarios.length === 0 ? '<p class="vazio">Nenhum usuário cadastrado nesta empresa.</p>' : `
+      ${usuarios.length === 0 ? '<p class="vazio">Nenhum usuário cadastrado neste cliente.</p>' : `
       <div class="rol"><table><thead><tr>
         <th>Nome</th><th>Usuário (login)</th><th>E-mail</th><th>Perfil</th><th>Situação</th><th></th>
       </tr></thead><tbody>
@@ -271,12 +266,12 @@ async function viewAcessos() {
       </tbody></table></div>
     </section>`;
 
-  el('#u-novo').onclick = () => formUsuario(emp, perfis, null);
-  el('#p-novo').onclick = () => formPerfil(emp, null);
+  el('#u-novo').onclick = () => formUsuario(cli, perfis, null);
+  el('#p-novo').onclick = () => formPerfil(cli, null);
 
   el('#pagina').querySelectorAll('tr[data-u]').forEach((tr) => {
     const u = usuarios.find((x) => x.id === tr.dataset.u);
-    tr.querySelector('[data-editar-u]').onclick = () => formUsuario(emp, perfis, u);
+    tr.querySelector('[data-editar-u]').onclick = () => formUsuario(cli, perfis, u);
     tr.querySelector('[data-alternar]').onclick = () => {
       const inativando = u.ativo !== false;
       confirmar({
@@ -287,11 +282,13 @@ async function viewAcessos() {
         rotulo: inativando ? 'Inativar' : 'Reativar',
         exigeJustificativa: inativando,
         async aoConfirmar(just) {
-          const lista = (await Loja.usuariosDa(emp)).map((x) =>
+          const lista = (await Loja.usuariosDoCliente(cli)).map((x) =>
             x.id === u.id ? { ...x, ativo: !inativando } : x);
-          await Loja.gravarUsuarios(emp, lista);
+          await Loja.gravarUsuarios(cli, lista);
+          // Nível de cliente: sem matriz de contexto — passar null resolve o
+          // cliente ativo, em vez de amarrar o evento à matriz em foco.
           await Loja.auditar({ acao: inativando ? 'inativar' : 'reativar', entidade:'usuario', id:u.id,
-            justificativa: just, antes:{ ativo: u.ativo !== false }, depois:{ ativo: !inativando } }, emp);
+            justificativa: just, antes:{ ativo: u.ativo !== false }, depois:{ ativo: !inativando } }, null);
           render();
         } });
     };
@@ -299,7 +296,7 @@ async function viewAcessos() {
 
   el('#pagina').querySelectorAll('tr[data-p]').forEach((tr) => {
     const p = perfilDe(perfis, tr.dataset.p);
-    tr.querySelector('[data-perm]').onclick = () => formPermissoes(emp, p);
+    tr.querySelector('[data-perm]').onclick = () => formPermissoes(cli, p);
     tr.querySelector('[data-previa]').onclick = () => {
       E.previa = p;
       try { localStorage.setItem('iarx-previa', p.id); } catch (e) { /* sem armazenamento: vale só nesta sessão */ }
@@ -308,7 +305,7 @@ async function viewAcessos() {
       if (!abaVisivel(E.aba)) E.aba = (ABAS.find((a) => abaVisivel(a.id)) || ABAS[0]).id;
       render();
     };
-    tr.querySelector('[data-dup]').onclick = () => formPerfil(emp, p, true);
+    tr.querySelector('[data-dup]').onclick = () => formPerfil(cli, p, true);
     const excluir = tr.querySelector('[data-excluir-p]');
     if (excluir) excluir.onclick = () => {
       const emUso = usuarios.filter((u) => u.perfil === p.id);
@@ -323,9 +320,9 @@ async function viewAcessos() {
       confirmar({ titulo:'Excluir perfil', rotulo:'Excluir', exigeJustificativa: true,
         mensagem: `O perfil ${esc(p.nome)} sai do cadastro. Nenhum usuário o usa hoje.`,
         async aoConfirmar(just) {
-          await Loja.gravarPerfis(emp, (await Loja.perfisDa(emp)).filter((x) => x.id !== p.id));
+          await Loja.gravarPerfis(cli, (await Loja.perfisDoCliente(cli)).filter((x) => x.id !== p.id));
           if (E.previa && E.previa.id === p.id) E.previa = null;
-          await Loja.auditar({ acao:'excluir', entidade:'perfil', id:p.id, justificativa:just, antes:{ nome:p.nome } }, emp);
+          await Loja.auditar({ acao:'excluir', entidade:'perfil', id:p.id, justificativa:just, antes:{ nome:p.nome } }, null);
           render();
         } });
     };
@@ -343,7 +340,7 @@ function derivarUsername(email) {
   return nome.slice(0, 40);
 }
 
-function formUsuario(empresa, perfis, existente) {
+function formUsuario(cliente, perfis, existente) {
   const u = existente || { nome:'', username:'', email:'', perfil: (perfis[0]||{}).id, ativo:true };
   abrirModal({
     titulo: existente ? 'Editar usuário' : 'Novo usuário',
@@ -357,9 +354,10 @@ function formUsuario(empresa, perfis, existente) {
         <input id="u-email" name="email" type="email" value="${esc(u.email)}"></div>
       <div class="campo"><label for="u-user">Usuário (login)</label>
         <input id="u-user" name="username" value="${esc(u.username)}" placeholder="derivado do e-mail se ficar em branco"></div>
-      <div class="campo"><label for="u-perfil">Perfil nesta empresa</label>
+      <div class="campo"><label for="u-perfil">Perfil neste cliente</label>
         <select id="u-perfil" name="perfil">${perfis.map((p)=>
-          `<option value="${esc(p.id)}"${p.id===u.perfil?' selected':''}>${esc(p.nome)}</option>`).join('')}</select></div>`,
+          `<option value="${esc(p.id)}"${p.id===u.perfil?' selected':''}>${esc(p.nome)}</option>`).join('')}</select>
+        <small class="dica-filtro">Vale em toda matriz e filial deste cliente.</small></div>`,
     acoes: '<button type="button" class="bt" data-c>Cancelar</button><button type="button" class="bt pri" data-s>Salvar</button>',
     aoMontar({ raiz, fechar, erro, campo }) {
       const email = campo('email'), user = campo('username');
@@ -378,21 +376,21 @@ function formUsuario(empresa, perfis, existente) {
           if (!/^[a-z0-9._-]{3,40}$/.test(login)) {
             throw new Error('O usuário deve ter de 3 a 40 caracteres, apenas letras, números, ponto, hífen ou sublinhado.');
           }
-          const lista = await Loja.usuariosDa(empresa);
+          const lista = await Loja.usuariosDoCliente(cliente);
           const conflito = lista.find((x) => x.id !== u.id && (x.username === login || x.email === mail));
           if (conflito) {
             throw new Error(conflito.username === login
-              ? `O usuário "${login}" já existe nesta empresa.`
-              : `O e-mail "${mail}" já está em outro cadastro desta empresa.`);
+              ? `O usuário "${login}" já existe neste cliente.`
+              : `O e-mail "${mail}" já está em outro cadastro deste cliente.`);
           }
           const perfil = campo('perfil').value;
           const registro = { id: u.id || novoId(), nome, email: mail, username: login, perfil,
             ativo: u.ativo !== false, criadoEm: u.criadoEm || new Date().toISOString() };
-          await Loja.gravarUsuarios(empresa,
+          await Loja.gravarUsuarios(cliente,
             existente ? lista.map((x) => (x.id === u.id ? registro : x)) : [...lista, registro]);
           await Loja.auditar({ acao: existente ? 'atualizar' : 'criar', entidade:'usuario', id: registro.id,
             antes: existente ? { nome:u.nome, username:u.username, email:u.email, perfil:u.perfil } : undefined,
-            depois:{ nome, username: login, email: mail, perfil } }, empresa);
+            depois:{ nome, username: login, email: mail, perfil } }, null);
           fechar(); render();
         } catch (e) { erro(e.message); ev.target.disabled = false; }
       };
@@ -400,7 +398,7 @@ function formUsuario(empresa, perfis, existente) {
   });
 }
 
-function formPerfil(empresa, base, duplicando) {
+function formPerfil(cliente, base, duplicando) {
   const p = base || { nome:'', tipo:'VIEW_ONLY' };
   abrirModal({
     titulo: duplicando ? 'Duplicar perfil' : (base ? 'Editar perfil' : 'Novo perfil'),
@@ -423,10 +421,10 @@ function formPerfil(empresa, base, duplicando) {
           const nome = campo('nome').value.trim();
           if (!nome) throw new Error('Informe o nome do perfil.');
           const tipo = campo('tipo').value;
-          const lista = await Loja.perfisDa(empresa);
+          const lista = await Loja.perfisDoCliente(cliente);
           const editando = base && !duplicando;
           if (lista.some((x) => x.nome.toLowerCase() === nome.toLowerCase() && (!editando || x.id !== p.id))) {
-            throw new Error(`Já existe um perfil chamado "${nome}" nesta empresa.`);
+            throw new Error(`Já existe um perfil chamado "${nome}" neste cliente.`);
           }
           // Duplicar copia a matriz de quem foi duplicado; criar parte do padrão
           // do tipo; editar preserva o que já foi ajustado à mão.
@@ -435,10 +433,10 @@ function formPerfil(empresa, base, duplicando) {
           const registro = { id: editando ? p.id : novoId(), nome, tipo,
             padrao: editando ? !!p.padrao : false, permissoes,
             criadoEm: editando ? p.criadoEm : new Date().toISOString() };
-          await Loja.gravarPerfis(empresa,
+          await Loja.gravarPerfis(cliente,
             editando ? lista.map((x) => (x.id === p.id ? registro : x)) : [...lista, registro]);
           await Loja.auditar({ acao: editando ? 'atualizar' : 'criar', entidade:'perfil', id: registro.id,
-            depois:{ nome, tipo } }, empresa);
+            depois:{ nome, tipo } }, null);
           fechar(); render();
         } catch (e) { erro(e.message); ev.target.disabled = false; }
       };
@@ -447,7 +445,7 @@ function formPerfil(empresa, base, duplicando) {
 }
 
 /** A matriz módulo × ação do perfil, marcada a caixa por caixa. */
-function formPermissoes(empresa, perfil) {
+function formPermissoes(cliente, perfil) {
   const marcada = (m, a) => (perfilPode(perfil, m, a) ? ' checked' : '');
   abrirModal({
     titulo: 'Permissões — ' + perfil.nome,
@@ -501,13 +499,13 @@ function formPermissoes(empresa, perfil) {
               permissoes[m.id][a.id] = daLinha(m.id).find((c) => c.dataset.a === a.id).checked;
             }
           }
-          const lista = (await Loja.perfisDa(empresa)).map((x) =>
+          const lista = (await Loja.perfisDoCliente(cliente)).map((x) =>
             x.id === perfil.id ? { ...x, permissoes } : x);
-          await Loja.gravarPerfis(empresa, lista);
+          await Loja.gravarPerfis(cliente, lista);
           if (E.previa && E.previa.id === perfil.id) E.previa = { ...perfil, permissoes };
           await Loja.auditar({ acao:'atualizar', entidade:'perfil_permissoes', id: perfil.id,
             antes:{ concedidas: contarPermissoes(perfil) },
-            depois:{ concedidas: contarPermissoes({ permissoes }) } }, empresa);
+            depois:{ concedidas: contarPermissoes({ permissoes }) } }, null);
           fechar(); render();
         } catch (e) { erro(e.message); ev.target.disabled = false; }
       };
@@ -527,9 +525,9 @@ async function restaurarPrevia() {
   let id = null;
   try { id = localStorage.getItem('iarx-previa'); } catch (e) { return; }
   if (!id) return;
-  const emp = empresaAtiva();
-  if (!emp) return;
-  const perfil = perfilDe(await Loja.perfisDa(emp), id);
+  const cli = E.clienteSel;
+  if (!cli) return;
+  const perfil = perfilDe(await Loja.perfisDoCliente(cli), id);
   if (perfil) E.previa = perfil;
   else { try { localStorage.removeItem('iarx-previa'); } catch (e) { /* nada a limpar */ } }
 }
