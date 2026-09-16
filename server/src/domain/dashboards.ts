@@ -697,6 +697,142 @@ export function dashboardSla(ctx: Contexto, escopo: EscopoDashboard = {}) {
 // Visão executiva consolidada
 // ==========================================================================
 
+/** Uma linha da quebra: de qual matriz, de qual filial, e quanto. */
+export interface LinhaPorUnidade {
+  empresa_id: number;
+  empresa: string;
+  filial_id: number | null;
+  filial: string | null;
+  valor: number;
+  /** Só o SLA usa: o denominador e o que ficou dentro do prazo. */
+  total?: number;
+  dentro?: number;
+}
+
+/**
+ * De QUEM é cada pedaço dos números do painel executivo.
+ *
+ * O indicador continua consolidado — é o que o gestor quer ler primeiro. Esta
+ * quebra alimenta duas coisas em cima dele: a faixa de cores, que diz a
+ * composição sem pedir nenhum clique, e a sanfona matriz → filial.
+ *
+ * As janelas são as MESMAS de `visaoExecutiva`: o mês de referência para o
+ * gasto, os doze meses seguintes para o compromisso. Se divergissem, a soma da
+ * sanfona não bateria com o número do card — e é justamente essa igualdade que
+ * faz a quebra valer alguma coisa.
+ */
+export function quebraPorUnidade(ctx: Contexto, escopo: EscopoDashboard = {}) {
+  const cenarios = cenariosDoEscopo(escopo);
+  const escolhidos = lista(escopo.competencia, escopo.competencias)?.map(paraInterno).sort();
+  const meses = escolhidos?.length ? escolhidos : [competenciaReferencia(ctx, escopo, cenarios)];
+  const mesRef = meses[meses.length - 1]!;
+  const emFoco = clausulaEm('l.competencia', meses)!;
+  const { condicoes, params } = filtroFinanceiro(ctx, escopo, cenarios);
+  const where = condicoes.join(' AND ');
+
+  const porUnidade = (sqlExtra: string, extras: unknown[]): LinhaPorUnidade[] =>
+    (
+      db()
+        .prepare(
+          `SELECT l.empresa_id, e.nome AS empresa, l.filial_id, f.nome AS filial,
+                  COALESCE(SUM(l.valor_centavos), 0) AS centavos
+             FROM lancamentos l
+             JOIN empresas e ON e.id = l.empresa_id
+             LEFT JOIN filiais f ON f.id = l.filial_id
+            WHERE ${where} AND ${sqlExtra}
+            GROUP BY l.empresa_id, l.filial_id
+            ORDER BY centavos DESC`,
+        )
+        .all(...params, ...extras) as Array<{
+        empresa_id: number;
+        empresa: string;
+        filial_id: number | null;
+        filial: string | null;
+        centavos: number;
+      }>
+    ).map((r) => ({
+      empresa_id: r.empresa_id,
+      empresa: r.empresa,
+      filial_id: r.filial_id,
+      filial: r.filial,
+      valor: paraReais(r.centavos),
+    }));
+
+  // Compromisso: os doze meses SEGUINTES ao de referência, como no card.
+  const inicio = somarMeses(mesRef, 1);
+  const fim = somarMeses(mesRef, 12);
+
+  // O SLA usa o MESMO mês de referência do card, que é o do próprio painel de
+  // SLA — e não o do financeiro: os dois podem divergir quando uma base tem
+  // movimento num mês e a outra não.
+  const mesSla = competenciaReferenciaSla(ctx, escopo);
+  const filtroSla = montarFiltroSla(ctx, { filialId: escopo.filialId, empresas: escopo.empresas });
+  const sla = (
+    db()
+      .prepare(
+        `SELECT s.empresa_id, e.nome AS empresa, s.filial_id, f.nome AS filial,
+                COALESCE(SUM(s.total_atendidos), 0) AS total,
+                COALESCE(SUM(s.dentro_sla), 0) AS dentro
+           FROM tickets_sla s
+           JOIN empresas e ON e.id = s.empresa_id
+           LEFT JOIN filiais f ON f.id = s.filial_id
+          WHERE ${filtroSla.where} AND s.competencia = ?
+          GROUP BY s.empresa_id, s.filial_id
+          ORDER BY (SUM(s.total_atendidos) - SUM(s.dentro_sla)) DESC`,
+      )
+      .all(...filtroSla.params, mesSla) as Array<{
+      empresa_id: number;
+      empresa: string;
+      filial_id: number | null;
+      filial: string | null;
+      total: number;
+      dentro: number;
+    }>
+  ).map((r) => ({ ...r, valor: r.total }));
+
+  const alcanceProj = escopoSql(ctx, escopo.empresas, 'p.empresa_id');
+  const atrasados = (
+    db()
+      .prepare(
+        `SELECT p.empresa_id, e.nome AS empresa, p.filial_id, f.nome AS filial,
+                p.mes_fim_planejado, p.mes_fim_real, p.status
+           FROM projetos p
+           JOIN empresas e ON e.id = p.empresa_id
+           LEFT JOIN filiais f ON f.id = p.filial_id
+          WHERE ${alcanceProj.sql} AND p.excluido_em IS NULL`,
+      )
+      .all(...alcanceProj.params) as Array<{
+      empresa_id: number;
+      empresa: string;
+      filial_id: number | null;
+      filial: string | null;
+      mes_fim_planejado: string;
+      mes_fim_real: string | null;
+      status: string;
+    }>
+  ).filter((p) => calcularAtraso(p.mes_fim_planejado, p.mes_fim_real, p.status).atrasado);
+
+  const contar = (linhas: typeof atrasados): LinhaPorUnidade[] => {
+    const mapa = new Map<string, LinhaPorUnidade>();
+    for (const p of linhas) {
+      const chave = `${p.empresa_id}:${p.filial_id ?? ''}`;
+      const atual = mapa.get(chave) ?? {
+        empresa_id: p.empresa_id, empresa: p.empresa, filial_id: p.filial_id, filial: p.filial, valor: 0,
+      };
+      atual.valor += 1;
+      mapa.set(chave, atual);
+    }
+    return [...mapa.values()].sort((a, b) => b.valor - a.valor);
+  };
+
+  return {
+    gasto_mes: porUnidade(emFoco.sql, emFoco.params),
+    compromisso_proximos_12_meses: porUnidade('l.competencia BETWEEN ? AND ?', [inicio, fim]),
+    projetos_atrasados: contar(atrasados),
+    sla,
+  };
+}
+
 export function visaoExecutiva(ctx: Contexto, escopo: EscopoDashboard = {}) {
   const financeiro = dashboardFinanceiro(ctx, escopo);
   const projetos = dashboardProjetos(ctx, escopo);
@@ -714,6 +850,8 @@ export function visaoExecutiva(ctx: Contexto, escopo: EscopoDashboard = {}) {
     },
     projetos: projetos.indicadores,
     sla: sla.totais_mes,
+    // De quem é cada pedaço: alimenta a faixa de cores e a sanfona por unidade.
+    por_unidade: quebraPorUnidade(ctx, escopo),
   };
 }
 
