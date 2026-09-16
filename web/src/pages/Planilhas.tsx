@@ -3,7 +3,21 @@ import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { SeletorUnidadeFoco } from '../components/filtro-escopo';
 import { Aviso, Campo, Cartao, Etiqueta } from '../components/base';
+import { PainelConciliacao, type Analise, type Decisao } from '../components/conciliacao';
 import { dataHora, inteiro } from '../lib/formato';
+
+interface Previa {
+  lancamentos: number;
+  competencias: string[];
+  confirmacao_exigida: string | null;
+}
+
+interface ResultadoFoc {
+  importadas: number;
+  duplicadas: number;
+  rejeitadas: number;
+  cadastros_criados: { centros_custo: string[]; filiais: string[] };
+}
 
 interface ResultadoImportacao {
   template_versao: string;
@@ -75,6 +89,104 @@ export function PaginaPlanilhas() {
   const [enviando, setEnviando] = useState(false);
   const [novoMapa, setNovoMapa] = useState({ aba: 'Financeiro', coluna: '', apelido: '' });
   const [erroMapa, setErroMapa] = useState<string | null>(null);
+
+  // Carga da base do cliente: analisar primeiro, decidir, e só então gravar.
+  const [arquivoFoc, setArquivoFoc] = useState<File | null>(null);
+  const [analise, setAnalise] = useState<Analise | null>(null);
+  const [resultadoFoc, setResultadoFoc] = useState<ResultadoFoc | null>(null);
+  const [erroFoc, setErroFoc] = useState<string | null>(null);
+  const [enviandoFoc, setEnviandoFoc] = useState(false);
+
+  // Limpeza da base: a contagem vem antes, e a confirmação é informada.
+  const podeLimpar = pode('financeiro', 'delete');
+  const [limpeza, setLimpeza] = useState({ de: '', ate: '' });
+  const [previa, setPrevia] = useState<Previa | null>(null);
+  const [confirmacao, setConfirmacao] = useState('');
+  const [erroLimpeza, setErroLimpeza] = useState<string | null>(null);
+  const [limpando, setLimpando] = useState(false);
+
+  // Mexer no período invalida a prévia: confirmar com a contagem de outro
+  // recorte seria apagar o que ninguém viu.
+  const trocarLimpeza = (campo: 'de' | 'ate', valor: string) => {
+    setLimpeza((l) => ({ ...l, [campo]: valor }));
+    setPrevia(null);
+    setConfirmacao('');
+  };
+
+  const verPrevia = async () => {
+    setErroLimpeza(null);
+    setConfirmacao('');
+    try {
+      setPrevia(
+        await api.get<Previa>('/api/planilhas/limpeza/previa', {
+          de: limpeza.de || undefined,
+          ate: limpeza.ate || undefined,
+        }),
+      );
+    } catch (e) {
+      setErroLimpeza(e instanceof Error ? e.message : 'Não foi possível contar os registros.');
+    }
+  };
+
+  const executarLimpeza = async () => {
+    setLimpando(true);
+    setErroLimpeza(null);
+    try {
+      const r = await api.post<{ removidos: number }>('/api/planilhas/limpeza', {
+        de: limpeza.de || null,
+        ate: limpeza.ate || null,
+        confirmacao: confirmacao || null,
+      });
+      setPrevia(null);
+      setConfirmacao('');
+      setErroLimpeza(null);
+      historico.recarregar();
+      alert(`${r.removidos} lançamento(s) apagado(s).`);
+    } catch (e) {
+      setErroLimpeza(e instanceof Error ? e.message : 'A limpeza não pôde ser concluída.');
+    } finally {
+      setLimpando(false);
+    }
+  };
+
+  const analisar = async () => {
+    if (!arquivoFoc) return;
+    setEnviandoFoc(true);
+    setErroFoc(null);
+    setResultadoFoc(null);
+    try {
+      setAnalise(
+        await api.enviarArquivo<Analise>('/api/planilhas/foc/conciliacao', arquivoFoc, {
+          ...(empresa ? { empresas: String(empresa.id) } : null),
+        }),
+      );
+    } catch (e) {
+      setErroFoc(e instanceof Error ? e.message : 'Não foi possível ler a planilha.');
+    } finally {
+      setEnviandoFoc(false);
+    }
+  };
+
+  const importarFoc = async (decisoes: Decisao[]) => {
+    if (!arquivoFoc) return;
+    setEnviandoFoc(true);
+    setErroFoc(null);
+    try {
+      const r = await api.enviarArquivo<ResultadoFoc>('/api/planilhas/foc/carga', arquivoFoc, {
+        decisoes: JSON.stringify(decisoes),
+        ...(empresa ? { empresas: String(empresa.id) } : null),
+      });
+      setResultadoFoc(r);
+      // Com a carga gravada, a conciliação daquele arquivo não descreve mais a
+      // base: deixá-la na tela convidaria a importar de novo sobre o novo estado.
+      setAnalise(null);
+      historico.recarregar();
+    } catch (e) {
+      setErroFoc(e instanceof Error ? e.message : 'A importação não pôde ser concluída.');
+    } finally {
+      setEnviandoFoc(false);
+    }
+  };
 
   const templates = useDados<Templates>(() => api.get('/api/planilhas/templates'), []);
   // O histórico é do CLIENTE: quem pergunta "por que os dados não entraram?"
@@ -221,6 +333,120 @@ export function PaginaPlanilhas() {
             </div>
           )}
         </Cartao>
+
+        <Cartao
+          titulo="Carga da base do cliente"
+          descricao="A planilha que o cliente exporta do sistema dele, conferida contra o cadastro antes de entrar"
+        >
+          {erroFoc && <Aviso tipo="erro">{erroFoc}</Aviso>}
+          {resultadoFoc && (
+            <Aviso tipo="ok">
+              <strong>{resultadoFoc.importadas}</strong> lançamento(s) importado(s)
+              {resultadoFoc.duplicadas > 0 && ` · ${resultadoFoc.duplicadas} já existia(m)`}
+              {resultadoFoc.rejeitadas > 0 && ` · ${resultadoFoc.rejeitadas} recusada(s)`}
+              {resultadoFoc.cadastros_criados.centros_custo.length > 0 && (
+                <div style={{ fontSize: 12.5, marginTop: 4 }}>
+                  Centros de custo criados: {resultadoFoc.cadastros_criados.centros_custo.join(', ')}
+                </div>
+              )}
+            </Aviso>
+          )}
+
+          <div className="barra-filtros" style={{ marginBottom: 12 }}>
+            <Campo rotulo="Planilha do cliente (.xlsx)">
+              <input
+                type="file"
+                accept=".xlsx"
+                onChange={(e) => {
+                  setArquivoFoc(e.target.files?.[0] ?? null);
+                  setAnalise(null);
+                  setResultadoFoc(null);
+                  setErroFoc(null);
+                }}
+              />
+            </Campo>
+            <button
+              type="button"
+              className="botao"
+              disabled={!arquivoFoc || enviandoFoc || !podeEditar}
+              onClick={analisar}
+            >
+              {enviandoFoc && !analise ? 'Analisando…' : 'Analisar'}
+            </button>
+          </div>
+
+          {analise ? (
+            <PainelConciliacao analise={analise} enviando={enviandoFoc} aoImportar={importarFoc} />
+          ) : (
+            <p style={{ color: 'var(--tinta-fraca)', fontSize: 13, margin: 0 }}>
+              Analisar não grava nada: mostra o que a planilha traz de diferente do cadastro e espera a sua decisão em
+              cada caso. Só depois disso a importação fica disponível.
+            </p>
+          )}
+        </Cartao>
+
+        {podeLimpar && (
+          <Cartao
+            titulo="Limpar base"
+            descricao="Apaga lançamentos do cliente. Cadastro nenhum é tocado — centro de custo, filial e fornecedor ficam."
+          >
+            {erroLimpeza && <Aviso tipo="erro">{erroLimpeza}</Aviso>}
+            <div className="barra-filtros" style={{ marginBottom: 10 }}>
+              <Campo rotulo="De (MM/AAAA)" dica="Em branco nos dois campos = a base inteira do cliente.">
+                <input value={limpeza.de} onChange={(e) => trocarLimpeza('de', e.target.value)} placeholder="09/2026" style={{ width: 100 }} />
+              </Campo>
+              <Campo rotulo="Até (MM/AAAA)">
+                <input value={limpeza.ate} onChange={(e) => trocarLimpeza('ate', e.target.value)} placeholder="09/2026" style={{ width: 100 }} />
+              </Campo>
+              <button type="button" className="botao" onClick={verPrevia} disabled={limpando}>
+                Ver o que será apagado
+              </button>
+            </div>
+
+            {previa && (
+              <>
+                <Aviso tipo={previa.lancamentos > 0 ? 'erro' : 'info'}>
+                  {previa.lancamentos === 0 ? (
+                    'Nada a apagar neste recorte.'
+                  ) : (
+                    <>
+                      Serão apagados <strong>{inteiro(previa.lancamentos)}</strong> lançamento(s)
+                      {previa.competencias.length > 0 && ` · competência(s): ${previa.competencias.join(', ')}`}. Esta
+                      ação não tem volta.
+                    </>
+                  )}
+                </Aviso>
+                {previa.lancamentos > 0 && (
+                  <div className="barra-filtros">
+                    {previa.confirmacao_exigida && (
+                      <Campo
+                        rotulo="Digite o nome do cliente para confirmar"
+                        dica={`Exatamente: ${previa.confirmacao_exigida}`}
+                      >
+                        <input
+                          value={confirmacao}
+                          onChange={(e) => setConfirmacao(e.target.value)}
+                          style={{ minWidth: 240 }}
+                        />
+                      </Campo>
+                    )}
+                    <button
+                      type="button"
+                      className="botao perigo"
+                      disabled={
+                        limpando ||
+                        (!!previa.confirmacao_exigida && confirmacao.trim() !== previa.confirmacao_exigida)
+                      }
+                      onClick={executarLimpeza}
+                    >
+                      {limpando ? 'Apagando…' : `Apagar ${inteiro(previa.lancamentos)} lançamento(s)`}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </Cartao>
+        )}
 
         <Cartao titulo="Exportar" descricao="Mesmo layout da importação — serve de backup e migração">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
