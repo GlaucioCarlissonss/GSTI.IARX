@@ -21,6 +21,7 @@ import {
   registrarTicketSla,
 } from '../src/domain/sla.js';
 import { exportarXlsx } from '../src/domain/exportacao.js';
+import { escopoDoCliente } from '../src/domain/escopo-operacao.js';
 import { importarPlanilha } from '../src/domain/importacao.js';
 import { listarFilas, criarTopicoAjuda, criarFilial } from '../src/domain/cadastros.js';
 import { criarEmpresa } from '../src/domain/empresas.js';
@@ -270,7 +271,7 @@ test('chamado é registro de SLA com detalhe e volta pela planilha sem duplicar'
   assert.equal(editado.ticket_id, 21734);
 
   // Ida e volta pela planilha: a identidade é o ticket, então nada duplica.
-  const arquivo = await exportarXlsx(ctx, 'sla');
+  const arquivo = (await exportarXlsx(ctx, escopoDoCliente(ctx), 'sla')).buffer;
   const antes = listarTicketsSla(ctx).itens.length;
   const relatorio = await importarPlanilha(ctx, arquivo, { modulo: 'sla', arquivoNome: 'sla.xlsx' });
   assert.equal(relatorio.duplicadas, antes);

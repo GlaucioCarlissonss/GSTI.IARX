@@ -6,6 +6,7 @@ import { criarProjeto, criarTarefa, listarProjetos, listarTarefas } from '../src
 import { registrarTicketSla, listarTicketsSla } from '../src/domain/sla.js';
 import { criarFilial, criarTopicoAjuda, listarFilas } from '../src/domain/cadastros.js';
 import { exportarXlsx } from '../src/domain/exportacao.js';
+import { escopoDoCliente } from '../src/domain/escopo-operacao.js';
 import { importarPlanilha } from '../src/domain/importacao.js';
 import { escreverCsv, lerCsv } from '../src/lib/planilha.js';
 
@@ -45,7 +46,7 @@ test('exportar e reimportar não duplica nem perde registros', async () => {
   const antes = listarLancamentos(ctx, { limite: 500 });
   assert.equal(antes.total, 4); // 1 fixa + 3 parcelas
 
-  const planilha = await exportarXlsx(ctx, 'completo');
+  const planilha = (await exportarXlsx(ctx, escopoDoCliente(ctx), 'completo')).buffer;
   const resultado = await importarPlanilha(ctx, planilha, {
     modulo: 'completo',
     arquivoNome: 'reimportacao.xlsx',
@@ -83,7 +84,7 @@ test('exportação completa preserva projetos, tarefas e SLA na reimportação',
     dentroSla: 108,
   });
 
-  const planilha = await exportarXlsx(ctx, 'completo');
+  const planilha = (await exportarXlsx(ctx, escopoDoCliente(ctx), 'completo')).buffer;
   const resultado = await importarPlanilha(ctx, planilha, { modulo: 'completo', arquivoNome: 'base.xlsx' });
 
   assert.equal(resultado.com_erro, 0, JSON.stringify(resultado.erros));
@@ -210,7 +211,7 @@ test('a origem sobrevive ao ciclo de exportar e reimportar', async () => {
     { 'da planilha': 'planilha', 'folha rateada': 'folha_ti', 'lançado aqui': 'manual' },
   );
 
-  const planilha = await exportarXlsx(ctx, 'financeiro');
+  const planilha = (await exportarXlsx(ctx, escopoDoCliente(ctx), 'financeiro')).buffer;
   const relatorio = await importarPlanilha(ctx, planilha, {
     modulo: 'financeiro',
     arquivoNome: 'volta.xlsx',

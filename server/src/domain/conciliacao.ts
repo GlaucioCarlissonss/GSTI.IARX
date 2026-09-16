@@ -162,8 +162,11 @@ const NATUREZAS: Candidato[] = [
 ];
 
 /** O que o cliente já tem cadastrado, por dimensão. */
-export function candidatosDoCliente(ctx: Contexto, dimensao: Dimensao): Candidato[] {
-  const empresas = ctx.empresaIds.length ? ctx.empresaIds : [ctx.empresaId];
+export function candidatosDoCliente(ctx: Contexto, dimensao: Dimensao, escopo?: number[]): Candidato[] {
+  // O escopo da carga recorta os candidatos: oferecer como vínculo uma unidade
+  // fora do que a pessoa escolheu seria contradizer o próprio seletor.
+  const doCliente = ctx.empresaIds.length ? ctx.empresaIds : [ctx.empresaId];
+  const empresas = escopo && escopo.length ? escopo : doCliente;
   const vagas = empresas.map(() => '?').join(',');
 
   switch (dimensao) {
@@ -229,9 +232,9 @@ export function valorDaLinha(linha: LinhaFoc, dimensao: Dimensao): string {
  * Um item por VALOR DISTINTO, não por linha: decidir "Licencas de Softwares"
  * uma vez resolve as 41 linhas que o usam. Era esse o ponto de a tela agrupar.
  */
-export function conciliar(ctx: Contexto, linhas: LinhaFoc[]): BlocoConciliacao[] {
+export function conciliar(ctx: Contexto, linhas: LinhaFoc[], escopo?: number[]): BlocoConciliacao[] {
   return DIMENSOES.map(({ chave, rotulo, obrigatoria, permiteCriar }) => {
-    const candidatos = candidatosDoCliente(ctx, chave);
+    const candidatos = candidatosDoCliente(ctx, chave, escopo);
     const porValor = new Map<string, ItemConciliacao>();
 
     for (const linha of linhas) {

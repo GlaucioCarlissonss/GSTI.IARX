@@ -15,6 +15,7 @@ import { erroValidacao } from '../lib/erros.js';
 import { lerXlsx } from '../lib/planilha.js';
 import { paraExibicao } from './competencia.js';
 import { comEmpresaEmFoco } from './escopo.js';
+import type { EscopoOperacao } from './escopo-operacao.js';
 import { criarLancamento } from './financeiro.js';
 import { criarFilial, resolverTipoDespesa } from './cadastros.js';
 import { registrarImportacao, type ErroLinha, type ModoCarga } from './importacao.js';
@@ -103,11 +104,16 @@ async function lerArquivo(ctx: Contexto, buffer: Buffer) {
 }
 
 /** Passo 1: analisa sem gravar nada. */
-export async function analisarFoc(ctx: Contexto, buffer: Buffer, arquivoNome: string | null): Promise<AnaliseFoc> {
+export async function analisarFoc(
+  ctx: Contexto,
+  buffer: Buffer,
+  arquivoNome: string | null,
+  escopo?: EscopoOperacao,
+): Promise<AnaliseFoc> {
   exigirCliente(ctx);
   const hash = hashArquivo(buffer);
   const { aba, linhas, erros, avisos } = await lerArquivo(ctx, buffer);
-  const blocos = conciliar(ctx, linhas);
+  const blocos = conciliar(ctx, linhas, escopo?.empresas);
 
   const jaImportado =
     (
@@ -193,7 +199,7 @@ function prepararCadastros(
 export async function importarFoc(
   ctx: Contexto,
   buffer: Buffer,
-  opcoes: { decisoes: Decisao[]; arquivoNome?: string | null; modo?: ModoCarga },
+  opcoes: { decisoes: Decisao[]; arquivoNome?: string | null; modo?: ModoCarga; escopo?: EscopoOperacao },
 ): Promise<ResultadoFoc> {
   if (ctx.papel !== 'gestor') throw erroValidacao('Apenas gestores podem importar dados.');
   exigirCliente(ctx);
@@ -225,6 +231,7 @@ export async function importarFoc(
         avisos: relatorio.avisos.map((a) => `Linha ${a.linha} — ${a.campo}: ${a.mensagem}`),
       },
       decisoes: opcoes.decisoes,
+      escopo: opcoes.escopo,
     });
 
   let lido;
@@ -236,7 +243,7 @@ export async function importarFoc(
   }
 
   const { aba, linhas, erros, avisos } = lido;
-  const blocos = conciliar(ctx, linhas);
+  const blocos = conciliar(ctx, linhas, opcoes.escopo?.empresas);
 
   // A trava: nada é gravado enquanto houver divergência sem decisão.
   const faltando = pendencias(blocos, opcoes.decisoes);

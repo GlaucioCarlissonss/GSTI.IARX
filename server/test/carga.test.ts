@@ -13,6 +13,7 @@ import { importarPlanilha, listarImportacoes, obterImportacao } from '../src/dom
 import { criarMapeamento, listarMapeamentos, removerMapeamento } from '../src/domain/mapeamentos.js';
 import { criarLancamento, listarLancamentos } from '../src/domain/financeiro.js';
 import { exportarXlsx } from '../src/domain/exportacao.js';
+import { escopoDoCliente } from '../src/domain/escopo-operacao.js';
 import { escreverCsv, lerXlsx } from '../src/lib/planilha.js';
 import { ABA_INSTRUCOES, linhasDeInstrucoes } from '../src/domain/templates.js';
 
@@ -233,7 +234,7 @@ test('remover o apelido devolve o comportamento padrão', async () => {
 
 test('o template traz a aba de instruções, derivada das próprias colunas', async () => {
   const { ctx } = ambienteLimpo();
-  const buffer = await exportarXlsx(ctx, 'financeiro', true);
+  const buffer = (await exportarXlsx(ctx, escopoDoCliente(ctx), 'financeiro', true)).buffer;
   const abas = await lerXlsx(buffer);
   const instrucoes = abas.find((a) => a.nome === ABA_INSTRUCOES);
   assert.ok(instrucoes, 'abas: ' + abas.map((a) => a.nome).join(', '));
@@ -254,7 +255,7 @@ test('a aba de instruções não é reclamada como aba desconhecida ao reimporta
     natureza: 'fixa',
     classificacao: 'despesa',
   });
-  const buffer = await exportarXlsx(ctx, 'financeiro');
+  const buffer = (await exportarXlsx(ctx, escopoDoCliente(ctx), 'financeiro')).buffer;
   const r = await importarPlanilha(ctx, buffer, { modulo: 'financeiro', arquivoNome: 'volta.xlsx' });
   assert.deepEqual(r.abas_ignoradas, [], 'a aba de instruções é parte do template, não sobra');
   assert.equal(r.com_erro, 0, JSON.stringify(r.erros));

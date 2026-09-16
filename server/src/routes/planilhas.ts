@@ -6,26 +6,35 @@ import { previaLimpeza, limparLancamentos } from '../domain/limpeza.js';
 import type { Decisao } from '../domain/conciliacao.js';
 import { criarMapeamento, listarMapeamentos, removerMapeamento } from '../domain/mapeamentos.js';
 import { escreverXlsx } from '../lib/planilha.js';
-import { exportarCsv, exportarXlsx, nomeArquivoExportacao } from '../domain/exportacao.js';
+import {
+  exportarCsv,
+  exportarXlsx,
+  listarExportacoes,
+  nomeArquivoExportacao,
+  registrarExportacao,
+} from '../domain/exportacao.js';
+import { escopoDaOperacao, resumoEscopo } from '../domain/escopo-operacao.js';
 import { ABAS, ABAS_POR_MODULO, TEMPLATE_VERSAO_ATUAL, type Modulo, type NomeAba } from '../domain/templates.js';
 import { erroValidacao } from '../lib/erros.js';
 import { assincrono, ctx, exigir } from '../middleware/index.js';
-import { comEmpresaEmFoco, empresasDoPedido } from '../domain/escopo.js';
 
 /**
- * A unidade desta exportação ou carga.
+ * O ESCOPO desta exportação ou carga.
  *
- * Exportar e importar são de UMA matriz: o arquivo tem as filiais, os tipos de
- * despesa e os cenários dela, e reimportá-lo precisa voltar para a mesma. Por
- * isso a unidade vem do pedido — escolhida na tela, não herdada de um filtro
- * global —, e sem indicação fica a matriz em foco.
+ * Antes, toda operação de arquivo era de UMA matriz: a unidade vinha do pedido
+ * e o arquivo inteiro ia para ela. Isso obrigava a repetir a carga uma vez por
+ * empresa do cliente — e cada repetição é uma chance a mais de mandar o arquivo
+ * para a unidade errada.
+ *
+ * Agora o padrão é o cliente inteiro, e restringir é escolha de quem opera. A
+ * conferência de que nada atravessa o cliente fica em `escopoDaOperacao`, não
+ * aqui: a tela pode listar o que quiser; o que entra na operação passa por lá.
  */
-function unidadeDoPedido(req: Parameters<typeof ctx>[0]) {
-  const [empresa] = empresasDoPedido({
+function escopoDoPedido(req: Parameters<typeof ctx>[0]) {
+  return escopoDaOperacao(ctx(req), {
     ...(req.query as Record<string, unknown>),
     ...((req.body ?? {}) as Record<string, unknown>),
   });
-  return comEmpresaEmFoco(ctx(req), empresa);
 }
 
 export const rotasPlanilhas = Router();
@@ -66,14 +75,15 @@ rotasPlanilhas.get(
   '/templates/:modulo.xlsx',
   assincrono(async (req, res) => {
     const modulo = validarModulo(String(req.params.modulo));
-    const alvo = unidadeDoPedido(req);
-    const buffer = await exportarXlsx(alvo, modulo, true);
+    const contexto = ctx(req);
+    const escopo = escopoDoPedido(req);
+    const { buffer } = await exportarXlsx(contexto, escopo, modulo, true);
     res
       .status(200)
       .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .setHeader(
         'Content-Disposition',
-        `attachment; filename="${nomeArquivoExportacao(alvo, modulo, 'xlsx', true)}"`,
+        `attachment; filename="${nomeArquivoExportacao(contexto, escopo, modulo, 'xlsx', true)}"`,
       );
     res.send(buffer);
   }),
@@ -86,12 +96,16 @@ rotasPlanilhas.get(
   exigir('financeiro', 'export'),
   assincrono(async (req, res) => {
     const modulo = validarModulo(String(req.params.modulo));
-    const alvo = unidadeDoPedido(req);
-    const buffer = await exportarXlsx(alvo, modulo, false);
+    const contexto = ctx(req);
+    const escopo = escopoDoPedido(req);
+    const { buffer, linhas } = await exportarXlsx(contexto, escopo, modulo, false);
+    const arquivo = nomeArquivoExportacao(contexto, escopo, modulo, 'xlsx');
+    registrarExportacao(contexto, escopo, { modulo, formato: 'xlsx', arquivoNome: arquivo, totalLinhas: linhas });
     res
       .status(200)
       .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      .setHeader('Content-Disposition', `attachment; filename="${nomeArquivoExportacao(alvo, modulo, 'xlsx')}"`);
+      .setHeader('Content-Disposition', `attachment; filename="${arquivo}"`)
+      .setHeader('X-Escopo', encodeURIComponent(resumoEscopo(escopo)));
     res.send(buffer);
   }),
 );
@@ -100,11 +114,23 @@ rotasPlanilhas.get('/exportacao/:aba.csv', exigir('financeiro', 'export'), (req,
   const nomes = Object.keys(ABAS) as NomeAba[];
   const aba = nomes.find((n) => n.toLowerCase() === String(req.params.aba).toLowerCase());
   if (!aba) throw erroValidacao(`Aba "${req.params.aba}" inválida. Use: ${nomes.join(', ')}.`);
+  const contexto = ctx(req);
+  const escopo = escopoDoPedido(req);
+  const template = req.query.template === 'true';
+  const { texto, linhas } = exportarCsv(contexto, escopo, aba, template);
+  if (!template) {
+    registrarExportacao(contexto, escopo, {
+      modulo: 'financeiro',
+      formato: 'csv',
+      arquivoNome: `${aba.toLowerCase()}.csv`,
+      totalLinhas: linhas,
+    });
+  }
   res
     .status(200)
     .type('text/csv; charset=utf-8')
     .setHeader('Content-Disposition', `attachment; filename="${aba.toLowerCase()}.csv"`)
-    .send(exportarCsv(unidadeDoPedido(req), aba, req.query.template === 'true'));
+    .send(texto);
 });
 
 /**
@@ -122,8 +148,9 @@ rotasPlanilhas.post(
   assincrono(async (req, res) => {
     const modulo = validarModulo(String(req.params.modulo));
     if (!req.file) throw erroValidacao('Envie a planilha no campo "arquivo" (multipart/form-data).');
-    const resultado = await importarPlanilha(unidadeDoPedido(req), req.file.buffer, {
+    const resultado = await importarPlanilha(ctx(req), req.file.buffer, {
       modulo,
+      escopo: escopoDoPedido(req),
       arquivoNome: req.file.originalname,
       criarCadastrosAusentes: req.body?.criar_cadastros !== 'false',
       simular: req.body?.simular === 'true' || req.query.simular === 'true',
@@ -148,7 +175,7 @@ rotasPlanilhas.post(
   upload.single('arquivo'),
   assincrono(async (req, res) => {
     if (!req.file) throw erroValidacao('Envie a planilha no campo "arquivo" (multipart/form-data).');
-    res.json(await analisarFoc(unidadeDoPedido(req), req.file.buffer, req.file.originalname));
+    res.json(await analisarFoc(ctx(req), req.file.buffer, req.file.originalname, escopoDoPedido(req)));
   }),
 );
 
@@ -165,10 +192,11 @@ rotasPlanilhas.post(
     } catch {
       throw erroValidacao('As decisões da conciliação vieram num formato que não deu para ler.');
     }
-    const resultado = await importarFoc(unidadeDoPedido(req), req.file.buffer, {
+    const resultado = await importarFoc(ctx(req), req.file.buffer, {
       decisoes,
       arquivoNome: req.file.originalname,
       modo: req.body?.modo === 'inicial' ? 'inicial' : 'incremental',
+      escopo: escopoDoPedido(req),
     });
     res.status(resultado.com_erro > 0 ? 207 : 200).json(resultado);
   }),
@@ -202,6 +230,21 @@ rotasPlanilhas.get('/importacoes', (req, res) => {
     listarImportacoes(ctx(req), undefined, {
       modo: q.modo ?? null,
       status: q.status ?? null,
+      usuario_id: q.usuario_id ? Number(q.usuario_id) : null,
+      de: q.de ?? null,
+      ate: q.ate ?? null,
+      escopo: q.escopo ?? null,
+    }),
+  );
+});
+
+/** O histórico de exportações — o ExportLog, com os mesmos filtros do de cargas. */
+rotasPlanilhas.get('/exportacoes', exigir('financeiro', 'export'), (req, res) => {
+  const q = req.query as Record<string, string | undefined>;
+  res.json(
+    listarExportacoes(ctx(req), {
+      modulo: q.modulo ?? null,
+      escopo: q.escopo ?? null,
       usuario_id: q.usuario_id ? Number(q.usuario_id) : null,
       de: q.de ?? null,
       ate: q.ate ?? null,

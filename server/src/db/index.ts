@@ -202,6 +202,12 @@ function migrar(db: Conexao): void {
     // vincular a um existente). É o que responde, meses depois, por que este
     // lançamento foi parar neste centro de custo.
     ['decisoes', 'TEXT'],
+    // A carga deixou de ser de UMA matriz: o mesmo arquivo atende o cliente
+    // inteiro. Sem registrar o escopo, o histórico não consegue responder
+    // quais unidades uma carga atingiu — e é exatamente isso que se pergunta
+    // quando um número aparece onde não devia.
+    ['escopo', "TEXT NOT NULL DEFAULT 'cliente'"],
+    ['escopo_unidades', 'TEXT'],
   ] as Array<[string, string]>) {
     if (!colunasImport.has(nome)) db.exec(`ALTER TABLE importacoes ADD COLUMN ${nome} ${tipo}`);
   }
@@ -247,6 +253,7 @@ CREATE INDEX IF NOT EXISTS ix_sla_cliente_status ON tickets_sla(cliente_id, stat
 CREATE INDEX IF NOT EXISTS ix_sla_cliente_externo ON tickets_sla(cliente_id, source_system, external_id);
 CREATE INDEX IF NOT EXISTS ix_sla_cliente_aberto ON tickets_sla(cliente_id, aberto_em);
 CREATE INDEX IF NOT EXISTS ix_import_cliente ON importacoes(cliente_id, criado_em DESC);
+CREATE INDEX IF NOT EXISTS ix_export_cliente ON exportacoes(cliente_id, criado_em DESC);
 -- A conciliação procura o lançamento que já existe pela data de pagamento
 -- dentro do cliente: sem este índice, cada linha do arquivo varre a base.
 CREATE INDEX IF NOT EXISTS ix_lanc_cliente_pgto ON lancamentos(cliente_id, data_pagamento);

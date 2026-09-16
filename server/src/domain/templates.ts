@@ -9,8 +9,10 @@
 
 // 1.1 acrescentou a coluna Origem ao Financeiro;
 // 1.2 acrescentou à aba SLA o detalhe do chamado (Ticket, Número, Assunto…);
-// 1.3 acrescentou "Tarefa Principal" à aba Tarefas.
-export const TEMPLATE_VERSAO_ATUAL = '1.3';
+// 1.3 acrescentou "Tarefa Principal" à aba Tarefas;
+// 1.4 acrescentou "Empresa" a todas as abas, para que um arquivo só atenda
+//     várias matrizes do mesmo cliente (ver COLUNA_EMPRESA, abaixo).
+export const TEMPLATE_VERSAO_ATUAL = '1.4';
 
 export type NomeAba =
   | 'Filiais'
@@ -32,7 +34,7 @@ export interface DefinicaoAba {
   obrigatorias: string[];
 }
 
-export const ABAS: Record<NomeAba, DefinicaoAba> = {
+const ABAS_BASE: Record<NomeAba, DefinicaoAba> = {
   Filiais: {
     colunas: ['Filial', 'Cidade', 'UF', 'Ativo'],
     apelidos: { Filial: ['nome', 'filial', 'nomefilial'] },
@@ -170,6 +172,37 @@ export const ABAS: Record<NomeAba, DefinicaoAba> = {
   },
 };
 
+/**
+ * A coluna que diz de QUAL MATRIZ é a linha.
+ *
+ * Até a versão 1.3 o arquivo era de uma matriz só: quem importava escolhia a
+ * unidade na tela e todas as linhas iam para ela. Com a operação passando a ser
+ * do cliente inteiro, um arquivo com seis matrizes precisa dizer, linha a
+ * linha, a quem cada uma pertence — e a `Filial` sozinha não resolve, porque
+ * duas matrizes do mesmo cliente podem ter filial de mesmo nome.
+ *
+ * Ela entra em TODAS as abas e fica FORA de `obrigatorias`, de propósito: é o
+ * que mantém os arquivos 1.3 importáveis. Vazia, a linha cai na unidade única
+ * do escopo; se o escopo tiver várias, a carga é recusada pedindo a coluna.
+ *
+ * `grupo` NÃO entra como apelido: na aba Financeiro, "Grupo" já é o
+ * identificador que liga as parcelas de uma compra.
+ */
+export const COLUNA_EMPRESA = 'Empresa';
+
+const APELIDOS_EMPRESA = ['empresa', 'matriz', 'empresamatriz', 'grupoempresa', 'razaosocial', 'unidadematriz'];
+
+export const ABAS: Record<NomeAba, DefinicaoAba> = Object.fromEntries(
+  (Object.entries(ABAS_BASE) as Array<[NomeAba, DefinicaoAba]>).map(([nome, def]): [NomeAba, DefinicaoAba] => [
+    nome,
+    {
+      ...def,
+      colunas: [COLUNA_EMPRESA, ...def.colunas],
+      apelidos: { ...def.apelidos, [COLUNA_EMPRESA]: APELIDOS_EMPRESA },
+    },
+  ]),
+) as Record<NomeAba, DefinicaoAba>;
+
 /** O nome da aba de instruções — reconhecido na leitura para não virar aviso. */
 export const ABA_INSTRUCOES = 'Instruções';
 
@@ -238,7 +271,10 @@ export function linhasDeInstrucoes(modulo: Modulo): LinhaInstrucao[] {
         Aba: aba,
         Coluna: coluna,
         'Obrigatória': def.obrigatorias.includes(coluna) ? 'Sim' : 'Não',
-        'O que preencher': NOTAS[aba]?.[coluna] ?? '',
+        'O que preencher':
+          coluna === COLUNA_EMPRESA
+            ? 'Nome da empresa (matriz) a que a linha pertence. Em branco, vale a única unidade do escopo escolhido na tela; com várias no escopo, a coluna passa a ser exigida.'
+            : (NOTAS[aba]?.[coluna] ?? ''),
         'Também aceita como cabeçalho': (def.apelidos[coluna] ?? []).join(', '),
       });
     }

@@ -4,7 +4,8 @@ import { erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
 import { auditar } from './auditoria.js';
 import { ehCompetenciaValida, paraInterno } from './competencia.js';
 import type { Contexto } from './contexto.js';
-import { escopoSql } from './escopo.js';
+import { escopoSql, clausulaEmpresas, comEmpresaEmFoco } from './escopo.js';
+import { escopoDoCliente, escopoParaLog, type EscopoOperacao } from './escopo-operacao.js';
 import { paraCentavos } from './dinheiro.js';
 import { criarLancamento, garantirCenario, interpretarOrigem, type Origem } from './financeiro.js';
 import { criarFilial, resolverFila, resolverTipoDespesa, resolverTopicoAjuda } from './cadastros.js';
@@ -16,6 +17,7 @@ import {
   ABA_INSTRUCOES,
   ABAS,
   ABAS_POR_MODULO,
+  COLUNA_EMPRESA,
   colunasFaltantes,
   mapearColunas,
   normalizarCabecalho,
@@ -60,6 +62,11 @@ export interface ResultadoImportacao {
 
 interface OpcoesImportacao {
   modulo: Modulo;
+  /**
+   * As unidades sobre as quais esta carga opera. Sem escopo, a carga é do
+   * cliente inteiro — o padrão de toda operação de arquivo.
+   */
+  escopo?: EscopoOperacao;
   arquivoNome?: string | null;
   /** Cadastra automaticamente tipos de despesa/tópicos/filiais ausentes. */
   criarCadastrosAusentes?: boolean;
@@ -101,14 +108,17 @@ export function registrarImportacao(
     relatorio: { erros: ErroLinha[]; avisos: string[] };
     /** O que se decidiu em cada divergência, quando a carga foi conciliada. */
     decisoes?: unknown;
+    /** As unidades que a carga atingiu — o que o histórico filtra depois. */
+    escopo?: EscopoOperacao;
   },
 ): number {
   const info = db()
     .prepare(
       `INSERT INTO importacoes
          (empresa_id, cliente_id, usuario_id, modulo, modo, status, mensagem, template_versao, arquivo_nome,
-          arquivo_hash, total_linhas, importadas, atualizadas, duplicadas, rejeitadas, com_erro, relatorio, decisoes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          arquivo_hash, total_linhas, importadas, atualizadas, duplicadas, rejeitadas, com_erro, relatorio, decisoes,
+          escopo, escopo_unidades)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       ctx.empresaId,
@@ -132,6 +142,8 @@ export function registrarImportacao(
       dados.contagens.com_erro,
       JSON.stringify({ erros: dados.relatorio.erros.slice(0, 500), avisos: dados.relatorio.avisos }),
       dados.decisoes === undefined ? null : JSON.stringify(dados.decisoes),
+      dados.escopo?.modo ?? 'cliente',
+      dados.escopo ? escopoParaLog(dados.escopo) : null,
     );
   const id = Number(info.lastInsertRowid);
   auditar(ctx, {
@@ -146,17 +158,27 @@ export function registrarImportacao(
       importadas: dados.contagens.importadas,
       duplicadas: dados.contagens.duplicadas,
       com_erro: dados.contagens.com_erro,
+      escopo: dados.escopo?.modo ?? 'cliente',
+      empresas: dados.escopo?.empresas.length ?? 1,
     },
   });
   return id;
 }
 
-/** Quantos registros o módulo já tem — é o que decide se a carga é inicial. */
-function jaTemDados(ctx: Contexto, modulo: Modulo): number {
-  const conta = (sql: string) => (db().prepare(sql).get(ctx.empresaId) as { n: number }).n;
-  if (modulo === 'sla') return conta('SELECT COUNT(*) n FROM tickets_sla WHERE empresa_id = ?');
-  if (modulo === 'projetos') return conta('SELECT COUNT(*) n FROM projetos WHERE empresa_id = ?');
-  return conta('SELECT COUNT(*) n FROM lancamentos WHERE empresa_id = ? AND excluido_em IS NULL');
+/**
+ * Quantos registros o módulo já tem NO ESCOPO — é o que decide se a carga
+ * inicial precisa de confirmação.
+ *
+ * Conta o escopo inteiro, e não a matriz em foco: uma carga do cliente inteiro
+ * sobre uma base povoada é exatamente o engano que a confirmação existe para
+ * pegar, e olhar uma matriz só a deixaria passar.
+ */
+function jaTemDados(escopo: EscopoOperacao, modulo: Modulo): number {
+  const { sql, params } = clausulaEmpresas(escopo.empresas);
+  const conta = (consulta: string) => (db().prepare(consulta).get(...params) as { n: number }).n;
+  if (modulo === 'sla') return conta(`SELECT COUNT(*) n FROM tickets_sla WHERE ${sql}`);
+  if (modulo === 'projetos') return conta(`SELECT COUNT(*) n FROM projetos WHERE ${sql}`);
+  return conta(`SELECT COUNT(*) n FROM lancamentos WHERE ${sql} AND excluido_em IS NULL`);
 }
 
 const NATUREZAS = new Set(['fixa', 'pontual_unica', 'pontual_parcelada']);
@@ -266,6 +288,76 @@ export async function interpretarArquivo(
 }
 
 /**
+ * De qual MATRIZ é esta linha.
+ *
+ * Até a versão 1.3 do template a pergunta não existia: quem importava escolhia
+ * a unidade na tela e o arquivo inteiro ia para ela. Com a carga passando a ser
+ * do cliente, cada linha diz a quem pertence pela coluna `Empresa` — e o nome
+ * casa sem acento, sem caixa e sem pontuação, como todo cabeçalho já casa.
+ *
+ * Nome de fora do escopo é recusa, e não criação: matriz é decisão de estrutura
+ * do contratante, nunca consequência de uma planilha.
+ */
+function resolvedorDeEmpresa(escopo: EscopoOperacao): (bruto: string) => number {
+  const { sql, params } = clausulaEmpresas(escopo.empresas, 'id');
+  const linhas = db().prepare(`SELECT id, nome FROM empresas WHERE ${sql}`).all(...params) as Array<{
+    id: number;
+    nome: string;
+  }>;
+  const porNome = new Map(linhas.map((e) => [normalizarCabecalho(e.nome), e.id]));
+  const disponiveis = linhas.map((e) => e.nome).join(', ');
+
+  return (bruto: string): number => {
+    const nome = (bruto ?? '').trim();
+    if (!nome) {
+      // Sem a coluna, a linha só tem destino possível se o escopo tiver uma
+      // unidade. Com várias, adivinhar seria escolher no lugar de quem importa.
+      if (escopo.empresas.length === 1) return escopo.empresas[0]!;
+      throw new Error(
+        `A coluna "${COLUNA_EMPRESA}" está vazia nesta linha e o escopo desta carga tem ` +
+          `${escopo.empresas.length} empresas. Informe a empresa da linha ou refaça a carga com uma unidade só.`,
+      );
+    }
+    const id = porNome.get(normalizarCabecalho(nome));
+    if (!id) {
+      throw new Error(
+        `A empresa "${nome}" não está no escopo desta carga. Empresas do escopo: ${disponiveis}.`,
+      );
+    }
+    return id;
+  };
+}
+
+/**
+ * A trava do enunciado: escopo com várias unidades exige a coluna `Empresa`.
+ *
+ * É conferida ANTES de a transação começar, e bloqueia o arquivo inteiro em vez
+ * de recusar linha a linha. Um arquivo sem a coluna num escopo múltiplo não tem
+ * uma linha certa: tem o destino de todas indefinido.
+ */
+function abaSemColunaEmpresa(
+  ctx: Contexto,
+  escopo: EscopoOperacao,
+  abas: Aba[],
+  abasEsperadas: NomeAba[],
+): string | null {
+  if (escopo.empresas.length <= 1) return null;
+  for (const aba of abas) {
+    const reconhecida = reconhecerAba(aba.nome);
+    if (!reconhecida || !abasEsperadas.includes(reconhecida)) continue;
+    const mapa = mapearColunas(reconhecida, aba.colunas, apelidosDoCliente(ctx.clienteId, reconhecida));
+    if (!mapa.has(COLUNA_EMPRESA)) {
+      return (
+        `O escopo desta carga tem ${escopo.empresas.length} empresas, e a aba "${aba.nome}" não traz a coluna ` +
+        `"${COLUNA_EMPRESA}" — sem ela não há como saber de qual unidade é cada linha. ` +
+        `Acrescente a coluna ao arquivo, ou escolha uma unidade só no escopo da operação.`
+      );
+    }
+  }
+  return null;
+}
+
+/**
  * Importação mensal por planilha.
  *
  * - Linhas válidas são gravadas; linhas inválidas entram no relatório de erros
@@ -280,6 +372,9 @@ export async function importarPlanilha(
 ): Promise<ResultadoImportacao> {
   if (ctx.papel !== 'gestor') throw erroValidacao('Apenas gestores podem importar dados.');
   const modo: ModoCarga = opcoes.modo === 'inicial' ? 'inicial' : 'incremental';
+  // Sem escolha explícita, a carga é do cliente inteiro — o padrão de toda
+  // operação de arquivo desde que o escopo deixou de ser uma matriz só.
+  const escopo = opcoes.escopo ?? escopoDoCliente(ctx);
 
   const abasEsperadas = ABAS_POR_MODULO[opcoes.modulo];
   const abaPadrao = abasEsperadas[abasEsperadas.length - 1];
@@ -303,20 +398,42 @@ export async function importarPlanilha(
         mensagem: erro instanceof Error ? erro.message : String(erro),
         contagens: { total: 0, importadas: 0, duplicadas: 0, com_erro: 0 },
         relatorio: { erros: [], avisos: [] },
+        escopo: escopo,
       });
     }
     throw erro;
   }
   const versao = detectarVersao(abas);
 
+  // A trava do escopo múltiplo vem ANTES de qualquer gravação: um arquivo sem a
+  // coluna de empresa não tem uma linha errada, tem o destino de todas indefinido.
+  const semEmpresa = abaSemColunaEmpresa(ctx, escopo, abas, abasEsperadas);
+  if (semEmpresa) {
+    if (!opcoes.simular) {
+      registrarImportacao(ctx, {
+        modulo: opcoes.modulo,
+        modo,
+        versao,
+        arquivoNome: opcoes.arquivoNome ?? null,
+        arquivoHash,
+        status: 'recusada',
+        mensagem: semEmpresa,
+        contagens: { total: 0, importadas: 0, duplicadas: 0, com_erro: 0 },
+        relatorio: { erros: [], avisos: [] },
+        escopo: escopo,
+      });
+    }
+    throw erroValidacao(semEmpresa);
+  }
+
   // A carga inicial é o histórico inteiro entrando de uma vez. Sobre um módulo
   // que já tem dado, ela quase sempre é engano de quem escolheu o modo — e a
   // recusa vem com o número na frente, para a confirmação ser informada.
   if (modo === 'inicial' && !opcoes.simular && !opcoes.confirmarSobrescrita) {
-    const existentes = jaTemDados(ctx, opcoes.modulo);
+    const existentes = jaTemDados(escopo, opcoes.modulo);
     if (existentes > 0) {
       const mensagem =
-        `Esta empresa já tem ${existentes} registro(s) neste módulo, e a carga foi marcada como INICIAL. ` +
+        `O escopo desta carga já tem ${existentes} registro(s) neste módulo, e ela foi marcada como INICIAL. ` +
         `Use a carga incremental, ou confirme a inicial se a intenção é recarregar o histórico ` +
         `(nada é duplicado: a deduplicação por linha continua valendo).`;
       registrarImportacao(ctx, {
@@ -329,15 +446,18 @@ export async function importarPlanilha(
         mensagem,
         contagens: { total: 0, importadas: 0, duplicadas: 0, com_erro: 0 },
         relatorio: { erros: [], avisos: [] },
+        escopo: escopo,
       });
       throw erroValidacao(mensagem);
     }
   }
 
+  // O mesmo arquivo pode ter sido carregado por outra unidade do cliente: o
+  // aviso é do CLIENTE, como a carga passou a ser.
   const jaImportado =
     db()
-      .prepare('SELECT id FROM importacoes WHERE empresa_id = ? AND arquivo_hash = ?')
-      .get(ctx.empresaId, arquivoHash) !== undefined;
+      .prepare('SELECT id FROM importacoes WHERE cliente_id IS ? AND arquivo_hash = ?')
+      .get(ctx.clienteId, arquivoHash) !== undefined;
 
   const resultado: ResultadoImportacao = {
     template_versao: versao,
@@ -391,7 +511,7 @@ export async function importarPlanilha(
         const valor = linha[origem];
         return valor === null || valor === undefined ? '' : String(valor).trim();
       };
-      processarAba(ctx, reconhecida, aba, ler, opcoes, resultado);
+      processarAba(ctx, escopo, reconhecida, aba, ler, opcoes, resultado);
     }
 
     if (!opcoes.simular) {
@@ -410,6 +530,7 @@ export async function importarPlanilha(
           com_erro: resultado.com_erro,
         },
         relatorio: { erros: resultado.erros, avisos: resultado.avisos },
+        escopo: escopo,
       });
     }
     return resultado;
@@ -432,6 +553,7 @@ type Leitor = (linha: Record<string, unknown>, coluna: string) => string;
 
 function processarAba(
   ctx: Contexto,
+  escopo: EscopoOperacao,
   aba: NomeAba,
   dados: Aba,
   ler: Leitor,
@@ -439,42 +561,47 @@ function processarAba(
   resultado: ResultadoImportacao,
 ): void {
   const criar = opcoes.criarCadastrosAusentes ?? true;
+  // A matriz é resolvida uma vez por LINHA e entra num contexto próprio. Daí
+  // para baixo nada muda: cada rotina continua lendo `ctx.empresaId`, só que
+  // agora ele é o da linha, e não o de um foco escolhido na tela.
+  const daEmpresa = resolvedorDeEmpresa(escopo);
   const gruposFinanceiros = new Map<string, number>();
   // A planilha pode citar a tarefa principal antes de a linha dela existir,
   // ou até depois. O vínculo é resolvido numa segunda passada, ao fim da aba.
-  const vinculosDeTarefa: Array<{ projetoId: number; filha: string; pai: string; linha: number }> = [];
+  const vinculosDeTarefa: Array<{ empresaId: number; projetoId: number; filha: string; pai: string; linha: number }> = [];
 
   dados.linhas.forEach((linha, indice) => {
     const numeroLinha = indice + 2; // linha 1 = cabeçalho
     resultado.total_linhas += 1;
     try {
+      const ctxLinha = comEmpresaEmFoco(ctx, daEmpresa(ler(linha, COLUNA_EMPRESA)));
       switch (aba) {
         case 'Filiais':
-          importarFilial(ctx, ler, linha, resultado);
+          importarFilial(ctxLinha, ler, linha, resultado);
           break;
         case 'TiposDespesa':
-          importarTipoDespesa(ctx, ler, linha, resultado);
+          importarTipoDespesa(ctxLinha, ler, linha, resultado);
           break;
         case 'Cenarios':
-          importarCenario(ctx, ler, linha, resultado);
+          importarCenario(ctxLinha, ler, linha, resultado);
           break;
         case 'Financeiro':
-          importarLancamento(ctx, ler, linha, criar, resultado, gruposFinanceiros);
+          importarLancamento(ctxLinha, ler, linha, criar, resultado, gruposFinanceiros);
           break;
         case 'Projetos':
-          importarProjeto(ctx, ler, linha, criar, resultado);
+          importarProjeto(ctxLinha, ler, linha, criar, resultado);
           break;
         case 'Tarefas':
-          importarTarefa(ctx, ler, linha, resultado, vinculosDeTarefa, numeroLinha);
+          importarTarefa(ctxLinha, ler, linha, resultado, vinculosDeTarefa, numeroLinha);
           break;
         case 'Envolvidos':
-          importarEnvolvido(ctx, ler, linha, resultado);
+          importarEnvolvido(ctxLinha, ler, linha, resultado);
           break;
         case 'TopicosAjuda':
-          importarTopico(ctx, ler, linha, resultado);
+          importarTopico(ctxLinha, ler, linha, resultado);
           break;
         case 'SLA':
-          importarSla(ctx, ler, linha, criar, resultado);
+          importarSla(ctxLinha, ler, linha, criar, resultado);
           break;
       }
     } catch (erro) {
@@ -498,7 +625,7 @@ function processarAba(
  */
 function aplicarVinculosDeTarefa(
   ctx: Contexto,
-  vinculos: Array<{ projetoId: number; filha: string; pai: string; linha: number }>,
+  vinculos: Array<{ empresaId: number; projetoId: number; filha: string; pai: string; linha: number }>,
   resultado: ResultadoImportacao,
 ) {
   for (const v of vinculos) {
@@ -515,7 +642,7 @@ function aplicarVinculosDeTarefa(
       if (!pai) throw new Error(`Tarefa principal "${v.pai}" não existe neste projeto.`);
       // Passa pelo domínio, para herdar as validações de ciclo e profundidade
       // em vez de gravar direto e deixar a planilha criar uma árvore inválida.
-      atualizarTarefa(ctx, filha.id, { parentTaskId: pai.id });
+      atualizarTarefa(comEmpresaEmFoco(ctx, v.empresaId), filha.id, { parentTaskId: pai.id });
     } catch (erro) {
       resultado.com_erro += 1;
       resultado.erros.push({
@@ -902,7 +1029,7 @@ function importarTarefa(
   ler: Leitor,
   linha: Record<string, unknown>,
   resultado: ResultadoImportacao,
-  vinculos: Array<{ projetoId: number; filha: string; pai: string; linha: number }>,
+  vinculos: Array<{ empresaId: number; projetoId: number; filha: string; pai: string; linha: number }>,
   numeroLinha: number,
 ) {
   const projetoId = acharProjeto(ctx, ler(linha, 'Projeto'));
@@ -927,7 +1054,7 @@ function importarTarefa(
   if (pai && pai.toLowerCase() === nome.toLowerCase()) {
     throw new Error('Uma tarefa não pode ser a própria tarefa principal.');
   }
-  if (pai) vinculos.push({ projetoId, filha: nome, pai, linha: numeroLinha });
+  if (pai) vinculos.push({ empresaId: ctx.empresaId, projetoId, filha: nome, pai, linha: numeroLinha });
 
   const jaExiste = db()
     .prepare(
@@ -1137,6 +1264,8 @@ export interface FiltroImportacoes {
   /** Data ISO (AAAA-MM-DD) — inclusive nas duas pontas. */
   de?: string | null;
   ate?: string | null;
+  /** 'cliente' | 'empresas' | 'unidades' — o escopo com que a carga rodou. */
+  escopo?: string | null;
 }
 
 export function listarImportacoes(ctx: Contexto, empresas?: number[], filtro: FiltroImportacoes = {}) {
@@ -1155,6 +1284,7 @@ export function listarImportacoes(ctx: Contexto, empresas?: number[], filtro: Fi
   juntar('i.modo = ?', filtro.modo);
   juntar('i.status = ?', filtro.status);
   juntar('i.usuario_id = ?', filtro.usuario_id);
+  juntar('i.escopo = ?', filtro.escopo);
   juntar('date(i.criado_em) >= date(?)', filtro.de);
   juntar('date(i.criado_em) <= date(?)', filtro.ate);
 
@@ -1162,7 +1292,7 @@ export function listarImportacoes(ctx: Contexto, empresas?: number[], filtro: Fi
     .prepare(
       `SELECT i.id, i.modulo, i.modo, i.status, i.mensagem, i.template_versao, i.arquivo_nome,
               i.total_linhas, i.importadas, i.atualizadas, i.duplicadas, i.rejeitadas, i.com_erro,
-              i.criado_em, u.nome AS usuario, i.usuario_id,
+              i.criado_em, u.nome AS usuario, i.usuario_id, i.escopo, i.escopo_unidades,
               i.empresa_id, e.nome AS empresa_nome
          FROM importacoes i
          -- LEFT: a carga vale pelo cliente, e uma matriz removida depois não

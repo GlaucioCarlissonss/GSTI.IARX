@@ -433,6 +433,31 @@ CREATE TABLE IF NOT EXISTS importacoes (
   relatorio       TEXT,
   criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Registro de EXPORTAÇÃO (o ExportLog).
+--
+-- Exportar não grava dado nenhum, mas é saída de dado — e agora sai do cliente
+-- inteiro, não de uma matriz. Sem este rastro, a única pergunta sem resposta
+-- sobre um arquivo circulando por aí seria de onde ele veio e o que cobria.
+--
+-- `empresa_id` guarda a matriz quando o escopo tem uma só; com várias, fica a
+-- que estava em foco, porque o dono de verdade da linha é o cliente.
+CREATE TABLE IF NOT EXISTS exportacoes (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  empresa_id      INTEGER REFERENCES empresas(id) ON DELETE CASCADE,
+  cliente_id      INTEGER REFERENCES clientes(id) ON DELETE CASCADE,
+  usuario_id      INTEGER REFERENCES usuarios(id),
+  modulo          TEXT NOT NULL,
+  formato         TEXT NOT NULL,
+  -- cliente | empresas | unidades
+  escopo          TEXT NOT NULL DEFAULT 'cliente',
+  -- JSON {empresas:[],filiais:[]} — o escopo REAL já expandido, não o pedido.
+  escopo_unidades TEXT,
+  arquivo_nome    TEXT,
+  total_linhas    INTEGER NOT NULL DEFAULT 0,
+  template_versao TEXT,
+  criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE INDEX IF NOT EXISTS ix_import_empresa ON importacoes(empresa_id, criado_em DESC);
 
 -- ---------------------------------------------------------------- integrações
