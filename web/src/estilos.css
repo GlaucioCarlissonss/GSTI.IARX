@@ -340,6 +340,27 @@ textarea { resize: vertical; min-height: 62px; }
 .cartao > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .cartao > header h2 { margin-right: auto; }
 .cartao > header small { color: var(--tinta-fraca); font-size: 12px; }
+/* Título que abre e fecha o bloco. Parece título, funciona como botão: o alvo
+   é a frase inteira, e não um ícone de 12px ao lado dela. */
+.cartao-dobra {
+  display: inline-flex; align-items: center; gap: 8px;
+  font: inherit; color: inherit; background: none; border: 0; padding: 0;
+  cursor: pointer; text-align: left;
+}
+.cartao-dobra:hover { color: var(--serie-1); }
+.cartao-dobra:focus-visible { outline: 2px solid var(--serie-1); outline-offset: 3px; border-radius: 4px; }
+.cartao-seta {
+  flex: none; width: 18px; height: 18px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; line-height: 1;
+  color: var(--tinta-2); background: var(--superficie-2); border: 1px solid var(--borda-forte);
+}
+/* Fechado, o cabeçalho é a única coisa no cartão: sem a margem, ele fica com
+   um vão embaixo que parece conteúdo faltando. */
+.cartao.dobrado > header { margin-bottom: 0; }
+.cartao-corpo { animation: abrir-bloco 0.14s ease-out; }
+@keyframes abrir-bloco { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .cartao-corpo { animation: none; } }
 
 .grade { display: grid; gap: 16px; }
 .grade.c2 { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }

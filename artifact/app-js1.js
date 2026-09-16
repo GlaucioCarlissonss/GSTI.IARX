@@ -487,6 +487,106 @@ function checarCompetencia(comp, justificativa, empresa = empresaAtiva()) {
   }
 }
 
+// ===========================================================================
+// Blocos que abrem e fecham
+// ===========================================================================
+// A tela ganhou muitos blocos, e abrir todos de uma vez enterrava o que importa
+// numa rolagem longa. Agora cada um abre FECHADO e quem usa escolhe o que ver.
+//
+// A conversão acontece depois do `render()`, percorrendo a página — e não
+// dentro de cada view. São 51 blocos em 12 arquivos: fazer um por um seria
+// convidar o próximo bloco a nascer sem a dobra.
+//
+// O que fica guardado é a exceção ao padrão: só o bloco que alguém ABRIU ocupa
+// espaço, e um bloco novo nasce fechado como os outros, sem cadastro nenhum.
+const CHAVE_BLOCOS = 'iarx-blocos-abertos';
+
+function blocosAbertos() {
+  try { return new Set(JSON.parse(localStorage.getItem(CHAVE_BLOCOS) || '[]')); }
+  catch (e) { return new Set(); }
+}
+function gravarBlocosAbertos(conjunto) {
+  try { localStorage.setItem(CHAVE_BLOCOS, JSON.stringify([...conjunto])); }
+  catch (e) { /* sem armazenamento: vale só nesta sessão */ }
+}
+
+/** Chave estável a partir do título do bloco. */
+function chaveDoBloco(titulo) {
+  const limpo = String(titulo || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return limpo ? 'bloco-' + limpo.slice(0, 60) : null;
+}
+
+function aplicarDobra(bloco, aberto) {
+  const bt = bloco.querySelector(':scope > header .bloco-dobra');
+  const corpo = bloco.querySelector(':scope > .bloco-corpo');
+  if (bt) {
+    bt.setAttribute('aria-expanded', String(aberto));
+    bt.title = aberto ? 'Recolher' : 'Expandir';
+    const seta = bt.querySelector('.bloco-seta');
+    if (seta) seta.textContent = aberto ? '−' : '+';
+  }
+  if (corpo) corpo.hidden = !aberto;
+  bloco.classList.toggle('dobrado', !aberto);
+}
+
+/**
+ * Converte todo `section.bloco` da página num acordeão fechado.
+ *
+ * O conteúdo é EMBRULHADO, não reescrito: os elementos continuam sendo os
+ * mesmos objetos, então os manipuladores que a view pendurou neles seguem
+ * valendo depois da mudança.
+ */
+function dobrarBlocos(raiz) {
+  const area = raiz || el('#pagina');
+  if (!area) return;
+  const abertos = blocosAbertos();
+
+  area.querySelectorAll('section.bloco').forEach((bloco) => {
+    if (bloco.dataset.dobra) return;                   // já convertido
+    const cab = bloco.querySelector(':scope > header');
+    const h2 = cab && cab.querySelector('h2');
+    if (!h2) return;                                   // sem título não há onde clicar
+    const chave = chaveDoBloco(h2.textContent);
+    if (!chave) return;
+    bloco.dataset.dobra = chave;
+
+    const corpo = document.createElement('div');
+    corpo.className = 'bloco-corpo';
+    while (cab.nextSibling) corpo.appendChild(cab.nextSibling);
+    bloco.appendChild(corpo);
+
+    // O botão vai DENTRO do h2: o cabeçalho tem outros botões, e botão dentro
+    // de botão não é HTML válido.
+    const rotulo = h2.innerHTML;
+    h2.innerHTML = '';
+    const bt = document.createElement('button');
+    bt.type = 'button';
+    bt.className = 'bloco-dobra';
+    bt.innerHTML = '<span class="bloco-seta" aria-hidden="true">+</span>' + rotulo;
+    h2.appendChild(bt);
+
+    aplicarDobra(bloco, abertos.has(chave));
+    bt.onclick = () => {
+      const atuais = blocosAbertos();
+      const vai = !atuais.has(chave);
+      if (vai) atuais.add(chave); else atuais.delete(chave);
+      gravarBlocosAbertos(atuais);
+      aplicarDobra(bloco, vai);
+    };
+  });
+}
+
+/** Abre um bloco pela chave — usado por quem precisa levar a pessoa até ele. */
+function abrirBloco(chave) {
+  const atuais = blocosAbertos();
+  atuais.add(chave);
+  gravarBlocosAbertos(atuais);
+  const bloco = document.querySelector(`.bloco[data-dobra="${chave}"]`);
+  if (bloco) aplicarDobra(bloco, true);
+}
+
 const filiaisDa = (e) => E.filiais.filter((f) => f.empresa === e);
 const tiposDa = (e) => E.tipos.filter((t) => t.empresa === e);
 const filasDa = (e) => E.filas.filter((f) => f.empresa === e);

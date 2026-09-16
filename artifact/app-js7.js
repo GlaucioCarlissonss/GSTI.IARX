@@ -313,6 +313,9 @@ async function render() {
     pintarFiltrosDaTela();
     pintarPrevia();
     await aba.view();
+    // Depois da view, e não dentro de cada uma: assim os 51 blocos espalhados
+    // pelas telas viram acordeão sem que nenhuma delas precise saber disso.
+    dobrarBlocos();
     aplicarPreviaNaTela();
   } catch (e) {
     el('#pagina').innerHTML = `<div class="msg erro"><strong>Falha ao montar a tela.</strong> ${esc(e.message||e)}</div>`;

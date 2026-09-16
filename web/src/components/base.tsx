@@ -1,5 +1,19 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { chaveDoBloco, useDobra } from '../lib/expansao';
 
+/**
+ * Bloco de conteúdo. Abre e fecha pelo título, e começa FECHADO.
+ *
+ * A tela passou a ter muitos blocos, e abrir tudo de uma vez enterrava o que
+ * importa numa rolagem longa. Fechado por padrão, cada um decide o que quer
+ * ver — e a escolha fica lembrada por bloco, então quem abre o mesmo cartão
+ * todo dia o encontra aberto no dia seguinte.
+ *
+ * O conteúdo só é montado quando o bloco está aberto: com dezenas de blocos por
+ * sessão, montar gráfico e tabela que ninguém pediu custaria caro à toa.
+ *
+ * Cartão sem título não dobra — não haveria onde clicar.
+ */
 export function Cartao({
   titulo,
   descricao,
@@ -14,16 +28,44 @@ export function Cartao({
   classe?: string;
   children: ReactNode;
 }) {
+  const chave = chaveDoBloco(titulo);
+  const { aberto, alternar } = useDobra(chave);
+  const idConteudo = chave ? `${chave}-conteudo` : undefined;
+
   return (
-    <section className={classe ? `cartao ${classe}` : 'cartao'}>
+    <section className={[classe ? `cartao ${classe}` : 'cartao', aberto ? '' : 'dobrado'].join(' ').trim()}>
       {(titulo || acoes) && (
         <header>
-          {titulo && <h2>{titulo}</h2>}
+          {titulo &&
+            (chave ? (
+              // O botão fica DENTRO do h2, e não em volta do cabeçalho: `acoes`
+              // traz botões, e botão dentro de botão não é HTML válido.
+              <h2>
+                <button
+                  type="button"
+                  className="cartao-dobra"
+                  aria-expanded={aberto}
+                  aria-controls={idConteudo}
+                  onClick={alternar}
+                >
+                  <span className="cartao-seta" aria-hidden>
+                    {aberto ? '−' : '+'}
+                  </span>
+                  {titulo}
+                </button>
+              </h2>
+            ) : (
+              <h2>{titulo}</h2>
+            ))}
           {descricao && <small>{descricao}</small>}
           {acoes}
         </header>
       )}
-      {children}
+      {aberto && (
+        <div id={idConteudo} className="cartao-corpo">
+          {children}
+        </div>
+      )}
     </section>
   );
 }

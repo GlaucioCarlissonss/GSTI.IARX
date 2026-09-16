@@ -58,6 +58,23 @@ const rotuloSeletor = (pag, id) => pag.$eval('#' + id, (b) => b.textContent.trim
  * e a tela dentro dele —, então o caminho passa antes pelo módulo que contém a
  * aba. Continua aceitando o rótulo da aba sozinho, como as suítes já usavam.
  */
+/**
+ * Abre os blocos da tela.
+ *
+ * Os blocos nascem FECHADOS — é o comportamento que o sistema passou a ter, e
+ * quem usa escolhe o que abrir. As suítes conferem o conteúdo, então elas
+ * abrem tudo antes de olhar. A escolha fica guardada, então isto custa um
+ * clique por bloco na primeira visita e nada depois.
+ */
+async function abrirBlocos(pag) {
+  await pag.evaluate(() => {
+    document
+      .querySelectorAll('#pagina .bloco[data-dobra] .bloco-dobra[aria-expanded="false"]')
+      .forEach((b) => b.click());
+  });
+  await pag.waitForTimeout(160);
+}
+
 async function irPara(pag, rotulo, espera = 450) {
   const mod = await pag.evaluate((r) => {
     const chave = String(r).toLowerCase();
@@ -70,6 +87,7 @@ async function irPara(pag, rotulo, espera = 450) {
   await pag.waitForTimeout(120);
   if (!mod.sozinha) await pag.click(`#abas button:text-is("${mod.aba}")`);
   await pag.waitForTimeout(espera);
+  await abrirBlocos(pag);
 }
 
 /** Todas as abas, na ordem em que a navegação as apresenta. */
@@ -77,4 +95,4 @@ const todasAsAbas = (pag) =>
   pag.evaluate(() => MODULOS_NAV.flatMap((m) =>
     m.abas.map((id) => ({ modulo: m.rotulo, aba: ABAS.find((a) => a.id === id).rotulo }))));
 
-module.exports = { usarEmpresas, usarBase, usarCompetencias, rotuloSeletor, irPara, todasAsAbas };
+module.exports = { usarEmpresas, usarBase, usarCompetencias, rotuloSeletor, irPara, todasAsAbas, abrirBlocos };

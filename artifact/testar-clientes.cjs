@@ -6,6 +6,7 @@
 // daquele cliente. Se este teste quebrar, ou a tela abre sem dono definido, ou
 // ela oferece a matriz de outro contratante.
 const { chromium } = require('playwright');
+const { abrirBlocos } = require('./ajuda-testes.cjs');
 
 const URL_BASE = 'file://' + __dirname + '/teste-local.html';
 // Sem o parâmetro, o mock guarda a escolha para as outras suítes entrarem
@@ -124,6 +125,7 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
   await pag.waitForTimeout(200);
   await pag.click('#abas button:text-is("Clientes e unidades")');
   await pag.waitForTimeout(600);
+  await abrirBlocos(pag);
 
   const naTela = await pag.$$eval('.rol table tbody tr', (rs) => rs.map((r) => r.textContent.replace(/\s+/g, ' ').trim()));
   conferir('a tela lista o cliente com a estrutura dele',
@@ -187,6 +189,7 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
   await pag.waitForTimeout(200);
   await pag.click('#abas button:text-is("Clientes e unidades")');
   await pag.waitForTimeout(600);
+  await abrirBlocos(pag);
   const persistiu = await pag.$eval(grupoSede, (b) => b.getAttribute('aria-expanded')).catch(() => null);
   conferir('o recolhimento sobrevive ao F5', persistiu === 'false', String(persistiu));
 
