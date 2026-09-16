@@ -20,13 +20,22 @@ export type Situacao = 'IGUAL' | 'DIVERGENTE' | 'NOVO' | 'INVALIDO';
 /** As dimensões que se conferem, na ordem em que a tela as mostra. */
 export type Dimensao = 'centro_custo' | 'tipo' | 'grupo_gasto' | 'grupo' | 'unidade' | 'fornecedor';
 
-export const DIMENSOES: Array<{ chave: Dimensao; rotulo: string; obrigatoria: boolean }> = [
-  { chave: 'centro_custo', rotulo: 'Centro de Custo', obrigatoria: true },
-  { chave: 'tipo', rotulo: 'Tipo', obrigatoria: true },
-  { chave: 'grupo_gasto', rotulo: 'Grupo de Gasto', obrigatoria: false },
-  { chave: 'grupo', rotulo: 'Grupo (matriz)', obrigatoria: true },
-  { chave: 'unidade', rotulo: 'Unidade (filial)', obrigatoria: true },
-  { chave: 'fornecedor', rotulo: 'Fornecedor', obrigatoria: false },
+/**
+ * `permiteCriar` diz se um valor novo pode virar cadastro pela importação.
+ *
+ * Matriz e tipo ficam de fora de propósito. Matriz é decisão de estrutura do
+ * contratante, não consequência de uma planilha; e o tipo (a natureza do
+ * lançamento) é um vocabulário fechado do sistema, não um cadastro livre. Nos
+ * dois casos, um nome desconhecido é sinal de arquivo errado — deixar criar
+ * transformaria um engano de digitação em estrutura nova.
+ */
+export const DIMENSOES: Array<{ chave: Dimensao; rotulo: string; obrigatoria: boolean; permiteCriar: boolean }> = [
+  { chave: 'centro_custo', rotulo: 'Centro de Custo', obrigatoria: true, permiteCriar: true },
+  { chave: 'tipo', rotulo: 'Tipo', obrigatoria: true, permiteCriar: false },
+  { chave: 'grupo_gasto', rotulo: 'Grupo de Gasto', obrigatoria: false, permiteCriar: true },
+  { chave: 'grupo', rotulo: 'Grupo (matriz)', obrigatoria: true, permiteCriar: false },
+  { chave: 'unidade', rotulo: 'Unidade (filial)', obrigatoria: true, permiteCriar: true },
+  { chave: 'fornecedor', rotulo: 'Fornecedor', obrigatoria: false, permiteCriar: true },
 ];
 
 export interface Candidato {
@@ -50,6 +59,7 @@ export interface BlocoConciliacao {
   dimensao: Dimensao;
   rotulo: string;
   obrigatoria: boolean;
+  permiteCriar: boolean;
   itens: ItemConciliacao[];
   /** Quantos itens exigem decisão (DIVERGENTE ou NOVO). */
   pendentes: number;
@@ -220,7 +230,7 @@ export function valorDaLinha(linha: LinhaFoc, dimensao: Dimensao): string {
  * uma vez resolve as 41 linhas que o usam. Era esse o ponto de a tela agrupar.
  */
 export function conciliar(ctx: Contexto, linhas: LinhaFoc[]): BlocoConciliacao[] {
-  return DIMENSOES.map(({ chave, rotulo, obrigatoria }) => {
+  return DIMENSOES.map(({ chave, rotulo, obrigatoria, permiteCriar }) => {
     const candidatos = candidatosDoCliente(ctx, chave);
     const porValor = new Map<string, ItemConciliacao>();
 
@@ -245,6 +255,7 @@ export function conciliar(ctx: Contexto, linhas: LinhaFoc[]): BlocoConciliacao[]
       dimensao: chave,
       rotulo,
       obrigatoria,
+      permiteCriar,
       itens,
       pendentes: itens.filter((i) => i.situacao === 'DIVERGENTE' || i.situacao === 'NOVO').length,
       candidatos,
@@ -302,7 +313,15 @@ export function pendencias(blocos: BlocoConciliacao[], decisoes: Decisao[]): Pen
         });
         continue;
       }
-      if (decisao.acao === 'vincular') {
+      if (decisao.acao === 'criar' && !bloco.permiteCriar) {
+        faltando.push({
+          dimensao: bloco.dimensao,
+          valor: item.valor,
+          mensagem:
+            `${bloco.rotulo}: "${item.valor}" não existe e não pode ser criado por importação. ` +
+            'Escolha um item existente ou corrija o arquivo.',
+        });
+      } else if (decisao.acao === 'vincular') {
         if (!decisao.alvo) {
           faltando.push({
             dimensao: bloco.dimensao,

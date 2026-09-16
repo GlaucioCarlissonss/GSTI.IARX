@@ -78,7 +78,7 @@ interface OpcoesImportacao {
  * recusada. O registro é o que responde, semanas depois, de onde veio cada
  * bloco de dado e por que uma carga não entrou.
  */
-function registrarImportacao(
+export function registrarImportacao(
   ctx: Contexto,
   dados: {
     modulo: Modulo;
@@ -88,19 +88,34 @@ function registrarImportacao(
     arquivoHash: string;
     status: 'concluida' | 'recusada';
     mensagem: string | null;
-    contagens: { total: number; importadas: number; duplicadas: number; com_erro: number };
+    contagens: {
+      total: number;
+      importadas: number;
+      duplicadas: number;
+      com_erro: number;
+      /** Linha que já existia e foi atualizada — só a conciliação produz. */
+      atualizadas?: number;
+      /** Linha que quem importou decidiu não trazer. */
+      rejeitadas?: number;
+    };
     relatorio: { erros: ErroLinha[]; avisos: string[] };
+    /** O que se decidiu em cada divergência, quando a carga foi conciliada. */
+    decisoes?: unknown;
   },
 ): number {
   const info = db()
     .prepare(
       `INSERT INTO importacoes
-         (empresa_id, usuario_id, modulo, modo, status, mensagem, template_versao, arquivo_nome, arquivo_hash,
-          total_linhas, importadas, duplicadas, com_erro, relatorio)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (empresa_id, cliente_id, usuario_id, modulo, modo, status, mensagem, template_versao, arquivo_nome,
+          arquivo_hash, total_linhas, importadas, atualizadas, duplicadas, rejeitadas, com_erro, relatorio, decisoes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       ctx.empresaId,
+      // O dono vai gravado na linha, e não só no backfill da abertura do banco:
+      // entre uma reinicialização e outra, a carga ficaria sem cliente e sumiria
+      // do histórico de quem a fez.
+      ctx.clienteId,
       ctx.usuarioId,
       dados.modulo === 'completo' ? 'financeiro' : dados.modulo,
       dados.modo,
@@ -111,9 +126,12 @@ function registrarImportacao(
       dados.arquivoHash,
       dados.contagens.total,
       dados.contagens.importadas,
+      dados.contagens.atualizadas ?? 0,
       dados.contagens.duplicadas,
+      dados.contagens.rejeitadas ?? 0,
       dados.contagens.com_erro,
       JSON.stringify({ erros: dados.relatorio.erros.slice(0, 500), avisos: dados.relatorio.avisos }),
+      dados.decisoes === undefined ? null : JSON.stringify(dados.decisoes),
     );
   const id = Number(info.lastInsertRowid);
   auditar(ctx, {

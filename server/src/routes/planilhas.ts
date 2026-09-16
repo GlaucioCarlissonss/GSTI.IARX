@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { importarPlanilha, listarImportacoes, obterImportacao } from '../domain/importacao.js';
+import { analisarFoc, importarFoc } from '../domain/importacao-foc.js';
+import { previaLimpeza, limparLancamentos } from '../domain/limpeza.js';
+import type { Decisao } from '../domain/conciliacao.js';
 import { criarMapeamento, listarMapeamentos, removerMapeamento } from '../domain/mapeamentos.js';
 import { escreverXlsx } from '../lib/planilha.js';
 import { exportarCsv, exportarXlsx, nomeArquivoExportacao } from '../domain/exportacao.js';
@@ -130,6 +133,65 @@ rotasPlanilhas.post(
     res.status(resultado.com_erro > 0 ? 207 : 200).json(resultado);
   }),
 );
+
+// ------------------------------------------------- carga FOC com conciliação
+//
+// Dois passos, de propósito. `/conciliacao` só lê: devolve o que diverge do
+// cadastro e não toca na base. `/carga` recebe as decisões e grava numa
+// transação só. O arquivo sobe de novo no segundo passo em vez de ficar
+// guardado no servidor — assim não existe meia-importação pendurada, e o hash
+// confere que é o mesmo arquivo que foi analisado.
+
+rotasPlanilhas.post(
+  '/foc/conciliacao',
+  exigir('financeiro', 'import'),
+  upload.single('arquivo'),
+  assincrono(async (req, res) => {
+    if (!req.file) throw erroValidacao('Envie a planilha no campo "arquivo" (multipart/form-data).');
+    res.json(await analisarFoc(unidadeDoPedido(req), req.file.buffer, req.file.originalname));
+  }),
+);
+
+rotasPlanilhas.post(
+  '/foc/carga',
+  exigir('financeiro', 'import'),
+  upload.single('arquivo'),
+  assincrono(async (req, res) => {
+    if (!req.file) throw erroValidacao('Envie a planilha no campo "arquivo" (multipart/form-data).');
+    let decisoes: Decisao[] = [];
+    try {
+      const bruto = req.body?.decisoes;
+      decisoes = typeof bruto === 'string' ? JSON.parse(bruto) : Array.isArray(bruto) ? bruto : [];
+    } catch {
+      throw erroValidacao('As decisões da conciliação vieram num formato que não deu para ler.');
+    }
+    const resultado = await importarFoc(unidadeDoPedido(req), req.file.buffer, {
+      decisoes,
+      arquivoNome: req.file.originalname,
+      modo: req.body?.modo === 'inicial' ? 'inicial' : 'incremental',
+    });
+    res.status(resultado.com_erro > 0 ? 207 : 200).json(resultado);
+  }),
+);
+
+// ----------------------------------------------------------- limpeza da base
+
+/** Quantos registros a limpeza atingiria. Não apaga nada. */
+rotasPlanilhas.get('/limpeza/previa', exigir('financeiro', 'delete'), (req, res) => {
+  const q = req.query as Record<string, string | undefined>;
+  res.json(previaLimpeza(ctx(req), { de: q.de ?? null, ate: q.ate ?? null }));
+});
+
+rotasPlanilhas.post('/limpeza', exigir('financeiro', 'delete'), (req, res) => {
+  const corpo = (req.body ?? {}) as Record<string, string | undefined>;
+  res.json(
+    limparLancamentos(ctx(req), {
+      de: corpo.de ?? null,
+      ate: corpo.ate ?? null,
+      confirmacao: corpo.confirmacao ?? null,
+    }),
+  );
+});
 
 rotasPlanilhas.get('/importacoes', (req, res) => res.json(listarImportacoes(ctx(req))));
 

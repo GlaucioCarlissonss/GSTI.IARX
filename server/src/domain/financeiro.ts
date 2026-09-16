@@ -90,6 +90,14 @@ export interface EntradaLancamento {
   destinoPagamento?: string | null;
   /** Documento vinculado: nota, contrato, ordem de compra. */
   documento?: string | null;
+  /** A quem se pagou, separado de `origemCusto` para poder ser conciliado. */
+  fornecedor?: string | null;
+  /** Grupo de gasto como a base do cliente o nomeia. */
+  grupoGasto?: string | null;
+  /** Data em que o pagamento saiu (`AAAA-MM-DD`); não é a competência. */
+  dataPagamento?: string | null;
+  /** Meta e projeções da carga: controle, nunca valor. Gravado como JSON. */
+  planejamento?: Record<string, number> | null;
 }
 
 interface LinhaLancamento extends Record<string, unknown> {
@@ -239,9 +247,17 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
       `INSERT INTO lancamentos
          (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
           qtd_parcelas, parcela_numero, lancamento_origem_id, descricao, observacoes, cenario, origem, dedup_hash,
-          origem_custo, destino_pagamento, documento)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          origem_custo, destino_pagamento, documento, fornecedor, grupo_gasto, data_pagamento, planejamento)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
+    const extras = [
+      entrada.fornecedor ?? null,
+      entrada.grupoGasto ?? null,
+      entrada.dataPagamento ?? null,
+      entrada.planejamento && Object.keys(entrada.planejamento).length
+        ? JSON.stringify(entrada.planejamento)
+        : null,
+    ];
 
     const primeiro = valores[0]!;
     const infoPrimeiro = inserir.run(
@@ -263,6 +279,7 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
       entrada.origemCusto ?? null,
       entrada.destinoPagamento ?? null,
       entrada.documento ?? null,
+      ...extras,
     );
     const origemId = Number(infoPrimeiro.lastInsertRowid);
 
@@ -284,11 +301,12 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
         cenario,
         entrada.origem ?? 'manual',
         null, // a chave de dedup pertence ao lançamento de origem, não às projeções
-        // As parcelas herdam origem, destino e documento do lançamento de
-        // origem: é o mesmo contrato, parcelado.
+        // As parcelas herdam origem, destino, documento, fornecedor e grupo de
+        // gasto do lançamento de origem: é o mesmo contrato, parcelado.
         entrada.origemCusto ?? null,
         entrada.destinoPagamento ?? null,
         entrada.documento ?? null,
+        ...extras,
       );
       ids.push(Number(info.lastInsertRowid));
     }
