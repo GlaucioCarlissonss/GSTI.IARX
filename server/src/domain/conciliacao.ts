@@ -77,7 +77,7 @@ export interface BlocoConciliacao {
 export function chaveComparacao(texto: string): string {
   return texto
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
@@ -288,7 +288,7 @@ export interface PendenciaDecisao {
  * contornada — o servidor é quem responde pela base.
  */
 export function pendencias(blocos: BlocoConciliacao[], decisoes: Decisao[]): PendenciaDecisao[] {
-  const tomadas = new Map(decisoes.map((d) => [`${d.dimensao} ${d.valor}`, d]));
+  const tomadas = new Map(decisoes.map((d) => [`${d.dimensao}\u0000${d.valor}`, d]));
   const faltando: PendenciaDecisao[] = [];
 
   for (const bloco of blocos) {
@@ -304,7 +304,7 @@ export function pendencias(blocos: BlocoConciliacao[], decisoes: Decisao[]): Pen
         }
         continue;
       }
-      const decisao = tomadas.get(`${bloco.dimensao} ${item.valor}`);
+      const decisao = tomadas.get(`${bloco.dimensao}\u0000${item.valor}`);
       if (!decisao) {
         faltando.push({
           dimensao: bloco.dimensao,
@@ -351,11 +351,11 @@ export function mapaDeDestino(blocos: BlocoConciliacao[], decisoes: Decisao[]): 
   const destino = new Map<string, string>();
   for (const bloco of blocos) {
     for (const item of bloco.itens) {
-      destino.set(`${bloco.dimensao} ${item.valor}`, item.valor);
+      destino.set(`${bloco.dimensao}\u0000${item.valor}`, item.valor);
     }
   }
   for (const d of decisoes) {
-    if (d.acao === 'vincular' && d.alvo) destino.set(`${d.dimensao} ${d.valor}`, d.alvo);
+    if (d.acao === 'vincular' && d.alvo) destino.set(`${d.dimensao}\u0000${d.valor}`, d.alvo);
   }
   return destino;
 }

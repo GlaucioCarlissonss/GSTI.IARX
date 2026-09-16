@@ -58,7 +58,7 @@ export function chaveDoBloco(titulo: string | undefined): string | null {
   if (!titulo) return null;
   const limpo = titulo
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');

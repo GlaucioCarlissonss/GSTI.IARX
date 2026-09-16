@@ -513,7 +513,7 @@ function gravarBlocosAbertos(conjunto) {
 /** Chave estável a partir do título do bloco. */
 function chaveDoBloco(titulo) {
   const limpo = String(titulo || '')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   return limpo ? 'bloco-' + limpo.slice(0, 60) : null;
 }
