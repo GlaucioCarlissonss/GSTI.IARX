@@ -103,7 +103,19 @@ export function escreverCsv(colunas: string[], linhas: Array<Record<string, unkn
 
 // -------------------------------------------------------------------- XLSX
 
-export async function lerXlsx(buffer: Buffer): Promise<Aba[]> {
+export interface OpcoesLeitura {
+  /**
+   * Mantém o dia das células de data, como `AAAA-MM-DD`.
+   *
+   * O padrão é `false` porque no template do sistema toda data É uma
+   * competência, e o mês é tudo o que importa. Uma base de terceiro pode trazer
+   * data de verdade — a de pagamento, por exemplo —, e aí reduzi-la a `MM/AAAA`
+   * apagaria justamente o que distingue duas despesas no mesmo mês.
+   */
+  preservarDatas?: boolean;
+}
+
+export async function lerXlsx(buffer: Buffer, opcoes: OpcoesLeitura = {}): Promise<Aba[]> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer as unknown as ArrayBuffer);
   const abas: Aba[] = [];
@@ -125,7 +137,11 @@ export async function lerXlsx(buffer: Buffer): Promise<Aba[]> {
         if (valor && typeof valor === 'object' && 'result' in valor) valor = (valor as { result: unknown }).result as never;
         if (valor && typeof valor === 'object' && 'text' in valor) valor = (valor as { text: string }).text as never;
         if (valor instanceof Date) {
-          valor = `${String(valor.getMonth() + 1).padStart(2, '0')}/${valor.getFullYear()}` as never;
+          valor = (
+            opcoes.preservarDatas
+              ? valor.toISOString().slice(0, 10)
+              : `${String(valor.getMonth() + 1).padStart(2, '0')}/${valor.getFullYear()}`
+          ) as never;
         }
         const texto = restaurarFormula(valor === null || valor === undefined ? '' : String(valor).trim());
         if (texto !== '') vazia = false;

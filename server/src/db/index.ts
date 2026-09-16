@@ -55,6 +55,21 @@ function migrar(db: Conexao): void {
     ['reconhecido', "INTEGER NOT NULL DEFAULT 0"],
     ['reconhecido_em', 'TEXT'],
     ['reconhecido_por', 'INTEGER'],
+    // A data em que o dinheiro saiu, que é diferente da competência a que a
+    // despesa pertence: a base do cliente traz as duas, e é a data de pagamento
+    // que distingue duas linhas iguais no mesmo mês.
+    ['data_pagamento', 'TEXT'],
+    // A quem se pagou. Ficava em `origem_custo` junto com setor e centro de
+    // custo; separado, dá para conciliar fornecedor contra o que já se viu.
+    ['fornecedor', 'TEXT'],
+    // O grupo de gasto da base do cliente ("TECNOLOGIA DA INFORMACAO - TI").
+    // Guardado para que a conciliação tenha contra o que comparar: sem coluna,
+    // conferir essa dimensão seria encenação — todo valor pareceria novo.
+    ['grupo_gasto', 'TEXT'],
+    // Meta e projeções que a base carrega (meta, proj_diarias, proj_pacientes,
+    // meta_mes). São controle, NÃO valor: entram como JSON para não serem
+    // somadas por engano a nenhum total.
+    ['planejamento', 'TEXT'],
   ] as Array<[string, string]>) {
     if (!colunas.has(nome)) db.exec(`ALTER TABLE lancamentos ADD COLUMN ${nome} ${tipo}`);
   }
@@ -177,6 +192,16 @@ function migrar(db: Conexao): void {
     ['modo', "TEXT NOT NULL DEFAULT 'incremental'"],
     ['status', "TEXT NOT NULL DEFAULT 'concluida'"],
     ['mensagem', 'TEXT'],
+    // A carga deixou de ser só "entrou ou não": com a conciliação, uma linha
+    // pode ATUALIZAR um lançamento que já existia ou ser REJEITADA por decisão
+    // de quem importou. Sem separá-las de `duplicadas`, o relatório final não
+    // consegue dizer o que de fato aconteceu com cada linha do arquivo.
+    ['atualizadas', 'INTEGER NOT NULL DEFAULT 0'],
+    ['rejeitadas', 'INTEGER NOT NULL DEFAULT 0'],
+    // O que a pessoa decidiu para cada divergência (criar cadastro novo ou
+    // vincular a um existente). É o que responde, meses depois, por que este
+    // lançamento foi parar neste centro de custo.
+    ['decisoes', 'TEXT'],
   ] as Array<[string, string]>) {
     if (!colunasImport.has(nome)) db.exec(`ALTER TABLE importacoes ADD COLUMN ${nome} ${tipo}`);
   }
@@ -222,6 +247,9 @@ CREATE INDEX IF NOT EXISTS ix_sla_cliente_status ON tickets_sla(cliente_id, stat
 CREATE INDEX IF NOT EXISTS ix_sla_cliente_externo ON tickets_sla(cliente_id, source_system, external_id);
 CREATE INDEX IF NOT EXISTS ix_sla_cliente_aberto ON tickets_sla(cliente_id, aberto_em);
 CREATE INDEX IF NOT EXISTS ix_import_cliente ON importacoes(cliente_id, criado_em DESC);
+-- A conciliação procura o lançamento que já existe pela data de pagamento
+-- dentro do cliente: sem este índice, cada linha do arquivo varre a base.
+CREATE INDEX IF NOT EXISTS ix_lanc_cliente_pgto ON lancamentos(cliente_id, data_pagamento);
 
 -- Adaptador de colunas por cliente: cada contratante manda a planilha com os
 -- cabeçalhos dele ("Vlr Total" onde o template diz "Valor"). Guardar a

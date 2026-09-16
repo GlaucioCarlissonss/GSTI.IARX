@@ -141,6 +141,21 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   origem_custo        TEXT,
   destino_pagamento   TEXT,
   documento           TEXT,
+  -- A quem se pagou, separado de `origem_custo` (que mistura setor e centro de
+  -- custo): é o que permite conciliar o fornecedor da planilha contra os que o
+  -- cliente já usou, em vez de gravar mais uma grafia nova a cada carga.
+  fornecedor          TEXT,
+  -- O grupo de gasto como a base do cliente o nomeia. Sem guardá-lo, conciliar
+  -- essa dimensão não teria contra o que comparar na carga seguinte.
+  grupo_gasto         TEXT,
+  -- Quando o dinheiro saiu. Não se confunde com `competencia`, que é o mês a
+  -- que a despesa pertence — a base do cliente traz as duas, e é esta data que
+  -- separa dois pagamentos iguais dentro do mesmo mês.
+  data_pagamento      TEXT,
+  -- Meta e projeções que a base carrega junto (meta, proj_diarias,
+  -- proj_pacientes, meta_mes). São controle, não valor: ficam em JSON
+  -- justamente para não haver como somá-las a um total por descuido.
+  planejamento        TEXT,
   -- 'oficial' é a projeção vigente; outros cenários convivem sem contaminar os totais
   cenario             TEXT NOT NULL DEFAULT 'oficial',
   -- procedência do dado: o total do sistema não é o total das planilhas enviadas,
