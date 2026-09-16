@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
-import { SeletorUnidadeFoco } from '../components/filtro-escopo';
+import {
+  EtapaOperacao,
+  SeletorEscopo,
+  consultaDoEscopo,
+  escopoCompleto,
+  parametrosDoEscopo,
+  resumoEscopo,
+  useEscopoOperacao,
+} from '../components/escopo-operacao';
 import { Aviso, Campo, Cartao, Etiqueta } from '../components/base';
 import { PainelConciliacao, type Analise, type Decisao } from '../components/conciliacao';
 import { dataHora, inteiro } from '../lib/formato';
@@ -52,6 +60,43 @@ interface Importacao {
   criado_em: string;
   usuario: string | null;
   usuario_id: number | null;
+  escopo: string | null;
+  /** JSON {empresas:[],filiais:[]} — o escopo REAL da carga, já expandido. */
+  escopo_unidades: string | null;
+}
+
+interface Exportacao {
+  id: number;
+  modulo: string;
+  formato: string;
+  escopo: string | null;
+  escopo_unidades: string | null;
+  arquivo_nome: string | null;
+  total_linhas: number;
+  template_versao: string | null;
+  criado_em: string;
+  usuario: string | null;
+  usuario_id: number | null;
+  empresa: string | null;
+}
+
+const ROTULO_ESCOPO: Record<string, string> = {
+  cliente: 'Cliente inteiro',
+  empresas: 'Empresas',
+  unidades: 'Unidades',
+};
+
+/** O escopo gravado, em texto — vira o título da célula, para não alargar a tabela. */
+function unidadesDaCarga(bruto: string | null): string | undefined {
+  if (!bruto) return undefined;
+  try {
+    const { empresas, filiais } = JSON.parse(bruto) as { empresas?: number[]; filiais?: number[] };
+    const partes = [`${empresas?.length ?? 0} empresa(s)`];
+    if (filiais?.length) partes.push(`${filiais.length} filial(is)`);
+    return partes.join(', ');
+  } catch {
+    return undefined;
+  }
 }
 
 interface Mapeamento {
@@ -80,9 +125,15 @@ const MODULOS = [
 ];
 
 export function PaginaPlanilhas() {
-  const { empresa, empresas, trocarEmpresa, pode } = useSessao();
+  const { empresa, empresas, filiais, pode } = useSessao();
   // O perfil governa o que a tela oferece; quem recusa de fato é o servidor.
   const podeEditar = pode('configuracoes', 'import');
+  // Um escopo só para importar e exportar: mudar num lugar e esquecer no outro
+  // é justamente o engano que compartilhar o estado evita.
+  const [escopo, setEscopo] = useEscopoOperacao();
+  // Em que fase a operação está. Não é percentual: as fases de uma carga têm
+  // duração muito desigual, e um número subindo sozinho mentiria sobre o resto.
+  const [etapa, setEtapa] = useState<string | null>(null);
   const [modulo, setModulo] = useState('financeiro');
   const [modo, setModo] = useState<'inicial' | 'incremental'>('incremental');
   const [arquivo, setArquivo] = useState<File | null>(null);
@@ -158,16 +209,18 @@ export function PaginaPlanilhas() {
     setEnviandoFoc(true);
     setErroFoc(null);
     setResultadoFoc(null);
+    setEtapa('Lendo o arquivo e conciliando com o cadastro');
     try {
       setAnalise(
         await api.enviarArquivo<Analise>('/api/planilhas/foc/conciliacao', arquivoFoc, {
-          ...(empresa ? { empresas: String(empresa.id) } : null),
+          ...parametrosDoEscopo(escopo),
         }),
       );
     } catch (e) {
       setErroFoc(e instanceof Error ? e.message : 'Não foi possível ler a planilha.');
     } finally {
       setEnviandoFoc(false);
+      setEtapa(null);
     }
   };
 
@@ -175,10 +228,11 @@ export function PaginaPlanilhas() {
     if (!arquivoFoc) return;
     setEnviandoFoc(true);
     setErroFoc(null);
+    setEtapa('Gravando os lançamentos');
     try {
       const r = await api.enviarArquivo<ResultadoFoc>('/api/planilhas/foc/carga', arquivoFoc, {
         decisoes: JSON.stringify(decisoes),
-        ...(empresa ? { empresas: String(empresa.id) } : null),
+        ...parametrosDoEscopo(escopo),
       });
       setResultadoFoc(r);
       // Com a carga gravada, a conciliação daquele arquivo não descreve mais a
@@ -189,15 +243,16 @@ export function PaginaPlanilhas() {
       setErroFoc(e instanceof Error ? e.message : 'A importação não pôde ser concluída.');
     } finally {
       setEnviandoFoc(false);
+      setEtapa(null);
     }
   };
 
   // Recorte do histórico: quem pergunta "por que não entrou?" já sabe mais ou
   // menos quando e quem, então é por aí que se procura.
-  const [fHist, setFHist] = useState({ modo: '', status: '', usuario_id: '', de: '', ate: '' });
+  const [fHist, setFHist] = useState({ modo: '', status: '', usuario_id: '', de: '', ate: '', escopo: '' });
   const temFiltroHist = Object.values(fHist).some(Boolean);
   const trocarHist = (campo: keyof typeof fHist, valor: string) => setFHist((f) => ({ ...f, [campo]: valor }));
-  const limparHist = () => setFHist({ modo: '', status: '', usuario_id: '', de: '', ate: '' });
+  const limparHist = () => setFHist({ modo: '', status: '', usuario_id: '', de: '', ate: '', escopo: '' });
 
   const templates = useDados<Templates>(() => api.get('/api/planilhas/templates'), []);
   // O histórico é do CLIENTE: quem pergunta "por que os dados não entraram?"
@@ -210,6 +265,7 @@ export function PaginaPlanilhas() {
         usuario_id: fHist.usuario_id || undefined,
         de: fHist.de || undefined,
         ate: fHist.ate || undefined,
+        escopo: fHist.escopo || undefined,
       }),
     [empresa?.id, JSON.stringify(fHist)],
   );
@@ -225,6 +281,20 @@ export function PaginaPlanilhas() {
         .map((i) => [i.usuario_id!, { id: i.usuario_id!, nome: i.usuario! }]),
     ).values(),
   ].sort((a, b) => a.nome.localeCompare(b.nome));
+  // O ExportLog. Compartilha os filtros do histórico de cargas de propósito: a
+  // pergunta é a mesma — "o que saiu e entrou desta base, quando e por quem?".
+  const exportacoes = useDados<Exportacao[]>(
+    () =>
+      api.get('/api/planilhas/exportacoes', {
+        // "Tipo" (inicial/incremental) é conceito de CARGA: não se aplica aqui.
+        // Os demais filtros são os mesmos, porque a pergunta é a mesma.
+        usuario_id: fHist.usuario_id || undefined,
+        de: fHist.de || undefined,
+        ate: fHist.ate || undefined,
+        escopo: fHist.escopo || undefined,
+      }),
+    [empresa?.id, JSON.stringify(fHist)],
+  );
   const adaptador = useDados<Adaptador>(() => api.get('/api/planilhas/mapeamentos'), [empresa?.id]);
 
   const importar = async (simular: boolean, confirmar = false) => {
@@ -232,15 +302,16 @@ export function PaginaPlanilhas() {
     setEnviando(true);
     setErro(null);
     setResultado(null);
+    setEtapa(simular ? 'Conferindo o arquivo' : 'Lendo o arquivo e gravando');
     try {
       const r = await api.enviarArquivo<ResultadoImportacao>(`/api/planilhas/importacao/${modulo}`, arquivo, {
         criar_cadastros: String(criarCadastros),
         simular: String(simular),
         modo,
         confirmar: String(confirmar),
-        // A unidade da carga vai explícita: o arquivo traz as filiais e os tipos
-        // de despesa DELA, e reimportá-lo precisa voltar para a mesma.
-        ...(empresa ? { empresas: String(empresa.id) } : null),
+        // O escopo vai explícito: é ele que decide para quais unidades as
+        // linhas vão, e é ele que o servidor registra no histórico.
+        ...parametrosDoEscopo(escopo),
       });
       setResultado(r);
       setPrecisaConfirmar(false);
@@ -254,6 +325,7 @@ export function PaginaPlanilhas() {
       if (!simular) historico.recarregar();
     } finally {
       setEnviando(false);
+      setEtapa(null);
     }
   };
 
@@ -283,11 +355,12 @@ export function PaginaPlanilhas() {
   return (
     <>
       <div className="barra-filtros">
-        <SeletorUnidadeFoco
+        <SeletorEscopo
+          escopo={escopo}
+          aoMudar={setEscopo}
           empresas={empresas}
-          empresaId={empresa?.id ?? null}
-          aoTrocar={trocarEmpresa}
-          explicacao="Exportar e importar são de UMA unidade: o arquivo traz as filiais, os tipos de despesa e os cenários dela, e reimportá-lo volta para a mesma."
+          filiais={filiais}
+          explicacao="Vale para importar E exportar, nesta tela. O arquivo traz a coluna Empresa, então um arquivo só atende todas as unidades do escopo — e volta para elas na reimportação."
         />
       </div>
 
@@ -340,18 +413,24 @@ export function PaginaPlanilhas() {
               </label>
 
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" className="botao" disabled={enviando || !arquivo} onClick={() => importar(true)}>
+                <button
+                  type="button"
+                  className="botao"
+                  disabled={enviando || !arquivo || !escopoCompleto(escopo)}
+                  onClick={() => importar(true)}
+                >
                   Validar sem gravar
                 </button>
                 <button
                   type="button"
                   className="botao primario"
-                  disabled={enviando || !arquivo}
+                  disabled={enviando || !arquivo || !escopoCompleto(escopo)}
                   onClick={() => importar(false)}
                 >
-                  {enviando ? 'Processando…' : 'Importar'}
+                  {enviando ? 'Processando…' : `Importar (${resumoEscopo(escopo, empresas, filiais)})`}
                 </button>
               </div>
+              <EtapaOperacao etapa={enviando ? etapa : null} />
 
               <Aviso>
                 A importação é idempotente: reenviar o mesmo arquivo não duplica registros. Linhas inválidas entram no
@@ -401,12 +480,13 @@ export function PaginaPlanilhas() {
             <button
               type="button"
               className="botao"
-              disabled={!arquivoFoc || enviandoFoc || !podeEditar}
+              disabled={!arquivoFoc || enviandoFoc || !podeEditar || !escopoCompleto(escopo)}
               onClick={analisar}
             >
               {enviandoFoc && !analise ? 'Analisando…' : 'Analisar'}
             </button>
           </div>
+          <EtapaOperacao etapa={enviandoFoc ? etapa : null} />
 
           {analise ? (
             <PainelConciliacao analise={analise} enviando={enviandoFoc} aoImportar={importarFoc} />
@@ -491,7 +571,7 @@ export function PaginaPlanilhas() {
                   className="botao"
                   onClick={() =>
                     api.baixar(
-                      `/api/planilhas/exportacao/${m.chave}.xlsx?empresas=${empresa?.id ?? ''}`,
+                      `/api/planilhas/exportacao/${m.chave}.xlsx?${consultaDoEscopo(escopo)}`,
                       `gsti-${m.chave}.xlsx`,
                     )
                   }
@@ -512,7 +592,7 @@ export function PaginaPlanilhas() {
                     className="botao pequeno"
                     onClick={() =>
                       api.baixar(
-                        `/api/planilhas/templates/${m.chave}.xlsx?empresas=${empresa?.id ?? ''}`,
+                        `/api/planilhas/templates/${m.chave}.xlsx?${consultaDoEscopo(escopo)}`,
                         `template-${m.chave}.xlsx`,
                       )
                     }
@@ -613,6 +693,14 @@ export function PaginaPlanilhas() {
               <option value="incremental">Incremental</option>
             </select>
           </Campo>
+          <Campo rotulo="Escopo">
+            <select value={fHist.escopo} onChange={(e) => trocarHist('escopo', e.target.value)}>
+              <option value="">Todos</option>
+              <option value="cliente">Cliente inteiro</option>
+              <option value="empresas">Empresas</option>
+              <option value="unidades">Unidades</option>
+            </select>
+          </Campo>
           <Campo rotulo="Situação">
             <select value={fHist.status} onChange={(e) => trocarHist('status', e.target.value)}>
               <option value="">Todas</option>
@@ -654,6 +742,7 @@ export function PaginaPlanilhas() {
                   <th>Quem</th>
                   <th>Módulo</th>
                   <th>Tipo</th>
+                  <th>Escopo</th>
                   <th>Arquivo</th>
                   <th>Situação</th>
                   <th className="num">Lidas</th>
@@ -672,6 +761,7 @@ export function PaginaPlanilhas() {
                     <td>{i.usuario ?? '—'}</td>
                     <td>{i.modulo}</td>
                     <td>{i.modo === 'inicial' ? 'Inicial' : 'Incremental'}</td>
+                    <td title={unidadesDaCarga(i.escopo_unidades)}>{ROTULO_ESCOPO[i.escopo ?? 'cliente'] ?? '—'}</td>
                     <td title={i.mensagem ?? undefined}>{i.arquivo_nome ?? '—'}</td>
                     <td>
                       <Etiqueta
@@ -717,6 +807,44 @@ export function PaginaPlanilhas() {
               {dataHora(i.criado_em)} — {i.arquivo_nome ?? 'arquivo'}: {i.mensagem}
             </Aviso>
           ))}
+      </Cartao>
+
+      <Cartao
+        titulo="Histórico de exportações"
+        descricao="Exportar não grava dado, mas é saída de dado — e o rastro diz o que saiu daqui"
+      >
+        {(exportacoes.dados ?? []).length === 0 ? (
+          <Aviso>Nenhuma exportação registrada para este cliente ainda.</Aviso>
+        ) : (
+          <div className="tabela-envolucro">
+            <table>
+              <thead>
+                <tr>
+                  <th>Quando</th>
+                  <th>Quem</th>
+                  <th>Módulo</th>
+                  <th>Formato</th>
+                  <th>Escopo</th>
+                  <th>Arquivo</th>
+                  <th className="num">Linhas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(exportacoes.dados ?? []).map((x) => (
+                  <tr key={x.id}>
+                    <td>{dataHora(x.criado_em)}</td>
+                    <td>{x.usuario ?? '—'}</td>
+                    <td>{x.modulo}</td>
+                    <td>{x.formato}</td>
+                    <td title={unidadesDaCarga(x.escopo_unidades)}>{ROTULO_ESCOPO[x.escopo ?? 'cliente'] ?? '—'}</td>
+                    <td>{x.arquivo_nome ?? '—'}</td>
+                    <td className="num">{inteiro(x.total_linhas)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Cartao>
 
       <Cartao
