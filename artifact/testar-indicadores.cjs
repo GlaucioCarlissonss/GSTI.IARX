@@ -177,6 +177,83 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   ok('e em laranja, diferente da reconhecida', listagem.corPendente !== listagem.corReconhecida,
     `${listagem.corPendente} vs ${listagem.corReconhecida}`);
 
+  // ------------------------------------------------- cores e sanfona por unidade
+  //
+  // O indicador continua consolidado. O que se exige aqui é que ele saiba DE
+  // QUEM é cada pedaço: a faixa divide por matriz, a legenda nomeia (o canal
+  // que não depende de enxergar cor), e a sanfona abre matriz -> filial com a
+  // soma batendo com o número do card.
+  console.log('\n--- a composição por empresa matriz aparece no indicador ---');
+  await irPara(pag, 'Indicadores Gerais', 1200);
+  const composicao = await pag.evaluate(() => {
+    const faixas = [...document.querySelectorAll('.faixa-matrizes')];
+    const cores = faixas.map((f) => [...f.children].map((i) => i.style.background));
+    return {
+      faixas: faixas.length,
+      legendas: document.querySelectorAll('.legenda-matrizes').length,
+      // Uma faixa com um segmento só não teria o que distinguir: ela não aparece.
+      minimoDeSegmentos: Math.min(...cores.map((c) => c.length), Infinity),
+      // Nenhuma cor pode se repetir dentro da mesma faixa — duas matrizes na
+      // mesma cor mentem mais do que nenhuma cor.
+      repetidas: cores.filter((c) => new Set(c).size !== c.length).length,
+      comTitulo: faixas.every((f) => [...f.children].every((i) => (i.title || '').includes(':'))),
+    };
+  });
+  ok('há faixa de composição por matriz', composicao.faixas > 0, String(composicao.faixas));
+  ok('toda faixa tem legenda ao lado', composicao.legendas === composicao.faixas,
+    `${composicao.legendas} legenda(s) para ${composicao.faixas} faixa(s)`);
+  ok('nenhuma faixa sai com um segmento só', composicao.minimoDeSegmentos >= 2, String(composicao.minimoDeSegmentos));
+  ok('nenhuma cor se repete dentro da mesma faixa', composicao.repetidas === 0, String(composicao.repetidas));
+  ok('cada segmento diz de quem é e quanto', composicao.comTitulo);
+
+  console.log('\n--- a sanfona do SLA aponta quem puxa o resultado para baixo ---');
+  const fechada = await pag.$eval('[data-sanfona="ind-sla"] [data-abrir-unidades]',
+    (b) => b.getAttribute('aria-expanded'));
+  ok('a sanfona nasce fechada', fechada === 'false', String(fechada));
+  await pag.click('[data-sanfona="ind-sla"] [data-abrir-unidades]');
+  await pag.waitForTimeout(400);
+  const sanfona = await pag.evaluate(() => {
+    const caixa = document.querySelector('[data-sanfona="ind-sla"]');
+    const corpo = caixa.querySelector('.kpi-corpo');
+    const num = document.querySelectorAll('.kpi')[3].querySelector('.n').textContent;
+    const soma = [...corpo.querySelectorAll('tr.matriz td.num')]
+      .reduce((s, td) => s + Number(String(td.textContent).replace(/\./g, '').replace(',', '.')), 0);
+    const filiais = [...corpo.querySelectorAll('tr.filial')].map((tr) => ({
+      fora: !!tr.querySelector('.fora'),
+      dentro: !!tr.querySelector('.dentro'),
+      qtdFora: Number((String(tr.textContent).match(/fora \(([\d.]+)/) || [0, '0'])[1].replace(/\./g, '')),
+    }));
+    return {
+      aberta: caixa.querySelector('[data-abrir-unidades]').getAttribute('aria-expanded') === 'true',
+      abriuModal: !!document.querySelector('.modal'),
+      matrizes: corpo.querySelectorAll('tr.matriz').length,
+      filiais: filiais.length,
+      soma,
+      numeroDoCard: Number(String(num).replace(/\./g, '')),
+      todasClassificadas: filiais.every((f) => f.fora || f.dentro),
+      // A hierarquia é matriz -> filial: a ordenação por volume fora vale
+      // DENTRO de cada matriz, e as matrizes vêm ordenadas do mesmo jeito.
+      // Assim a primeira filial da primeira matriz é a que mais puxa o geral.
+      ordenadaPorFora: [...corpo.querySelectorAll('tr.matriz')].every((linhaMatriz) => {
+        const doGrupo = [];
+        let n = linhaMatriz.nextElementSibling;
+        while (n && n.classList.contains('filial')) {
+          doGrupo.push(Number((String(n.textContent).match(/fora \(([\d.]+)/) || [0, '0'])[1].replace(/\./g, '')));
+          n = n.nextElementSibling;
+        }
+        return doGrupo.every((v, i) => i === 0 || doGrupo[i - 1] >= v);
+      }),
+    };
+  });
+  ok('abre e marca aria-expanded', sanfona.aberta);
+  ok('abrir a sanfona NÃO abre o detalhamento do card', !sanfona.abriuModal);
+  ok('mostra a hierarquia matriz -> filial', sanfona.matrizes > 0 && sanfona.filiais >= sanfona.matrizes,
+    `${sanfona.matrizes} matriz(es), ${sanfona.filiais} filial(is)`);
+  ok('a soma por matriz bate com o número do card', sanfona.soma === sanfona.numeroDoCard,
+    `${sanfona.soma} vs ${sanfona.numeroDoCard}`);
+  ok('toda filial diz se está dentro ou fora da meta', sanfona.todasClassificadas);
+  ok('as filiais vêm ordenadas por volume fora do SLA', sanfona.ordenadaPorFora);
+
   console.log('\n--- sem erro de console no caminho todo ---');
   ok('nenhum erro de página', erros.length === 0, erros.slice(0, 3).join(' | '));
 

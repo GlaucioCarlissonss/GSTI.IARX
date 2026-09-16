@@ -21,6 +21,11 @@
   --tinta:#111721; --tinta2:#4a5464; --tinta3:#8892a4;
   --linha:#dfe4ec; --linha2:#c4ccd9;
   --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+  /* Uma cor por empresa matriz: ordem fixa pela posição da matriz no cliente,
+     nunca reciclada na mesma tela. Da nona em diante, "Outras". A cor nunca é o
+     único canal — legenda, tooltip e tabela dizem o nome. */
+  --m1:#2a78d6; --m2:#eb6834; --m3:#1baf7a; --m4:#8e5ad6;
+  --m5:#c9315e; --m6:#0f8f9e; --m7:#a8720f; --m8:#5b6b7d;
   --bom:#0ca30c; --bomtxt:#056605; --alerta:#b26a00; --crit:#c0392f;
   --sombra:0 1px 2px rgba(17,23,33,.05),0 8px 24px rgba(17,23,33,.06);
   --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -32,6 +37,8 @@
   --tinta:#eef2f8; --tinta2:#a9b4c4; --tinta3:#7a8597;
   --linha:#27303f; --linha2:#39455a;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --m1:#3987e5; --m2:#d95926; --m3:#199e70; --m4:#a273e8;
+  --m5:#e0526f; --m6:#22a7b8; --m7:#d9a13c; --m8:#8a97a8;
   --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
   --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
 }}
@@ -41,8 +48,33 @@
   --tinta:#eef2f8; --tinta2:#a9b4c4; --tinta3:#7a8597;
   --linha:#27303f; --linha2:#39455a;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --m1:#3987e5; --m2:#d95926; --m3:#199e70; --m4:#a273e8;
+  --m5:#e0526f; --m6:#22a7b8; --m7:#d9a13c; --m8:#8a97a8;
   --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
   --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+/* A divisão do número por empresa matriz. Fina de propósito: informa a
+   composição sem competir com o número, que é o que a pessoa veio ler. */
+.faixa-matrizes{display:flex;gap:2px;height:4px;margin-top:6px;border-radius:2px;overflow:hidden}
+.faixa-matrizes i{display:block;min-width:3px;border-radius:2px}
+.legenda-matrizes{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:11px;color:var(--tinta2)}
+.legenda-matrizes span{display:inline-flex;align-items:center;gap:5px}
+.legenda-matrizes i{width:9px;height:9px;border-radius:3px;display:inline-block}
+/* A sanfona matriz -> filial. Botão próprio: o corpo do card já abre o
+   detalhamento, e dois gestos no mesmo alvo brigariam. */
+.kpi-unidades{margin-top:8px}
+.kpi-unidades>button{font-size:11px;padding:2px 8px}
+.kpi-corpo{margin-top:8px;max-height:220px;overflow:auto}
+.kpi-corpo table{width:100%;border-collapse:collapse;font-size:12px}
+.kpi-corpo th,.kpi-corpo td{padding:3px 6px;text-align:left;border-bottom:1px solid var(--linha)}
+.kpi-corpo td.num,.kpi-corpo th.num{text-align:right;font-family:var(--mono)}
+.kpi-corpo tr.matriz td{font-weight:600}
+.kpi-corpo tr.filial td:first-child{padding-left:18px;color:var(--tinta2)}
+.kpi-corpo .dentro{color:var(--bomtxt)}
+.kpi-corpo .fora{color:var(--crit);font-weight:600}
+@media (prefers-reduced-motion:no-preference){
+  .kpi-corpo{animation:abrirUnidades .16s ease-out}
+  @keyframes abrirUnidades{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--plano);color:var(--tinta);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}

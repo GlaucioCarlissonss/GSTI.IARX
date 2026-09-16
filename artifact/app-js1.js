@@ -683,3 +683,56 @@ function escopoOpCompleto(escopo = escopoOperacao()) {
   if (escopo.modo === 'cliente') return true;
   return (escopo.empresas || []).length > 0 || (escopo.filiais || []).length > 0;
 }
+
+// ------------------------------------------------------------- cor por matriz
+//
+// Um indicador consolidado some com a origem do número: R$ 2 milhões não diz
+// quanto é de qual matriz. A cor devolve essa leitura sem quebrar o
+// consolidado — o valor segue somado, e a faixa embaixo dele mostra a divisão.
+//
+// A cor vem da POSIÇÃO da matriz na lista ordenada por nome, e não do id. Pelo
+// id, cadastrar uma empresa nova trocaria a cor de todas as outras; pela
+// posição, ela é estável entre telas enquanto o cadastro não mudar. A ordem é
+// por nome porque é essa a ordem em que a pessoa vê as matrizes nos seletores.
+//
+// São oito. Da nona em diante, "Outras" — inventar uma nona cor daria duas
+// indistinguíveis, e duas cores parecidas mentem mais do que uma faixa cinza.
+const CORES_MATRIZ = 8;
+
+function ordemDasMatrizes() {
+  return [...matrizesDoClienteAtivo()]
+    .map((id) => ({ id, nome: String(nomeEmpresa(id)) }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    .map((e) => e.id);
+}
+
+/** A cor desta matriz. Fora das oito primeiras, a cor de "Outras". */
+function corDaMatriz(empresaId) {
+  const i = ordemDasMatrizes().indexOf(empresaId);
+  return i >= 0 && i < CORES_MATRIZ ? `var(--m${i + 1})` : 'var(--tinta3)';
+}
+
+/**
+ * A faixa que divide o número por matriz.
+ *
+ * Com uma matriz só ela não aparece: não haveria o que distinguir, e uma barra
+ * de cor única viraria enfeite. Fatia de valor zero também sai — um segmento
+ * sem largura não é visível, e listá-lo na legenda faria procurar na faixa uma
+ * cor que não está lá.
+ */
+function faixaDeMatrizesHtml(fatias) {
+  const visiveis = fatias.filter((f) => f.valor > 0);
+  if (visiveis.length < 2) return '';
+  return `<span class="faixa-matrizes" aria-hidden="true">${visiveis
+    .map((f) => `<i style="background:${f.cor};flex-grow:${f.valor}" title="${esc(f.nome)}: ${esc(f.texto)}"></i>`)
+    .join('')}</span>`;
+}
+
+/** A legenda da faixa. O nome é o canal que não depende de enxergar cor. */
+function legendaDeMatrizesHtml(fatias) {
+  const visiveis = fatias.filter((f) => f.valor > 0);
+  if (visiveis.length < 2) return '';
+  return `<div class="legenda-matrizes">${visiveis
+    .map((f) => `<span><i style="background:${f.cor}"></i>${esc(f.nome)} · ${esc(f.texto)}</span>`)
+    .join('')}</div>`;
+}

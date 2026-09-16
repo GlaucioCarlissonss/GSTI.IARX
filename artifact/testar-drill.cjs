@@ -55,7 +55,15 @@ const TELAS = ['Painel', 'Conferência', 'Projetos', 'Indicadores', 'Indicadores
     const gatilhos = await pag.$$('.kpi.drill');
     const kpis = await pag.$$('.kpi');
     if (!kpis.length) { console.log(`  · ${tela}: sem indicadores`); continue; }
-    confere(`${tela}: há indicadores com drill-down (${gatilhos.length} de ${kpis.length})`, gatilhos.length > 0, true);
+    // Em Indicadores Gerais a exigência é TODOS: é a tela de leitura
+    // estratégica, e um número que não abre ali é justamente onde a pergunta
+    // "de onde vem isso?" fica sem resposta. Nas demais, basta haver.
+    const exigeTodos = tela === 'Indicadores Gerais';
+    confere(
+      `${tela}: há indicadores com drill-down (${gatilhos.length} de ${kpis.length})`,
+      exigeTodos ? gatilhos.length === kpis.length : gatilhos.length > 0,
+      true,
+    );
 
     // Acessibilidade: papel, foco e rótulo que diz o que vai abrir.
     const acesso = await pag.$eval('.kpi.drill', (k) => ({
@@ -114,6 +122,27 @@ const TELAS = ['Painel', 'Conferência', 'Projetos', 'Indicadores', 'Indicadores
   await conferirKpi('Conferência', 2, 'Total exibido no painel');
   await conferirKpi('Indicadores', 0, 'Tickets atendidos');
   await conferirKpi('Indicadores', 1, 'Dentro do SLA');
+
+  // Os indicadores que mostram PERCENTUAL passaram a abrir. Não há soma a
+  // conferir num percentual, então o que se exige deles é outra coisa: que a
+  // lista traga registros e diga o que está sendo mostrado.
+  console.log('\nPERCENTUAL — o indicador que não soma também abre os registros');
+  const conferirPercentual = async (indice, nome, esperado) => {
+    await irPara(pag, 'Indicadores Gerais', 900);
+    const kpis = await pag.$$('.kpi.drill');
+    if (!kpis[indice]) { console.log(`  · ${nome}: indicador ausente`); return; }
+    await kpis[indice].focus();
+    await pag.keyboard.press('Enter');
+    await pag.waitForTimeout(700);
+    const modal = await pag.$eval('.modal, [role="dialog"]', (m) => m.textContent.replace(/\s+/g, ' ')).catch(() => '');
+    confere(`${nome}: a tela flutuante abre e diz quantos registros`, /registro\(s\)/.test(modal), true);
+    confere(`${nome}: a lista é do assunto certo`, esperado.test(modal), true);
+    confere(`${nome}: nenhuma divergência falsa`, /Diverge:/.test(modal), false);
+    await fecharModal();
+  };
+  await conferirPercentual(0, 'Custo recorrente (variação)', /despesas fixas do recorte/i);
+  await conferirPercentual(2, 'Atendidos dentro do SLA', /chamados do recorte|Prioridade/i);
+  await conferirPercentual(4, 'Tarefas entregues no prazo', /Tarefas entregues|Planejado/i);
 
   // ------------------------------------------------------ clique no gráfico
   console.log('\nGRÁFICO — clicar numa barra abre os registros daquele ponto');
