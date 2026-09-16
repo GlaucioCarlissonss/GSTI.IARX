@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
@@ -14,7 +14,19 @@ import {
   type PedidoDetalhe,
 } from '../components/detalhamento';
 import { inteiro, mesCurto, moeda, moedaCurta, percentual } from '../lib/formato';
+import { coresDasMatrizes, fatiasPorMatriz, type MatrizComCor } from '../lib/cores';
 import type { DashboardFinanceiro } from './Financeiro';
+
+/** Uma linha da quebra por unidade, como o servidor a devolve. */
+interface LinhaPorUnidade {
+  empresa_id: number;
+  empresa: string;
+  filial_id: number | null;
+  filial: string | null;
+  valor: number;
+  total?: number;
+  dentro?: number;
+}
 
 interface VisaoExecutiva {
   escopo: { competencia: string; consolidado: boolean };
@@ -27,6 +39,112 @@ interface VisaoExecutiva {
   };
   projetos: { total: number; em_andamento: number; concluidos: number; atrasados: number; tarefas_atrasadas: number };
   sla: { total_atendidos: number; pct_dentro_sla: number; fora_sla: number };
+  por_unidade: {
+    gasto_mes: LinhaPorUnidade[];
+    compromisso_proximos_12_meses: LinhaPorUnidade[];
+    projetos_atrasados: LinhaPorUnidade[];
+    sla: LinhaPorUnidade[];
+  };
+}
+
+/** A meta de SLA — a mesma do servidor (`domain/indicadores.ts`). */
+const META_SLA = 80;
+
+/**
+ * A quebra de um número em matriz → filial.
+ *
+ * O consolidado por matriz é a soma das filiais dela: é o que a sanfona mostra,
+ * e é o que tem de bater com o número do card. Quando não bate, o problema está
+ * na consulta — e é melhor que apareça aqui do que numa reunião.
+ */
+function porMatriz(linhas: LinhaPorUnidade[], cores: Map<number, MatrizComCor>) {
+  const mapa = new Map<number, { id: number; nome: string; cor: string; valor: number; filiais: LinhaPorUnidade[] }>();
+  for (const l of linhas) {
+    const atual = mapa.get(l.empresa_id) ?? {
+      id: l.empresa_id,
+      nome: l.empresa,
+      cor: cores.get(l.empresa_id)?.cor ?? 'var(--tinta-fraca)',
+      valor: 0,
+      filiais: [] as LinhaPorUnidade[],
+    };
+    atual.valor += l.valor;
+    atual.filiais.push(l);
+    mapa.set(l.empresa_id, atual);
+  }
+  return [...mapa.values()]
+    .map((m) => ({ ...m, filiais: m.filiais.sort((a, b) => b.valor - a.valor) }))
+    .sort((a, b) => b.valor - a.valor);
+}
+
+/** A tabela da sanfona. `extra` é a coluna de conformidade, só no SLA. */
+function TabelaPorUnidade({
+  linhas,
+  cores,
+  formatar,
+  rotuloValor,
+  conformidade,
+}: {
+  linhas: LinhaPorUnidade[];
+  cores: Map<number, MatrizComCor>;
+  formatar: (v: number) => string;
+  rotuloValor: string;
+  conformidade?: boolean;
+}) {
+  const grupos = porMatriz(linhas, cores);
+  if (!grupos.length) return <p className="vazio">Nada neste recorte.</p>;
+  const situacao = (l: { total?: number; dentro?: number }) => {
+    const total = l.total ?? 0;
+    if (!total) return <span>—</span>;
+    const pct = Math.round(((l.dentro ?? 0) / total) * 1000) / 10;
+    const fora = total - (l.dentro ?? 0);
+    return pct >= META_SLA ? (
+      <span className="dentro">✓ {pct.toLocaleString('pt-BR')}% · dentro</span>
+    ) : (
+      <span className="fora">✗ {pct.toLocaleString('pt-BR')}% · fora ({inteiro(fora)})</span>
+    );
+  };
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Empresa / filial</th>
+          <th className="n">{rotuloValor}</th>
+          {conformidade && <th>Conformidade</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {grupos.map((m) => (
+          <Fragment key={m.id}>
+            <tr className="matriz">
+              <td>
+                <i
+                  style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: m.cor, marginRight: 6 }}
+                  aria-hidden
+                />
+                {m.nome}
+              </td>
+              <td className="n">{formatar(m.valor)}</td>
+              {conformidade && (
+                <td>
+                  {situacao({
+                    total: m.filiais.reduce((s, f) => s + (f.total ?? 0), 0),
+                    dentro: m.filiais.reduce((s, f) => s + (f.dentro ?? 0), 0),
+                  })}
+                </td>
+              )}
+            </tr>
+            {m.filiais.map((f) => (
+              <tr className="filial" key={`${m.id}:${f.filial_id ?? 'matriz'}`}>
+                <td>{f.filial ?? 'Sem filial (nível empresa)'}</td>
+                <td className="n">{formatar(f.valor)}</td>
+                {conformidade && <td>{situacao(f)}</td>}
+              </tr>
+            ))}
+          </Fragment>
+        ))}
+      </tbody>
+    </table>
+  );
 }
 
 const SERIES = [
@@ -47,6 +165,9 @@ export function PaginaPainelExecutivo() {
   const escopo = useFiltroEscopo('executivo');
   const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
 
+  // Uma cor por matriz, pela posição na lista do cliente — estável entre telas
+  // e entre sessões enquanto o cadastro não mudar.
+  const cores = coresDasMatrizes(empresas);
   const recorte = { empresas: escopo.params.empresas, filial_id: escopo.params.filial_id };
   const visao = useDados<VisaoExecutiva>(
     () => api.get('/api/dashboards/executivo', recorte),
@@ -130,6 +251,13 @@ export function PaginaPainelExecutivo() {
           delta={v.financeiro.variacao_mes_anterior_pct}
           apoio={`${moedaCurta(v.financeiro.despesa)} despesa · ${moedaCurta(v.financeiro.investimento)} investimento`}
           dica={`Soma dos lançamentos de ${v.escopo.competencia} no recorte atual.`}
+          fatias={fatiasPorMatriz(
+            porMatriz(v.por_unidade.gasto_mes, cores).map((m) => ({ empresa_id: m.id, valor: m.valor })),
+            cores,
+          ).map((f) => ({ ...f, texto: moedaCurta(f.valor) }))}
+          detalhePorUnidade={
+            <TabelaPorUnidade linhas={v.por_unidade.gasto_mes} cores={cores} formatar={moeda} rotuloValor="Gasto" />
+          }
           aoDetalhar={() =>
             setDetalhe(
               detalheDeLancamentos(
@@ -145,6 +273,18 @@ export function PaginaPainelExecutivo() {
           valor={moedaCurta(v.financeiro.compromisso_proximos_12_meses)}
           apoio="Parcelas e recorrências já lançadas"
           dica="Soma dos 12 meses seguintes ao mês em foco, com o que já está lançado."
+          fatias={fatiasPorMatriz(
+            porMatriz(v.por_unidade.compromisso_proximos_12_meses, cores).map((m) => ({ empresa_id: m.id, valor: m.valor })),
+            cores,
+          ).map((f) => ({ ...f, texto: moedaCurta(f.valor) }))}
+          detalhePorUnidade={
+            <TabelaPorUnidade
+              linhas={v.por_unidade.compromisso_proximos_12_meses}
+              cores={cores}
+              formatar={moeda}
+              rotuloValor="Compromisso"
+            />
+          }
           aoDetalhar={() =>
             setDetalhe(
               detalheDeLancamentos(
@@ -160,6 +300,18 @@ export function PaginaPainelExecutivo() {
           valor={inteiro(v.projetos.atrasados)}
           apoio={`${inteiro(v.projetos.em_andamento)} em andamento · ${inteiro(v.projetos.total)} no total`}
           dica="Atraso é derivado: o mês corrente passou do fim planejado sem fim real registrado."
+          fatias={fatiasPorMatriz(
+            porMatriz(v.por_unidade.projetos_atrasados, cores).map((m) => ({ empresa_id: m.id, valor: m.valor })),
+            cores,
+          ).map((f) => ({ ...f, texto: `${inteiro(f.valor)} projeto(s)` }))}
+          detalhePorUnidade={
+            <TabelaPorUnidade
+              linhas={v.por_unidade.projetos_atrasados}
+              cores={cores}
+              formatar={inteiro}
+              rotuloValor="Atrasados"
+            />
+          }
           aoDetalhar={() =>
             setDetalhe(
               detalheDeProjetos(
@@ -180,17 +332,29 @@ export function PaginaPainelExecutivo() {
               : 'Sem tickets registrados na competência'
           }
           dica="Percentual de chamados atendidos dentro do prazo na competência."
-          aoDetalhar={
-            v.sla.total_atendidos > 0
-              ? () =>
-                  setDetalhe(
-                    detalheDeRegistrosSla(
-                      `Atendimento de ${v.escopo.competencia}`,
-                      { ...recorte, competencia: v.escopo.competencia },
-                      v.sla.total_atendidos,
-                    ),
-                  )
-              : undefined
+          fatias={fatiasPorMatriz(
+            porMatriz(v.por_unidade.sla, cores).map((m) => ({ empresa_id: m.id, valor: m.valor })),
+            cores,
+          ).map((f) => ({ ...f, texto: `${inteiro(f.valor)} chamado(s)` }))}
+          detalhePorUnidade={
+            <TabelaPorUnidade
+              linhas={v.por_unidade.sla}
+              cores={cores}
+              formatar={inteiro}
+              rotuloValor="Chamados"
+              conformidade
+            />
+          }
+          // Abre mesmo sem chamado: "nenhum registro nesta competência" é
+          // informação, e um card que não responde ao clique parece quebrado.
+          aoDetalhar={() =>
+            setDetalhe(
+              detalheDeRegistrosSla(
+                `Atendimento de ${v.escopo.competencia}`,
+                { ...recorte, competencia: v.escopo.competencia },
+                v.sla.total_atendidos,
+              ),
+            )
           }
         />
       </div>

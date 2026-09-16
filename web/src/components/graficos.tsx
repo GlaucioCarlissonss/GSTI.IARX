@@ -582,6 +582,39 @@ export function GraficoRanking({
 // Indicador (o número é o gráfico)
 // ==========================================================================
 
+/** Uma fatia do número consolidado: de quem é, quanto, e com que cor. */
+export interface FatiaIndicador {
+  nome: string;
+  cor: string;
+  valor: number;
+  /** O valor já formatado, para o tooltip dizer "R$ 12 mil" e não "12000". */
+  texto?: string;
+}
+
+/**
+ * A divisão do número por empresa matriz, em faixa.
+ *
+ * O indicador continua CONSOLIDADO — é o pedido: um número só. A faixa diz de
+ * quem é cada pedaço sem obrigar a abrir nada. Com uma matriz só ela não
+ * aparece: não haveria o que distinguir, e uma barra de cor única viraria
+ * enfeite.
+ */
+function FaixaDeMatrizes({ fatias }: { fatias: FatiaIndicador[] }) {
+  const total = fatias.reduce((s, f) => s + f.valor, 0);
+  if (fatias.length < 2 || total <= 0) return null;
+  return (
+    <span className="faixa-matrizes" aria-hidden>
+      {fatias.map((f) => (
+        <i
+          key={f.nome}
+          style={{ background: f.cor, flexGrow: f.valor }}
+          title={`${f.nome}: ${f.texto ?? f.valor.toLocaleString('pt-BR')}`}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function Indicador({
   rotulo,
   valor,
@@ -590,6 +623,8 @@ export function Indicador({
   deltaBomQuandoCai = true,
   dica,
   aoDetalhar,
+  fatias,
+  detalhePorUnidade,
 }: {
   rotulo: string;
   valor: ReactNode;
@@ -604,7 +639,16 @@ export function Indicador({
    * percentual isolado), e fingir que tem seria pior do que não oferecer.
    */
   aoDetalhar?: () => void;
+  /** A divisão por empresa matriz, para a faixa de cores e a legenda. */
+  fatias?: FatiaIndicador[];
+  /**
+   * A sanfona: o detalhamento hierárquico matriz → filial, revelado abaixo do
+   * card. Fica num botão PRÓPRIO, e não no corpo: o corpo já abre o
+   * detalhamento, e dois gestos no mesmo alvo brigariam.
+   */
+  detalhePorUnidade?: ReactNode;
 }) {
+  const [aberto, setAberto] = useState(false);
   const classe =
     delta === null || delta === undefined || Math.abs(delta) < 0.05
       ? 'neutro'
@@ -622,13 +666,31 @@ export function Indicador({
         </span>
       )}
       {apoio && <span className="apoio">{apoio}</span>}
+      {fatias && <FaixaDeMatrizes fatias={fatias} />}
     </>
   );
+
+  // A sanfona é um irmão do card, e não parte dele: dentro do card ela herdaria
+  // o clique do drill-down, e abrir o detalhe por filial abriria o modal junto.
+  const sanfona = detalhePorUnidade ? (
+    <div className="indicador-unidades">
+      <button
+        type="button"
+        className="botao discreto pequeno"
+        aria-expanded={aberto}
+        onClick={() => setAberto((a) => !a)}
+      >
+        {aberto ? '−' : '+'} por unidade
+      </button>
+      {aberto && <div className="indicador-unidades-corpo">{detalhePorUnidade}</div>}
+    </div>
+  ) : null;
 
   if (!aoDetalhar) {
     return (
       <div className="cartao indicador" title={dica}>
         {conteudo}
+        {sanfona}
       </div>
     );
   }
@@ -650,6 +712,12 @@ export function Indicador({
       }}
     >
       {conteudo}
+      {/* O clique na sanfona não pode subir para o card: ele abriria o modal. */}
+      {sanfona && (
+        <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
+          {sanfona}
+        </div>
+      )}
     </div>
   );
 }

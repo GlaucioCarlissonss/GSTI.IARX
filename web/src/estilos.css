@@ -22,6 +22,19 @@
   --serie-2: #eb6834;
   --serie-3: #1baf7a;
 
+  /* Uma cor por empresa matriz — ordem fixa, atribuída pela posição da matriz
+     na lista do cliente, e nunca reciclada dentro de uma tela. Da nona em
+     diante a tela agrupa em "Outras", como o ranking já faz com a cauda.
+     A cor nunca é o único canal: legenda, tooltip e tabela dizem o nome. */
+  --matriz-1: #2a78d6;
+  --matriz-2: #eb6834;
+  --matriz-3: #1baf7a;
+  --matriz-4: #8e5ad6;
+  --matriz-5: #c9315e;
+  --matriz-6: #0f8f9e;
+  --matriz-7: #a8720f;
+  --matriz-8: #5b6b7d;
+
   /* Status — reservadas, sempre acompanhadas de rótulo */
   --bom:      #0ca30c;
   --atencao:  #fab219;
@@ -50,6 +63,15 @@
     --serie-1: #3987e5;
     --serie-2: #d95926;
     --serie-3: #199e70;
+
+    --matriz-1: #3987e5;
+    --matriz-2: #d95926;
+    --matriz-3: #199e70;
+    --matriz-4: #a273e8;
+    --matriz-5: #e0526f;
+    --matriz-6: #22a7b8;
+    --matriz-7: #d9a13c;
+    --matriz-8: #8a97a8;
     --positivo-texto: #0ca30c;
     --sombra: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
   }
@@ -70,6 +92,15 @@
   --serie-1: #3987e5;
   --serie-2: #d95926;
   --serie-3: #199e70;
+
+  --matriz-1: #3987e5;
+  --matriz-2: #d95926;
+  --matriz-3: #199e70;
+  --matriz-4: #a273e8;
+  --matriz-5: #e0526f;
+  --matriz-6: #22a7b8;
+  --matriz-7: #d9a13c;
+  --matriz-8: #8a97a8;
   --positivo-texto: #0ca30c;
   --sombra: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
 }
@@ -373,6 +404,28 @@ textarea { resize: vertical; min-height: 62px; }
 .indicador .numero { font-size: 26px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .indicador .apoio { font-size: 12px; color: var(--tinta-2); }
 .indicador .delta { font-size: 12px; font-weight: 550; display: inline-flex; align-items: center; gap: 4px; }
+
+/* A divisão do número por empresa matriz. Fina de propósito: informa a
+   composição sem competir com o número, que é o que a pessoa veio ler. */
+.faixa-matrizes { display: flex; gap: 2px; height: 4px; margin-top: 6px; border-radius: 2px; overflow: hidden; }
+.faixa-matrizes i { display: block; min-width: 3px; border-radius: 2px; }
+
+/* A sanfona matriz -> filial. Botão próprio, porque o corpo do card já abre o
+   detalhamento — dois gestos no mesmo alvo brigariam. */
+.indicador-unidades { margin-top: 8px; }
+.indicador-unidades-corpo { margin-top: 8px; max-height: 240px; overflow: auto; }
+.indicador-unidades-corpo table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.indicador-unidades-corpo th,
+.indicador-unidades-corpo td { padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--borda); }
+.indicador-unidades-corpo td.n, .indicador-unidades-corpo th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.indicador-unidades-corpo .matriz { font-weight: 600; }
+.indicador-unidades-corpo .filial td:first-child { padding-left: 18px; color: var(--tinta-2); }
+.indicador-unidades-corpo .dentro { color: var(--positivo-texto); }
+.indicador-unidades-corpo .fora { color: var(--critico); font-weight: 600; }
+@media (prefers-reduced-motion: no-preference) {
+  .indicador-unidades-corpo { animation: abrir-unidades 0.16s ease-out; }
+  @keyframes abrir-unidades { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+}
 .delta.sobe { color: var(--critico); }   /* despesa subindo é ruim */
 .delta.desce { color: var(--positivo-texto); }
 .delta.neutro { color: var(--tinta-fraca); }
