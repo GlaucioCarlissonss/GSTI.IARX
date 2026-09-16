@@ -215,6 +215,34 @@ test('limpar por período tira só o período, e não apaga cadastro nenhum', se
   assert.equal((db().prepare('SELECT COUNT(*) AS n FROM filiais').get() as { n: number }).n, filiaisAntes);
 });
 
+test('linha corrigida na origem ATUALIZA, em vez de ser ignorada', semBase, async () => {
+  const ctx = ambienteFoc();
+  const analise = await analisarFoc(ctx, arquivo(), 'base.xlsx');
+  const decisoes = decidirTudo(analise.blocos);
+  await importarFoc(ctx, arquivo(), { decisoes });
+
+  // Simula o que acontece quando o gestor corrige o motivo na origem e
+  // reexporta: a chave natural é a mesma, mas a descrição mudou.
+  const alvo = db()
+    .prepare(`SELECT id, descricao FROM lancamentos WHERE descricao IS NOT NULL LIMIT 1`)
+    .get() as { id: number; descricao: string };
+  db().prepare(`UPDATE lancamentos SET descricao = 'texto antigo' WHERE id = ?`).run(alvo.id);
+
+  const recarga = await importarFoc(ctx, arquivo(), { decisoes });
+  assert.equal(recarga.importadas, 0, 'nada de novo entra');
+  assert.equal(recarga.atualizadas, 1, 'a linha corrigida é atualizada');
+  assert.equal(recarga.duplicadas, 109, 'as demais, idênticas, são apenas ignoradas');
+
+  const depois = db().prepare(`SELECT descricao FROM lancamentos WHERE id = ?`).get(alvo.id) as { descricao: string };
+  assert.equal(depois.descricao, alvo.descricao, 'o valor do arquivo prevalece sobre o que estava gravado');
+
+  // E o total não muda: atualizar não é inserir.
+  assert.equal(
+    (db().prepare('SELECT COUNT(*) AS n FROM lancamentos WHERE excluido_em IS NULL').get() as { n: number }).n,
+    110,
+  );
+});
+
 test('a última atualização é a da carga concluída, não a da recusada', semBase, async () => {
   const ctx = ambienteFoc();
   assert.equal(ultimaCarga(ctx).em, null, 'sem carga nenhuma, não há data a mostrar');
