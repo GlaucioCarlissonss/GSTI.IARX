@@ -1127,19 +1127,51 @@ export function ultimaCarga(ctx: Contexto): { em: string | null; arquivo: string
   return { em: linha?.criado_em ?? null, arquivo: linha?.arquivo_nome ?? null };
 }
 
-export function listarImportacoes(ctx: Contexto, empresas?: number[]) {
+/** Recorte do histórico de cargas. Campo vazio não filtra. */
+export interface FiltroImportacoes {
+  /** 'inicial' | 'incremental' */
+  modo?: string | null;
+  /** 'concluida' | 'recusada' */
+  status?: string | null;
+  usuario_id?: number | null;
+  /** Data ISO (AAAA-MM-DD) — inclusive nas duas pontas. */
+  de?: string | null;
+  ate?: string | null;
+}
+
+export function listarImportacoes(ctx: Contexto, empresas?: number[], filtro: FiltroImportacoes = {}) {
   const alcance = escopoSql(ctx, empresas, 'i.empresa_id');
+  const condicoes = [alcance.sql];
+  const params: unknown[] = [...alcance.params];
+
+  // O histórico responde "por que os dados não entraram?", e quem pergunta
+  // isso já sabe mais ou menos quando e quem — por isso o recorte é por modo,
+  // situação, responsável e período.
+  const juntar = (sql: string, valor: unknown) => {
+    if (valor === null || valor === undefined || valor === '') return;
+    condicoes.push(sql);
+    params.push(valor);
+  };
+  juntar('i.modo = ?', filtro.modo);
+  juntar('i.status = ?', filtro.status);
+  juntar('i.usuario_id = ?', filtro.usuario_id);
+  juntar('date(i.criado_em) >= date(?)', filtro.de);
+  juntar('date(i.criado_em) <= date(?)', filtro.ate);
+
   return db()
     .prepare(
       `SELECT i.id, i.modulo, i.modo, i.status, i.mensagem, i.template_versao, i.arquivo_nome,
-              i.total_linhas, i.importadas, i.duplicadas, i.com_erro, i.criado_em, u.nome AS usuario,
+              i.total_linhas, i.importadas, i.atualizadas, i.duplicadas, i.rejeitadas, i.com_erro,
+              i.criado_em, u.nome AS usuario, i.usuario_id,
               i.empresa_id, e.nome AS empresa_nome
          FROM importacoes i
-         JOIN empresas e ON e.id = i.empresa_id
+         -- LEFT: a carga vale pelo cliente, e uma matriz removida depois não
+         -- pode apagar o registro de que ela aconteceu.
+         LEFT JOIN empresas e ON e.id = i.empresa_id
          LEFT JOIN usuarios u ON u.id = i.usuario_id
-        WHERE ${alcance.sql} ORDER BY i.id DESC LIMIT 50`,
+        WHERE ${condicoes.join(' AND ')} ORDER BY i.id DESC LIMIT 50`,
     )
-    .all(...alcance.params);
+    .all(...params);
 }
 
 /**

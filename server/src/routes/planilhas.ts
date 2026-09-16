@@ -196,7 +196,18 @@ rotasPlanilhas.post('/limpeza', exigir('financeiro', 'delete'), (req, res) => {
 /** Data/hora da última carga concluída — o "Última atualização" das telas. */
 rotasPlanilhas.get('/ultima-carga', (req, res) => res.json(ultimaCarga(ctx(req))));
 
-rotasPlanilhas.get('/importacoes', (req, res) => res.json(listarImportacoes(ctx(req))));
+rotasPlanilhas.get('/importacoes', (req, res) => {
+  const q = req.query as Record<string, string | undefined>;
+  res.json(
+    listarImportacoes(ctx(req), undefined, {
+      modo: q.modo ?? null,
+      status: q.status ?? null,
+      usuario_id: q.usuario_id ? Number(q.usuario_id) : null,
+      de: q.de ?? null,
+      ate: q.ate ?? null,
+    }),
+  );
+});
 
 rotasPlanilhas.get('/importacoes/:id', (req, res) =>
   res.json(obterImportacao(ctx(req), Number(req.params.id))),

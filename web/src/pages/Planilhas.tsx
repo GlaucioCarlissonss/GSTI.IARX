@@ -14,6 +14,7 @@ interface Previa {
 
 interface ResultadoFoc {
   importadas: number;
+  atualizadas: number;
   duplicadas: number;
   rejeitadas: number;
   cadastros_criados: { centros_custo: string[]; filiais: string[] };
@@ -44,10 +45,13 @@ interface Importacao {
   arquivo_nome: string | null;
   total_linhas: number;
   importadas: number;
+  atualizadas: number | null;
   duplicadas: number;
+  rejeitadas: number | null;
   com_erro: number;
   criado_em: string;
   usuario: string | null;
+  usuario_id: number | null;
 }
 
 interface Mapeamento {
@@ -188,10 +192,39 @@ export function PaginaPlanilhas() {
     }
   };
 
+  // Recorte do histórico: quem pergunta "por que não entrou?" já sabe mais ou
+  // menos quando e quem, então é por aí que se procura.
+  const [fHist, setFHist] = useState({ modo: '', status: '', usuario_id: '', de: '', ate: '' });
+  const temFiltroHist = Object.values(fHist).some(Boolean);
+  const trocarHist = (campo: keyof typeof fHist, valor: string) => setFHist((f) => ({ ...f, [campo]: valor }));
+  const limparHist = () => setFHist({ modo: '', status: '', usuario_id: '', de: '', ate: '' });
+
   const templates = useDados<Templates>(() => api.get('/api/planilhas/templates'), []);
   // O histórico é do CLIENTE: quem pergunta "por que os dados não entraram?"
   // não sabe de antemão em qual unidade a carga foi feita.
-  const historico = useDados<Importacao[]>(() => api.get('/api/planilhas/importacoes'), [empresa?.id]);
+  const historico = useDados<Importacao[]>(
+    () =>
+      api.get('/api/planilhas/importacoes', {
+        modo: fHist.modo || undefined,
+        status: fHist.status || undefined,
+        usuario_id: fHist.usuario_id || undefined,
+        de: fHist.de || undefined,
+        ate: fHist.ate || undefined,
+      }),
+    [empresa?.id, JSON.stringify(fHist)],
+  );
+
+  // Os responsáveis saem do histórico SEM filtro: tirá-los da lista já
+  // filtrada faria o seletor encolher para uma pessoa só assim que alguém
+  // fosse escolhido — e aí não haveria como trocar para outra.
+  const todasAsCargas = useDados<Importacao[]>(() => api.get('/api/planilhas/importacoes'), [empresa?.id]);
+  const responsaveis = [
+    ...new Map(
+      (todasAsCargas.dados ?? [])
+        .filter((i) => i.usuario_id && i.usuario)
+        .map((i) => [i.usuario_id!, { id: i.usuario_id!, nome: i.usuario! }]),
+    ).values(),
+  ].sort((a, b) => a.nome.localeCompare(b.nome));
   const adaptador = useDados<Adaptador>(() => api.get('/api/planilhas/mapeamentos'), [empresa?.id]);
 
   const importar = async (simular: boolean, confirmar = false) => {
@@ -572,8 +605,46 @@ export function PaginaPlanilhas() {
         titulo="Histórico de cargas"
         descricao="Toda tentativa entra aqui — inclusive a recusada, que é a que se investiga"
       >
+        <div className="barra-filtros" style={{ marginBottom: 12 }}>
+          <Campo rotulo="Tipo">
+            <select value={fHist.modo} onChange={(e) => trocarHist('modo', e.target.value)}>
+              <option value="">Todos</option>
+              <option value="inicial">Inicial</option>
+              <option value="incremental">Incremental</option>
+            </select>
+          </Campo>
+          <Campo rotulo="Situação">
+            <select value={fHist.status} onChange={(e) => trocarHist('status', e.target.value)}>
+              <option value="">Todas</option>
+              <option value="concluida">Concluída</option>
+              <option value="recusada">Recusada</option>
+            </select>
+          </Campo>
+          <Campo rotulo="Responsável">
+            <select value={fHist.usuario_id} onChange={(e) => trocarHist('usuario_id', e.target.value)}>
+              <option value="">Todos</option>
+              {responsaveis.map((r) => (
+                <option key={r.id} value={r.id}>{r.nome}</option>
+              ))}
+            </select>
+          </Campo>
+          <Campo rotulo="De" dica="Data da carga.">
+            <input type="date" value={fHist.de} onChange={(e) => trocarHist('de', e.target.value)} />
+          </Campo>
+          <Campo rotulo="Até">
+            <input type="date" value={fHist.ate} onChange={(e) => trocarHist('ate', e.target.value)} />
+          </Campo>
+          {temFiltroHist && (
+            <button type="button" className="botao discreto pequeno" onClick={limparHist}>
+              Limpar filtros
+            </button>
+          )}
+        </div>
+
         {(historico.dados ?? []).length === 0 ? (
-          <p className="vazio">Nenhuma carga registrada nesta empresa.</p>
+          <p className="vazio">
+            {temFiltroHist ? 'Nenhuma carga com estes filtros.' : 'Nenhuma carga registrada neste cliente.'}
+          </p>
         ) : (
           <div className="tabela-envolucro">
             <table>
@@ -587,7 +658,9 @@ export function PaginaPlanilhas() {
                   <th>Situação</th>
                   <th className="num">Lidas</th>
                   <th className="num">Importadas</th>
-                  <th className="num">Duplicadas</th>
+                  <th className="num">Atualizadas</th>
+                  <th className="num">Ignoradas</th>
+                  <th className="num">Rejeitadas</th>
                   <th className="num">Erros</th>
                   <th />
                 </tr>
@@ -608,7 +681,9 @@ export function PaginaPlanilhas() {
                     </td>
                     <td className="num">{inteiro(i.total_linhas)}</td>
                     <td className="num">{inteiro(i.importadas)}</td>
+                    <td className="num">{inteiro(i.atualizadas ?? 0)}</td>
                     <td className="num">{inteiro(i.duplicadas)}</td>
+                    <td className="num">{inteiro(i.rejeitadas ?? 0)}</td>
                     <td className="num">{inteiro(i.com_erro)}</td>
                     <td>
                       {i.com_erro > 0 && (
