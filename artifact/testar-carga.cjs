@@ -4,7 +4,7 @@
 // arquivo do mês? o que aconteceu nas cargas anteriores — inclusive nas que
 // não entraram? e como aceitar o cabeçalho que a planilha DESTE cliente usa?
 const { chromium } = require('playwright');
-const { irPara } = require('./ajuda-testes.cjs');
+const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
 
 const URL = 'file://' + __dirname + '/teste-local.html';
 
@@ -37,13 +37,48 @@ async function enviarCsv(pag, nome, conteudo) {
   await pag.waitForSelector('#modulos button', { timeout: 15000 });
   await irPara(pag, 'Dados', 900);
 
+  // ------------------------------------------------------------------ escopo
+  //
+  // O padrão da tela é o CLIENTE INTEIRO, e este cliente tem várias matrizes.
+  // Um arquivo sem a coluna "Empresa" não tem, aí, uma linha errada: tem o
+  // destino de todas indefinido — e a carga é recusada antes de gravar nada.
+  console.log('\nESCOPO — cliente inteiro exige a coluna Empresa');
+  await pag.uncheck('#d-simular');
+  await enviarCsv(pag, 'sem-empresa.csv', csvDoCliente('Valor'));
+  await pag.click('#d-importar');
+  await pag.waitForTimeout(1500);
+  let saida = await pag.textContent('#d-saida-imp');
+  conferir('sem a coluna Empresa, a carga do cliente inteiro é recusada',
+    /coluna "Empresa"/i.test(saida), saida.replace(/\s+/g, ' ').slice(0, 100));
+
+  // Daqui para a frente, o escopo é UMA unidade: é assim que entra o arquivo
+  // no formato antigo, que não traz a coluna.
+  await pag.click('input[name="d-escopo"][value="empresas"]');
+  await pag.waitForTimeout(800);
+  // Trocar o escopo remonta a tela, e os blocos nascem fechados: reabrir é o
+  // mesmo passo que `irPara` já dá ao chegar numa tela.
+  await abrirBlocos(pag);
+  const marcadasNoInicio = (await pag.$$('#d-esc-emp input:checked')).length;
+  conferir('trocar para "Empresas" marca todas, em vez de deixar o escopo vazio',
+    marcadasNoInicio > 1, String(marcadasNoInicio));
+
+  // Desmarcar remonta a tela — o escopo é global —, então a caixa é buscada de
+  // novo a cada volta em vez de guardada numa referência que já saiu do DOM.
+  for (let i = marcadasNoInicio; i > 1; i--) {
+    await pag.locator('#d-esc-emp input:checked').last().click();
+    await pag.waitForTimeout(700);
+    await abrirBlocos(pag);
+  }
+  const resumo = await pag.textContent('#d-escopo-resumo');
+  conferir('o contador diz o que está marcado', /^1 empresa,/.test(resumo.trim()), resumo.trim());
+
   // ------------------------------------------------- adaptador de cabeçalho
   console.log('\nADAPTADOR — o cabeçalho que a planilha do cliente usa');
   await pag.uncheck('#d-simular');
   await enviarCsv(pag, 'do-cliente.csv', csvDoCliente('Vlr Total'));
   await pag.click('#d-importar');
   await pag.waitForTimeout(1500);
-  let saida = await pag.textContent('#d-saida-imp');
+  saida = await pag.textContent('#d-saida-imp');
   conferir('sem o cabeçalho cadastrado, falta coluna obrigatória',
     /obrigat[óo]ri/i.test(saida), (saida.match(/Faltam[^<]{0,60}/) || ['(não apareceu)'])[0].trim());
 
@@ -83,7 +118,8 @@ async function enviarCsv(pag, nome, conteudo) {
   // -------------------------------------------------------------- histórico
   console.log('\nHISTÓRICO — toda tentativa deixa rastro, a recusada inclusive');
   const registro = await pag.evaluate(() =>
-    (E.cargas.get(empresaAtiva()) || []).map((c) => c.status + ':' + c.modo + ':' + (c.arquivo || '')));
+    empresasDoEscopoOp().flatMap((id) => E.cargas.get(id) || [])
+      .map((c) => c.status + ':' + c.modo + ':' + (c.arquivo || '')));
   conferir('a recusa entrou no registro', registro.some((r) => /^recusada:inicial/.test(r)), registro.join(' | '));
   conferir('a carga confirmada entrou como concluída e inicial',
     registro.some((r) => /^concluida:inicial/.test(r)));
@@ -96,7 +132,8 @@ async function enviarCsv(pag, nome, conteudo) {
   await enviarCsv(pag, 'previa.csv', csvDoCliente('Valor'));
   await pag.click('#d-importar');
   await pag.waitForTimeout(1500);
-  const depois = await pag.evaluate(() => (E.cargas.get(empresaAtiva()) || []).length);
+  const depois = await pag.evaluate(() =>
+    empresasDoEscopoOp().flatMap((id) => E.cargas.get(id) || []).length);
   conferir('a conferência não entra no registro: prévia não é carga', depois === antes, `${antes} → ${depois}`);
 
   const naTela = await pag.$$eval('.bloco', (bs) => {

@@ -49,6 +49,20 @@ const fs = require('fs');
   fs.writeFileSync('/tmp/claude-0/exportado.xlsx', Buffer.from(arq.bytes));
   console.log('  salvo:', arq.nome, arq.bytes.length, 'bytes');
 
+  // O escopo padrão é o CLIENTE INTEIRO: o arquivo tem de cobrir várias
+  // matrizes e dizer, em cada linha, de qual delas ela é. Sem isso a
+  // reimportação não teria como devolver a linha à unidade de origem.
+  const cobertura = await pag.evaluate(async () => {
+    const abas = await montarAbasDoEscopo(escopoOperacao(), 'completo');
+    const fin = abas.find((a) => a.nome === 'Financeiro');
+    const empresas = new Set(fin.linhas.map((l) => l.Empresa));
+    return { temColuna: fin.colunas[0] === 'Empresa', empresas: [...empresas], semEmpresa: fin.linhas.filter((l) => !l.Empresa).length };
+  });
+  console.log('  escopo:', cobertura.empresas.length, 'matriz(es) —', cobertura.empresas.join(', '));
+  if (!cobertura.temColuna) erros.push('a aba Financeiro não abre com a coluna Empresa');
+  if (cobertura.empresas.length < 2) erros.push('o arquivo do cliente inteiro trouxe uma matriz só');
+  if (cobertura.semEmpresa) erros.push(cobertura.semEmpresa + ' linha(s) saíram sem dizer de qual matriz são');
+
   const reimportar = async (caminho, simular) => {
     await pag.setInputFiles('#d-arquivo', caminho);
     await pag.evaluate((s) => { document.querySelector('#d-simular').checked = s; }, simular);
@@ -72,15 +86,20 @@ const fs = require('fs');
   console.log(' ', r.resumo);
   console.log('  lançamentos depois:', await contar(), '| total:', await totalDe());
 
+  // A coluna Empresa vem junto: com o cliente inteiro no escopo, é ela que diz
+  // de qual matriz é cada linha. A penúltima aponta para uma empresa que não
+  // existe aqui — é a linha que prova que nome de fora é recusado, e não
+  // desviado para a unidade mais próxima.
   const csv = '﻿' + [
-    'Filial;Centro de Custo;Mês;Valor;Natureza;Classificação;Origem;Descrição',
-    'ALIANÇA;Link de Internet;09/2026;R$ 1.234,56;Fixa;Despesa;Planilhas do cliente;linha boa 1',
-    'ALIANÇA;Link de Internet;13/2026;100,00;Fixa;Despesa;;mês inexistente',
-    'ALIANÇA;Link de Internet;09/2026;abc;Fixa;Despesa;;valor ilegível',
-    'ALIANÇA;Link de Internet;09/2026;50,00;Semanal;Despesa;;natureza desconhecida',
-    'ALIANÇA;Link de Internet;09/2026;50,00;Fixa;Ativo;;classificação desconhecida',
-    ';Serviço Novo em Folha;09/2026;(2.500,00);Pontual única;Investimento;;valor negativo entre parênteses',
-    'ALIANÇA;Link de Internet;09/2026;1.234,56;Fixa;Despesa;Planilhas do cliente;linha boa 1',
+    'Empresa;Filial;Centro de Custo;Mês;Valor;Natureza;Classificação;Origem;Descrição',
+    'ALIANÇA;ALIANÇA;Link de Internet;09/2026;R$ 1.234,56;Fixa;Despesa;Planilhas do cliente;linha boa 1',
+    'ALIANÇA;ALIANÇA;Link de Internet;13/2026;100,00;Fixa;Despesa;;mês inexistente',
+    'ALIANÇA;ALIANÇA;Link de Internet;09/2026;abc;Fixa;Despesa;;valor ilegível',
+    'ALIANÇA;ALIANÇA;Link de Internet;09/2026;50,00;Semanal;Despesa;;natureza desconhecida',
+    'ALIANÇA;ALIANÇA;Link de Internet;09/2026;50,00;Fixa;Ativo;;classificação desconhecida',
+    'ALIANÇA;;Serviço Novo em Folha;09/2026;(2.500,00);Pontual única;Investimento;;valor negativo entre parênteses',
+    'EMPRESA QUE NAO EXISTE;;Link de Internet;09/2026;99,00;Fixa;Despesa;;empresa fora do escopo',
+    'ALIANÇA;ALIANÇA;Link de Internet;09/2026;1.234,56;Fixa;Despesa;Planilhas do cliente;linha boa 1',
   ].join('\r\n') + '\r\n';
   fs.writeFileSync('/tmp/claude-0/sujo.csv', csv, 'utf8');
 
@@ -91,6 +110,10 @@ const fs = require('fs');
   const invalidas = await pag.$$eval('#d-saida-imp section table tbody tr', (rs) =>
     rs.map((x) => [...x.cells].map((c) => c.textContent.trim()).join(' | ')));
   invalidas.forEach((l) => console.log('    ' + l));
+  if (!invalidas.some((l) => /não está no escopo/i.test(l))) {
+    erros.push('a linha que aponta para empresa de fora do escopo não entrou no relatório');
+  }
+  if (invalidas.length < 5) erros.push('as linhas ruins deixaram de ser relatadas: ' + invalidas.length);
 
   console.log('\n-- gravando as boas --');
   r = await reimportar('/tmp/claude-0/sujo.csv', false);

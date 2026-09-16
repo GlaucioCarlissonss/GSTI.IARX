@@ -602,3 +602,84 @@ const filiaisDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(filiaisDa));
 const tiposDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(tiposDa));
 const filasDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(filasDa));
 const cenariosDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(cenariosDa), 'chave');
+
+// --------------------------------------------------------------- escopo da operação
+//
+// O escopo de IMPORTAR e EXPORTAR, que não é o filtro de uma tela.
+//
+// Antes, toda operação de arquivo era de UMA matriz: quem exportava escolhia a
+// unidade e repetia a operação para cada empresa do cliente. Agora o padrão é o
+// cliente inteiro, e restringir é a exceção que a pessoa escolhe:
+//
+//   cliente   — todas as matrizes e filiais do cliente ativo (o padrão)
+//   empresas  — as matrizes marcadas, com as filiais delas junto
+//   unidades  — matrizes e/ou filiais marcadas uma a uma
+//
+// O MESMO estado serve às duas operações: mudar o escopo para exportar e
+// esquecer de mudá-lo para importar é justamente o engano que isso evita.
+const CHAVE_ESCOPO_OP = 'iarx-escopo-operacao';
+
+function escopoOperacao() {
+  const vazio = { modo: 'cliente', empresas: [], filiais: [] };
+  try {
+    const bruto = JSON.parse(localStorage.getItem(CHAVE_ESCOPO_OP) || 'null');
+    if (!bruto || !['cliente', 'empresas', 'unidades'].includes(bruto.modo)) return vazio;
+    return {
+      modo: bruto.modo,
+      empresas: Array.isArray(bruto.empresas) ? bruto.empresas : [],
+      filiais: Array.isArray(bruto.filiais) ? bruto.filiais : [],
+    };
+  } catch {
+    // Aba anônima, armazenamento bloqueado, dado corrompido: o padrão vale e a
+    // tela abre. Escopo lembrado é conveniência, não requisito.
+    return vazio;
+  }
+}
+
+function gravarEscopoOperacao(escopo) {
+  try { localStorage.setItem(CHAVE_ESCOPO_OP, JSON.stringify(escopo)); } catch { /* ver acima */ }
+}
+
+/** As matrizes atingidas pelo escopo — nunca fora do cliente ativo. */
+function empresasDoEscopoOp(escopo = escopoOperacao()) {
+  const doCliente = matrizesDoClienteAtivo();
+  if (escopo.modo === 'cliente') return doCliente;
+  const marcadas = new Set((escopo.empresas || []).filter((id) => doCliente.includes(id)));
+  // Filial marcada puxa a matriz dela: sem isso a linha filha ficaria fora.
+  if (escopo.modo === 'unidades') {
+    for (const id of escopo.filiais || []) {
+      const f = E.filiais.find((x) => x.id === id);
+      if (f && doCliente.includes(f.empresa)) marcadas.add(f.empresa);
+    }
+  }
+  return marcadas.size ? [...marcadas] : doCliente;
+}
+
+/** As filiais atingidas. Vazio significa TODAS as das matrizes acima. */
+function filiaisDoEscopoOp(escopo = escopoOperacao()) {
+  if (escopo.modo !== 'unidades') return [];
+  const permitidas = new Set(empresasDoEscopoOp(escopo));
+  return (escopo.filiais || []).filter((id) => {
+    const f = E.filiais.find((x) => x.id === id);
+    return f && permitidas.has(f.empresa);
+  });
+}
+
+/** "3 empresas, 12 filiais" — o contador da tela e o texto do registro. */
+function resumoEscopoOp(escopo = escopoOperacao()) {
+  // Modo explícito e nada marcado: o escopo cai no cliente inteiro para não
+  // ficar vazio, mas dizer "5 empresas" aí seria mentir sobre o que a pessoa
+  // escolheu. O botão da operação recusa nesse estado; o texto explica por quê.
+  if (escopo.modo !== 'cliente' && !escopoOpCompleto(escopo)) return 'nenhuma unidade marcada';
+  const empresas = empresasDoEscopoOp(escopo);
+  const marcadas = filiaisDoEscopoOp(escopo);
+  const filiais = marcadas.length ? marcadas.length : empresas.flatMap(filiaisDa).length;
+  const parte = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+  return `${parte(empresas.length, 'empresa', 'empresas')}, ${parte(filiais, 'filial', 'filiais')}`;
+}
+
+/** O escopo está pronto para operar? Marcar o modo e não marcar nada, não está. */
+function escopoOpCompleto(escopo = escopoOperacao()) {
+  if (escopo.modo === 'cliente') return true;
+  return (escopo.empresas || []).length > 0 || (escopo.filiais || []).length > 0;
+}

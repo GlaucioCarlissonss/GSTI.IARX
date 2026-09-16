@@ -6,9 +6,30 @@
 // coluna a mais: Origem. Sem ela a reimportação apagaria a procedência que a
 // aba Conferência usa, e o rateio de folha viraria linha de planilha.
 // ===========================================================================
-const MODELO_VERSAO = '1.2';   // 1.2 levou o detalhe do chamado para a aba SLA
+// 1.3 acrescentou "Empresa" a todas as abas de dado, para que um arquivo só
+//     atenda várias matrizes do mesmo cliente (ver COLUNA_EMPRESA, abaixo).
+const MODELO_VERSAO = '1.3';
 
-const ABAS_MODELO = {
+/**
+ * A coluna que diz de QUAL MATRIZ é a linha.
+ *
+ * Até a 1.2 o arquivo era de uma matriz só: quem importava escolhia a unidade e
+ * todas as linhas iam para ela. Com a operação passando a ser do cliente
+ * inteiro, um arquivo com seis matrizes precisa dizer, linha a linha, a quem
+ * cada uma pertence — e a Filial sozinha não resolve, porque duas matrizes do
+ * mesmo cliente podem ter filial de mesmo nome.
+ *
+ * Fica FORA de `obrigatorias` de propósito: é o que mantém importável o arquivo
+ * gerado antes. Vazia, a linha cai na unidade única do escopo; com várias no
+ * escopo, a carga é recusada pedindo a coluna.
+ *
+ * `grupo` NÃO entra como apelido: na aba Financeiro, "Grupo" já é o
+ * identificador que liga as parcelas de uma compra.
+ */
+const COLUNA_EMPRESA = 'Empresa';
+const APELIDOS_EMPRESA = ['empresa', 'matriz', 'empresamatriz', 'grupoempresa', 'razaosocial', 'unidadematriz'];
+
+const ABAS_MODELO_BASE = {
   Modelo: { colunas: ['Chave', 'Valor'], obrigatorias: [], apelidos: {} },
   Filiais: {
     colunas: ['Filial', 'Cidade', 'UF', 'Ativo'],
@@ -80,6 +101,20 @@ const ABAS_MODELO = {
       Prazo: ['prazo', 'prazoem', 'duedate', 'estduedate'], Horas: ['horas'] },
   },
 };
+
+// A coluna Empresa entra em todas as abas de dado. A aba `Modelo` fica de fora:
+// ela é o cabeçalho do arquivo, não uma tabela de linhas.
+const ABAS_MODELO = Object.fromEntries(
+  Object.entries(ABAS_MODELO_BASE).map(([nome, def]) =>
+    nome === 'Modelo'
+      ? [nome, def]
+      : [nome, {
+          ...def,
+          colunas: [COLUNA_EMPRESA, ...def.colunas],
+          apelidos: { ...def.apelidos, [COLUNA_EMPRESA]: APELIDOS_EMPRESA },
+        }],
+  ),
+);
 
 const MODULOS = {
   completo:   { rotulo:'Completo',   abas:['Modelo','Filiais','TiposDespesa','Cenarios','Financeiro','Projetos','Tarefas','Envolvidos','SLA'] },
@@ -216,6 +251,159 @@ async function montarAbas(empresa, modulo) {
   // nela, e não errando uma linha por vez. É derivada da definição das abas,
   // então não tem como divergir do que a importação aceita.
   return [...abas, { nome: ABA_INSTRUCOES, colunas: COLUNAS_INSTRUCOES, linhas: linhasDeInstrucoes(modulo) }];
+}
+
+/**
+ * O arquivo do ESCOPO: uma planilha só para todas as unidades escolhidas.
+ *
+ * Monta as abas de cada matriz pelo caminho de sempre e as junta, carimbando a
+ * coluna `Empresa` em cada linha — é ela que permite a reimportação devolver
+ * cada linha à unidade de onde saiu. A aba `Modelo` sai uma vez só, com o
+ * cliente e o escopo, porque é o cabeçalho do arquivo e não uma tabela.
+ */
+async function montarAbasDoEscopo(escopo, modulo) {
+  const empresas = empresasDoEscopoOp(escopo);
+  const filiaisMarcadas = filiaisDoEscopoOp(escopo);
+  // Nome, e não id: é o nome que a planilha mostra e que a volta reconhece.
+  const nomesDeFilial = new Set(
+    filiaisMarcadas.map((id) => (E.filiais.find((f) => f.id === id) || {}).nome).filter(Boolean),
+  );
+
+  const partes = [];
+  for (const empresa of empresas) partes.push({ empresa, abas: await montarAbas(empresa, modulo) });
+
+  const juntas = new Map();
+  for (const { empresa, abas } of partes) {
+    const nomeEmp = nomeEmpresa(empresa);
+    for (const aba of abas) {
+      if (aba.nome === 'Modelo' || aba.nome === ABA_INSTRUCOES) continue;
+      let linhas = aba.linhas.map((l) => ({ [COLUNA_EMPRESA]: nomeEmp, ...l }));
+      // Filial marcada recorta; a linha do nível da matriz (sem filial) fica,
+      // porque ela é da matriz e não de nenhuma filial em especial.
+      if (nomesDeFilial.size) linhas = linhas.filter((l) => !l.Filial || nomesDeFilial.has(l.Filial));
+      const anterior = juntas.get(aba.nome);
+      if (anterior) anterior.linhas.push(...linhas);
+      else juntas.set(aba.nome, { nome: aba.nome, colunas: ABAS_MODELO[aba.nome].colunas, linhas });
+    }
+  }
+
+  const cabecalho = {
+    nome: 'Modelo',
+    colunas: ABAS_MODELO.Modelo.colunas,
+    linhas: [
+      { Chave: 'Versão do modelo', Valor: MODELO_VERSAO },
+      { Chave: 'Cliente', Valor: (clientePorId(E.clienteSel) || {}).nome || '—' },
+      { Chave: 'Escopo', Valor: escopo.modo },
+      { Chave: 'Unidades', Valor: resumoEscopoOp(escopo) },
+      { Chave: 'Empresas', Valor: empresas.map(nomeEmpresa).join(' | ') },
+      { Chave: 'Gerado em', Valor: new Date().toLocaleString('pt-BR') },
+      { Chave: 'Sistema', Valor: 'Gestão de TI IARX' },
+    ],
+  };
+
+  const ordenadas = MODULOS[modulo].abas.filter((n) => n !== 'Modelo').map((n) => juntas.get(n)).filter(Boolean);
+  return [cabecalho, ...ordenadas,
+    { nome: ABA_INSTRUCOES, colunas: COLUNAS_INSTRUCOES, linhas: linhasDeInstrucoes(modulo) }];
+}
+
+/**
+ * A carga do ESCOPO: um arquivo, todas as unidades.
+ *
+ * Cada aba é repartida pela coluna `Empresa` e entregue ao importador de sempre,
+ * uma vez por matriz — o que mantém intactas as regras de deduplicação, de
+ * cadastro e de competência fechada, que são todas por matriz.
+ *
+ * A trava do enunciado vem antes de tudo: escopo com várias unidades e arquivo
+ * sem a coluna não tem uma linha errada, tem o destino de todas indefinido.
+ */
+async function importarArquivoNoEscopo(escopo, abas, opcoes) {
+  const empresas = empresasDoEscopoOp(escopo);
+  const porNome = new Map(empresas.map((id) => [normalizarCabecalho(nomeEmpresa(id)), id]));
+  const dados = abas.filter((a) => normalizarCabecalho(a.nome) !== 'modelo'
+    && normalizarCabecalho(a.nome) !== normalizarCabecalho(ABA_INSTRUCOES));
+
+  if (empresas.length > 1) {
+    const sem = dados.find((a) => !colunaDoArquivo(a.colunas, COLUNA_EMPRESA, APELIDOS_EMPRESA));
+    if (sem) {
+      const mensagem = 'O escopo desta carga tem ' + empresas.length + ' empresas, e a aba "' + sem.nome +
+        '" não traz a coluna "' + COLUNA_EMPRESA + '" — sem ela não há como saber de qual unidade é cada linha. ' +
+        'Acrescente a coluna ao arquivo, ou escolha uma unidade só no escopo da operação.';
+      if (!opcoes.simular) {
+        await registrarCarga(empresas[0], { modulo: opcoes.modulo, modo: opcoes.modo, status: 'recusada',
+          mensagem, arquivo: opcoes.arquivo, escopo: escopo.modo, unidades: resumoEscopoOp(escopo) });
+      }
+      throw new Error(mensagem);
+    }
+  }
+
+  /**
+   * De qual matriz é esta linha.
+   *
+   * Vazia com uma unidade só no escopo, é dela — é assim que entra o arquivo no
+   * formato antigo, que não traz a coluna. Nome que não está no escopo devolve
+   * `null`: a linha é recusada, e não desviada para a unidade mais próxima.
+   */
+  const donaDaLinha = (aba, linha) => {
+    const coluna = colunaDoArquivo(aba.colunas, COLUNA_EMPRESA, APELIDOS_EMPRESA);
+    const nome = coluna ? String(linha[coluna] ?? '').trim() : '';
+    if (!nome) return empresas.length === 1 ? empresas[0] : null;
+    return porNome.get(normalizarCabecalho(nome)) || null;
+  };
+
+  const juntou = { invalidas: [], abas: [], criouCadastros: null,
+    modo: opcoes.modo === 'inicial' ? 'inicial' : 'incremental' };
+
+  for (const empresa of empresas) {
+    const recorte = dados
+      .map((aba) => ({ ...aba, linhas: aba.linhas.filter((l) => donaDaLinha(aba, l) === empresa) }))
+      .filter((aba) => aba.linhas.length);
+    if (!recorte.length) continue;
+    // O `Modelo` volta junto: é dele que sai a versão do arquivo no relatório.
+    const comCabecalho = abas.filter((a) => normalizarCabecalho(a.nome) === 'modelo').concat(recorte);
+    const rel = await importarArquivo(empresa, comCabecalho, { ...opcoes, escopo, semRegistro: true });
+    juntou.invalidas.push(...rel.invalidas);
+    juntou.versaoArquivo = juntou.versaoArquivo || rel.versaoArquivo;
+    for (const a of rel.abas) {
+      const anterior = juntou.abas.find((x) => x.nome === a.nome);
+      if (!anterior) juntou.abas.push({ ...a });
+      else for (const c of ['lidas', 'criadas', 'duplicadas', 'atualizadas']) anterior[c] = (anterior[c] || 0) + (a[c] || 0);
+    }
+  }
+
+  // A linha que aponta para uma empresa fora do escopo não some em silêncio:
+  // ela entra no relatório com o motivo, como toda linha recusada.
+  for (const aba of dados) {
+    aba.linhas.forEach((l, i) => {
+      if (donaDaLinha(aba, l)) return;
+      const coluna = colunaDoArquivo(aba.colunas, COLUNA_EMPRESA, APELIDOS_EMPRESA);
+      const nome = coluna ? String(l[coluna] ?? '').trim() : '';
+      juntou.invalidas.push({ aba: aba.nome, linha: i + 2,
+        motivo: nome ? 'A empresa "' + nome + '" não está no escopo desta carga.'
+                     : 'A coluna "' + COLUNA_EMPRESA + '" está vazia e o escopo tem várias empresas.' });
+    });
+  }
+  if (!juntou.abas.length) juntou.semAbasConhecidas = true;
+
+  if (!opcoes.simular) {
+    // O registro fica na primeira matriz do escopo, com o escopo real ao lado:
+    // o histórico da tela junta as cargas de todas as unidades do escopo.
+    await registrarCarga(empresas[0], {
+      modulo: opcoes.modulo, modo: juntou.modo, status: 'concluida', arquivo: opcoes.arquivo,
+      escopo: escopo.modo, unidades: resumoEscopoOp(escopo),
+      lidas: juntou.abas.reduce((s, a) => s + (a.lidas || 0), 0),
+      criadas: juntou.abas.reduce((s, a) => s + (a.criadas || 0), 0),
+      duplicadas: juntou.abas.reduce((s, a) => s + (a.duplicadas || 0), 0),
+      invalidas: juntou.invalidas.length,
+      erros: juntou.invalidas.map((i) => ({ aba: i.aba, linha: i.linha, mensagem: i.motivo || i.mensagem })),
+    });
+  }
+  return juntou;
+}
+
+/** O cabeçalho do arquivo que corresponde a esta coluna do modelo, se houver. */
+function colunaDoArquivo(colunas, canonica, apelidos) {
+  const chaves = new Set([normalizarCabecalho(canonica), ...apelidos.map(normalizarCabecalho)]);
+  return colunas.find((c) => chaves.has(normalizarCabecalho(c))) || null;
 }
 
 const ABA_INSTRUCOES = 'Instruções';
@@ -574,10 +762,12 @@ async function importarArquivo(empresa, abas, opcoes) {
 
   // Simulação não é carga: registrar a prévia encheria o histórico de linhas
   // que não mudaram nada, e a pergunta "o que entrou?" ficaria mais difícil.
-  if (!opcoes.simular) {
+  if (!opcoes.simular && !opcoes.semRegistro) {
     await registrarCarga(empresa, {
       modulo: opcoes.modulo,
       modo: rel.modo,
+      escopo: opcoes.escopo ? opcoes.escopo.modo : 'cliente',
+      unidades: opcoes.escopo ? resumoEscopoOp(opcoes.escopo) : null,
       status: 'concluida',
       arquivo: opcoes.arquivo,
       lidas: rel.abas.reduce((s, a) => s + (a.lidas || 0), 0),

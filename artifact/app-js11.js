@@ -1,14 +1,17 @@
 // ===========================================================================
 // Aba Dados — a ponte com o Excel, que é onde o gestor já trabalha.
 // ===========================================================================
+const ROTULO_ESCOPO = { cliente: 'Cliente inteiro', empresas: 'Empresas', unidades: 'Unidades' };
+
 /** As linhas do histórico de cargas. Serve à montagem e ao refresco no lugar. */
 function linhasHistoricoCargas(cargas) {
-  if (!cargas.length) return '<tr><td colspan="8" class="vazio">Nenhuma carga registrada nesta empresa.</td></tr>';
+  if (!cargas.length) return '<tr><td colspan="9" class="vazio">Nenhuma carga registrada neste escopo.</td></tr>';
   return cargas
     .map(
       (c) => `<tr${c.status === 'recusada' ? ' title="' + esc(c.mensagem || '') + '"' : ''}>
         <td>${esc(new Date(c.quando).toLocaleString('pt-BR'))}</td>
         <td>${c.modo === 'inicial' ? 'Inicial' : 'Incremental'}</td>
+        <td title="${esc(c.unidades || '')}">${esc(ROTULO_ESCOPO[c.escopo || 'cliente'] || '—')}</td>
         <td>${esc(c.arquivo || '—')}</td>
         <td>${c.status === 'recusada' ? '<span class="tag crit">Recusada</span>' : '<span class="tag bom">Concluída</span>'}</td>
         <td class="num">${inteiro(c.lidas)}</td><td class="num">${inteiro(c.criadas)}</td>
@@ -19,32 +22,135 @@ function linhasHistoricoCargas(cargas) {
 }
 
 /**
+ * As cargas de TODAS as unidades do escopo, mais recentes primeiro.
+ *
+ * O registro é guardado por matriz — é assim que ele é lido e gravado —, mas a
+ * pergunta "por que os dados não entraram?" é do cliente: quem pergunta não sabe
+ * de antemão em qual unidade a carga foi feita.
+ */
+async function cargasDoEscopo(escopo) {
+  const listas = [];
+  for (const id of empresasDoEscopoOp(escopo)) listas.push(await cargasDaEmpresa(id));
+  return listas.flat().sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
+}
+
+/**
  * Atualiza o histórico SEM remontar a tela: o relatório da carga que acabou de
  * rodar está logo acima, e remontar apagaria justamente o que a pessoa foi ler.
  */
-function refrescarHistoricoCargas(empresa) {
+async function refrescarHistoricoCargas(escopo) {
   const corpo = el('#d-historico');
-  if (corpo) corpo.innerHTML = linhasHistoricoCargas(E.cargas.get(empresa) || []);
+  if (corpo) corpo.innerHTML = linhasHistoricoCargas(await cargasDoEscopo(escopo));
+}
+
+/**
+ * O seletor de ESCOPO da operação — o mesmo para exportar e importar.
+ *
+ * Antes havia uma unidade em foco, e a operação era dela. Agora o padrão é o
+ * cliente inteiro, com o contador dizendo, em números, o que está marcado.
+ */
+function seletorEscopoHtml(escopo) {
+  const empresas = matrizesDoClienteAtivo();
+  const filiais = empresas.flatMap(filiaisDa);
+  // Com uma matriz só e nenhuma filial, os três modos dizem a mesma coisa.
+  if (empresas.length <= 1 && !filiais.length) return '';
+  const opcao = (chave, rotulo, apoio) => `<label title="${esc(apoio)}" style="display:flex;gap:6px;align-items:center">
+      <input type="radio" name="d-escopo" value="${chave}"${escopo.modo === chave ? ' checked' : ''}> ${esc(rotulo)}</label>`;
+  const caixas = (id, lista, marcados, rotuloDe) => `<div class="campo" style="min-width:230px">
+      <label for="${id}">${id === 'd-esc-emp' ? 'Empresas (matrizes)' : 'Filiais'}</label>
+      <div id="${id}" class="rol" style="max-height:150px;padding:6px;border:1px solid var(--borda);border-radius:8px">
+        ${lista.map((x) => `<label style="display:flex;gap:6px;align-items:center;padding:2px 0">
+            <input type="checkbox" value="${x.id}"${marcados.includes(x.id) ? ' checked' : ''}> ${esc(rotuloDe(x))}</label>`).join('')}
+      </div></div>`;
+
+  return `<section class="bloco" id="d-escopo-bloco">
+    <header><h2>Escopo da operação</h2><span class="nota" id="d-escopo-resumo">${esc(resumoEscopoOp(escopo))}</span></header>
+    <div class="msg">Vale para exportar E importar. O arquivo traz a coluna <strong>Empresa</strong>, então um arquivo
+      só atende todas as unidades do escopo — e volta para elas na reimportação.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;margin:10px 0;font-size:13px">
+      ${opcao('cliente', 'Cliente inteiro', 'Todas as empresas e filiais deste cliente, num arquivo só.')}
+      ${opcao('empresas', 'Empresas selecionadas', 'As matrizes marcadas. As filiais de cada uma entram junto.')}
+      ${opcao('unidades', 'Unidades específicas', 'Matrizes e filiais marcadas uma a uma.')}
+    </div>
+    <div id="d-escopo-listas" style="display:${escopo.modo === 'cliente' ? 'none' : 'flex'};flex-wrap:wrap;gap:14px;align-items:flex-start">
+      ${caixas('d-esc-emp', empresas.map((id) => ({ id, nome: nomeEmpresa(id) })), escopo.empresas, (x) => x.nome)}
+      <div id="d-esc-fil-caixa" style="display:${escopo.modo === 'unidades' ? 'block' : 'none'}">
+        ${caixas('d-esc-fil', filiais, escopo.filiais, (f) => f.nome + (f.uf ? ' — ' + f.uf : '') + ' · ' + nomeEmpresa(f.empresa))}
+      </div>
+      <div style="display:flex;gap:8px;padding-top:22px">
+        <button type="button" class="bt" id="d-esc-todas">Selecionar todas</button>
+        <button type="button" class="bt" id="d-esc-limpar">Limpar seleção</button>
+      </div>
+    </div>
+  </section>`;
+}
+
+/**
+ * Liga o seletor de escopo.
+ *
+ * Trocar de MODO remonta a tela: muda o que existe nela. Marcar uma caixa, não
+ * — remontar a cada clique destruiria a lista debaixo do cursor e faria a
+ * segunda marcação cair no vazio. A caixa grava o escopo e atualiza os dois
+ * lugares que mostram o número; quem exporta ou importa lê o escopo na hora.
+ */
+function ligarSeletorEscopo() {
+  const bloco = el('#d-escopo-bloco');
+  if (!bloco) return;
+  const atual = () => escopoOperacao();
+  const remontar = (novo) => { gravarEscopoOperacao(novo); render(); };
+
+  // Os identificadores de empresa e filial aqui são TEXTO ("alianca", "union"),
+  // não número: converter transformaria cada marcação em NaN e o escopo em
+  // uma lista de nulos que silenciosamente volta a valer o cliente inteiro.
+  const marcados = (id) => [...bloco.querySelectorAll('#' + id + ' input:checked')].map((c) => c.value);
+  const semRemontar = (novo) => {
+    gravarEscopoOperacao(novo);
+    const resumo = el('#d-escopo-resumo');
+    if (resumo) resumo.textContent = resumoEscopoOp(novo);
+    const linha = el('#d-resumo-exp');
+    if (linha) {
+      const total = empresasDoEscopoOp(novo).reduce((soma, id) => soma + Loja.todos(id).length, 0);
+      linha.innerHTML = 'Tudo de <strong>' + esc(resumoEscopoOp(novo)) + '</strong>: ' + inteiro(total) +
+        ' lançamentos, em todas as competências e cenários, num arquivo só.';
+    }
+  };
+
+  bloco.querySelectorAll('input[name="d-escopo"]').forEach((r) => {
+    r.onchange = () => {
+      const modo = r.value;
+      // Sair do modo "cliente" sem nada marcado deixaria o escopo vazio. Marcar
+      // tudo é o ponto de partida honesto: a pessoa desmarca o que não quer.
+      if (modo === 'empresas') return remontar({ modo, empresas: matrizesDoClienteAtivo(), filiais: [] });
+      if (modo === 'cliente') return remontar({ modo, empresas: [], filiais: [] });
+      remontar({ ...atual(), modo });
+    };
+  });
+
+  bloco.querySelectorAll('#d-esc-emp input, #d-esc-fil input').forEach((c) => {
+    c.onchange = () => semRemontar({ ...atual(), empresas: marcados('d-esc-emp'), filiais: marcados('d-esc-fil') });
+  });
+  el('#d-esc-todas').onclick = () => remontar({ ...atual(), empresas: matrizesDoClienteAtivo(), filiais: [] });
+  el('#d-esc-limpar').onclick = () => remontar({ ...atual(), empresas: [], filiais: [] });
 }
 
 async function viewDados() {
-  const emp = empresaAtiva();
-  if (!emp) {
-    // Sem unidade não há arquivo: filiais, tipos e cenários pertencem a uma
-    // matriz, e reimportar precisa voltar para a mesma. A escolha da unidade
-    // fica na barra desta tela — não num filtro no topo do sistema.
+  const escopo = escopoOperacao();
+  const empresasEscopo = empresasDoEscopoOp(escopo);
+  if (!empresasEscopo.length) {
+    // Sem nenhuma matriz não há arquivo: filiais, tipos e cenários pertencem a
+    // uma, e a carga precisa ter para onde ir.
     el('#pagina').innerHTML = '<div class="msg alerta"><strong>Este cliente ainda não tem unidade cadastrada.</strong> '
-      + 'Importar e exportar são de uma unidade: o arquivo traz as filiais, os tipos e os cenários dela. '
+      + 'Importar e exportar precisam de ao menos uma empresa: o arquivo traz as filiais, os tipos e os cenários dela. '
       + 'Cadastre a matriz em <strong>Clientes e unidades</strong>.</div>';
     return;
   }
-  const nomeEmp = nomeEmpresa(emp);
-  const total = Loja.todos(emp).length;
-  const cargas = await cargasDaEmpresa(emp);
+  const total = empresasEscopo.reduce((soma, id) => soma + Loja.todos(id).length, 0);
+  const cargas = await cargasDoEscopo(escopo);
   if (!E.mapeamentos.length) await carregarMapeamentos();
   const meusMapas = (E.mapeamentos || []).filter((m) => m.cliente === E.clienteSel);
 
   el('#pagina').innerHTML = `
+    ${seletorEscopoHtml(escopo)}
     <div class="msg">O mesmo modelo serve para exportar e importar. Exporte, edite no Excel e reimporte:
       as linhas que já existem são reconhecidas e <strong>não duplicam</strong>; as inválidas entram num
       relatório com o número da linha e o motivo, <strong>sem derrubar o lote</strong>.</div>
@@ -52,8 +158,9 @@ async function viewDados() {
     <div class="grade g2">
       <section class="bloco">
         <header><h2>Exportar</h2><span class="nota">modelo ${MODELO_VERSAO}</span></header>
-        <p style="color:var(--tinta2);margin:0 0 14px">Tudo de <strong>${esc(nomeEmp)}</strong>:
-          ${inteiro(total)} lançamentos, em todas as competências e cenários.</p>
+        <p style="color:var(--tinta2);margin:0 0 14px" id="d-resumo-exp">Tudo de
+          <strong>${esc(resumoEscopoOp(escopo))}</strong>: ${inteiro(total)} lançamentos, em todas as
+          competências e cenários, num arquivo só.</p>
         <div class="filtros" style="padding:0;border:0;margin-bottom:12px">
           <div class="campo"><label for="d-modulo">Módulo</label><select id="d-modulo">
             ${Object.entries(MODULOS).map(([k,v]) => `<option value="${k}">${esc(v.rotulo)}</option>`).join('')}
@@ -101,7 +208,7 @@ async function viewDados() {
       <div class="msg">Toda tentativa entra aqui — inclusive a recusada, que é justamente a que se investiga
         depois. A conferência (“só conferir”) não entra: prévia não é carga.</div>
       <div class="rol" style="margin-top:12px"><table>
-        <thead><tr><th>Quando</th><th>Tipo</th><th>Arquivo</th><th>Situação</th>
+        <thead><tr><th>Quando</th><th>Tipo</th><th>Escopo</th><th>Arquivo</th><th>Situação</th>
           <th class="num">Lidas</th><th class="num">Criadas</th><th class="num">Duplicadas</th><th class="num">Inválidas</th></tr></thead>
         <tbody id="d-historico">${linhasHistoricoCargas(cargas)}</tbody></table></div>
       ${cargas.filter((c) => c.status === 'recusada' && c.mensagem).slice(0, 2).map((c) =>
@@ -142,6 +249,8 @@ async function viewDados() {
         </tr>`).join('')}</tbody></table></div>
     </section>`;
 
+  ligarSeletorEscopo();
+
   const fmt = el('#d-formato');
   fmt.onchange = () => { el('#d-nota-csv').hidden = fmt.value !== 'csv'; };
 
@@ -181,9 +290,21 @@ async function viewDados() {
     bt.disabled = true; bt.textContent = 'Gerando…'; saida.hidden = true; saida.className = 'msg';
     try {
       const modulo = el('#d-modulo').value;
-      const abas = await montarAbas(emp, modulo);
+      const escopoAgora = escopoOperacao();
+      if (!escopoOpCompleto(escopoAgora)) {
+        throw new Error('Nenhuma unidade marcada no escopo da operação. Marque ao menos uma, ' +
+          'ou volte para "Cliente inteiro".');
+      }
+      const abas = await montarAbasDoEscopo(escopoAgora, modulo);
       const carimbo = new Date().toISOString().slice(0,10);
-      const nome = `gsti-${emp}-${modulo}-${carimbo}`;
+      const empresasAgora = empresasDoEscopoOp(escopoAgora);
+      // O nome diz de quem é o arquivo: o cliente, quando é o cliente inteiro;
+      // a unidade, quando é uma só; a contagem, quando são algumas.
+      const alvo = escopoAgora.modo === 'cliente'
+        ? ((clientePorId(E.clienteSel) || {}).nome || 'cliente')
+        : empresasAgora.length === 1 ? nomeEmpresa(empresasAgora[0]) : empresasAgora.length + '-unidades';
+      const nome = `gsti-${String(alvo).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase()}-${modulo}-${carimbo}`;
       let dados, arquivo;
       if (fmt.value === 'csv') {
         const principal = abas.find((a) => a.linhas.length && a.nome !== 'Modelo') || abas[1] || abas[0];
@@ -201,7 +322,8 @@ async function viewDados() {
       saida.innerHTML = `<strong>${esc(arquivo)}</strong> — ${inteiro(linhas)} linhas em
         ${abas.filter((a)=>a.nome!=='Modelo').length} aba(s).`;
       await Loja.auditar({ acao:'exportar', entidade:'planilha', id:arquivo,
-        depois:{ modulo, formato: fmt.value, linhas } });
+        depois:{ modulo, formato: fmt.value, linhas,
+          escopo: escopoAgora.modo, unidades: resumoEscopoOp(escopoAgora) } });
     } catch (e) {
       if (e && e.code === 'declined') { saida.hidden = false; saida.className = 'msg'; saida.textContent = 'Download cancelado.'; }
       else { saida.hidden = false; saida.className = 'msg erro'; saida.textContent = e.message || String(e); }
@@ -227,7 +349,12 @@ async function viewDados() {
         const { colunas, linhas } = lerCsv(texto);
         abas = [{ nome: nomeDeAbaPeloCabecalho(colunas), colunas, linhas }];
       }
-      const rel = await importarArquivo(emp, abas, {
+      const escopoAgora = escopoOperacao();
+      if (!escopoOpCompleto(escopoAgora)) {
+        throw new Error('Nenhuma unidade marcada no escopo da operação. Marque ao menos uma, ' +
+          'ou volte para "Cliente inteiro".');
+      }
+      const rel = await importarArquivoNoEscopo(escopoAgora, abas, {
         criarCadastros: el('#d-criar').checked,
         simular,
         modo: el('#d-modo').value,
@@ -236,13 +363,17 @@ async function viewDados() {
         confirmar: bt.dataset.confirmar === '1',
       });
       delete bt.dataset.confirmar;
-      if (!simular) { E.lanc.clear(); E.mesesCarregados.clear(); E.projetos.clear(); E.sla.clear(); await garantirDados(emp); }
+      if (!simular) {
+        E.lanc.clear(); E.mesesCarregados.clear(); E.projetos.clear(); E.sla.clear();
+        for (const id of empresasDoEscopoOp(escopoAgora)) await garantirDados(id);
+      }
       saida.innerHTML = relatorioHtml(rel, simular, arq.name);
-      if (!simular) refrescarHistoricoCargas(emp);
+      if (!simular) await refrescarHistoricoCargas(escopoAgora);
       if (!simular) {
         await Loja.auditar({ acao:'importar', entidade:'planilha', id:arq.name,
           depois:{ abas: rel.abas.map((a) => a.nome + ':' + (a.criadas ?? 0)).join(', '),
-            invalidas: rel.invalidas.length } });
+            invalidas: rel.invalidas.length,
+            escopo: escopoAgora.modo, unidades: resumoEscopoOp(escopoAgora) } });
       }
       const btGravar = el('#d-gravar');
       if (btGravar) btGravar.onclick = () => { el('#d-simular').checked = false; btImp.click(); };
@@ -253,7 +384,7 @@ async function viewDados() {
         saida.innerHTML = `<div class="msg erro" style="margin-top:14px">${esc(e.message)}
           <div style="margin-top:10px"><button type="button" class="bt" id="d-confirmar" data-escreve="import">
             Confirmar a carga inicial mesmo assim</button></div></div>`;
-        refrescarHistoricoCargas(emp);
+        await refrescarHistoricoCargas(escopoOperacao());
         const btConf = el('#d-confirmar');
         if (btConf) btConf.onclick = () => { bt.dataset.confirmar = '1'; el('#d-simular').checked = false; bt.click(); };
       } else {

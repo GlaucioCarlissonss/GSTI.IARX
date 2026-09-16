@@ -60,6 +60,11 @@ async function registrarCarga(empresa, dados) {
       criadas: dados.criadas || 0,
       duplicadas: dados.duplicadas || 0,
       invalidas: dados.invalidas || 0,
+      // O escopo REAL com que a carga rodou. Sem ele, o histórico não consegue
+      // responder quais unidades um arquivo atingiu — e é justamente isso que
+      // se pergunta quando um número aparece onde não devia.
+      escopo: dados.escopo || 'cliente',
+      unidades: dados.unidades || null,
       erros: (dados.erros || []).slice(0, 200),
     });
     await Loja.gravarCargas(empresa, itens);
