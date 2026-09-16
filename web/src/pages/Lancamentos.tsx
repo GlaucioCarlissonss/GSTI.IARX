@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { useFiltroEscopo } from '../lib/filtros';
 import { EXPLICACAO, FichasUnidades, Filtro, FiltroUnidades } from '../components/filtro-escopo';
-import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal } from '../components/base';
+import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal, UltimaAtualizacao } from '../components/base';
 import { FichasSelecao, SeletorMulti } from '../components/seletor-multi';
 import { competenciaAtual, competenciaValida, inteiro, moeda, ROTULO_NATUREZA } from '../lib/formato';
 
@@ -64,7 +64,7 @@ const ORIGEM_CURTA: Record<string, string> = {
 };
 
 export function PaginaLancamentos() {
-  const { empresa, empresas, filiais, pode } = useSessao();
+  const { empresa, empresas, filiais, pode, cliente } = useSessao();
   // Filtro LOCAL desta tela.
   const escopo = useFiltroEscopo('lancamentos');
   // A unidade que o formulário de criação abre marcada: a única do filtro, se
@@ -189,6 +189,7 @@ export function PaginaLancamentos() {
             Novo lançamento
           </button>
         )}
+        <UltimaAtualizacao cliente={cliente?.id} />
       </div>
 
       <FichasUnidades

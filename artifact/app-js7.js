@@ -317,6 +317,9 @@ async function render() {
     // pelas telas viram acordeão sem que nenhuma delas precise saber disso.
     dobrarBlocos();
     aplicarPreviaNaTela();
+    // Não é esperado: o selo aparece quando os registros chegarem, e a tela
+    // não fica presa numa leitura de armazenamento para pintar o conteúdo.
+    void pintarUltimaCarga();
   } catch (e) {
     el('#pagina').innerHTML = `<div class="msg erro"><strong>Falha ao montar a tela.</strong> ${esc(e.message||e)}</div>`;
   } finally { renderizando = false; }

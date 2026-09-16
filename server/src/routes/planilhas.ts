@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { importarPlanilha, listarImportacoes, obterImportacao } from '../domain/importacao.js';
+import { importarPlanilha, listarImportacoes, obterImportacao, ultimaCarga } from '../domain/importacao.js';
 import { analisarFoc, importarFoc } from '../domain/importacao-foc.js';
 import { previaLimpeza, limparLancamentos } from '../domain/limpeza.js';
 import type { Decisao } from '../domain/conciliacao.js';
@@ -192,6 +192,9 @@ rotasPlanilhas.post('/limpeza', exigir('financeiro', 'delete'), (req, res) => {
     }),
   );
 });
+
+/** Data/hora da última carga concluída — o "Última atualização" das telas. */
+rotasPlanilhas.get('/ultima-carga', (req, res) => res.json(ultimaCarga(ctx(req))));
 
 rotasPlanilhas.get('/importacoes', (req, res) => res.json(listarImportacoes(ctx(req))));
 

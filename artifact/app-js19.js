@@ -75,6 +75,49 @@ async function cargasDaEmpresa(empresa) {
   return itens;
 }
 
+/**
+ * Quando a base deste cliente foi atualizada pela última vez.
+ *
+ * Olha todas as matrizes dele, porque a carga é de uma unidade mas a pergunta é
+ * do contratante: "estes números são de quando?". Só carga CONCLUÍDA conta —
+ * uma tentativa recusada não atualizou coisa nenhuma.
+ */
+async function ultimaCargaDoCliente() {
+  let maisRecente = null;
+  for (const empresa of matrizesDoClienteAtivo()) {
+    for (const c of await cargasDaEmpresa(empresa)) {
+      if (c.status !== 'concluida') continue;
+      if (!maisRecente || String(c.quando) > String(maisRecente.quando)) maisRecente = c;
+    }
+  }
+  return maisRecente;
+}
+
+/** "Última atualização: dd/mm/aaaa às hh:mm" — o contexto do número na tela. */
+function textoUltimaCarga(carga) {
+  if (!carga) return 'Nenhuma carga registrada ainda';
+  const d = new Date(carga.quando);
+  if (Number.isNaN(d.getTime())) return 'Nenhuma carga registrada ainda';
+  const data = d.toLocaleDateString('pt-BR');
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return 'Última atualização: <b>' + esc(data) + ' às ' + esc(hora) + '</b>';
+}
+
+/**
+ * Pendura o selo de última atualização no cabeçalho da tela.
+ *
+ * É pintado depois do render, como a dobra dos blocos: as telas financeiras
+ * não precisam saber que ele existe, e ele aparece em todas de uma vez.
+ */
+async function pintarUltimaCarga() {
+  const alvo = el('#ultima-carga');
+  if (!alvo) return;
+  const TELAS = ['painel', 'lancamentos', 'relatorio'];
+  alvo.hidden = !TELAS.includes(E.aba) || !E.clienteSel;
+  if (alvo.hidden) return (alvo.innerHTML = '');
+  alvo.innerHTML = textoUltimaCarga(await ultimaCargaDoCliente());
+}
+
 // ------------------------------------------------------------- adaptador
 
 async function carregarMapeamentos() {

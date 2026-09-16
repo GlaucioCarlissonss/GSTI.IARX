@@ -1109,6 +1109,24 @@ function importarSla(
  * unidade a carga foi feita — e era exatamente essa a pergunta que o histórico
  * existe para responder. A coluna da unidade vem junto para distinguir as linhas.
  */
+/**
+ * Quando a base deste cliente foi atualizada pela última vez.
+ *
+ * É o que as telas do financeiro mostram no canto: sem isso, quem abre o painel
+ * não tem como saber se está olhando o fechamento de ontem ou o do mês passado.
+ * Só carga CONCLUÍDA conta — uma tentativa recusada não atualizou nada.
+ */
+export function ultimaCarga(ctx: Contexto): { em: string | null; arquivo: string | null } {
+  const linha = db()
+    .prepare(
+      `SELECT criado_em, arquivo_nome FROM importacoes
+        WHERE cliente_id = ? AND status = 'concluida'
+        ORDER BY criado_em DESC, id DESC LIMIT 1`,
+    )
+    .get(ctx.clienteId) as { criado_em: string; arquivo_nome: string | null } | undefined;
+  return { em: linha?.criado_em ?? null, arquivo: linha?.arquivo_nome ?? null };
+}
+
 export function listarImportacoes(ctx: Contexto, empresas?: number[]) {
   const alcance = escopoSql(ctx, empresas, 'i.empresa_id');
   return db()

@@ -92,7 +92,8 @@ const MODULOS_ESPERADOS = ['Indicadores Gerais', 'Controle Financeiro', 'Gestão
   // seus próprios indicadores, e dispensa o filtro de Sistema.
   await irPara(pag, 'Sistema OStick', 900);
   const ost = await pag.evaluate(() => ({
-    titulo: (document.querySelector('#s-chamados h2') || {}).textContent || '',
+    // A seta do bloco dobrável vem junto no texto do título; tira-se ela.
+    titulo: ((document.querySelector('#s-chamados h2') || {}).textContent || '').replace(/^\s*[−+]\s*/, ''),
     kpis: document.querySelectorAll('.kpi').length,
     filtro: !!document.querySelector('[data-sel="ssistema"]'),
     sistemas: [...new Set([...document.querySelectorAll('#s-chamados tbody tr')].map((tr) => tr.children[1].textContent.trim()))],

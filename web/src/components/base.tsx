@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { chaveDoBloco, useDobra } from '../lib/expansao';
+import { api } from '../lib/api';
+import { useDados } from '../lib/sessao';
 
 /**
  * Bloco de conteúdo. Abre e fecha pelo título, e começa FECHADO.
@@ -67,6 +69,37 @@ export function Cartao({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * "Última atualização: dd/mm/aaaa às hh:mm".
+ *
+ * Quem abre o painel precisa saber se está olhando o fechamento de ontem ou o
+ * do mês passado — um número sem data é um número em que não dá para confiar.
+ * A data vem da última carga concluída deste cliente, nunca de valor fixo.
+ */
+export function UltimaAtualizacao({ cliente }: { cliente: number | null | undefined }) {
+  const carga = useDados<{ em: string | null; arquivo: string | null }>(
+    () => (cliente ? api.get('/api/planilhas/ultima-carga') : Promise.resolve({ em: null, arquivo: null })),
+    [cliente],
+  );
+
+  if (carga.carregando) return <span className="ultima-carga">Última atualização: carregando…</span>;
+  // Erro aqui não pode atrapalhar a tela: o dado principal dela continua válido.
+  if (carga.erro || !carga.dados?.em) {
+    return <span className="ultima-carga">Nenhuma carga registrada ainda</span>;
+  }
+
+  const quando = new Date(`${carga.dados.em.replace(' ', 'T')}Z`);
+  const texto = Number.isNaN(quando.getTime())
+    ? carga.dados.em
+    : `${quando.toLocaleDateString('pt-BR')} às ${quando.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+
+  return (
+    <span className="ultima-carga" title={carga.dados.arquivo ?? undefined}>
+      Última atualização: <strong>{texto}</strong>
+    </span>
   );
 }
 

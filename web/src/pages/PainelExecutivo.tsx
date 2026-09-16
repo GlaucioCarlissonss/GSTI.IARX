@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { useFiltroEscopo } from '../lib/filtros';
 import { FichasUnidades, FiltroUnidades } from '../components/filtro-escopo';
-import { Aviso, Carregando, Cartao } from '../components/base';
+import { Aviso, Carregando, Cartao, UltimaAtualizacao } from '../components/base';
 import { GraficoBarras, Indicador } from '../components/graficos';
 import {
   Detalhamento,
@@ -104,6 +104,7 @@ export function PaginaPainelExecutivo() {
           aoMudarFiliais={escopo.definirFiliais}
           aoLimpar={escopo.limpar}
         />
+        <UltimaAtualizacao cliente={cliente?.id} />
       </div>
       <FichasUnidades
         empresas={empresas}

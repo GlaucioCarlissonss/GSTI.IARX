@@ -17,7 +17,7 @@ import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { useFiltroEscopo } from '../lib/filtros';
 import { EXPLICACAO, Filtro, FiltroUnidades } from '../components/filtro-escopo';
-import { Aviso, Campo, Carregando, Cartao, Etiqueta, Modal } from '../components/base';
+import { Aviso, Campo, Carregando, Cartao, Etiqueta, Modal, UltimaAtualizacao } from '../components/base';
 import { SeletorMulti } from '../components/seletor-multi';
 import { competenciaValida, inteiro, moeda } from '../lib/formato';
 import { useExpansao } from '../lib/expansao';
@@ -87,7 +87,7 @@ export function resumoDoLancamento(l: Lancamento): string {
 }
 
 export function PaginaRelatorio() {
-  const { empresas, filiais } = useSessao();
+  const { empresas, filiais, cliente } = useSessao();
   // Filtro LOCAL deste relatório.
   const escopo = useFiltroEscopo('relatorio');
   // Padrão recolhido, como na tabela dinâmica do anexo: a visão macro primeiro.
@@ -225,6 +225,7 @@ export function PaginaRelatorio() {
             Recolher tudo
           </button>
         </div>
+        <UltimaAtualizacao cliente={cliente?.id} />
       </div>
 
       {d.linhas.length === 0 ? (

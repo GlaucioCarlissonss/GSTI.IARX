@@ -21,7 +21,11 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
 
   console.log('\n--- três blocos, dois indicadores cada ---');
   const estrutura = await pag.evaluate(() => ({
-    blocos: [...document.querySelectorAll('#pagina > .bloco > header h2')].map((h) => h.textContent.trim()),
+    // O título agora mora dentro do botão que dobra o bloco, e traz a seta
+    // junto — a mesma limpeza que `testar-relatorio.cjs` faz nos grupos.
+    blocos: [...document.querySelectorAll('#pagina > .bloco > header h2')].map((h) =>
+      h.textContent.trim().replace(/^[−+]\s*/, ''),
+    ),
     kpis: document.querySelectorAll('.kpi').length,
     termometro: !!document.querySelector('#i-termometro svg'),
     serie: !!document.querySelector('#i-reducao svg'),
