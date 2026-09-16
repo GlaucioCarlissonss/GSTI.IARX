@@ -14,6 +14,7 @@ import { db } from '../src/db/index.js';
 import { criarEmpresa } from '../src/domain/empresas.js';
 import { analisarFoc, importarFoc } from '../src/domain/importacao-foc.js';
 import { previaLimpeza, limparLancamentos } from '../src/domain/limpeza.js';
+import { ultimaCarga } from '../src/domain/importacao.js';
 import type { Decisao } from '../src/domain/conciliacao.js';
 import type { Contexto } from '../src/domain/contexto.js';
 
@@ -212,6 +213,21 @@ test('limpar por período tira só o período, e não apaga cadastro nenhum', se
 
   assert.equal((db().prepare('SELECT COUNT(*) AS n FROM tipos_despesa').get() as { n: number }).n, tiposAntes);
   assert.equal((db().prepare('SELECT COUNT(*) AS n FROM filiais').get() as { n: number }).n, filiaisAntes);
+});
+
+test('a última atualização é a da carga concluída, não a da recusada', semBase, async () => {
+  const ctx = ambienteFoc();
+  assert.equal(ultimaCarga(ctx).em, null, 'sem carga nenhuma, não há data a mostrar');
+
+  // Uma tentativa recusada não atualizou nada — e não pode virar "atualizado em".
+  await assert.rejects(() => importarFoc(ctx, arquivo(), { decisoes: [] }));
+  assert.equal(ultimaCarga(ctx).em, null);
+
+  const analise = await analisarFoc(ctx, arquivo(), 'base.xlsx');
+  await importarFoc(ctx, arquivo(), { decisoes: decidirTudo(analise.blocos), arquivoNome: 'base.xlsx' });
+  const depois = ultimaCarga(ctx);
+  assert.ok(depois.em, 'a carga concluída passa a responder pela data');
+  assert.equal(depois.arquivo, 'base.xlsx');
 });
 
 test('depois de limpar, o mesmo arquivo pode ser recarregado', semBase, async () => {
