@@ -32,6 +32,8 @@ function viewLancamentos() {
   const itensNat = Object.entries(NATUREZAS).map(([k, v]) => ({ valor: k, rotulo: v }));
   const itensCls = [{ valor:'despesa', rotulo:'Despesa' }, { valor:'investimento', rotulo:'Investimento' }];
   const itensCen = cenariosDoEscopo().map((c) => ({ valor: c.chave, rotulo: c.nome }));
+  // O modo é o mesmo do Relatório: a escolha vale para as duas telas.
+  const modo = modoVisao();
 
   el('#pagina').innerHTML = `
     <div class="filtros">
@@ -43,8 +45,11 @@ function viewLancamentos() {
       <div class="campo" style="width:160px"><label for="l-cen">Cenário</label><div data-sel="cen"></div></div>
       <div class="campo" style="flex:1 1 160px"><label for="l-busca">Buscar</label><input id="l-busca" placeholder="fornecedor, motivo…" value="${esc(f.busca)}"></div>
       <button class="bt pri" id="l-novo">Novo lançamento</button>
+      ${seletorModoHtml()}
     </div>
     <div class="fichas" id="l-fichas" hidden></div>
+
+    ${modo === 'lista' ? dinamicaHtml(lista, 'l:') : blocosPorUnidadeHtml(lista, modo)}
 
     <section class="bloco">
       <header><h2>Lançamentos</h2>
@@ -103,8 +108,12 @@ function viewLancamentos() {
   el('#l-de').addEventListener('change', () => { E.filtros.de = mesInterno(el('#l-de').value) || ''; render(); });
   el('#l-ate').addEventListener('change', () => { E.filtros.ate = mesInterno(el('#l-ate').value) || ''; render(); });
   el('#l-novo').addEventListener('click', () => formLancamento(null));
+  ligarSeletorModo();
+  ligarDinamica();
 
-  el('#pagina').querySelectorAll('tbody tr').forEach((tr) => {
+  // Só as linhas da LISTAGEM: a dinâmica e os blocos por unidade também têm
+  // `tbody tr`, e eles não carregam os botões de cada lançamento.
+  el('#pagina').querySelectorAll('tbody tr[data-id]').forEach((tr) => {
     const id = tr.dataset.id, comp = tr.dataset.comp, emp = tr.dataset.emp;
     const achar = () => ({ ...Loja.itens(emp, comp).find((x) => x.id === id), competencia: comp, empresa: emp });
     tr.querySelector('[data-rec]').onclick = () => alternarReconhecimento([achar()]);

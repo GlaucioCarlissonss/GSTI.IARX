@@ -216,6 +216,18 @@ body[data-sem-cliente] #ultima-carga{display:none!important}
 }
 .abas button:hover{background:var(--sup2);color:var(--tinta)}
 .abas button[aria-current="page"]{color:var(--tinta);border-bottom-color:var(--s1);font-weight:600}
+/* Seletor de modo: três estados exclusivos encostados, para lerem-se como um
+   controle só e não como três botões soltos. */
+.modo-visao{display:inline-flex;border:1px solid var(--linha2);border-radius:7px;overflow:hidden;align-self:flex-end}
+.modo-visao button{
+  font-family:inherit;font-size:12.5px;font-weight:550;padding:7px 11px;
+  border:0;border-right:1px solid var(--linha);background:var(--sup);color:var(--tinta2);
+  cursor:pointer;white-space:nowrap;
+}
+.modo-visao button:last-child{border-right:0}
+.modo-visao button:hover{background:var(--sup2);color:var(--tinta)}
+.modo-visao button.ativo{background:var(--s1);color:#fff}
+.modo-visao button:focus-visible{outline:2px solid var(--s1);outline-offset:-2px}
 /* Ponto discreto: esta aba vale para o cliente inteiro, não só a unidade em
    foco. O `title` no botão explica por extenso ao passar o mouse. */
 .abas button[data-escopo="cliente"]{display:inline-flex;align-items:center;gap:5px}

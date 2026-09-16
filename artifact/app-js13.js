@@ -101,11 +101,132 @@ function resumoDoLancamento(l) {
   ].join('');
 }
 
+// ===========================================================================
+// Como olhar os mesmos números
+// ===========================================================================
+// A dinâmica responde "quanto, em que mês"; os blocos respondem "quanto, em
+// qual unidade". Trocar entre eles não recarrega nem refaz consulta.
+//
+// O modo vale para Lançamentos E Relatório: quem organizou a leitura numa tela
+// espera encontrar a outra do mesmo jeito.
+const CHAVE_MODO = 'iarx-modo-visao';
+const MODOS_VISAO = [
+  { valor: 'lista', rotulo: 'Lista', dica: 'Tabela dinâmica: meses nas colunas, hierarquia nas linhas.' },
+  { valor: 'filial', rotulo: 'Blocos por filial', dica: 'Um bloco por filial, com o total dela.' },
+  { valor: 'matriz', rotulo: 'Blocos por matriz', dica: 'Um bloco por matriz, somando as filiais dela.' },
+];
+
+function modoVisao() {
+  try {
+    const v = localStorage.getItem(CHAVE_MODO);
+    return v === 'filial' || v === 'matriz' ? v : 'lista';
+  } catch (e) { return 'lista'; }
+}
+function gravarModoVisao(v) {
+  try { localStorage.setItem(CHAVE_MODO, v); }
+  catch (e) { /* sem armazenamento: vale só nesta sessão */ }
+}
+
+/** Os três botões do seletor, para a barra de filtros da tela. */
+function seletorModoHtml() {
+  const atual = modoVisao();
+  return `<div class="modo-visao" role="group" aria-label="Como exibir os números">${MODOS_VISAO.map((m) =>
+    `<button type="button" data-modo="${m.valor}" title="${esc(m.dica)}"` +
+    `${m.valor === atual ? ' class="ativo" aria-pressed="true"' : ' aria-pressed="false"'}>${esc(m.rotulo)}</button>`,
+  ).join('')}</div>`;
+}
+
+function ligarSeletorModo() {
+  el('#pagina').querySelectorAll('[data-modo]').forEach((b) => {
+    b.onclick = () => { gravarModoVisao(b.dataset.modo); render(); };
+  });
+}
+
+/**
+ * Os mesmos lançamentos agrupados por unidade, do maior total para o menor.
+ *
+ * Agrupa a partir dos lançamentos, e não das linhas da dinâmica: a dinâmica
+ * chaveia por filial, e a matriz não caberia nela sem uma segunda passada.
+ */
+function blocosPorUnidadeHtml(lancamentos, modo) {
+  const grupos = new Map();
+  for (const l of lancamentos) {
+    const nome = modo === 'filial' ? (l.filial || 'Nível empresa') : nomeEmpresa(l.empresa);
+    if (!grupos.has(nome)) grupos.set(nome, { nome, total: 0, itens: 0, tipos: new Map() });
+    const g = grupos.get(nome);
+    g.total += l.valor;
+    g.itens += 1;
+    const t = g.tipos.get(l.tipo) || { total: 0, itens: 0 };
+    t.total += l.valor;
+    t.itens += 1;
+    g.tipos.set(l.tipo, t);
+  }
+  if (!grupos.size) return '<section class="bloco"><p class="vazio">Nenhum lançamento no recorte selecionado.</p></section>';
+
+  return '<div class="grade g2">' + [...grupos.values()]
+    .sort((a, b) => b.total - a.total)
+    .map((g) => `<section class="bloco">
+        <header><h2>${esc(g.nome)}</h2>
+          <span class="nota">${inteiro(g.itens)} lançamento(s) · <strong>${brl(g.total)}</strong></span></header>
+        <div class="rol"><table>
+          <thead><tr><th>Categoria</th><th class="n">Lançamentos</th><th class="n">Total</th></tr></thead>
+          <tbody>${[...g.tipos.entries()].sort((a, b) => b[1].total - a[1].total)
+            .map(([tipo, t]) => `<tr><td>${esc(tipo)}</td><td class="n">${inteiro(t.itens)}</td>
+              <td class="n">${brl(t.total)}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td>Total</td><td class="n">${inteiro(g.itens)}</td><td class="n">${brl(g.total)}</td></tr></tfoot>
+        </table></div>
+      </section>`).join('') + '</div>';
+}
+
+/**
+ * A dinâmica em dois níveis, para quem só quer a leitura por mês.
+ *
+ * O Relatório tem a versão de três níveis, com o lançamento no fundo; esta é a
+ * mesma tabela sem esse terceiro passo, para acompanhar a listagem de
+ * Lançamentos sem repetir ali o drill-down inteiro. As chaves levam prefixo
+ * próprio para o que se abre aqui não mexer no que está aberto lá.
+ */
+function dinamicaHtml(lancamentos, prefixo) {
+  const { meses, linhas, totalGeral } = montarPivot(lancamentos);
+  if (!linhas.length) return '';
+  const aberta = (l) => relatorioAberto(prefixo + l.chave);
+  const visiveis = linhas.filter((l) => l.nivel === 1 || aberta({ chave: l.pai }));
+
+  return `<section class="bloco">
+    <header><h2>Por mês e categoria</h2>
+      <span class="nota">${inteiro(totalGeral.itens)} lançamento(s) · ${meses.length} mês(es)</span></header>
+    <div class="rol rol-fixo"><table class="pivot">
+      <thead><tr><th style="min-width:220px">Rótulos de linha</th>
+        ${meses.map((m) => `<th class="n">${mesExib(m)}</th>`).join('')}
+        <th class="n">Total Geral</th></tr></thead>
+      <tbody>${visiveis.map((l) => `<tr class="${l.nivel === 1 ? 'grupo-1' : ''}">
+        <th style="${l.nivel === 2 ? 'padding-left:30px;font-weight:400' : ''}">
+          ${l.nivel === 1
+            ? `<button type="button" class="pivot-grupo" data-dgrupo="${esc(prefixo + l.chave)}"
+                 aria-expanded="${aberta(l)}" aria-label="${aberta(l) ? 'Comprimir' : 'Expandir'} ${esc(l.rotulo)}"
+                 >${aberta(l) ? '−' : '+'}</button> `
+            : ''}${esc(l.rotulo)}</th>
+        ${meses.map((m) => `<td class="n">${l.meses[m] ? brl(l.meses[m]) : '-'}</td>`).join('')}
+        <td class="n">${brl(l.total)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr class="total-geral"><th>Total Geral</th>
+        ${meses.map((m) => `<td class="n">${totalGeral.meses[m] ? brl(totalGeral.meses[m]) : '-'}</td>`).join('')}
+        <td class="n">${brl(totalGeral.total)}</td></tr></tfoot>
+    </table></div></section>`;
+}
+
+/** Liga os botões da dinâmica montada por `dinamicaHtml`. */
+function ligarDinamica() {
+  el('#pagina').querySelectorAll('[data-dgrupo]').forEach((b) => {
+    b.onclick = () => { alternarRelatorio(b.dataset.dgrupo); render(); };
+  });
+}
+
 async function viewRelatorio() {
   await garantirEscopo();
   const lancamentos = lancFiltrados();
   const { meses, linhas, totalGeral } = montarPivot(lancamentos);
   const todasAsChaves = linhas.map((l) => l.chave);
+  const modo = modoVisao();
 
   el('#pagina').innerHTML = `
     <div class="filtros">
@@ -115,13 +236,14 @@ async function viewRelatorio() {
         <input id="r-ate" placeholder="MM/AAAA" value="${E.filtros.ate ? mesExib(E.filtros.ate) : ''}"></div>
       <div class="campo" style="flex:1 1 150px"><label for="r-busca">Buscar</label>
         <input id="r-busca" placeholder="descrição, tipo, filial…" value="${esc(E.filtros.busca)}"></div>
-      <button class="bt fant" id="r-abrir">Expandir tudo</button>
-      <button class="bt fant" id="r-fechar">Recolher tudo</button>
+      ${modo === 'lista' ? `<button class="bt fant" id="r-abrir">Expandir tudo</button>
+      <button class="bt fant" id="r-fechar">Recolher tudo</button>` : ''}
+      ${seletorModoHtml()}
     </div>
     <p class="nota" style="margin:-4px 0 0">Meses nas colunas, filial e tipo de despesa nas linhas.
       <strong>+</strong> abre a categoria; abrir a categoria mostra os lançamentos, e clicar em um deles
       abre o registro inteiro.</p>
-    ${linhas.length === 0 ? '<section class="bloco"><p class="vazio">Nenhum lançamento no recorte selecionado.</p></section>' : `
+    ${modo !== 'lista' ? blocosPorUnidadeHtml(lancamentos, modo) : linhas.length === 0 ? '<section class="bloco"><p class="vazio">Nenhum lançamento no recorte selecionado.</p></section>' : `
     <section class="bloco" id="r-bloco"><header><h2>Relatório financeiro</h2>
       <span class="nota">${inteiro(totalGeral.itens)} lançamento(s) · ${meses.length} mês(es)</span>
       <button class="bt fant peq" id="r-tela" aria-pressed="false">Tela cheia</button></header>
@@ -141,8 +263,10 @@ async function viewRelatorio() {
   el('#r-de').addEventListener('change', (e) => aplicar('de', mesInterno(e.target.value) || ''));
   el('#r-ate').addEventListener('change', (e) => aplicar('ate', mesInterno(e.target.value) || ''));
   el('#r-busca').addEventListener('change', (e) => aplicar('busca', e.target.value.trim()));
+  ligarSeletorModo();
 
-  if (!linhas.length) return;
+  // Em blocos por unidade não há dinâmica: nada abaixo daqui se aplica.
+  if (modo !== 'lista' || !linhas.length) return;
 
   // Tela cheia: 24 colunas de mês cabem mal em meia tela. Esc sai, porque é o
   // que a mão já faz, e o estado fica no botão para leitor de tela.

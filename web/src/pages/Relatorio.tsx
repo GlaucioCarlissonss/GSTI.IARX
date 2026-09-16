@@ -21,6 +21,7 @@ import { Aviso, Campo, Carregando, Cartao, Etiqueta, Modal, UltimaAtualizacao } 
 import { SeletorMulti } from '../components/seletor-multi';
 import { competenciaValida, inteiro, moeda } from '../lib/formato';
 import { useExpansao } from '../lib/expansao';
+import { BlocosPorUnidade, SeletorModo, useModoVisao } from '../components/visao-financeira';
 
 /** Centavos → moeda. O relatório trabalha em centavos inteiros, como o banco. */
 const dinheiro = (centavos: number) => moeda(centavos / 100);
@@ -92,6 +93,9 @@ export function PaginaRelatorio() {
   const escopo = useFiltroEscopo('relatorio');
   // Padrão recolhido, como na tabela dinâmica do anexo: a visão macro primeiro.
   const grupos = useExpansao('gsti-relatorio-expandidos', 'recolhido');
+  // O modo é o mesmo de Lançamentos: quem organizou a leitura numa tela espera
+  // encontrar a outra do mesmo jeito.
+  const [modo, trocarModo] = useModoVisao();
   const [de, setDe] = useState('');
   const [ate, setAte] = useState('');
   const [classificacoes, setClassificacoes] = useState<string[]>([]);
@@ -225,6 +229,7 @@ export function PaginaRelatorio() {
             Recolher tudo
           </button>
         </div>
+        <SeletorModo modo={modo} aoTrocar={trocarModo} />
         <UltimaAtualizacao cliente={cliente?.id} />
       </div>
 
@@ -232,6 +237,8 @@ export function PaginaRelatorio() {
         <Cartao titulo="Relatório financeiro">
           <p className="vazio">Nenhum lançamento no recorte selecionado.</p>
         </Cartao>
+      ) : modo !== 'lista' ? (
+        <BlocosPorUnidade linhas={d.linhas} colunas={colunas} modo={modo} filiais={filiais} />
       ) : (
         <Cartao
           titulo="Relatório financeiro"

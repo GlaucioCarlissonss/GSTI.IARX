@@ -6,6 +6,8 @@ import { EXPLICACAO, FichasUnidades, Filtro, FiltroUnidades } from '../component
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal, UltimaAtualizacao } from '../components/base';
 import { FichasSelecao, SeletorMulti } from '../components/seletor-multi';
 import { competenciaAtual, competenciaValida, inteiro, moeda, ROTULO_NATUREZA } from '../lib/formato';
+import { BlocosPorUnidade, SeletorModo, useModoVisao, type LinhaVisao } from '../components/visao-financeira';
+import { useExpansao } from '../lib/expansao';
 
 interface Lancamento {
   id: number;
@@ -91,6 +93,10 @@ export function PaginaLancamentos() {
     cenarios: ['oficial'],
     busca: '',
   });
+  // O modo é o mesmo do Relatório — a escolha vale para as duas telas.
+  const [modo, trocarModo] = useModoVisao();
+  // A dinâmica desta tela abre recolhida, como a do Relatório.
+  const dinamica = useExpansao('gsti-lancamentos-dinamica', 'recolhido');
   const [novoAberto, setNovoAberto] = useState(false);
   const [reclassificar, setReclassificar] = useState<Lancamento | null>(null);
   const [excluir, setExcluir] = useState<Lancamento | null>(null);
@@ -117,6 +123,25 @@ export function PaginaLancamentos() {
         classificacao: filtros.classificacoes.join(',') || undefined,
         tipo_despesa_id: filtros.tipos.join(',') || undefined,
         cenario: filtros.cenarios.join(',') || undefined,
+      }),
+    [escopo.params.empresas, escopo.params.filial_id, JSON.stringify(filtros)],
+  );
+
+  // A visão por mês e por unidade vem do mesmo recorte da listagem. É outra
+  // consulta porque é outra pergunta: a listagem traz registros, esta traz
+  // totais — somá-los no navegador exigiria baixar a base inteira.
+  const visao = useDados<{
+    colunas: string[];
+    linhas: LinhaVisao[];
+    total_geral: { meses: Record<string, number>; total_centavos: number; lancamentos: number };
+  }>(
+    () =>
+      api.get('/api/dashboards/relatorio', {
+        empresas: escopo.params.empresas,
+        filial_id: escopo.params.filial_id,
+        competencia_inicio: competenciaValida(filtros.competencia_inicio) ? filtros.competencia_inicio : undefined,
+        competencia_fim: competenciaValida(filtros.competencia_fim) ? filtros.competencia_fim : undefined,
+        classificacao: filtros.classificacoes.join(','),
       }),
     [escopo.params.empresas, escopo.params.filial_id, JSON.stringify(filtros)],
   );
@@ -189,8 +214,80 @@ export function PaginaLancamentos() {
             Novo lançamento
           </button>
         )}
+        <SeletorModo modo={modo} aoTrocar={trocarModo} />
         <UltimaAtualizacao cliente={cliente?.id} />
       </div>
+
+      {/* A visão por mês e por unidade, sobre o mesmo recorte da listagem. A
+          tabela registro a registro continua logo abaixo, no bloco dela. */}
+      {visao.dados && visao.dados.linhas.length > 0 && (
+        modo === 'lista' ? (
+          <Cartao
+            titulo="Por mês e categoria"
+            descricao={`${inteiro(visao.dados.total_geral.lancamentos)} lançamento(s) · ${visao.dados.colunas.length} mês(es)`}
+          >
+            <div className="tabela-envolucro">
+              <table className="pivot">
+                <thead>
+                  <tr>
+                    <th>Rótulos de linha</th>
+                    {visao.dados.colunas.map((c) => (
+                      <th key={c} className="num">{c}</th>
+                    ))}
+                    <th className="num">Total Geral</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visao.dados.linhas
+                    .filter((l) => l.nivel === 1 || dinamica.expandido(l.pai!))
+                    .map((l) => (
+                      <tr key={l.chave} className={l.nivel === 1 ? 'grupo-1' : undefined}>
+                        <td style={{ paddingLeft: l.nivel === 2 ? 28 : undefined }}>
+                          {l.nivel === 1 ? (
+                            <button
+                              type="button"
+                              className="pivot-grupo"
+                              aria-expanded={dinamica.expandido(l.chave)}
+                              aria-label={`${dinamica.expandido(l.chave) ? 'Comprimir' : 'Expandir'} ${l.rotulo}`}
+                              onClick={() => dinamica.alternar(l.chave)}
+                            >
+                              {dinamica.expandido(l.chave) ? '−' : '+'}
+                            </button>
+                          ) : null}{' '}
+                          {l.rotulo}
+                        </td>
+                        {visao.dados!.colunas.map((c) => (
+                          <td key={c} className="num">
+                            {l.meses[c] ? moeda(l.meses[c]! / 100) : '—'}
+                          </td>
+                        ))}
+                        <td className="num">{moeda(l.total_centavos / 100)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+                <tfoot>
+                  <tr className="total-geral">
+                    <td>Total Geral</td>
+                    {visao.dados.colunas.map((c) => (
+                      <td key={c} className="num">
+                        {moeda((visao.dados!.total_geral.meses[c] ?? 0) / 100)}
+                      </td>
+                    ))}
+                    <td className="num">{moeda(visao.dados.total_geral.total_centavos / 100)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Cartao>
+        ) : (
+          <BlocosPorUnidade
+            linhas={visao.dados.linhas}
+            colunas={visao.dados.colunas}
+            modo={modo}
+            filiais={filiais}
+          />
+        )
+      )}
 
       <FichasUnidades
         empresas={empresas}
