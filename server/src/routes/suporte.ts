@@ -8,6 +8,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { listarChamados, obterChamado, opcoesDeFiltro, SISTEMAS, type SistemaOrigem } from '../domain/suporte.js';
+import { listarReclassificacoes, reclassificarChamado } from '../domain/reclassificacao.js';
 import { listarSetores, criarSetor, atualizarSetor } from '../domain/cadastros.js';
 import { paraInterno } from '../domain/competencia.js';
 import { ctx, exigir } from '../middleware/index.js';
@@ -110,6 +111,16 @@ rotasSuporte.get(
 
 rotasSuporte.get('/chamados/:id', (req, res) => {
   res.json(obterChamado(ctx(req), Number(req.params.id)));
+});
+
+// A ficha do chamado traz o histórico junto: a pergunta "por que este chamado
+// está como Alta?" se faz olhando o chamado, e não uma tela de trilha.
+rotasSuporte.get('/chamados/:id/reclassificacoes', (req, res) => {
+  res.json(listarReclassificacoes(ctx(req), Number(req.params.id)));
+});
+
+rotasSuporte.post('/chamados/:id/reclassificar', exigir('suporte_ostick', 'edit'), (req, res) => {
+  res.json(reclassificarChamado(ctx(req), Number(req.params.id), req.body ?? {}));
 });
 
 // ------------------------------------------------------------------ setores

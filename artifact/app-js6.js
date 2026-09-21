@@ -142,7 +142,7 @@ async function viewSla(secao = 'indicadores') {
       <div class="rol"><table>
         <thead><tr><th>Chamado</th><th>Sistema</th><th>Aberto em</th><th>Setor / área</th><th>Filial</th>
           <th>Fila</th><th>Tópico</th><th>Assunto</th><th>Solicitante</th><th>Responsável</th><th>Status</th>
-          <th class="n">Horas</th><th>SLA</th></tr></thead>
+          <th>Prioridade</th><th class="n">Horas</th><th>SLA</th></tr></thead>
         <tbody>${chamados.slice(0, TETO).map((r) => {
           const url = urlDoRegistro(r);
           const ok = (r.dentro || 0) >= (r.total || 1);
@@ -167,6 +167,13 @@ async function viewSla(secao = 'indicadores') {
             <td style="max-width:140px">${esc(r.solicitante || '—')}</td>
             <td>${esc(r.atendente || '—')}${r.nivel ? `<div style="color:var(--tinta3);font-size:12px">${esc(r.nivel)}</div>` : ''}</td>
             <td><span class="tag${aberto(r) ? ' alerta' : ''}">${esc(r.status || '—')}</span></td>
+            <td style="white-space:nowrap">
+              ${r.prioridade ? `<span class="tag">${esc(rotuloPrioridade(r.prioridade))}</span>`
+                : '<span style="color:var(--tinta3)">—</span>'}
+              ${historicoDe(r).length ? `<span class="nota" title="${esc(historicoDe(r).length)} alteração(ões)">↻</span>` : ''}
+              <button class="bt fant peq" data-reclassificar="${esc(r.id)}"
+                data-emp="${esc(r.empresa || '')}" data-comp="${esc(r.competencia || '')}">Prioridade</button>
+            </td>
             <td class="n">${r.horas === null || r.horas === undefined ? '—' : r.horas.toLocaleString('pt-BR',{maximumFractionDigits:1})}</td>
             <td><span class="tag ${ok ? 'bom' : 'crit'}">${ok ? 'Dentro' : 'Fora'}</span></td></tr>`;
         }).join('')}</tbody></table></div>
@@ -232,6 +239,13 @@ async function viewSla(secao = 'indicadores') {
     el('[data-sel="scomp"]').innerHTML = '<span class="nota">sem registros</span>';
   }
   el('#s-busca').addEventListener('change', () => { f.busca = el('#s-busca').value; render(); });
+
+  // A prioridade e o seu histórico ficam na própria linha do chamado: a
+  // pergunta "por que este está como Alta?" se faz olhando o chamado.
+  for (const bt of el('#pagina').querySelectorAll('[data-reclassificar]')) {
+    bt.addEventListener('click', () =>
+      abrirReclassificacao(bt.dataset.emp, bt.dataset.comp, bt.dataset.reclassificar));
+  }
   el('#s-novo').onclick = () => formSla(comp || mesHoje());
 
   // Os gráficos só existem na tela de indicadores; a tabela de registros, na

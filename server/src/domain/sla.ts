@@ -23,6 +23,7 @@ interface LinhaTicket {
   solicitante: string | null;
   responsavel: string | null;
   nivel: string | null;
+  prioridade: string | null;
   status: string | null;
   origem_chamado: string | null;
   aberto_em: string | null;
@@ -34,7 +35,10 @@ interface LinhaTicket {
 /** Campos que só existem quando o registro é um chamado, não um agregado. */
 const CAMPOS_CHAMADO = [
   'ticket_id', 'numero', 'assunto', 'solicitante', 'responsavel',
-  'nivel', 'status', 'origem_chamado', 'aberto_em', 'fechado_em', 'prazo_em', 'horas',
+  // `prioridade` estava no banco e não saía por aqui: a tela de registros de
+  // SLA não a mostrava, e a reclassificação precisa dela para dizer de onde
+  // partiu. `nivel` é outra coisa — vem do helpdesk e não é o que se reclassifica.
+  'nivel', 'prioridade', 'status', 'origem_chamado', 'aberto_em', 'fechado_em', 'prazo_em', 'horas',
 ] as const;
 
 export function percentual(parte: number, total: number): number {
@@ -61,6 +65,7 @@ function apresentar(linha: LinhaTicket & Record<string, unknown>, empresaId: num
     ticket_id: linha.ticket_id,
     numero: linha.numero,
     assunto: linha.assunto,
+    prioridade: (linha.prioridade as string | null) ?? null,
     solicitante: linha.solicitante,
     responsavel: linha.responsavel,
     nivel: linha.nivel,
@@ -148,6 +153,7 @@ export interface EntradaTicketSla {
   solicitante?: string | null;
   responsavel?: string | null;
   nivel?: string | null;
+  prioridade?: string | null;
   status?: string | null;
   origemChamado?: string | null;
   abertoEm?: string | null;
@@ -160,7 +166,7 @@ export interface EntradaTicketSla {
 function valoresDoChamado(e: Partial<EntradaTicketSla>): unknown[] {
   return [
     e.ticketId ?? null, e.numero ?? null, e.assunto ?? null, e.solicitante ?? null,
-    e.responsavel ?? null, e.nivel ?? null, e.status ?? null, e.origemChamado ?? null,
+    e.responsavel ?? null, e.nivel ?? null, e.prioridade ?? null, e.status ?? null, e.origemChamado ?? null,
     e.abertoEm ?? null, e.fechadoEm ?? null, e.prazoEm ?? null,
     e.horas === null || e.horas === undefined ? null : Number(e.horas),
   ];

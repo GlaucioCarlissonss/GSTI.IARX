@@ -366,6 +366,10 @@ CREATE TABLE IF NOT EXISTS tickets_sla (
   aberto_em       TEXT,
   fechado_em      TEXT,
   prazo_em        TEXT,
+  -- O prazo saiu do CADASTRO de acordos, e não da origem? Só o nosso pode ser
+  -- recalculado quando a prioridade muda: o que o helpdesk prometeu ao
+  -- solicitante não se reescreve por decisão interna.
+  prazo_do_acordo INTEGER NOT NULL DEFAULT 0 CHECK (prazo_do_acordo IN (0,1)),
   horas           REAL,
   -- Sistema de suporte de origem e a identidade do chamado lá. Juntos com a
   -- empresa formam a chave de idempotência da integração: reentrega do
@@ -664,3 +668,32 @@ CREATE TABLE IF NOT EXISTS slas (
   criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS ix_sla_empresa ON slas(empresa_id, prioridade, ativo);
+
+-- Mudança de prioridade de um chamado, com quem pediu.
+--
+-- A prioridade mudava sem deixar rastro: o upsert da integração sobrescrevia o
+-- campo, e uma elevação de Baixa para Alta "a pedido de alguém" virava um
+-- estado sem história. Quem conferisse o SLA depois não teria como saber por
+-- que aquele chamado corria contra um prazo mais curto.
+--
+-- `solicitante` é texto livre de propósito: quem pede a elevação costuma ser
+-- de fora do sistema ("Coordenador de Enfermagem — Maria Souza"), e exigir um
+-- usuário cadastrado faria a operação registrar o nome errado ou não registrar.
+--
+-- Tabela dedicada, e não a auditoria, por três razões: a auditoria não tem
+-- campo para cargo e nome do solicitante; ela é trilha administrativa por
+-- cliente, não coleção consultável na tela do chamado; e reclassificação vinda
+-- de webhook não tem `Contexto`, que `auditar()` exige.
+CREATE TABLE IF NOT EXISTS ticket_reclassificacoes (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_sla_id       INTEGER NOT NULL REFERENCES tickets_sla(id) ON DELETE CASCADE,
+  prioridade_anterior TEXT,
+  prioridade_nova     TEXT NOT NULL,
+  ocorrido_em         TEXT NOT NULL DEFAULT (datetime('now')),
+  motivo              TEXT,
+  solicitante         TEXT,
+  -- Nulo quando a mudança veio da origem, e não de alguém operando o sistema.
+  usuario_id          INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  origem              TEXT NOT NULL DEFAULT 'manual' CHECK (origem IN ('manual','integracao'))
+);
+CREATE INDEX IF NOT EXISTS ix_reclassificacao_ticket ON ticket_reclassificacoes(ticket_sla_id, ocorrido_em);

@@ -12,6 +12,7 @@ import { erroValidacao } from '../lib/erros.js';
 import { resolverFila, resolverSetor, resolverTopicoAjuda, SETOR_NAO_CLASSIFICADO } from './cadastros.js';
 import { urlDoChamado } from './sla.js';
 import { prazoDoAcordo } from './slas.js';
+import { registrarReclassificacaoDaOrigem } from './reclassificacao.js';
 import type { Contexto } from './contexto.js';
 import { escopoSql } from './escopo.js';
 
@@ -228,17 +229,18 @@ export function gravarChamado(
   // prometeu ao solicitante, e sobrescrevê-lo com a regra interna faria o
   // sistema discordar da tela que a pessoa viu ao abrir o chamado. O cadastro
   // entra onde não havia nada — e onde não há cadastro, nada muda.
-  const prazo = c.due_at ?? prazoDoAcordo(empresaId, c.opened_at, c.priority, topicoId);
+  const doAcordo = c.due_at ? null : prazoDoAcordo(empresaId, c.opened_at, c.priority, topicoId);
+  const prazo = c.due_at ?? doAcordo;
   const referencia = c.closed_at ?? new Date().toISOString().slice(0, 16) + 'Z';
   const dentro = prazo ? (referencia <= prazo ? 1 : 0) : c.closed_at ? 1 : 0;
   const competencia = (c.opened_at ?? new Date().toISOString()).slice(0, 7);
 
   const anterior = db()
     .prepare(
-      `SELECT id FROM tickets_sla
+      `SELECT id, prioridade FROM tickets_sla
         WHERE empresa_id = ? AND source_system = ? AND external_id = ? AND excluido_em IS NULL`,
     )
-    .get(empresaId, c.source_system, c.external_id) as { id: number } | undefined;
+    .get(empresaId, c.source_system, c.external_id) as { id: number; prioridade: string | null } | undefined;
 
   const campos = {
     filial_id: filialId,
@@ -261,6 +263,7 @@ export function gravarChamado(
     aberto_em: c.opened_at,
     fechado_em: c.closed_at,
     prazo_em: prazo,
+    prazo_do_acordo: doAcordo ? 1 : 0,
     horas: c.hours,
     numero: c.external_id,
     origem_chamado: c.source_system,
@@ -271,6 +274,9 @@ export function gravarChamado(
   };
 
   if (anterior) {
+    // A prioridade mudava aqui sem deixar rastro: o upsert sobrescrevia o campo
+    // e uma elevação vinda da origem virava um estado sem história.
+    registrarReclassificacaoDaOrigem(anterior.id, anterior.prioridade, c.priority);
     const colunas = Object.keys(campos);
     db()
       .prepare(

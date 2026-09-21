@@ -5,7 +5,7 @@
  * nomes diferentes, e a normalização já resolveu isso no servidor: duplicar
  * tela e componente aqui seria duplicar manutenção para dizer o mesmo.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { useFiltroEscopo } from '../lib/filtros';
@@ -479,9 +479,131 @@ function resumoDoChamado(c: Chamado): string {
  * Detalhe do chamado. Carregado sob demanda: a listagem não traz o payload
  * bruto, que é o campo grande, justamente para a lista não ficar pesada.
  */
+interface Reclassificacao {
+  id: number;
+  prioridade_anterior_rotulo: string | null;
+  prioridade_nova_rotulo: string;
+  ocorrido_em: string;
+  motivo: string | null;
+  solicitante: string | null;
+  usuario_email: string | null;
+  origem: 'manual' | 'integracao';
+}
+
+/**
+ * O histórico de prioridade, na ficha do chamado.
+ *
+ * A pergunta "por que este chamado está como Alta?" se faz olhando o chamado,
+ * e não uma tela de trilha administrativa — por isso mora aqui, e não na
+ * Auditoria (onde a mudança também fica registrada, para quem audita).
+ */
+function HistoricoPrioridade({ id, podeEditar }: { id: number; podeEditar: boolean }) {
+  const historico = useDados<Reclassificacao[]>(
+    () => api.get(`/api/suporte/chamados/${id}/reclassificacoes`),
+    [id],
+  );
+  const [abrindo, setAbrindo] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [form, setForm] = useState({ prioridade: 'high', motivo: '', solicitante: '' });
+
+  const enviar = async (e: FormEvent) => {
+    e.preventDefault();
+    setErro(null);
+    try {
+      await api.post(`/api/suporte/chamados/${id}/reclassificar`, form);
+      setForm({ prioridade: 'high', motivo: '', solicitante: '' });
+      setAbrindo(false);
+      historico.recarregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : 'Não foi possível reclassificar.');
+    }
+  };
+
+  const linhas = historico.dados ?? [];
+  return (
+    <div style={{ marginTop: 14, borderTop: '1px solid var(--borda)', paddingTop: 12 }}>
+      <strong>Histórico de prioridade</strong>
+      {linhas.length === 0 ? (
+        <p className="dica-filtro" style={{ margin: '4px 0 0' }}>
+          A prioridade nunca foi alterada desde que o chamado entrou.
+        </p>
+      ) : (
+        <dl className="ficha" style={{ marginTop: 6 }}>
+          {linhas.map((r) => (
+            <Linha
+              key={r.id}
+              rotulo={dataHora(r.ocorrido_em)}
+              valor={[
+                `${r.prioridade_anterior_rotulo ?? 'sem prioridade'} → ${r.prioridade_nova_rotulo}`,
+                r.solicitante ? `a pedido de ${r.solicitante}` : null,
+                r.motivo,
+                r.origem === 'integracao' ? 'alterado no sistema de origem' : r.usuario_email,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            />
+          ))}
+        </dl>
+      )}
+
+      {erro && <Aviso tipo="erro">{erro}</Aviso>}
+
+      {podeEditar &&
+        (abrindo ? (
+          <form onSubmit={enviar} style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+            <div className="grade c2">
+              <Campo rotulo="Nova prioridade">
+                <select
+                  value={form.prioridade}
+                  onChange={(e) => setForm({ ...form, prioridade: e.target.value })}
+                >
+                  {Object.entries(ROTULO_PRIORIDADE).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </Campo>
+              <Campo
+                rotulo="Quem pediu (cargo e nome)"
+                dica="ex.: Coordenador de Enfermagem — Maria Souza"
+              >
+                <input
+                  value={form.solicitante}
+                  onChange={(e) => setForm({ ...form, solicitante: e.target.value })}
+                  required
+                />
+              </Campo>
+            </div>
+            <Campo rotulo="Motivo">
+              <input value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} />
+            </Campo>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="submit" className="botao">
+                Reclassificar
+              </button>
+              <button type="button" className="botao discreto" onClick={() => setAbrindo(false)}>
+                Cancelar
+              </button>
+            </div>
+            <small className="dica-filtro">
+              A prioridade nova passa a valer para o cálculo do SLA. O prazo informado pelo sistema de
+              origem não é alterado.
+            </small>
+          </form>
+        ) : (
+          <button type="button" className="botao discreto pequeno" style={{ marginTop: 10 }} onClick={() => setAbrindo(true)}>
+            Reclassificar prioridade
+          </button>
+        ))}
+    </div>
+  );
+}
+
 function DetalheChamado({ id, aoFechar }: { id: number; aoFechar: () => void }) {
   const consulta = useDados<Chamado & { raw_payload: unknown }>(() => api.get(`/api/suporte/chamados/${id}`), [id]);
   const [verBruto, setVerBruto] = useState(false);
+  const { pode } = useSessao();
   const c = consulta.dados;
 
   return (
@@ -528,6 +650,8 @@ function DetalheChamado({ id, aoFechar }: { id: number; aoFechar: () => void }) 
               valor={c.synced_at ? dataHora(c.synced_at) : 'nunca sincronizado'}
             />
           </dl>
+
+          <HistoricoPrioridade id={id} podeEditar={pode('suporte_ostick', 'edit')} />
 
           {c.raw_payload !== null && c.raw_payload !== undefined && (
             <div>

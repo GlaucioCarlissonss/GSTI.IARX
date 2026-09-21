@@ -128,6 +128,10 @@ function migrar(db: Conexao): void {
     ['atendente_externo_id', 'TEXT'],
     ['synced_at', 'TEXT'],
     ['raw_payload', 'TEXT'],
+    // Marca se o prazo saiu do cadastro de acordos. Sem CHECK: o SQLite não
+    // aceita restrição em ADD COLUMN. O chamado que já existia nasce 0, que é
+    // a verdade — o prazo dele veio da origem ou não existe.
+    ['prazo_do_acordo', 'INTEGER NOT NULL DEFAULT 0'],
   ];
   for (const [nome, tipo] of integracao) {
     if (!sla.has(nome)) db.exec(`ALTER TABLE tickets_sla ADD COLUMN ${nome} ${tipo}`);
