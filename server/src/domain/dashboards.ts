@@ -14,6 +14,8 @@ import { paraReais } from './dinheiro.js';
 import { calcularAtraso } from './projetos.js';
 import { montarFiltroSla, percentual, type FiltroSla } from './sla.js';
 import { escopoSql } from './escopo.js';
+import { alvoDe, leituraDeMeta } from './metas.js';
+import { entregaDeTarefas } from './indicadores.js';
 
 /**
  * Recorte de um painel.
@@ -837,6 +839,18 @@ export function visaoExecutiva(ctx: Contexto, escopo: EscopoDashboard = {}) {
   const financeiro = dashboardFinanceiro(ctx, escopo);
   const projetos = dashboardProjetos(ctx, escopo);
   const sla = dashboardSla(ctx, escopo);
+  // A entrega no prazo mora em `entregaDeTarefas` e é chamada daqui em vez de
+  // recalculada: a regra do que é "no prazo" tem de ter um dono só.
+  const entrega = entregaDeTarefas(ctx, {
+    empresas: escopo.empresas,
+    filiais: escopo.filiais,
+    competencias: escopo.competencias,
+    competenciaInicio: escopo.competenciaInicio,
+    competenciaFim: escopo.competenciaFim,
+  });
+  // O mês do recorte decide QUAL meta vale: uma meta que passou a valer em
+  // março não pode reger a leitura de janeiro.
+  const mes = financeiro.escopo.competencia;
   return {
     escopo: financeiro.escopo,
     financeiro: {
@@ -847,9 +861,28 @@ export function visaoExecutiva(ctx: Contexto, escopo: EscopoDashboard = {}) {
       compromisso_proximos_12_meses: Math.round(
         financeiro.projecao_12_meses.reduce((s, m) => s + m.total, 0) * 100,
       ) / 100,
+      // A meta do financeiro é TETO sobre a variação contra o mês anterior:
+      // "não crescer mais que X%". Sem mês anterior não há o que comparar.
+      meta: leituraDeMeta(
+        alvoDe(ctx, 'financeiro', mes),
+        financeiro.totais_mes.variacao_mes_anterior_pct,
+        'financeiro',
+      ),
     },
-    projetos: projetos.indicadores,
-    sla: sla.totais_mes,
+    projetos: {
+      ...projetos.indicadores,
+      pct_no_prazo: entrega.pct_no_prazo,
+      tarefas_entregues: entrega.entregues,
+      meta: leituraDeMeta(alvoDe(ctx, 'projetos', mes), entrega.entregues ? entrega.pct_no_prazo : null, 'projetos'),
+    },
+    sla: {
+      ...sla.totais_mes,
+      meta: leituraDeMeta(
+        alvoDe(ctx, 'sla', mes),
+        sla.totais_mes.total_atendidos ? sla.totais_mes.pct_dentro_sla : null,
+        'sla',
+      ),
+    },
     // De quem é cada pedaço: alimenta a faixa de cores e a sanfona por unidade.
     por_unidade: quebraPorUnidade(ctx, escopo),
   };

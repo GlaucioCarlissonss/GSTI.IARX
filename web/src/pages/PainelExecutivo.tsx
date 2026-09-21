@@ -5,7 +5,7 @@ import { useDados, useSessao } from '../lib/sessao';
 import { useFiltroEscopo } from '../lib/filtros';
 import { FichasUnidades, FiltroUnidades } from '../components/filtro-escopo';
 import { Aviso, Carregando, Cartao, UltimaAtualizacao } from '../components/base';
-import { GraficoBarras, Indicador } from '../components/graficos';
+import { GraficoBarras, Indicador, type LeituraMeta } from '../components/graficos';
 import {
   Detalhamento,
   detalheDeLancamentos,
@@ -36,9 +36,19 @@ interface VisaoExecutiva {
     investimento: number;
     variacao_mes_anterior_pct: number | null;
     compromisso_proximos_12_meses: number;
+    meta: LeituraMeta | null;
   };
-  projetos: { total: number; em_andamento: number; concluidos: number; atrasados: number; tarefas_atrasadas: number };
-  sla: { total_atendidos: number; pct_dentro_sla: number; fora_sla: number };
+  projetos: {
+    total: number;
+    em_andamento: number;
+    concluidos: number;
+    atrasados: number;
+    tarefas_atrasadas: number;
+    pct_no_prazo: number;
+    tarefas_entregues: number;
+    meta: LeituraMeta | null;
+  };
+  sla: { total_atendidos: number; pct_dentro_sla: number; fora_sla: number; meta: LeituraMeta | null };
   por_unidade: {
     gasto_mes: LinhaPorUnidade[];
     compromisso_proximos_12_meses: LinhaPorUnidade[];
@@ -47,8 +57,6 @@ interface VisaoExecutiva {
   };
 }
 
-/** A meta de SLA — a mesma do servidor (`domain/indicadores.ts`). */
-const META_SLA = 80;
 
 /**
  * A quebra de um número em matriz → filial.
@@ -76,19 +84,27 @@ function porMatriz(linhas: LinhaPorUnidade[], cores: Map<number, MatrizComCor>) 
     .sort((a, b) => b.valor - a.valor);
 }
 
-/** A tabela da sanfona. `extra` é a coluna de conformidade, só no SLA. */
+/**
+ * A tabela da sanfona. `conformidade` é a coluna de ✓/✗, só no SLA.
+ *
+ * O alvo vem de fora: era uma constante copiada aqui, e desde que a meta virou
+ * cadastro a tela não tem como saber qual é sem perguntar ao servidor.
+ */
 function TabelaPorUnidade({
   linhas,
   cores,
   formatar,
   rotuloValor,
   conformidade,
+  alvo,
 }: {
   linhas: LinhaPorUnidade[];
   cores: Map<number, MatrizComCor>;
   formatar: (v: number) => string;
   rotuloValor: string;
   conformidade?: boolean;
+  /** O alvo de conformidade vigente. Ausente: a coluna não julga, só mostra. */
+  alvo?: number | null;
 }) {
   const grupos = porMatriz(linhas, cores);
   if (!grupos.length) return <p className="vazio">Nada neste recorte.</p>;
@@ -97,7 +113,7 @@ function TabelaPorUnidade({
     if (!total) return <span>—</span>;
     const pct = Math.round(((l.dentro ?? 0) / total) * 1000) / 10;
     const fora = total - (l.dentro ?? 0);
-    return pct >= META_SLA ? (
+    return alvo === null || alvo === undefined || pct >= alvo ? (
       <span className="dentro">✓ {pct.toLocaleString('pt-BR')}% · dentro</span>
     ) : (
       <span className="fora">✗ {pct.toLocaleString('pt-BR')}% · fora ({inteiro(fora)})</span>
@@ -251,6 +267,7 @@ export function PaginaPainelExecutivo() {
           delta={v.financeiro.variacao_mes_anterior_pct}
           apoio={`${moedaCurta(v.financeiro.despesa)} despesa · ${moedaCurta(v.financeiro.investimento)} investimento`}
           dica={`Soma dos lançamentos de ${v.escopo.competencia} no recorte atual.`}
+          meta={v.financeiro.meta}
           fatias={fatiasPorMatriz(
             porMatriz(v.por_unidade.gasto_mes, cores).map((m) => ({ empresa_id: m.id, valor: m.valor })),
             cores,
@@ -300,6 +317,7 @@ export function PaginaPainelExecutivo() {
           valor={inteiro(v.projetos.atrasados)}
           apoio={`${inteiro(v.projetos.em_andamento)} em andamento · ${inteiro(v.projetos.total)} no total`}
           dica="Atraso é derivado: o mês corrente passou do fim planejado sem fim real registrado."
+          meta={v.projetos.meta}
           fatias={fatiasPorMatriz(
             porMatriz(v.por_unidade.projetos_atrasados, cores).map((m) => ({ empresa_id: m.id, valor: m.valor })),
             cores,
@@ -332,6 +350,7 @@ export function PaginaPainelExecutivo() {
               : 'Sem tickets registrados na competência'
           }
           dica="Percentual de chamados atendidos dentro do prazo na competência."
+          meta={v.sla.meta}
           fatias={fatiasPorMatriz(
             porMatriz(v.por_unidade.sla, cores).map((m) => ({ empresa_id: m.id, valor: m.valor })),
             cores,
@@ -343,6 +362,7 @@ export function PaginaPainelExecutivo() {
               formatar={inteiro}
               rotuloValor="Chamados"
               conformidade
+              alvo={v.sla.meta?.alvo ?? null}
             />
           }
           // Abre mesmo sem chamado: "nenhum registro nesta competência" é

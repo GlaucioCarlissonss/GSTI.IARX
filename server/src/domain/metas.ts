@@ -42,6 +42,59 @@ export const ALVO_PADRAO: Record<ModuloMeta, number | null> = {
   equilibrio: null,
 };
 
+/**
+ * O lado bom da meta.
+ *
+ * SLA e entrega no prazo são PISO: quanto mais alto, melhor. Variação de custo
+ * e equilíbrio de despesas são TETO: passar do alvo é o problema. Sem esta
+ * distinção, um indicador de custo acima da meta seria pintado de verde.
+ *
+ * É propriedade do módulo, e não escolha de quem cadastra: "quanto maior
+ * melhor" não é opinião sobre o SLA.
+ */
+export type DirecaoMeta = 'minimo' | 'maximo';
+
+export const DIRECAO_META: Record<ModuloMeta, DirecaoMeta> = {
+  sla: 'minimo',
+  projetos: 'minimo',
+  financeiro: 'maximo',
+  equilibrio: 'maximo',
+};
+
+export interface LeituraMeta {
+  alvo: number;
+  atingido: number | null;
+  direcao: DirecaoMeta;
+  atinge: boolean;
+  /** Distância em pontos percentuais, sempre positiva a favor. `null` sem resultado. */
+  distancia: number | null;
+}
+
+/**
+ * O resultado lido contra o alvo — a forma que a tela consome.
+ *
+ * Devolve `null` quando não há meta: o indicador continua mostrando o número,
+ * só não mostra a comparação. Inventar um alvo para ter o que comparar seria
+ * pior do que não comparar.
+ */
+export function leituraDeMeta(
+  alvo: number | null,
+  atingido: number | null,
+  modulo: ModuloMeta,
+): LeituraMeta | null {
+  if (alvo === null) return null;
+  const direcao = DIRECAO_META[modulo];
+  if (atingido === null) return { alvo, atingido: null, direcao, atinge: false, distancia: null };
+  const bruto = direcao === 'minimo' ? atingido - alvo : alvo - atingido;
+  return {
+    alvo,
+    atingido,
+    direcao,
+    atinge: bruto >= 0,
+    distancia: Math.round(bruto * 10) / 10,
+  };
+}
+
 export interface LinhaMeta {
   id: number;
   nome: string;

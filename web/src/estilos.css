@@ -410,6 +410,18 @@ textarea { resize: vertical; min-height: 62px; }
 .faixa-matrizes { display: flex; gap: 2px; height: 4px; margin-top: 6px; border-radius: 2px; overflow: hidden; }
 .faixa-matrizes i { display: block; min-width: 3px; border-radius: 2px; }
 
+/* Meta vs Resultado. A barra preenche o resultado e o traço marca o alvo — a
+   mesma leitura do termômetro que o artifact já usa, no tamanho de um card.
+   A cor nunca é o único canal: o ✓/✗ e o texto dizem o mesmo. */
+.meta-indicador { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 12px; }
+.meta-indicador.sem-dado { color: var(--tinta-fraca); }
+.meta-barra { position: relative; display: block; height: 4px; border-radius: 2px; background: var(--borda); overflow: hidden; }
+.meta-barra i { display: block; height: 100%; border-radius: 2px; background: currentColor; }
+.meta-barra b { position: absolute; top: -2px; width: 2px; height: 8px; background: var(--tinta-2); border-radius: 1px; }
+.meta-indicador.dentro { color: var(--positivo-texto); }
+.meta-indicador.fora { color: var(--critico); }
+.meta-indicador .meta-texto { font-weight: 550; }
+
 /* A sanfona matriz -> filial. Botão próprio, porque o corpo do card já abre o
    detalhamento — dois gestos no mesmo alvo brigariam. */
 .indicador-unidades { margin-top: 8px; }

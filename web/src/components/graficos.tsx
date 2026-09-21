@@ -615,6 +615,48 @@ function FaixaDeMatrizes({ fatias }: { fatias: FatiaIndicador[] }) {
   );
 }
 
+export interface LeituraMeta {
+  alvo: number;
+  atingido: number | null;
+  direcao: 'minimo' | 'maximo';
+  atinge: boolean;
+  distancia: number | null;
+}
+
+/**
+ * Meta vs Resultado — o alvo ao lado do número.
+ *
+ * Um indicador que mostra só o resultado obriga quem lê a saber de cabeça o
+ * que era esperado. A barra é a mesma leitura do termômetro que o artifact já
+ * usa: preenchimento proporcional ao resultado e um traço no alvo.
+ *
+ * Sem resultado (nenhum atendimento no mês, nenhuma tarefa entregue) a barra
+ * não aparece: uma barra vazia diria "0%", que é diferente de "não houve".
+ */
+function MetaVsResultado({ meta }: { meta: LeituraMeta }) {
+  if (meta.atingido === null) {
+    return <span className="meta-indicador sem-dado">meta {meta.alvo.toLocaleString('pt-BR')}% · sem resultado no período</span>;
+  }
+  const largura = Math.max(0, Math.min(100, meta.atingido));
+  const alvo = Math.max(0, Math.min(100, meta.alvo));
+  const comparador = meta.direcao === 'minimo' ? 'mínimo' : 'teto';
+  return (
+    <span
+      className={`meta-indicador ${meta.atinge ? 'dentro' : 'fora'}`}
+      title={`Resultado ${meta.atingido.toLocaleString('pt-BR')}% contra ${comparador} de ${meta.alvo.toLocaleString('pt-BR')}%.`}
+    >
+      <span className="meta-barra" aria-hidden>
+        <i style={{ width: `${largura}%` }} />
+        <b style={{ left: `${alvo}%` }} />
+      </span>
+      <span className="meta-texto">
+        {meta.atinge ? '✓' : '✗'} {meta.atingido.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% ·{' '}
+        {comparador} {meta.alvo.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%
+      </span>
+    </span>
+  );
+}
+
 export function Indicador({
   rotulo,
   valor,
@@ -624,6 +666,7 @@ export function Indicador({
   dica,
   aoDetalhar,
   fatias,
+  meta,
   detalhePorUnidade,
 }: {
   rotulo: string;
@@ -641,6 +684,8 @@ export function Indicador({
   aoDetalhar?: () => void;
   /** A divisão por empresa matriz, para a faixa de cores e a legenda. */
   fatias?: FatiaIndicador[];
+  /** O alvo contra o qual este número é lido. Ausente: o card mostra só o resultado. */
+  meta?: LeituraMeta | null;
   /**
    * A sanfona: o detalhamento hierárquico matriz → filial, revelado abaixo do
    * card. Fica num botão PRÓPRIO, e não no corpo: o corpo já abre o
@@ -665,6 +710,7 @@ export function Indicador({
           {simbolo} {Math.abs(delta).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% vs. mês anterior
         </span>
       )}
+      {meta && <MetaVsResultado meta={meta} />}
       {apoio && <span className="apoio">{apoio}</span>}
       {fatias && <FaixaDeMatrizes fatias={fatias} />}
     </>

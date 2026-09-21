@@ -13,7 +13,8 @@ import { criarEmpresa } from '../src/domain/empresas.js';
 import { criarFila } from '../src/domain/cadastros.js';
 import { registrarTicketSla } from '../src/domain/sla.js';
 import { conformidadeSla, META_SLA } from '../src/domain/indicadores.js';
-import { alvoDe, atualizarMeta, criarMeta, listarMetas, metaVigente } from '../src/domain/metas.js';
+import { alvoDe, atualizarMeta, criarMeta, leituraDeMeta, listarMetas, metaVigente } from '../src/domain/metas.js';
+import { visaoExecutiva } from '../src/domain/dashboards.js';
 import { listarAuditoria } from '../src/domain/auditoria.js';
 
 test('sem meta cadastrada, o alvo de SLA é o padrão de sempre', () => {
@@ -112,4 +113,44 @@ test('criar e alterar uma meta deixa trilha', () => {
     trilha.map((t) => t.acao).sort(),
     ['atualizar', 'criar'],
   );
+});
+
+// ------------------------------------------------- Meta vs Resultado (2.4)
+
+test('o painel executivo devolve a meta ao lado do resultado de cada bloco', () => {
+  const { ctx } = ambienteLimpo();
+  const fila = criarFila(ctx, 'Suporte').id;
+  registrarTicketSla(ctx, { filaId: fila, competencia: mesRelativo(0), totalAtendidos: 10, dentroSla: 9 });
+
+  const v = visaoExecutiva(ctx, {});
+  assert.equal(v.sla.meta?.alvo, 80, 'sem cadastro, o padrão de sempre');
+  assert.equal(v.sla.meta?.atingido, 90);
+  assert.equal(v.sla.meta?.atinge, true);
+  assert.equal(v.sla.meta?.direcao, 'minimo');
+
+  criarMeta(ctx, { nome: 'SLA exigente', modulo: 'sla', alvo_pct: 95 });
+  const depois = visaoExecutiva(ctx, {});
+  assert.equal(depois.sla.meta?.alvo, 95);
+  assert.equal(depois.sla.meta?.atinge, false);
+  assert.equal(depois.sla.meta?.distancia, -5, 'a distância é negativa quando falta chegar lá');
+});
+
+test('sem resultado no período, a meta existe mas não finge atingimento', () => {
+  const { ctx } = ambienteLimpo();
+  const v = visaoExecutiva(ctx, {});
+  assert.equal(v.sla.meta?.alvo, 80);
+  assert.equal(v.sla.meta?.atingido, null, 'nenhum chamado não é 0% de conformidade');
+  assert.equal(v.sla.meta?.atinge, false);
+});
+
+test('a meta de custo é TETO, e a de SLA é PISO', () => {
+  const { ctx } = ambienteLimpo();
+  // Variação de 10% contra um teto de 5% NÃO atinge, mesmo sendo o maior número.
+  assert.equal(leituraDeMeta(5, 10, 'financeiro')?.atinge, false);
+  assert.equal(leituraDeMeta(5, 3, 'financeiro')?.atinge, true);
+  // No SLA a leitura é a oposta.
+  assert.equal(leituraDeMeta(80, 90, 'sla')?.atinge, true);
+  assert.equal(leituraDeMeta(80, 70, 'sla')?.atinge, false);
+  assert.equal(leituraDeMeta(null, 90, 'sla'), null, 'sem alvo, não há comparação a mostrar');
+  assert.ok(ctx);
 });
