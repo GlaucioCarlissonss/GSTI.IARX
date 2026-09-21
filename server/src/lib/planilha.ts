@@ -23,8 +23,35 @@ function detectarSeparador(primeiraLinha: string): string {
   return melhor;
 }
 
-export function lerCsv(conteudo: string): Array<Record<string, string>> {
-  const texto = conteudo.replace(/^﻿/, '');
+/**
+ * Texto a partir do arquivo, sem depender de o cliente exportar em UTF-8.
+ *
+ * O ERP do cliente exporta em Windows-1252, e `buffer.toString('utf8')`
+ * transforma cada acento num caractere de substituição — "Serviços" vira
+ * "Servi\uFFFDos" e o nome do centro de custo deixa de casar com o cadastro.
+ * A detecção é pela decodificação estrita: se o UTF-8 falhar, o arquivo não
+ * era UTF-8. `TextDecoder` já vem no Node, então isto não acrescenta
+ * dependência nenhuma.
+ */
+export function decodificarTexto(buffer: Buffer): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } catch {
+    return new TextDecoder('windows-1252').decode(buffer);
+  }
+}
+
+/**
+ * As linhas do CSV como vetores, antes de casarem com o cabeçalho.
+ *
+ * Existe porque há layout de origem que OMITE campos vazios em vez de emitir
+ * o separador: a linha chega com menos campos que o cabeçalho, e casar pela
+ * esquerda desloca toda a cauda em silêncio. Quem sabe consertar isso é o
+ * leitor do layout, que conhece quais posições podem faltar — e para isso
+ * precisa dos campos crus, que `lerCsv` perde ao montar o objeto.
+ */
+export function lerCsvBruto(conteudo: string): string[][] {
+  const texto = conteudo.replace(/^\ufeff/, '');
   const separador = detectarSeparador(texto.split(/\r?\n/, 1)[0] ?? '');
 
   const linhas: string[][] = [];
@@ -66,6 +93,11 @@ export function lerCsv(conteudo: string): Array<Record<string, string>> {
     linhas.push(linha);
   }
 
+  return linhas;
+}
+
+export function lerCsv(conteudo: string): Array<Record<string, string>> {
+  const linhas = lerCsvBruto(conteudo);
   const cabecalho = (linhas.shift() ?? []).map((c) => c.trim());
   return linhas
     .filter((l) => l.some((c) => c.trim() !== ''))

@@ -21,7 +21,7 @@ import { criarFilial, resolverFila, resolverTipoDespesa, resolverTopicoAjuda } f
 import { apelidosDoCliente } from './mapeamentos.js';
 import { atualizarTarefa } from './projetos.js';
 import { competenciaEstaFechada } from './fechamento.js';
-import { lerCsv, lerXlsx, type Aba } from '../lib/planilha.js';
+import { decodificarTexto, lerCsv, lerXlsx, type Aba } from '../lib/planilha.js';
 import {
   ABA_INSTRUCOES,
   ABAS,
@@ -289,7 +289,7 @@ export async function interpretarArquivo(
 ): Promise<Aba[]> {
   const ehCsv = (nomeArquivo ?? '').toLowerCase().endsWith('.csv') || (nomeArquivo ?? '').toLowerCase().endsWith('.txt');
   if (ehCsv) {
-    const linhas = lerCsv(buffer.toString('utf8'));
+    const linhas = lerCsv(decodificarTexto(buffer));
     const colunas = linhas.length > 0 ? Object.keys(linhas[0]!) : [];
     return [{ nome: abaPadrao ?? 'Financeiro', colunas, linhas }];
   }
