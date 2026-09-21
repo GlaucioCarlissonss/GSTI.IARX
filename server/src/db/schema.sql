@@ -740,3 +740,30 @@ CREATE TABLE IF NOT EXISTS planos_reducao (
   UNIQUE (cliente_id, nome)
 );
 CREATE INDEX IF NOT EXISTS ix_plano_cliente ON planos_reducao(cliente_id, ativo);
+
+-- Quem, na origem, cria despesa que já nasce reconhecida.
+--
+-- A carga do ERP traz quem criou cada documento (`CREATIONUSER`). O gestor
+-- sabe que o que a equipe de TI lançou já foi conferido na origem, e o que
+-- veio de fora dela não foi. Antes desta tabela, essa lista existia como
+-- constante num script de fora do sistema: bastava uma pessoa entrar ou sair
+-- do time para a classificação sair errada sem ninguém perceber.
+--
+-- `cliente_id`, e não `empresa_id`: a mesma pessoa lança para todas as
+-- unidades do grupo, e repetir o cadastro por matriz criaria seis linhas para
+-- manter em sincronia.
+--
+-- `chave` é o nome normalizado (maiúsculas, sem acento, sem espaço). Existe
+-- como coluna porque o UNIQUE precisa dela: "Miqueias Silva" e "MIQUEIASSILVA"
+-- são a mesma pessoa, e índice de SQLite não chama função nossa.
+CREATE TABLE IF NOT EXISTS reconhecedores_origem (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id     INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  usuario_origem TEXT NOT NULL,
+  chave          TEXT NOT NULL,
+  nome_exibicao  TEXT,
+  ativo          INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0,1)),
+  criado_em      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (cliente_id, chave)
+);
+CREATE INDEX IF NOT EXISTS ix_reconhecedor_cliente ON reconhecedores_origem(cliente_id, ativo);

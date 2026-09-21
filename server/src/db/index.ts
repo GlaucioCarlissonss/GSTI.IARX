@@ -75,6 +75,11 @@ export function migrar(db: Conexao): void {
     // meta_mes). São controle, NÃO valor: entram como JSON para não serem
     // somadas por engano a nenhum total.
     ['planejamento', 'TEXT'],
+    // Quem criou o documento no sistema de ORIGEM (`CREATIONUSER` da carga de
+    // Contas a Pagar). É o que liga o lançamento ao cadastro de quem reconhece
+    // despesa — sem esta coluna, aplicar o reconhecimento ao que já está
+    // gravado não teria o que ler, e o botão seria decorativo.
+    ['usuario_origem', 'TEXT'],
     // Quem consome o que esta filial paga. O lançamento que já existia nasce
     // 'integral', que é a leitura que o sistema fazia antes de a pergunta
     // existir — nenhum número muda ao migrar. Sem CHECK: o SQLite não aceita

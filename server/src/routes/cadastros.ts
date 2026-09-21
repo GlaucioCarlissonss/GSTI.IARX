@@ -15,6 +15,13 @@ import {
 } from '../domain/cadastros.js';
 import { atualizarMeta, criarMeta, listarMetas } from '../domain/metas.js';
 import {
+  aplicarReconhecimento,
+  atualizarReconhecedor,
+  criarReconhecedor,
+  listarReconhecedores,
+  previaReconhecimento,
+} from '../domain/reconhecedores.js';
+import {
   atualizarSla,
   criarSla,
   listarSlas,
@@ -154,6 +161,39 @@ rotasCadastros.get('/slas/reaplicacao', exigir('configuracoes', 'edit'), (req, r
 rotasCadastros.post('/slas/reaplicacao', exigir('configuracoes', 'edit'), (req, res) => {
   const corpo = req.body ?? {};
   res.json(reaplicarAcordos(unidade(req), corpo.competencia, corpo.justificativa));
+});
+
+// ------------------------------------------- Quem reconhece despesa
+// Do CLIENTE, como as metas e o plano: a mesma pessoa lança para todas as
+// unidades do grupo, e repetir o cadastro por matriz criaria seis listas para
+// manter em sincronia.
+rotasCadastros.get('/reconhecedores', (req, res) => {
+  res.json(listarReconhecedores(ctx(req), req.query.incluir_inativos === 'true'));
+});
+
+rotasCadastros.post('/reconhecedores', exigir('configuracoes', 'create'), (req, res) => {
+  res.status(201).json(criarReconhecedor(ctx(req), req.body ?? {}));
+});
+
+rotasCadastros.patch('/reconhecedores/:id', exigir('configuracoes', 'edit'), (req, res) => {
+  res.json(atualizarReconhecedor(ctx(req), Number(req.params.id), req.body ?? {}));
+});
+
+// Aplicar o cadastro ao que já está gravado. Prévia antes, pelo mesmo motivo
+// da limpeza de base: "reconhecer 612 lançamentos" é uma decisão;
+// "reconhecer" sozinho é um susto.
+const recorteDoPedido = (q: Record<string, unknown>) => ({
+  de: q.de ? paraInterno(q.de) : null,
+  ate: q.ate ? paraInterno(q.ate) : null,
+});
+
+rotasCadastros.get('/reconhecedores/aplicacao', exigir('configuracoes', 'edit'), (req, res) => {
+  res.json(previaReconhecimento(ctx(req), recorteDoPedido(req.query as Record<string, unknown>)));
+});
+
+rotasCadastros.post('/reconhecedores/aplicacao', exigir('configuracoes', 'edit'), (req, res) => {
+  const corpo = (req.body ?? {}) as Record<string, unknown>;
+  res.json(aplicarReconhecimento(ctx(req), recorteDoPedido(corpo), String(corpo.justificativa ?? '')));
 });
 
 // -------------------------------------------- Plano de redução de despesas
