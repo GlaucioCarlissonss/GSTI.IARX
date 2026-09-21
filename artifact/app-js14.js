@@ -120,6 +120,7 @@ function detalharLancamentos(titulo, lista, total, subtitulo) {
       { rotulo: 'Descrição', valor: (l) => l.descricao || '—', texto: true },
       { rotulo: 'Origem do custo', valor: (l) => l.origemCusto || '—', texto: true },
       { rotulo: 'Destino', valor: (l) => l.destinoPagamento || '—', texto: true },
+      { rotulo: 'Consumo', valor: (l) => resumoConsumo(l), texto: true },
       { rotulo: 'Procedência', valor: (l) => ORIGENS[origemDe(l)].rotulo },
       { rotulo: 'Valor', valor: (l) => brl(l.valor), n: true },
     ],

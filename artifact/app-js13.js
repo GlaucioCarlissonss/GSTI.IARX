@@ -354,6 +354,7 @@ function detalheDoLancamento(l) {
         ${linha('Descrição', l.descricao || '—')}
         ${linha('Origem do custo', l.origemCusto || 'não informada')}
         ${linha('Destino do pagamento', l.destinoPagamento || 'não informado')}
+        ${linha('Consumo', detalheConsumo(l))}
         ${linha('Documento vinculado', l.documento || '—')}
         ${linha('Filial', l.filial || 'Nível empresa')}
         ${linha('Tipo de despesa', l.tipo)}

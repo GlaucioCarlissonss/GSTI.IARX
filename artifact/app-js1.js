@@ -130,6 +130,54 @@ const reconhecidoDe = (l) => l && l.reconhecido === true;
  */
 const classeReconhecimento = (l) => (reconhecidoDe(l) ? '' : ' data-sem-reconhecer="1"');
 
+/**
+ * Quem CONSOME o que a filial PAGA.
+ *
+ * O lançamento sempre soube quem pagou; nunca soube quem usou. Uma matriz que
+ * centraliza licenças para seis filiais aparecia como a unidade cara, e as
+ * filiais que consomem, como baratas — o número certo contando a história
+ * errada.
+ *
+ * O registro sem o campo é ANTERIOR à pergunta existir, e vale como 'integral':
+ * é a leitura que o sistema fazia antes, então nenhum número muda.
+ *
+ * As beneficiadas são NOMES de filial, e não ids, porque é assim que a filial
+ * existe neste modelo (ver `filiaisDoEscopo`, que já unifica por nome).
+ */
+const consumoDe = (l) => (l && l.tipoConsumo === 'compartilhado' ? 'compartilhado' : 'integral');
+const beneficiadasDe = (l) => (Array.isArray(l && l.beneficiadas) ? l.beneficiadas : []);
+
+const ROTULO_CONSUMO = { integral:'100% da filial', compartilhado:'Beneficia outras' };
+
+/**
+ * A frase curta da célula.
+ *
+ * Com "todas" marcado, a frase é a INTENÇÃO e não a lista: foi o que a pessoa
+ * escolheu, e catorze nomes não cabem numa célula nem informam mais.
+ */
+function resumoConsumo(l) {
+  if (consumoDe(l) === 'integral') return ROTULO_CONSUMO.integral;
+  if (l.beneficiaTodas) return 'Beneficia todas as filiais do grupo';
+  const nomes = beneficiadasDe(l);
+  if (!nomes.length) return ROTULO_CONSUMO.compartilhado;
+  if (nomes.length <= 2) return 'Beneficia ' + nomes.join(' e ');
+  return 'Beneficia ' + nomes.length + ' filiais';
+}
+
+/** A frase longa, para dica e ficha: aqui a lista cabe. */
+function detalheConsumo(l) {
+  if (consumoDe(l) === 'integral') return 'O custo é todo da filial que paga.';
+  const nomes = beneficiadasDe(l);
+  if (l.beneficiaTodas) {
+    return nomes.length
+      ? 'Paga por esta filial, consumido por todas as filiais do grupo: ' + nomes.join(', ') + '.'
+      : 'Paga por esta filial, consumido por todas as filiais do grupo.';
+  }
+  return nomes.length
+    ? 'Paga por esta filial, consumido por: ' + nomes.join(', ') + '.'
+    : 'Paga por esta filial, com beneficiadas não informadas.';
+}
+
 /** O endereço do chamado a partir do próprio registro. */
 const urlDoRegistro = (r) => (r && r.ticketId ? urlDoChamado(r.ticketId, sistemaDe(r)) : null);
 

@@ -783,7 +783,7 @@ function abrirDetalhe({ titulo, tipo, itens, esperado }) {
       </div>
       ${itens.length === 0 ? '<p class="vazio">Nenhum lançamento.</p>' : `
       <div class="rol" style="margin-top:10px"><table>
-        <thead><tr><th></th><th>Competência</th><th>Filial</th><th>Centro de custo</th><th>Descrição</th>
+        <thead><tr><th></th><th>Competência</th><th>Filial</th><th>Consumo</th><th>Centro de custo</th><th>Descrição</th>
           <th class="n">Valor</th></tr></thead>
         <tbody>${itens.slice(0, 400).map((l) => `<tr${classeReconhecimento(l)}>
           <td><input type="checkbox" data-sel-lanc="${esc(l.id)}" data-comp="${esc(l.competencia)}"
@@ -791,6 +791,7 @@ function abrirDetalhe({ titulo, tipo, itens, esperado }) {
                aria-label="Selecionar ${esc(l.descricao || l.tipo)}"></td>
           <td>${mesExib(l.competencia)}</td>
           <td>${esc(l.filial || 'empresa')}</td>
+          <td title="${esc(detalheConsumo(l))}">${esc(resumoConsumo(l))}</td>
           <td>${esc(l.tipo)}</td>
           <td>${esc(l.descricao || '')}</td>
           <td class="n">${brl(l.valor)}</td></tr>`).join('')}</tbody>

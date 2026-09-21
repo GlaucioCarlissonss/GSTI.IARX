@@ -7,8 +7,12 @@
 // aba Conferência usa, e o rateio de folha viraria linha de planilha.
 // ===========================================================================
 // 1.3 acrescentou "Empresa" a todas as abas de dado, para que um arquivo só
-//     atenda várias matrizes do mesmo cliente (ver COLUNA_EMPRESA, abaixo).
-const MODELO_VERSAO = '1.3';
+//     atenda várias matrizes do mesmo cliente (ver COLUNA_EMPRESA, abaixo);
+// 1.5 acrescentou "Tipo de Consumo" e "Filiais Beneficiadas" ao Financeiro,
+//     para a planilha poder dizer quem CONSOME o que a filial paga. Fora das
+//     obrigatórias: um arquivo anterior continua entrando igual. A numeração
+//     acompanha a do servidor, que é quem o cliente vê na aba Modelo.
+const MODELO_VERSAO = '1.5';
 
 /**
  * A coluna que diz de QUAL MATRIZ é a linha.
@@ -47,7 +51,8 @@ const ABAS_MODELO_BASE = {
   },
   Financeiro: {
     colunas: ['Filial', 'Tipo de Despesa', 'Competência', 'Valor', 'Natureza', 'Classificação',
-      'Qtd Parcelas', 'Parcela', 'Grupo', 'Cenário', 'Origem', 'Descrição', 'Observações'],
+      'Qtd Parcelas', 'Parcela', 'Grupo', 'Cenário', 'Origem', 'Tipo de Consumo', 'Filiais Beneficiadas',
+      'Descrição', 'Observações'],
     obrigatorias: ['Tipo de Despesa', 'Competência', 'Valor', 'Natureza', 'Classificação'],
     apelidos: {
       'Tipo de Despesa': ['tipo', 'tipodespesa', 'tipodedespesa', 'centrocusto', 'centrodecusto'],
@@ -59,6 +64,8 @@ const ABAS_MODELO_BASE = {
       Grupo: ['grupo', 'grupoparcelamento', 'referencia', 'referenciaexterna'],
       'Cenário': ['cenario', 'cenarioprojecao'],
       Origem: ['origem', 'origemdodado', 'procedencia'],
+      'Tipo de Consumo': ['tipoconsumo', 'consumo', 'tipodeconsumo', 'rateio'],
+      'Filiais Beneficiadas': ['filiaisbeneficiadas', 'beneficiadas', 'filiaisbeneficiarias', 'beneficiarias'],
       'Descrição': ['descricao', 'historico'],
       'Observações': ['observacoes', 'obs'],
       Filial: ['filial', 'unidade'],
@@ -197,6 +204,14 @@ function lerOrigem(texto) {
   return null;
 }
 const lerInteiro = (t) => { const n = Number(String(t ?? '').trim()); return Number.isInteger(n) && n !== 0 ? n : null; };
+/** Aceita a chave interna, o rótulo exibido ou a grafia da planilha do cliente. */
+function lerTipoConsumo(texto) {
+  const t = semAcento(texto).trim();
+  if (!t) return null;
+  if (t === 'integral' || /100\s*%|somente|so a filial|exclusiv/.test(t)) return 'integral';
+  if (t === 'compartilhado' || /beneficia|compartilh|rate|central/.test(t)) return 'compartilhado';
+  return null;
+}
 
 // ---------------------------------------------------------------- exportação
 function linhasFinanceiro(empresa) {
@@ -208,6 +223,11 @@ function linhasFinanceiro(empresa) {
       'Classificação': l.classificacao === 'investimento' ? 'Investimento' : 'Despesa',
       'Qtd Parcelas': l.qtdParcelas || '', 'Parcela': l.parcela || '', 'Grupo': l.grupo || '',
       'Cenário': l.cenario, 'Origem': ORIGENS[origemDe(l)].rotulo,
+      'Tipo de Consumo': consumoDe(l) === 'compartilhado' ? 'Paga pela filial, beneficia outras' : '100% da filial',
+      // "Todas" volta como a palavra, e não como a lista: é a intenção que a
+      // pessoa registrou, e reexportar a lista congelada como se fosse a
+      // escolha original apagaria essa diferença.
+      'Filiais Beneficiadas': l.beneficiaTodas ? 'Todas' : beneficiadasDe(l).join('|'),
       'Descrição': l.descricao || '', 'Observações': l.obs || '',
     }));
 }
@@ -526,8 +546,30 @@ async function importarFinanceiro(empresa, aba, opcoes, rel) {
     }
     const cenario = ler(linha, 'Cenário') || 'oficial';
     const origem = lerOrigem(ler(linha, 'Origem')) || 'planilha';
+
+    // Consumo (modelo 1.5). Nomear beneficiadas sem dizer o tipo já diz o tipo:
+    // exigir as duas colunas rejeitaria um arquivo cuja intenção é inequívoca.
+    const textoBenef = ler(linha, 'Filiais Beneficiadas');
+    const beneficiaTodas = /^todas( as filiais)?$/i.test(textoBenef.trim());
+    const nomesBenef = beneficiaTodas ? [] : textoBenef.split(/[|;/]/).map((n) => n.trim()).filter(Boolean);
+    const temBenef = beneficiaTodas || nomesBenef.length > 0;
+    const tipoConsumo = lerTipoConsumo(ler(linha, 'Tipo de Consumo')) || (temBenef ? 'compartilhado' : 'integral');
+    if (tipoConsumo === 'compartilhado' && !temBenef) {
+      return erro('Tipo de consumo "beneficia outras" exige "Filiais Beneficiadas" preenchida.');
+    }
+    // A lista é congelada aqui: reimportar o arquivo depois de cadastrar uma
+    // filial nova não pode mudar quem consumia um mês já carregado.
+    const beneficiadas = tipoConsumo === 'integral'
+      ? []
+      : (beneficiaTodas ? filiaisDoEscopo().map((f) => f.nome) : nomesBenef).filter((n) => n !== filial);
+    if (tipoConsumo === 'compartilhado' && !beneficiadas.length) {
+      return erro('Nenhuma filial beneficiada além da que paga.');
+    }
+    const desconhecida = beneficiadas.find((n) => !filiaisDoEscopo().some((f) => f.nome === n));
+    if (desconhecida) return erro('Filial beneficiada "' + desconhecida + '" não encontrada neste cliente.');
+
     const registro = { filial, tipo, competencia, valor, natureza, classificacao,
-      parcela, qtdParcelas, cenario, origem,
+      parcela, qtdParcelas, cenario, origem, tipoConsumo, beneficiadas, beneficiaTodas,
       descricao: ler(linha, 'Descrição') || null, obs: ler(linha, 'Observações') || null,
       grupo: ler(linha, 'Grupo') || null };
 
@@ -560,7 +602,8 @@ async function importarFinanceiro(empresa, aba, opcoes, rel) {
       const id = novoId();
       itens.push({ id, grupo: r.grupo || 'g' + id, filial:r.filial, tipo:r.tipo, valor:r.valor,
         natureza:r.natureza, classificacao:r.classificacao, qtdParcelas:r.qtdParcelas, parcela:r.parcela,
-        cenario:r.cenario, origem:r.origem, descricao:r.descricao, obs:r.obs });
+        cenario:r.cenario, origem:r.origem, descricao:r.descricao, obs:r.obs,
+        tipoConsumo:r.tipoConsumo, beneficiadas:r.beneficiadas, beneficiaTodas:r.beneficiaTodas });
     }
     await Loja.gravarMes(empresa, comp, itens);
   }

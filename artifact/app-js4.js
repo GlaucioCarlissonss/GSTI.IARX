@@ -56,12 +56,15 @@ function viewLancamentos() {
         <span class="nota">${inteiro(lista.length)} registros · ${brl(total)}${lista.length>400?' · exibindo os 400 mais recentes':''}</span></header>
       ${mostrados.length === 0 ? '<p class="vazio">Nenhum lançamento com estes filtros.</p>' : `
       <div class="rol"><table>
-        <thead><tr><th>Competência</th>${variasUnidades ? '<th>Unidade</th>' : ''}<th>Filial</th><th>Tipo</th><th>Descrição</th>
+        <thead><tr><th>Competência</th>${variasUnidades ? '<th>Unidade</th>' : ''}<th>Filial</th><th>Consumo</th><th>Tipo</th><th>Descrição</th>
           <th>Origem</th><th>Natureza</th><th>Classificação</th><th class="n">Valor</th><th></th></tr></thead>
         <tbody>${mostrados.map((l) => `<tr data-id="${esc(l.id)}" data-comp="${l.competencia}" data-emp="${esc(l.empresa)}"${classeReconhecimento(l)}>
           <td>${mesExib(l.competencia)}</td>
           ${variasUnidades ? `<td>${esc(nomeEmpresa(l.empresa))}</td>` : ''}
           <td>${l.filial ? esc(l.filial) : '<em style="color:var(--tinta3)">matriz</em>'}</td>
+          <td title="${esc(detalheConsumo(l))}" style="white-space:nowrap">${consumoDe(l) === 'compartilhado'
+            ? `<span class="tag alerta">${esc(resumoConsumo(l))}</span>`
+            : '<span style="color:var(--tinta3)">—</span>'}</td>
           <td>${esc(l.tipo)}</td>
           <td style="max-width:280px">${esc(l.descricao||'')}
             ${l.obs?`<div style="color:var(--tinta3);font-size:12px">${esc(l.obs)}</div>`:''}
@@ -77,7 +80,7 @@ function viewLancamentos() {
             <button class="bt fant peq" data-rc>Reclassificar</button>
             <button class="bt fant peq" data-ex>Excluir</button></td>
         </tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="${variasUnidades ? 8 : 7}">Total exibido</td>
+        <tfoot><tr><td colspan="${variasUnidades ? 9 : 8}">Total exibido</td>
           <td class="n">${brl(reais(somaC(mostrados.map((l)=>l.valor))))}</td><td></td></tr></tfoot>
       </table></div>`}
     </section>`;
@@ -133,7 +136,8 @@ function formLancamento(existente) {
   if (!emp) throw new Error('Cadastre uma empresa antes de lançar.');
   const tipos = tiposDa(emp), fils = filiaisDa(emp), cens = cenariosDa(emp);
   const v = existente || { filial:null, tipo: tipos[0]?.nome || '', competencia: ordenado(E.competencias).pop() || mesHoje(),
-    valor:'', natureza:'pontual_unica', classificacao:'despesa', cenario:'oficial', descricao:'', obs:'' };
+    valor:'', natureza:'pontual_unica', classificacao:'despesa', cenario:'oficial', descricao:'', obs:'',
+    tipoConsumo:'integral', beneficiadas:[], beneficiaTodas:false };
 
   abrirModal({
     titulo: ed ? 'Editar lançamento' : 'Novo lançamento',
@@ -156,6 +160,20 @@ function formLancamento(existente) {
         <div class="campo"><label for="c-cls">Classificação</label><select id="c-cls" name="classificacao">
           <option value="despesa"${v.classificacao==='despesa'?' selected':''}>Despesa</option>
           <option value="investimento"${v.classificacao==='investimento'?' selected':''}>Investimento</option></select></div>
+      </div>
+      <div class="grade g2">
+        <div class="campo"><label for="c-consumo">Tipo de consumo</label>
+          <select id="c-consumo" name="tipoConsumo">
+            <option value="integral"${consumoDe(v)==='integral'?' selected':''}>100% da filial</option>
+            <option value="compartilhado"${consumoDe(v)==='compartilhado'?' selected':''}>Paga pela filial, beneficia outras</option>
+          </select></div>
+        <div class="campo" id="c-benef-campo"${consumoDe(v)==='compartilhado'?'':' hidden'}>
+          <label>Filiais beneficiadas</label>
+          <div id="c-benef"></div>
+          <input type="hidden" id="c-benef-val" name="beneficiadas" value="">
+          <p class="nota" style="margin:4px 0 0">Quem consome esta despesa. A lista é gravada como está hoje:
+            uma filial cadastrada depois não entra neste lançamento.</p>
+        </div>
       </div>
       <div id="c-extra"></div>
       <div class="campo"><label for="c-cen">Cenário</label><select id="c-cen" name="cenario"${ed?' disabled':''}></select></div>
@@ -216,7 +234,43 @@ function formLancamento(existente) {
         atualizar();
       };
 
+      /**
+       * As beneficiadas atravessam as matrizes de propósito: quem consome uma
+       * licença centralizada pode estar em outra matriz do mesmo cliente. A
+       * pagadora fica fora — ela não se beneficia de si mesma.
+       *
+       * O valor viaja num campo oculto porque `campo(nome)` é a única ponte
+       * entre o formulário e quem grava, e uma lista de caixas não tem valor.
+       */
+      const oculto = raiz.querySelector('#c-benef-val');
+      const pintarBeneficiadas = () => {
+        const pagadora = ed ? (raiz.querySelector('#c-filial')?.value || '') : '';
+        const marcadas = new Set(Array.isArray(v.beneficiadas) ? v.beneficiadas : []);
+        raiz.querySelector('#c-benef').innerHTML = `
+          <div class="multi-caixas" role="group" aria-label="Filiais beneficiadas">
+            <label><input type="checkbox" data-todas${v.beneficiaTodas ? ' checked' : ''}> todas as filiais do grupo</label>
+            ${filiaisDoEscopo().filter((f) => f.nome !== pagadora).map((f) =>
+              `<label><input type="checkbox" value="${esc(f.nome)}"${marcadas.has(f.nome) ? ' checked' : ''}> ${esc(f.nome)}</label>`).join('')}
+          </div>`;
+        const recolher = () => {
+          const todas = raiz.querySelector('#c-benef [data-todas]')?.checked || false;
+          const nomes = [...raiz.querySelectorAll('#c-benef input[value]:checked')].map((c) => c.value);
+          oculto.value = JSON.stringify({ todas, nomes });
+        };
+        raiz.querySelectorAll('#c-benef input').forEach((c) => c.addEventListener('change', recolher));
+        recolher();
+      };
+
+      const consumo = raiz.querySelector('#c-consumo');
+      const alternarConsumo = () => {
+        const compartilha = consumo.value === 'compartilhado';
+        raiz.querySelector('#c-benef-campo').hidden = !compartilha;
+        if (compartilha) pintarBeneficiadas();
+      };
+      consumo.addEventListener('change', alternarConsumo);
+
       pintarDaEmpresa();
+      alternarConsumo();
       raiz.querySelector('#c-empresa')?.addEventListener('change', (ev) => {
         emp = ev.target.value;
         pintarDaEmpresa();
@@ -276,12 +330,29 @@ async function salvarLancamento(existente, campo, empresa, filial) {
   if (!comp) throw new Error('Competência inválida: use MM/AAAA.');
   const valor = lerValor(campo('valor').value);
   const just = campo('just').value.trim();
+  const escolhaConsumo = campo('tipoConsumo')?.value === 'compartilhado' ? 'compartilhado' : 'integral';
+  let marcadas = { todas:false, nomes:[] };
+  try { marcadas = JSON.parse(campo('beneficiadas')?.value || '{}'); } catch { /* campo vazio */ }
+  const pagadora = filial !== undefined ? filial : (campo('filial')?.value || null);
+  // "Todas as filiais do grupo" é congelada AQUI, na gravação: uma filial
+  // cadastrada depois não pode passar a consumir um lançamento de antes.
+  const beneficiadas = escolhaConsumo === 'integral'
+    ? []
+    : (marcadas.todas ? filiaisDoEscopo().map((f) => f.nome) : (marcadas.nomes || []))
+        .filter((n) => n && n !== pagadora);
+  if (escolhaConsumo === 'compartilhado' && !beneficiadas.length) {
+    throw new Error('Marque ao menos uma filial beneficiada além da que paga, ou volte para 100% da filial.');
+  }
+
   const base = {
-    filial: filial !== undefined ? filial : (campo('filial')?.value || null),
+    filial: pagadora,
     tipo: campo('tipo').value,
     classificacao: campo('classificacao').value,
     descricao: campo('descricao').value.trim() || null,
     obs: campo('obs').value.trim() || null,
+    tipoConsumo: escolhaConsumo,
+    beneficiadas,
+    beneficiaTodas: escolhaConsumo === 'compartilhado' && !!marcadas.todas,
   };
 
   if (existente) {
