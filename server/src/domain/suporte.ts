@@ -11,6 +11,7 @@ import { db } from '../db/index.js';
 import { erroValidacao } from '../lib/erros.js';
 import { resolverFila, resolverSetor, resolverTopicoAjuda, SETOR_NAO_CLASSIFICADO } from './cadastros.js';
 import { urlDoChamado } from './sla.js';
+import { prazoDoAcordo } from './slas.js';
 import type { Contexto } from './contexto.js';
 import { escopoSql } from './escopo.js';
 
@@ -222,8 +223,14 @@ export function gravarChamado(
   // O chamado é um registro de SLA de uma unidade. "Dentro do SLA" é derivado
   // do prazo quando ele existe; sem prazo informado, o chamado fechado conta
   // como dentro e o ainda aberto fica de fora — que é o que a operação sente.
+  //
+  // O prazo da ORIGEM continua tendo a palavra final: ele é o que o helpdesk
+  // prometeu ao solicitante, e sobrescrevê-lo com a regra interna faria o
+  // sistema discordar da tela que a pessoa viu ao abrir o chamado. O cadastro
+  // entra onde não havia nada — e onde não há cadastro, nada muda.
+  const prazo = c.due_at ?? prazoDoAcordo(empresaId, c.opened_at, c.priority, topicoId);
   const referencia = c.closed_at ?? new Date().toISOString().slice(0, 16) + 'Z';
-  const dentro = c.due_at ? (referencia <= c.due_at ? 1 : 0) : c.closed_at ? 1 : 0;
+  const dentro = prazo ? (referencia <= prazo ? 1 : 0) : c.closed_at ? 1 : 0;
   const competencia = (c.opened_at ?? new Date().toISOString()).slice(0, 7);
 
   const anterior = db()
@@ -253,7 +260,7 @@ export function gravarChamado(
     atendente_externo_id: c.attendant_id,
     aberto_em: c.opened_at,
     fechado_em: c.closed_at,
-    prazo_em: c.due_at,
+    prazo_em: prazo,
     horas: c.hours,
     numero: c.external_id,
     origem_chamado: c.source_system,

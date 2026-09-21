@@ -56,6 +56,7 @@ const E = {
   mapeamentos: [],          // apelidos de cabeçalho, por cliente
   empresas: [], filiais: [], tipos: [], filas: [], cenarios: [],
   metas: [],                // alvos dos indicadores, por cliente
+  slasCad: [],              // acordos de SLA (horas por tópico e prioridade), por unidade
   aba: 'painel',
   lanc: new Map(),          // 'empresa__comp' -> {itens:[...]}
   mesesCarregados: new Set(),
@@ -307,9 +308,9 @@ Object.defineProperty(E, 'filiaisSel', {
 const Loja = {
   async catalogos() {
     const ler = async (p) => { const s = await E.db.doc('catalogo/' + p).get(); return s.exists ? (s.data().itens || []) : []; };
-    const [empresas, filiais, tipos, filas, cenarios, metas] = await Promise.all(
-      ['empresas','filiais','tipos','filas','cenarios','metas'].map(ler));
-    Object.assign(E, { empresas, filiais, tipos, filas, cenarios, metas });
+    const [empresas, filiais, tipos, filas, cenarios, metas, slasCad] = await Promise.all(
+      ['empresas','filiais','tipos','filas','cenarios','metas','slasCad'].map(ler));
+    Object.assign(E, { empresas, filiais, tipos, filas, cenarios, metas, slasCad });
   },
   async lancDaEmpresa(empresa) {
     const snap = await E.db.collection('lanc').where('empresa','==',empresa).get();

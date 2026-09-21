@@ -17,7 +17,7 @@ import { PaginaAcessos } from './pages/Acessos';
 import { PaginaRelatorio } from './pages/Relatorio';
 import { PaginaPlanilhas } from './pages/Planilhas';
 import { PaginaConferencia } from './pages/Conferencia';
-import { PaginaAuditoria, PaginaCadastros, PaginaFechamentos, PaginaMetas } from './pages/Administracao';
+import { PaginaAuditoria, PaginaCadastros, PaginaFechamentos, PaginaMetas, PaginaSlas } from './pages/Administracao';
 import { Carregando } from './components/base';
 
 function Rotas() {
@@ -55,6 +55,7 @@ function Rotas() {
         <Route path="planilhas" element={<PaginaPlanilhas />} />
         <Route path="cadastros" element={<PaginaCadastros />} />
         <Route path="metas" element={<PaginaMetas />} />
+        <Route path="slas" element={<PaginaSlas />} />
         <Route path="clientes" element={<PaginaClientes />} />
         <Route path="acessos" element={<PaginaAcessos />} />
         <Route path="auditoria" element={<PaginaAuditoria />} />

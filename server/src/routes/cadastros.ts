@@ -13,6 +13,7 @@ import {
   listarTopicosAjuda,
 } from '../domain/cadastros.js';
 import { atualizarMeta, criarMeta, listarMetas } from '../domain/metas.js';
+import { atualizarSla, criarSla, listarSlas } from '../domain/slas.js';
 import { atualizarEmpresa } from '../domain/empresas.js';
 import { listarAuditoria } from '../domain/auditoria.js';
 import { fecharCompetencia, listarFechamentos, reabrirCompetencia } from '../domain/fechamento.js';
@@ -109,6 +110,21 @@ rotasCadastros.post('/metas', exigir('configuracoes', 'create'), (req, res) => {
 
 rotasCadastros.patch('/metas/:id', exigir('configuracoes', 'edit'), (req, res) => {
   res.json(atualizarMeta(ctx(req), Number(req.params.id), req.body ?? {}));
+});
+
+// ----------------------------------------------------------- Acordos de SLA
+// Ao contrário das metas, o acordo é da UNIDADE: a hora de atendimento de um
+// hospital não é a do outro. Daí `unidade(req)`, como nos demais cadastros.
+rotasCadastros.get('/slas', (req, res) => {
+  res.json(listarSlas(unidade(req), req.query.incluir_inativos === 'true'));
+});
+
+rotasCadastros.post('/slas', exigir('configuracoes', 'create'), (req, res) => {
+  res.status(201).json(criarSla(unidade(req), req.body ?? {}));
+});
+
+rotasCadastros.patch('/slas/:id', exigir('configuracoes', 'edit'), (req, res) => {
+  res.json(atualizarSla(unidade(req), Number(req.params.id), req.body ?? {}));
 });
 
 // -------------------------------------------------------------- Auditoria

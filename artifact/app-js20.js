@@ -126,3 +126,120 @@ function formMeta() {
     },
   });
 }
+
+// ---------------------------------------------------------- Acordos de SLA
+
+const PRIORIDADES_SLA = ['low', 'medium', 'high', 'urgent'];
+const ROTULO_PRIORIDADE_SLA = { low:'Baixa', medium:'Média', high:'Alta', urgent:'Urgente' };
+
+/** Os acordos da unidade em foco. `topico` nulo é a regra geral da prioridade. */
+function slasDa(empresa) {
+  return (E.slasCad || []).filter((s) => s.empresa === empresa);
+}
+
+/**
+ * As horas que valem para um chamado — ou `null` se não há acordo.
+ *
+ * O acordo do tópico ganha do geral: "Rede: 4h para alta" junto de "geral: 24h
+ * para alta" quer dizer que rede é mais exigente, e não que as duas competem.
+ */
+function horasDoAcordo(empresa, prioridade, topico) {
+  const ativos = slasDa(empresa).filter((s) => s.ativo !== false && s.prioridade === prioridade);
+  const doTopico = ativos.find((s) => s.topico && s.topico === topico);
+  const geral = ativos.find((s) => !s.topico);
+  return (doTopico || geral || {}).horas ?? null;
+}
+
+function viewSlas() {
+  const emp = empresaAtiva();
+  if (!emp) {
+    el('#pagina').innerHTML = `<div class="msg alerta"><strong>Este cliente ainda não tem unidade cadastrada.</strong>
+      Os acordos pertencem a uma unidade. Cadastre a matriz em <strong>Clientes e unidades</strong>.</div>`;
+    return;
+  }
+  const acordos = slasDa(emp);
+  el('#pagina').innerHTML = `
+    <div class="msg"><strong>Os acordos são da unidade ${esc(nomeEmpresa(emp))}.</strong>
+      Definem quantas horas um chamado tem, por tópico de ajuda e prioridade.</div>
+
+    <section class="bloco">
+      <header><h2>Acordos de SLA</h2><span class="nota">${inteiro(acordos.length)}</span></header>
+      ${acordos.length === 0 ? `<p class="vazio">Nenhum acordo cadastrado. O prazo continua vindo do helpdesk
+        de origem; onde ele não informa prazo, o chamado fechado conta como dentro e o aberto, como fora.</p>` : `
+      <div class="rol"><table>
+        <thead><tr><th>Tópico de ajuda</th><th>Prioridade</th><th class="n">Horas</th><th>Situação</th><th></th></tr></thead>
+        <tbody>${acordos.map((a, i) => `<tr>
+          <td>${a.topico ? esc(a.topico) : '<em style="color:var(--tinta3)">regra geral desta prioridade</em>'}</td>
+          <td>${esc(ROTULO_PRIORIDADE_SLA[a.prioridade] || a.prioridade)}</td>
+          <td class="n">${Number(a.horas).toLocaleString('pt-BR')} h</td>
+          <td><span class="tag ${a.ativo === false ? '' : 'bom'}">${a.ativo === false ? 'Inativo' : 'Ativo'}</span></td>
+          <td><button class="bt fant peq" data-alternar-sla="${i}">${a.ativo === false ? 'Reativar' : 'Desativar'}</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`}
+      <div style="margin-top:12px"><button class="bt" data-novo-sla>Cadastrar acordo</button></div>
+      <p class="nota" style="margin-top:10px">O acordo do tópico ganha do geral. O prazo que o helpdesk de
+        origem informa continua tendo a palavra final — o cadastro entra onde não havia prazo nenhum. São
+        horas corridas: o sistema não tem calendário de expediente, e inventar um criaria um prazo que
+        nenhum contrato assinou. Chamados já gravados mantêm o prazo que tinham.</p>
+    </section>`;
+
+  el('#pagina').querySelector('[data-novo-sla]')?.addEventListener('click', () => formAcordoSla(emp));
+  for (const bt of el('#pagina').querySelectorAll('[data-alternar-sla]')) {
+    bt.addEventListener('click', async () => {
+      const alvo = acordos[Number(bt.dataset.alternarSla)];
+      const todos = (E.slasCad || []).map((s) => (s === alvo ? { ...s, ativo: s.ativo === false } : s));
+      await Loja.gravarCatalogo('slasCad', todos);
+      await Loja.auditar({ acao:'atualizar', entidade:'sla', depois:{ prioridade: alvo.prioridade, ativo: alvo.ativo === false } }, emp);
+      render();
+    });
+  }
+}
+
+function formAcordoSla(emp) {
+  // Os tópicos que os chamados desta unidade já usaram. A integração os cria
+  // sozinha, e é aqui que eles aparecem para poder virar acordo — não há
+  // cadastro de tópico para consultar.
+  const topicos = [...new Set(
+    [...E.sla.entries()]
+      .filter(([chave]) => chave.startsWith(emp + '__'))
+      .flatMap(([, doc]) => (doc.itens || []).map((t) => t.topico))
+      .filter(Boolean),
+  )].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+  abrirModal({
+    titulo: 'Novo acordo de SLA',
+    corpo: `
+      <div class="grade g3">
+        <div class="campo"><label for="s-top">Tópico de ajuda</label>
+          <input id="s-top" name="topico" list="s-topicos" placeholder="em branco: regra geral">
+          <datalist id="s-topicos">${topicos.map((t) => `<option value="${esc(t)}"></option>`).join('')}</datalist></div>
+        <div class="campo"><label for="s-pri">Prioridade</label><select id="s-pri" name="prioridade">
+          ${PRIORIDADES_SLA.map((p) => `<option value="${esc(p)}">${esc(ROTULO_PRIORIDADE_SLA[p])}</option>`).join('')}
+        </select></div>
+        <div class="campo"><label for="s-horas">Horas</label>
+          <input id="s-horas" name="horas" type="number" min="0" step="0.5"></div>
+      </div>`,
+    acoes: `<button type="button" class="bt" data-c>Cancelar</button>
+            <button type="button" class="bt pri" data-s>Cadastrar</button>`,
+    aoMontar({ raiz, fechar, erro, campo }) {
+      raiz.querySelector('[data-c]').onclick = fechar;
+      raiz.querySelector('[data-s]').onclick = async (ev) => {
+        ev.target.disabled = true; erro('');
+        try {
+          const topico = campo('topico').value.trim() || null;
+          const prioridade = campo('prioridade').value;
+          const horas = Number(String(campo('horas').value).replace(',', '.'));
+          if (!Number.isFinite(horas) || horas <= 0) throw new Error('As horas precisam ser um número maior que zero.');
+          if (slasDa(emp).some((s) => s.prioridade === prioridade && (s.topico || null) === topico)) {
+            throw new Error(topico
+              ? 'Já existe um acordo para este tópico nesta prioridade.'
+              : 'Já existe uma regra geral para esta prioridade.');
+          }
+          const novo = { empresa: emp, topico, prioridade, horas: Math.round(horas * 100) / 100, ativo: true };
+          await Loja.gravarCatalogo('slasCad', [...(E.slasCad || []), novo]);
+          await Loja.auditar({ acao:'criar', entidade:'sla', depois:{ topico, prioridade, horas: novo.horas } }, emp);
+          fechar(); render();
+        } catch (e) { erro(e.message); ev.target.disabled = false; }
+      };
+    },
+  });
+}

@@ -426,6 +426,168 @@ export function PaginaMetas() {
   );
 }
 
+// ==========================================================================
+// Acordos de SLA
+// ==========================================================================
+
+interface AcordoSla {
+  id: number;
+  topico_ajuda_id: number | null;
+  topico: string | null;
+  prioridade: 'low' | 'medium' | 'high' | 'urgent';
+  horas: number;
+  ativo: number;
+}
+
+const ROTULO_PRIORIDADE_SLA: Record<AcordoSla['prioridade'], string> = {
+  low: 'Baixa',
+  medium: 'Média',
+  high: 'Alta',
+  urgent: 'Urgente',
+};
+
+/**
+ * Cadastro de acordos de SLA — quantas horas um chamado tem para ser atendido.
+ *
+ * É de UNIDADE, e por isso traz o seletor de unidade em foco: a hora de
+ * atendimento de um hospital não é a do outro.
+ */
+export function PaginaSlas() {
+  const { empresa, empresas, trocarEmpresa, pode } = useSessao();
+  const podeEditar = pode('configuracoes', 'edit');
+  const [erro, setErro] = useState<string | null>(null);
+  const acordos = useDados<AcordoSla[]>(
+    () => api.get('/api/slas', { empresas: empresa?.id, incluir_inativos: true }),
+    [empresa?.id],
+  );
+  const topicos = useDados<ItemCadastro[]>(
+    () => api.get('/api/topicos-ajuda', { empresas: empresa?.id }),
+    [empresa?.id],
+  );
+
+  const criar = async (dados: Record<string, string>) => {
+    setErro(null);
+    try {
+      await api.post('/api/slas', { ...dados, empresas: empresa?.id });
+      acordos.recarregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao cadastrar o acordo.');
+    }
+  };
+
+  const alternar = async (a: AcordoSla) => {
+    setErro(null);
+    try {
+      await api.patch(`/api/slas/${a.id}`, { ativo: a.ativo !== 1 });
+      acordos.recarregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao atualizar o acordo.');
+    }
+  };
+
+  return (
+    <>
+      <div className="barra-filtros">
+        <SeletorUnidadeFoco
+          empresas={empresas}
+          empresaId={empresa?.id ?? null}
+          aoTrocar={trocarEmpresa}
+          explicacao="Os acordos abaixo valem para os chamados desta unidade."
+        />
+      </div>
+
+      {erro && <Aviso tipo="erro">{erro}</Aviso>}
+
+      <Cartao
+        titulo="Acordos de SLA"
+        descricao="Quantas horas um chamado tem, por tópico de ajuda e prioridade"
+      >
+        {acordos.carregando ? (
+          <Carregando />
+        ) : (acordos.dados ?? []).length === 0 ? (
+          <p className="vazio">
+            Nenhum acordo cadastrado. O prazo continua vindo do helpdesk de origem; onde ele não
+            informa prazo, o chamado fechado conta como dentro e o aberto, como fora.
+          </p>
+        ) : (
+          <div className="tabela-envolucro">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tópico de ajuda</th>
+                  <th>Prioridade</th>
+                  <th className="num">Horas</th>
+                  <th>Situação</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {(acordos.dados ?? []).map((a) => (
+                  <tr key={a.id}>
+                    <td>
+                      {a.topico ?? (
+                        <em style={{ color: 'var(--tinta-fraca)' }}>regra geral desta prioridade</em>
+                      )}
+                    </td>
+                    <td>{ROTULO_PRIORIDADE_SLA[a.prioridade]}</td>
+                    <td className="num">{a.horas.toLocaleString('pt-BR')} h</td>
+                    <td>
+                      <Etiqueta texto={a.ativo === 1 ? 'Ativo' : 'Inativo'} tom={a.ativo === 1 ? 'bom' : 'neutro'} />
+                    </td>
+                    <td>
+                      {podeEditar && (
+                        <button type="button" className="botao discreto pequeno" onClick={() => alternar(a)}>
+                          {a.ativo === 1 ? 'Desativar' : 'Reativar'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {podeEditar && (
+          <FormularioNovo
+            rotulo="Cadastrar acordo"
+            campos={[
+              {
+                chave: 'topico_ajuda_id',
+                rotulo: 'Tópico de ajuda',
+                tipo: 'select',
+                largura: 200,
+                dica: 'em branco: regra geral',
+                opcoes: (topicos.dados ?? []).map((t) => ({ valor: String(t.id), rotulo: t.nome })),
+              },
+              {
+                chave: 'prioridade',
+                rotulo: 'Prioridade',
+                obrigatorio: true,
+                tipo: 'select',
+                largura: 130,
+                opcoes: (Object.keys(ROTULO_PRIORIDADE_SLA) as AcordoSla['prioridade'][]).map((k) => ({
+                  valor: k,
+                  rotulo: ROTULO_PRIORIDADE_SLA[k],
+                })),
+              },
+              { chave: 'horas', rotulo: 'Horas', obrigatorio: true, tipo: 'numero', minimo: 0, largura: 100 },
+            ]}
+            aoEnviar={criar}
+          />
+        )}
+
+        <p className="dica-filtro" style={{ marginTop: 10 }}>
+          O acordo do tópico ganha do geral. O prazo que o helpdesk de origem informa continua
+          tendo a palavra final — o cadastro entra onde não havia prazo nenhum. São horas corridas:
+          o sistema não tem calendário de expediente, e inventar um criaria um prazo que nenhum
+          contrato assinou. Chamados já gravados mantêm o prazo que tinham.
+        </p>
+      </Cartao>
+    </>
+  );
+}
+
 /**
  * Endereço base do helpdesk. O id do chamado completa a URL, e é isso que faz o
  * número na tela de SLA virar link de volta para o sistema de origem.
@@ -622,7 +784,7 @@ interface RegistroAuditoria {
   criado_em: string;
 }
 
-const ENTIDADES = ['lancamento', 'projeto', 'tarefa', 'ticket_sla', 'fechamento', 'importacao', 'filial', 'tipo_despesa', 'meta'];
+const ENTIDADES = ['lancamento', 'projeto', 'tarefa', 'ticket_sla', 'fechamento', 'importacao', 'filial', 'tipo_despesa', 'meta', 'sla'];
 
 export function PaginaAuditoria() {
   const { empresas } = useSessao();

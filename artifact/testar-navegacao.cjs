@@ -41,17 +41,26 @@ const MODULOS_ESPERADOS = ['Indicadores Gerais', 'Controle Financeiro', 'Gestão
   conferir('indicadores gerais é módulo de tela única, fora dos operacionais',
     JSON.stringify(por('Indicadores Gerais')) === JSON.stringify(['Indicadores Gerais']),
     por('Indicadores Gerais').join(', '));
-  conferir('sistema reúne dados, clientes, cadastros, metas, acessos e auditoria',
+  conferir('sistema reúne dados, clientes, cadastros, metas, SLAs, acessos e auditoria',
     JSON.stringify(por('Sistema'))
-      === JSON.stringify(['Dados', 'Clientes e unidades', 'Cadastros', 'Metas', 'Usuários e acessos', 'Auditoria']),
+      === JSON.stringify(['Dados', 'Clientes e unidades', 'Cadastros', 'Metas', 'SLAs', 'Usuários e acessos', 'Auditoria']),
     por('Sistema').join(', '));
   // "Indicadores Gerais" é a leitura estratégica dos três módulos, e mora fora
   // deles de propósito — a regra aqui é sobre a OPERAÇÃO de suporte não vazar.
+  //
+  // "SLAs" em Sistema é o CADASTRO dos acordos (horas por tópico e prioridade),
+  // e não a operação: fica com os outros cadastros porque é configuração, do
+  // mesmo tipo de "Cadastros" ao lado. A exceção é nominal de propósito — abrir
+  // a regra para qualquer aba do módulo Sistema deixaria uma tela de chamados
+  // entrar ali sem ninguém notar.
+  const FORA_DA_REGRA = new Set(['Indicadores Gerais']);
+  const operacionais = telas.filter(
+    (t) => t.modulo !== 'Gestão de Suporte TI' && !FORA_DA_REGRA.has(t.modulo)
+      && !(t.modulo === 'Sistema' && t.aba === 'SLAs'),
+  );
   conferir('nada de SLA ou chamado operacional fora do módulo de suporte',
-    !telas.some((t) => t.modulo !== 'Gestão de Suporte TI' && t.modulo !== 'Indicadores Gerais'
-      && /chamad|sla|indicad|ostick|bitrix/i.test(t.aba)),
-    telas.filter((t) => t.modulo !== 'Gestão de Suporte TI' && t.modulo !== 'Indicadores Gerais')
-      .map((t) => t.aba).join(', '));
+    !operacionais.some((t) => /chamad|sla|indicad|ostick|bitrix/i.test(t.aba)),
+    operacionais.map((t) => t.aba).join(', '));
 
   // Entrar num módulo abre a primeira tela dele.
   for (const m of MODULOS_ESPERADOS) {

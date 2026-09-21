@@ -15,7 +15,7 @@ const MODULOS_NAV = [
   { id:'financeiro', rotulo:'Controle Financeiro',  abas:['painel', 'lancamentos', 'relatorio', 'conferencia'] },
   { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos'] },
   { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados', 'OSTICK', 'BITRIX24', 'integracoes'] },
-  { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'clientes', 'cadastros', 'metas', 'acessos', 'auditoria'] },
+  { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'clientes', 'cadastros', 'metas', 'slas', 'acessos', 'auditoria'] },
 ];
 
 const ABAS = [
@@ -37,6 +37,7 @@ const ABAS = [
   { id:'clientes',    rotulo:'Clientes e unidades', view: viewClientes },
   { id:'cadastros',   rotulo:'Cadastros',    view: viewCadastros },
   { id:'metas',       rotulo:'Metas',        view: viewMetas },
+  { id:'slas',        rotulo:'SLAs',         view: viewSlas },
   { id:'acessos',     rotulo:'Usuários e acessos', view: viewAcessos },
   { id:'auditoria',   rotulo:'Auditoria',    view: viewAuditoria },
 ];
@@ -169,6 +170,9 @@ const FILTROS_DA_TELA = {
   // Metas são do CLIENTE: não há unidade em foco a escolher, e oferecer o
   // seletor sugeriria um recorte que a tela não tem.
   metas:       {},
+  // O acordo é da UNIDADE, ao contrário da meta: aqui o seletor de foco faz
+  // sentido e é obrigatório para saber onde gravar.
+  slas:        { foco: 'Os acordos de SLA valem para os chamados desta unidade.' },
   dados:       { foco: 'A carga e a exportação são desta unidade: o arquivo traz os cadastros dela, e reimportá-lo volta para a mesma.' },
 };
 

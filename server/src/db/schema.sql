@@ -641,3 +641,26 @@ CREATE TABLE IF NOT EXISTS metas (
   UNIQUE (cliente_id, nome)
 );
 CREATE INDEX IF NOT EXISTS ix_meta_cliente ON metas(cliente_id, modulo, ativo);
+
+-- Acordo de nível de serviço: quantas horas um chamado tem para ser atendido.
+--
+-- Antes desta tabela o prazo vinha pronto da origem (`due_at` do helpdesk) e,
+-- quando a origem não mandava, o sistema contava o chamado fechado como dentro
+-- e o aberto como fora. Era a única leitura possível — e não é um acordo, é a
+-- ausência de um.
+--
+-- A regra é da UNIDADE, como todo cadastro de operação: a hora de atendimento
+-- de um hospital não é a do outro. `topico_ajuda_id` NULO é a regra geral
+-- daquela prioridade, e vale para o chamado cujo tópico não tem regra própria
+-- — a integração cria tópico sozinha, e exigir uma linha por tópico deixaria
+-- chamados sem acordo sem ninguém perceber.
+CREATE TABLE IF NOT EXISTS slas (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  empresa_id      INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  topico_ajuda_id INTEGER REFERENCES topicos_ajuda(id) ON DELETE CASCADE,
+  prioridade      TEXT NOT NULL CHECK (prioridade IN ('low','medium','high','urgent')),
+  horas           REAL NOT NULL CHECK (horas > 0),
+  ativo           INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0,1)),
+  criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_sla_empresa ON slas(empresa_id, prioridade, ativo);
