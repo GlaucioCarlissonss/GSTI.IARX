@@ -137,6 +137,11 @@ export function migrar(db: Conexao): void {
     // aceita restrição em ADD COLUMN. O chamado que já existia nasce 0, que é
     // a verdade — o prazo dele veio da origem ou não existe.
     ['prazo_do_acordo', 'INTEGER NOT NULL DEFAULT 0'],
+    // O prazo informado pela origem, guardado à parte desde que o acordo
+    // cadastrado passou a ter precedência. Nasce nulo no chamado antigo, e é
+    // preenchido na próxima sincronização dele — não dá para adivinhar depois
+    // o que o helpdesk mandou antes.
+    ['prazo_origem', 'TEXT'],
   ];
   for (const [nome, tipo] of integracao) {
     if (!sla.has(nome)) db.exec(`ALTER TABLE tickets_sla ADD COLUMN ${nome} ${tipo}`);
@@ -471,6 +476,24 @@ CREATE INDEX IF NOT EXISTS ix_perfis_cliente ON perfis(cliente_id, padrao, nome)
 CREATE INDEX IF NOT EXISTS ix_auditoria_cliente ON auditoria(cliente_id, criado_em DESC);
 CREATE INDEX IF NOT EXISTS ix_auditoria_empresa ON auditoria(empresa_id, criado_em DESC);
 `);
+
+  // -------------------------------------------------- vigência dos acordos
+  //
+  // O acordo de SLA nasceu sem vigência: alterar as horas reescrevia a regra
+  // para trás, e o chamado do mês passado passava a ser julgado por um
+  // compromisso que não existia quando ele foi aberto. As duas colunas são
+  // datas, porque quem decide é a ABERTURA do chamado, não a competência.
+  //
+  // O acordo que já estava cadastrado fica com as duas nulas — "desde sempre,
+  // sem fim" —, que é exatamente como ele se comportava até aqui.
+  const colunasSla = new Set(
+    (db.prepare('PRAGMA table_info(slas)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  for (const coluna of ['vigencia_inicio', 'vigencia_fim']) {
+    if (colunasSla.size > 0 && !colunasSla.has(coluna)) {
+      db.exec(`ALTER TABLE slas ADD COLUMN ${coluna} TEXT`);
+    }
+  }
 }
 
 /**

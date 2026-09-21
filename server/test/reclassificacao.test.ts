@@ -114,14 +114,30 @@ test('a prioridade vigente passa a valer para o cálculo do SLA', () => {
   assert.equal(depois.prioridade, 'high');
 });
 
-test('o prazo que o helpdesk prometeu não é reescrito por decisão interna', () => {
+test('a reclassificação refaz o prazo pelo acordo, mesmo tendo vindo da origem', () => {
+  const { ctx, empresaId } = ambienteLimpo();
+  const { ticket_id } = gravarChamado(empresaId, chamado({ due_at: '2026-03-20T09:00:00Z' }), {});
+  // O acordo nasce DEPOIS do chamado: na entrada, o prazo veio da origem.
+  criarSla(ctx, { prioridade: 'urgent', horas: 1 });
+
+  reclassificarChamado(ctx, ticket_id, { prioridade: 'urgent', solicitante: QUEM });
+  const depois = listarChamados(ctx, {}).itens[0]!;
+  // Elevar para Urgente sem encurtar o prazo seria elevação só no rótulo.
+  assert.equal(depois.prazo_em, '2026-03-10T10:00:00.000Z', '09:00 + 1h de Urgente');
+  assert.equal(depois.prazo_origem, '2026-03-20T09:00:00Z', 'a promessa da origem continua guardada');
+});
+
+test('sem acordo para a prioridade nova, o chamado volta ao prazo da origem', () => {
   const { ctx, empresaId } = ambienteLimpo();
   criarSla(ctx, { prioridade: 'high', horas: 1 });
   const { ticket_id } = gravarChamado(empresaId, chamado({ due_at: '2026-03-20T09:00:00Z' }), {});
-
-  reclassificarChamado(ctx, ticket_id, { prioridade: 'high', solicitante: QUEM });
+  // Entrou como Alta e correu contra o acordo de 1h; passa a Urgente, que não
+  // tem acordo. Manter o prazo do acordo ANTERIOR mediria a prioridade nova
+  // pela regra da antiga.
+  reclassificarChamado(ctx, ticket_id, { prioridade: 'urgent', solicitante: QUEM });
   const depois = listarChamados(ctx, {}).itens[0]!;
-  assert.equal(depois.prazo_em, '2026-03-20T09:00:00Z', 'o prazo da origem sobrevive à reclassificação');
+  assert.equal(depois.prazo_em, '2026-03-20T09:00:00Z');
+  assert.equal(depois.prazo_do_acordo, 0);
 });
 
 test('sem acordo cadastrado, reclassificar muda a prioridade e não inventa prazo', () => {

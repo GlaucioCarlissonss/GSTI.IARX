@@ -14,7 +14,13 @@ import {
   listarTopicosAjuda,
 } from '../domain/cadastros.js';
 import { atualizarMeta, criarMeta, listarMetas } from '../domain/metas.js';
-import { atualizarSla, criarSla, listarSlas } from '../domain/slas.js';
+import {
+  atualizarSla,
+  criarSla,
+  listarSlas,
+  previaReaplicacao,
+  reaplicarAcordos,
+} from '../domain/slas.js';
 import { atualizarPlano, criarPlano, listarPlanos } from '../domain/reducao.js';
 import { atualizarEmpresa } from '../domain/empresas.js';
 import { listarAuditoria } from '../domain/auditoria.js';
@@ -135,6 +141,19 @@ rotasCadastros.post('/slas', exigir('configuracoes', 'create'), (req, res) => {
 
 rotasCadastros.patch('/slas/:id', exigir('configuracoes', 'edit'), (req, res) => {
   res.json(atualizarSla(unidade(req), Number(req.params.id), req.body ?? {}));
+});
+
+// Aplicar o acordo ao que JÁ está gravado. A prévia vem antes por desenho:
+// "recalcular 412 chamados, 37 saem de dentro para fora" é uma decisão;
+// "recalcular" sozinho é um susto — o mesmo motivo que fez a limpeza de base
+// ter prévia própria.
+rotasCadastros.get('/slas/reaplicacao', exigir('configuracoes', 'edit'), (req, res) => {
+  res.json(previaReaplicacao(unidade(req), req.query.competencia));
+});
+
+rotasCadastros.post('/slas/reaplicacao', exigir('configuracoes', 'edit'), (req, res) => {
+  const corpo = req.body ?? {};
+  res.json(reaplicarAcordos(unidade(req), corpo.competencia, corpo.justificativa));
 });
 
 // -------------------------------------------- Plano de redução de despesas

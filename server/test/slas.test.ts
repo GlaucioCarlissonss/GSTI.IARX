@@ -3,8 +3,9 @@
  *
  * O que se prova aqui: sem cadastro, o cálculo é exatamente o de antes (é o
  * estado de toda instalação existente); com cadastro, o prazo do chamado
- * passa a sair de abertura + horas; o prazo que a ORIGEM manda continua tendo
- * a palavra final; e o acordo de uma unidade não atravessa para outra.
+ * passa a sair de abertura + horas; o acordo cadastrado GANHA do prazo que a
+ * origem manda, sem apagá-lo; a vigência é escolhida pela abertura do
+ * chamado; e o acordo de uma unidade não atravessa para outra.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -74,16 +75,98 @@ test('fechar depois do prazo do acordo cai para fora do SLA', () => {
   assert.equal(t!.fora_sla, 1);
 });
 
-test('o prazo que a origem manda continua tendo a palavra final', () => {
+test('o acordo cadastrado ganha do prazo que a origem manda', () => {
   const { ctx, empresaId } = ambienteLimpo();
   criarSla(ctx, { prioridade: 'high', horas: 1 });
 
-  // O helpdesk prometeu 23:00 ao solicitante; a regra interna diria 10:00.
-  // Sobrescrever faria o sistema discordar da tela que a pessoa viu.
+  // O helpdesk prometeu 23:00; o acordo negociado diz 10:00. O chamado fechou
+  // às 12:00 — dentro pela conta do helpdesk, fora pelo acordo. Quem manda é
+  // o acordo, que é o compromisso que o grupo assinou.
+  gravarChamado(empresaId, chamado({ due_at: '2026-03-10T23:00:00Z' }), {});
+  const [t] = listarChamados(ctx, {}).itens;
+  assert.equal(t!.prazo_em, '2026-03-10T10:00:00.000Z');
+  assert.equal(t!.dentro_sla, 0, 'três horas para um acordo de uma hora é fora');
+});
+
+test('o prazo que a origem prometeu fica guardado, mesmo perdendo do acordo', () => {
+  const { ctx, empresaId } = ambienteLimpo();
+  criarSla(ctx, { prioridade: 'high', horas: 1 });
+  gravarChamado(empresaId, chamado({ due_at: '2026-03-10T23:00:00Z' }), {});
+
+  const [t] = listarChamados(ctx, {}).itens;
+  // Sem isto, quem contesta o "fora do SLA" não teria contra o que comparar:
+  // a promessa que o solicitante viu ao abrir o chamado desapareceria.
+  assert.equal(t!.prazo_origem, '2026-03-10T23:00:00Z');
+  assert.equal(t!.prazo_do_acordo, 1);
+});
+
+test('sem acordo vigente, o prazo da origem segue valendo', () => {
+  const { ctx, empresaId } = ambienteLimpo();
   gravarChamado(empresaId, chamado({ due_at: '2026-03-10T23:00:00Z' }), {});
   const [t] = listarChamados(ctx, {}).itens;
   assert.equal(t!.prazo_em, '2026-03-10T23:00:00Z');
-  assert.equal(t!.dentro_sla, 1);
+  assert.equal(t!.prazo_do_acordo, 0, 'quem não cadastrou acordo não vê nada mudar');
+});
+
+// ---------------------------------------------------------------- vigência
+
+test('acordo fora de vigência não alcança o chamado', () => {
+  const { ctx, empresaId } = ambienteLimpo();
+  // Passou a valer DEPOIS da abertura (10/03): não pode julgá-la.
+  criarSla(ctx, { prioridade: 'high', horas: 1, vigencia_inicio: '01/04/2026' });
+  assert.equal(horasDoAcordo(empresaId, 'high', null, ABERTO), null);
+  gravarChamado(empresaId, chamado(), {});
+  const [t] = listarChamados(ctx, {}).itens;
+  assert.equal(t!.prazo_em, null);
+});
+
+test('quem decide qual acordo vale é a abertura do chamado', () => {
+  const { ctx, empresaId } = ambienteLimpo();
+  criarSla(ctx, { prioridade: 'high', horas: 24, vigencia_fim: '28/02/2026' });
+  criarSla(ctx, { prioridade: 'high', horas: 2, vigencia_inicio: '01/03/2026' });
+
+  assert.equal(horasDoAcordo(empresaId, 'high', null, '2026-02-10T09:00:00Z'), 24);
+  assert.equal(horasDoAcordo(empresaId, 'high', null, ABERTO), 2, 'em março vale o acordo novo');
+  // O chamado de fevereiro continua medido pelo compromisso de fevereiro: é
+  // isso que impede um cadastro de hoje de rejulgar o mês passado.
+  assert.equal(prazoDoAcordo(empresaId, '2026-02-10T09:00:00Z', 'high', null), '2026-02-11T09:00:00.000Z');
+});
+
+test('dois acordos no mesmo período são recusados, em períodos diferentes não', () => {
+  const { ctx } = ambienteLimpo();
+  criarSla(ctx, { prioridade: 'high', horas: 24, vigencia_fim: '28/02/2026' });
+  // Não sobrepõe: começa depois que o outro terminou.
+  criarSla(ctx, { prioridade: 'high', horas: 2, vigencia_inicio: '01/03/2026' });
+  assert.equal(listarSlas(ctx).length, 2);
+  // Sobrepõe fevereiro: dois prazos para o mesmo chamado, e é isso que a
+  // trava impede.
+  assert.throws(
+    () => criarSla(ctx, { prioridade: 'high', horas: 8, vigencia_inicio: '15/02/2026' }),
+    /mesmo período/i,
+  );
+});
+
+test('vigência invertida e data que não existe são recusadas', () => {
+  const { ctx } = ambienteLimpo();
+  assert.throws(
+    () => criarSla(ctx, { prioridade: 'high', horas: 4, vigencia_inicio: '01/05/2026', vigencia_fim: '01/04/2026' }),
+    /termina antes de começar/i,
+  );
+  assert.throws(
+    () => criarSla(ctx, { prioridade: 'high', horas: 4, vigencia_inicio: '31/02/2026' }),
+    /não existe/i,
+  );
+});
+
+test('encerrar a vigência de um acordo abre espaço para o seguinte', () => {
+  const { ctx, empresaId } = ambienteLimpo();
+  const antigo = criarSla(ctx, { prioridade: 'high', horas: 24 });
+  assert.throws(() => criarSla(ctx, { prioridade: 'high', horas: 2 }), /mesmo período/i);
+
+  atualizarSla(ctx, antigo.id, { vigencia_fim: '28/02/2026' });
+  const novo = criarSla(ctx, { prioridade: 'high', horas: 2, vigencia_inicio: '01/03/2026' });
+  assert.equal(novo.vigencia_inicio, '2026-03-01');
+  assert.equal(horasDoAcordo(empresaId, 'high', null, ABERTO), 2);
 });
 
 test('o acordo do tópico ganha do acordo geral', () => {
@@ -92,8 +175,8 @@ test('o acordo do tópico ganha do acordo geral', () => {
   criarSla(ctx, { prioridade: 'high', horas: 24 });
   criarSla(ctx, { prioridade: 'high', horas: 4, topico_ajuda_id: rede.id });
 
-  assert.equal(horasDoAcordo(empresaId, 'high', rede.id), 4, 'rede é mais exigente que o geral');
-  assert.equal(horasDoAcordo(empresaId, 'high', null), 24, 'o tópico sem regra própria cai no geral');
+  assert.equal(horasDoAcordo(empresaId, 'high', rede.id, ABERTO), 4, 'rede é mais exigente que o geral');
+  assert.equal(horasDoAcordo(empresaId, 'high', null, ABERTO), 24, 'o tópico sem regra própria cai no geral');
 });
 
 test('a regra geral cobre o tópico que a integração criou sozinha', () => {

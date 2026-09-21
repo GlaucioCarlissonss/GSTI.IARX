@@ -225,12 +225,16 @@ export function gravarChamado(
   // do prazo quando ele existe; sem prazo informado, o chamado fechado conta
   // como dentro e o ainda aberto fica de fora — que é o que a operação sente.
   //
-  // O prazo da ORIGEM continua tendo a palavra final: ele é o que o helpdesk
-  // prometeu ao solicitante, e sobrescrevê-lo com a regra interna faria o
-  // sistema discordar da tela que a pessoa viu ao abrir o chamado. O cadastro
-  // entra onde não havia nada — e onde não há cadastro, nada muda.
-  const doAcordo = c.due_at ? null : prazoDoAcordo(empresaId, c.opened_at, c.priority, topicoId);
-  const prazo = c.due_at ?? doAcordo;
+  // O ACORDO CADASTRADO tem a palavra final, à frente do `due_at` da origem:
+  // ele é o compromisso que o grupo negociou, e o prazo do helpdesk é a conta
+  // que a ferramenta fez com a configuração dela. Onde não há acordo vigente,
+  // o prazo da origem segue valendo, e nada muda para quem não cadastrou nada.
+  //
+  // O prazo da origem não é descartado: `prazo_origem` o guarda sempre, para a
+  // ficha do chamado poder mostrar contra o que ele correu e o que o
+  // solicitante tinha visto.
+  const doAcordo = prazoDoAcordo(empresaId, c.opened_at, c.priority, topicoId);
+  const prazo = doAcordo ?? c.due_at ?? null;
   const referencia = c.closed_at ?? new Date().toISOString().slice(0, 16) + 'Z';
   const dentro = prazo ? (referencia <= prazo ? 1 : 0) : c.closed_at ? 1 : 0;
   const competencia = (c.opened_at ?? new Date().toISOString()).slice(0, 7);
@@ -264,6 +268,7 @@ export function gravarChamado(
     fechado_em: c.closed_at,
     prazo_em: prazo,
     prazo_do_acordo: doAcordo ? 1 : 0,
+    prazo_origem: c.due_at ?? null,
     horas: c.hours,
     numero: c.external_id,
     origem_chamado: c.source_system,
@@ -364,7 +369,7 @@ const SQL_CHAMADO = `
          s.setor_id, st.nome AS setor, s.solicitante, s.solicitante_email, s.solicitante_externo_id,
          s.responsavel, s.atendente_externo_id, s.filial_id, f.nome AS filial_nome,
          s.fila_id, q.nome AS fila, ta.nome AS topico_ajuda,
-         s.competencia, s.aberto_em, s.fechado_em, s.prazo_em, s.horas,
+         s.competencia, s.aberto_em, s.fechado_em, s.prazo_em, s.prazo_do_acordo, s.prazo_origem, s.horas,
          s.total_atendidos, s.dentro_sla, s.fora_sla, s.synced_at, s.criado_em, s.atualizado_em
     FROM tickets_sla s
     LEFT JOIN setores st ON st.id = s.setor_id

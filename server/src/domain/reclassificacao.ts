@@ -107,17 +107,23 @@ export interface EntradaReclassificacao {
 /**
  * A reclassificação feita por alguém operando o sistema.
  *
- * A prioridade vigente passa a valer para o SLA: o prazo é recalculado a
- * partir do acordo da prioridade nova — mas SÓ quando o prazo era nosso. O que
- * o helpdesk prometeu ao solicitante não se reescreve por decisão interna, e é
- * `prazo_do_acordo` que distingue os dois casos.
+ * A prioridade vigente passa a valer para o SLA: o prazo é refeito a partir do
+ * acordo da prioridade nova sempre que houver um vigente — o acordo cadastrado
+ * tem precedência sobre o prazo da origem, e elevar um chamado para Alta sem
+ * encurtar o prazo dele seria uma elevação só no rótulo.
+ *
+ * Sem acordo para a prioridade nova, o chamado volta ao prazo que a origem
+ * informou (`prazo_origem`); quando nem esse existe, fica sem prazo, e a
+ * leitura volta a ser "fechado conta dentro, aberto conta fora". Manter o
+ * prazo do acordo ANTERIOR seria medir a prioridade nova contra a regra da
+ * antiga.
  */
 export function reclassificarChamado(ctx: Contexto, ticketSlaId: number, dados: EntradaReclassificacao) {
   const alcance = escopoSql(ctx, null, 's.empresa_id');
   const antes = db()
     .prepare(
       `SELECT s.id, s.empresa_id, s.prioridade, s.topico_ajuda_id, s.aberto_em, s.fechado_em,
-              s.prazo_em, s.prazo_do_acordo, s.total_atendidos
+              s.prazo_em, s.prazo_do_acordo, s.prazo_origem, s.total_atendidos
          FROM tickets_sla s
         WHERE s.id = ? AND ${alcance.sql} AND s.excluido_em IS NULL`,
     )
@@ -131,6 +137,7 @@ export function reclassificarChamado(ctx: Contexto, ticketSlaId: number, dados: 
         fechado_em: string | null;
         prazo_em: string | null;
         prazo_do_acordo: number;
+        prazo_origem: string | null;
         total_atendidos: number;
       }
     | undefined;
@@ -146,10 +153,9 @@ export function reclassificarChamado(ctx: Contexto, ticketSlaId: number, dados: 
     throw erroValidacao(`O chamado já está na prioridade ${ROTULO_PRIORIDADE[nova]}.`);
   }
 
-  // Só o prazo que saiu do nosso cadastro pode ser refeito.
-  const prazo = antes.prazo_do_acordo
-    ? prazoDoAcordo(antes.empresa_id, antes.aberto_em, nova, antes.topico_ajuda_id) ?? antes.prazo_em
-    : antes.prazo_em;
+  // O acordo da prioridade nova manda; sem ele, vale o que a origem prometeu.
+  const doAcordo = prazoDoAcordo(antes.empresa_id, antes.aberto_em, nova, antes.topico_ajuda_id);
+  const prazo = doAcordo ?? (antes.prazo_do_acordo ? antes.prazo_origem : antes.prazo_em);
   const referencia = antes.fechado_em ?? new Date().toISOString().slice(0, 16) + 'Z';
   const dentro = prazo ? (referencia <= prazo ? 1 : 0) : antes.fechado_em ? 1 : 0;
   const total = antes.total_atendidos || 1;
@@ -157,10 +163,11 @@ export function reclassificarChamado(ctx: Contexto, ticketSlaId: number, dados: 
   db()
     .prepare(
       `UPDATE tickets_sla
-          SET prioridade = ?, prazo_em = ?, dentro_sla = ?, fora_sla = ?, atualizado_em = datetime('now')
+          SET prioridade = ?, prazo_em = ?, prazo_do_acordo = ?, dentro_sla = ?, fora_sla = ?,
+              atualizado_em = datetime('now')
         WHERE id = ?`,
     )
-    .run(nova, prazo, dentro ? total : 0, dentro ? 0 : total, ticketSlaId);
+    .run(nova, prazo, doAcordo ? 1 : 0, dentro ? total : 0, dentro ? 0 : total, ticketSlaId);
 
   db()
     .prepare(

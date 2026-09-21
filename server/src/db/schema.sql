@@ -366,10 +366,15 @@ CREATE TABLE IF NOT EXISTS tickets_sla (
   aberto_em       TEXT,
   fechado_em      TEXT,
   prazo_em        TEXT,
-  -- O prazo saiu do CADASTRO de acordos, e não da origem? Só o nosso pode ser
-  -- recalculado quando a prioridade muda: o que o helpdesk prometeu ao
-  -- solicitante não se reescreve por decisão interna.
+  -- O prazo saiu do CADASTRO de acordos, e não da origem? O acordo cadastrado
+  -- passou a ter precedência sobre o prazo do helpdesk (é o contrato que o
+  -- grupo negociou), e esta marca é o que permite refazê-lo quando a
+  -- prioridade muda — e saber, na ficha, contra o que o chamado correu.
   prazo_do_acordo INTEGER NOT NULL DEFAULT 0 CHECK (prazo_do_acordo IN (0,1)),
+  -- O prazo que a ORIGEM informou, guardado mesmo quando o acordo ganha dele.
+  -- É a promessa que o solicitante viu ao abrir o chamado: descartá-la deixaria
+  -- a contestação de um "fora do SLA" sem nenhuma referência para comparar.
+  prazo_origem    TEXT,
   horas           REAL,
   -- Sistema de suporte de origem e a identidade do chamado lá. Juntos com a
   -- empresa formam a chave de idempotência da integração: reentrega do
@@ -664,6 +669,13 @@ CREATE TABLE IF NOT EXISTS slas (
   topico_ajuda_id INTEGER REFERENCES topicos_ajuda(id) ON DELETE CASCADE,
   prioridade      TEXT NOT NULL CHECK (prioridade IN ('low','medium','high','urgent')),
   horas           REAL NOT NULL CHECK (horas > 0),
+  -- Vigência em DATA (AAAA-MM-DD), e não em competência como em `metas`: quem
+  -- decide qual acordo vale é a ABERTURA do chamado. Um acordo que passou de
+  -- 24h para 8h no dia 10 não pode julgar o chamado aberto no dia 2 — seria
+  -- cobrar um compromisso que ainda não existia. Nulo dos dois lados é
+  -- "desde sempre, sem fim".
+  vigencia_inicio TEXT,
+  vigencia_fim    TEXT,
   ativo           INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0,1)),
   criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
 );
