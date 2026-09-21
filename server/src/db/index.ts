@@ -80,6 +80,10 @@ export function migrar(db: Conexao): void {
     // despesa — sem esta coluna, aplicar o reconhecimento ao que já está
     // gravado não teria o que ler, e o botão seria decorativo.
     ['usuario_origem', 'TEXT'],
+    // Como o reconhecimento aconteceu: 'manual' ou 'cadastro_origem'. Sem ela,
+    // a carga que aplica o cadastro fica indistinguível de alguém que conferiu
+    // uma a uma — e é justamente essa diferença que a auditoria procura.
+    ['reconhecido_via', 'TEXT'],
     // Quem consome o que esta filial paga. O lançamento que já existia nasce
     // 'integral', que é a leitura que o sistema fazia antes de a pergunta
     // existir — nenhum número muda ao migrar. Sem CHECK: o SQLite não aceita

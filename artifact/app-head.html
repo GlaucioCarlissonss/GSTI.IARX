@@ -100,6 +100,22 @@
 .ponto-matriz{flex:none;width:8px;height:8px;border-radius:2px;display:inline-block}
 .arv-comp{color:var(--tinta3);font-size:10.5px;font-family:var(--mono)}
 .vazio-no{color:var(--tinta3);font-style:italic}
+/* MÓDULO nos Indicadores Gerais: Financeiro, SLA e Projetos, cada um um bloco
+   que abre e fecha com os indicadores dele dentro.
+   
+   Antes os indicadores eram irmãos do cabeçalho do módulo, não filhos: fechar
+   "Financeiro" não fechava nada, e a tela era uma pilha de nove blocos iguais
+   em que não se via a que negócio cada um pertencia. Agora a hierarquia está
+   no DOM, e é ela que `dobrarBlocos` usa.
+
+   O indicador DENTRO do módulo perde fundo, borda e sombra: um cartão dentro de
+   outro vira moldura dupla, e a leitura passa a ser sobre as caixas em vez de
+   sobre os números. O que separa um indicador do seguinte é uma linha fina. */
+.bloco-modulo>header h2{font-size:15px}
+.bloco-modulo>.bloco-corpo>.bloco{
+  background:none;border:0;border-radius:0;box-shadow:none;padding:14px 0 0;
+  border-top:1px solid var(--linha);margin-top:14px}
+.bloco-modulo>.bloco-corpo>.bloco:first-child{border-top:0;margin-top:0}
 /* Indicador de largura inteira: um por linha, sem vizinho lateral. O `.kpi`
    dentro dele perde a borda e o padding da faixa de cartões — aqui o cartão é
    o bloco, e uma borda dentro de outra viraria moldura dupla. */

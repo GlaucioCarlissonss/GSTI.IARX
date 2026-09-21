@@ -39,6 +39,13 @@ interface Lancamento {
   tipo_consumo: TipoConsumo;
   beneficia_todas: boolean;
   filiais_beneficiadas: FilialBeneficiada[];
+  /** Número do documento na origem (`DOCNUMBER` da carga de Contas a Pagar). */
+  documento: string | null;
+  /** Quem criou o documento no sistema de origem (`CREATIONUSER`). */
+  usuario_origem: string | null;
+  reconhecido: boolean;
+  /** 'manual' (alguém olhou) ou 'cadastro_origem' (uma regra decidiu). */
+  reconhecido_via: string | null;
 }
 
 interface Pagina {
@@ -342,6 +349,7 @@ export function PaginaLancamentos() {
                   <th>Filial</th>
                   <th>Consumo</th>
                   <th>Tipo de despesa</th>
+                  <th>Documento</th>
                   <th>Descrição</th>
                   <th>Origem</th>
                   <th>Natureza</th>
@@ -362,7 +370,12 @@ export function PaginaLancamentos() {
                         <span style={{ color: 'var(--tinta-fraca)' }}>—</span>
                       )}
                     </td>
-                    <td>{l.tipo_despesa}</td>
+                    {/* O número do documento na origem. É por ele que alguém
+                        confere um lançamento contra a nota no ERP, e é ele que
+                        distingue cinco cobranças do mesmo valor no mesmo dia. */}
+                    <td style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                      {l.documento ?? <span style={{ color: 'var(--tinta-fraca)' }}>—</span>}
+                    </td>
                     <td style={{ maxWidth: 320 }}>
                       {l.descricao}
                       {l.observacoes && (
@@ -379,6 +392,19 @@ export function PaginaLancamentos() {
                         texto={ORIGEM_CURTA[l.origem] ?? l.origem_rotulo ?? l.origem}
                         cor={COR_ORIGEM[l.origem] ?? 'var(--tinta-fraca)'}
                       />
+                      {/* Quem lançou do outro lado, e — quando o reconhecimento
+                          veio de uma regra e não de alguém — dizer isso em voz
+                          alta. Um "reconhecido" sem procedência é um carimbo. */}
+                      {l.usuario_origem && (
+                        <div style={{ color: 'var(--tinta-fraca)', fontSize: 12, marginTop: 3 }}>
+                          por {l.usuario_origem}
+                        </div>
+                      )}
+                      {l.reconhecido && l.reconhecido_via === 'cadastro_origem' && (
+                        <div style={{ color: 'var(--tinta-fraca)', fontSize: 12 }}>
+                          reconhecido pelo cadastro
+                        </div>
+                      )}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {ROTULO_NATUREZA[l.natureza] ?? l.natureza}

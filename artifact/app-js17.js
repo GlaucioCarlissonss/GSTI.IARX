@@ -648,17 +648,17 @@ async function viewIndicadores() {
 
   el('#pagina').innerHTML = `
     <div class="msg"><strong>Leitura estratégica, separada da operação.</strong>
-      Cada indicador ocupa a linha inteira e abre para baixo, agrupado por empresa e, dentro dela,
-      por filial. Os filtros são de cada bloco de negócio e não atravessam para as outras telas —
-      nem sobrevivem ao recarregar.</div>
+      Os indicadores estão agrupados pelo módulo a que pertencem: abrir <em>Financeiro</em> abre os
+      indicadores financeiros, e o mesmo vale para SLA e Projetos. Dentro de cada indicador, a
+      expansão continua por empresa e, dentro dela, por filial. Os filtros são de cada módulo e não
+      atravessam para as outras telas — nem sobrevivem ao recarregar.</div>
 
-    <div class="bloco" style="margin-top:16px">
-      <header style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-        <h2 style="font-size:15px">Financeiro</h2>
-        <span class="nota" style="margin-left:auto">${rf.somenteReconhecidas ? 'apenas despesas reconhecidas' : 'todas as despesas'}</span>
+    <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
+      <header>
+        <h2>Financeiro</h2>
+        <span class="nota">${rf.somenteReconhecidas ? 'apenas despesas reconhecidas' : 'todas as despesas'}</span>
       </header>
       ${filtrosDoBloco('financeiro', rf)}
-    </div>
 
     ${blocoIndicador({
       chave: 'plano-reducao',
@@ -860,13 +860,14 @@ async function viewIndicadores() {
       </div>`}
     </section>`}
 
-    <div class="bloco" style="margin-top:16px">
-      <header style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-        <h2 style="font-size:15px">SLA</h2>
-        <span class="nota" style="margin-left:auto">meta de ${sla.meta}%</span>
+    </section>
+
+    <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
+      <header>
+        <h2>SLA</h2>
+        <span class="nota">meta de ${sla.meta}%</span>
       </header>
       ${filtrosDoBloco('sla', rs)}
-    </div>
 
     ${blocoIndicador({
       chave: 'sla-conformidade',
@@ -905,13 +906,14 @@ async function viewIndicadores() {
           ? ` ${inteiro(sla.semStatus)} atendimento(s) vêm de registro agregado do mês, que não tem situação.` : ''}`,
     })}
 
-    <div class="bloco" style="margin-top:16px">
-      <header style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-        <h2 style="font-size:15px">Projetos</h2>
-        <span class="nota" style="margin-left:auto">por competência de entrega planejada</span>
+    </section>
+
+    <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
+      <header>
+        <h2>Projetos</h2>
+        <span class="nota">por competência de entrega planejada</span>
       </header>
       ${filtrosDoBloco('projetos', rp)}
-    </div>
 
     ${blocoIndicador({
       chave: 'projetos-prazo',
@@ -941,7 +943,8 @@ async function viewIndicadores() {
       corpo: `${faixaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
         ${legendaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
         ${arvoreDeUnidadesHtml('ind-tarefas-pendentes', q.tarefasPendentes, inteiro, semExtra)}`,
-    })}`;
+    })}
+    </section>`;
 
   // ----------------------------------------------------------- desenho
   if (reducao.serie.length) {

@@ -667,11 +667,23 @@ function dobrarBlocos(raiz) {
     bt.innerHTML = '<span class="bloco-seta" aria-hidden="true">+</span>' + rotulo;
     h2.appendChild(bt);
 
-    aplicarDobra(bloco, abertos.has(chave));
+    // Sem escolha guardada, vale o padrão do bloco. Quase todo bloco abre
+    // FECHADO ("a tela abre enxuta"); o módulo dos Indicadores Gerais é a
+    // exceção declarada: fechado, a tela seria três títulos e nada mais, e o
+    // agrupamento que ele existe para mostrar não apareceria.
+    const padraoAberto = bloco.dataset.dobraPadrao === 'aberto';
+    aplicarDobra(bloco, abertos.has(chave) || (padraoAberto && !abertos.has('!' + chave)));
     bt.onclick = () => {
       const atuais = blocosAbertos();
-      const vai = !atuais.has(chave);
-      if (vai) atuais.add(chave); else atuais.delete(chave);
+      const aberto = bt.getAttribute('aria-expanded') === 'true';
+      const vai = !aberto;
+      // Guarda-se sempre a EXCEÇÃO ao padrão: a chave crua quando o bloco está
+      // aberto contra um padrão fechado, e `!chave` quando está fechado contra
+      // um padrão aberto. Sem a segunda, fechar um bloco que nasce aberto não
+      // teria como ser lembrado.
+      atuais.delete(chave);
+      atuais.delete('!' + chave);
+      if (vai !== padraoAberto) atuais.add(vai ? chave : '!' + chave);
       gravarBlocosAbertos(atuais);
       aplicarDobra(bloco, vai);
     };

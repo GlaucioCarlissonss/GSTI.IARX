@@ -23,14 +23,28 @@ import { useCallback, useMemo, useState } from 'react';
  * abriu ocupa espaço no armazenamento, e um bloco novo nasce fechado como os
  * demais, sem precisar ser cadastrado em lugar nenhum.
  */
-export function useDobra(chave: string | null): { aberto: boolean; alternar: () => void } {
+export function useDobra(
+  chave: string | null,
+  /**
+   * O estado de quem CHEGA na tela, quando não há escolha guardada.
+   *
+   * Quase todo bloco abre fechado ("a tela abre enxuta"). A exceção é o bloco
+   * que AGRUPA outros — o módulo dos Indicadores Gerais: fechado, a tela seria
+   * três títulos e nada mais, e o agrupamento que ele existe para mostrar não
+   * apareceria. Guarda-se então a EXCEÇÃO ao padrão, e não o estado bruto.
+   */
+  padraoAberto = false,
+): { aberto: boolean; alternar: () => void } {
   const [aberto, setAberto] = useState(() => {
     if (!chave) return true;
     try {
-      return localStorage.getItem(chave) === '1';
+      const guardado = localStorage.getItem(chave);
+      if (guardado === '1') return true;
+      if (guardado === '0') return false;
+      return padraoAberto;
     } catch {
-      // Armazenamento bloqueado: abre fechado, como o padrão manda.
-      return false;
+      // Armazenamento bloqueado: vale o padrão do bloco.
+      return padraoAberto;
     }
   });
 
@@ -39,15 +53,17 @@ export function useDobra(chave: string | null): { aberto: boolean; alternar: () 
       const proximo = !atual;
       if (chave) {
         try {
-          if (proximo) localStorage.setItem(chave, '1');
-          else localStorage.removeItem(chave);
+          // Só a exceção é guardada; voltar ao padrão apaga a marca, para que
+          // uma mudança futura de padrão alcance quem nunca escolheu nada.
+          if (proximo === padraoAberto) localStorage.removeItem(chave);
+          else localStorage.setItem(chave, proximo ? '1' : '0');
         } catch {
           /* sem armazenamento: a escolha vale só nesta sessão */
         }
       }
       return proximo;
     });
-  }, [chave]);
+  }, [chave, padraoAberto]);
 
   // Bloco sem título não tem cabeçalho para clicar: fica sempre aberto.
   return chave ? { aberto, alternar } : { aberto: true, alternar: () => {} };

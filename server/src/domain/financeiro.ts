@@ -271,10 +271,19 @@ function apresentar(linha: LinhaLancamento & Record<string, unknown>, beneficiad
     // de listar catorze nomes. Quem responde de quem é o consumo é a lista.
     beneficia_todas: Number(linha.beneficia_todas ?? 0) === 1,
     filiais_beneficiadas: beneficiadas,
-    // O reconhecimento é do gestor, não da carga: tudo que entrou por planilha
-    // ou projeção nasce por reconhecer, e a tela destaca isso.
+    // Quem criou o documento no sistema de ORIGEM (`CREATIONUSER` da carga de
+    // Contas a Pagar). Vai para a tela porque é a resposta a "por que este
+    // lançamento já está reconhecido?" — sem ele, o reconhecimento automático
+    // é um carimbo sem procedência.
+    usuario_origem: (linha.usuario_origem as string | null) ?? null,
+    // O reconhecimento é, EM REGRA, do gestor: tudo que entra por planilha ou
+    // projeção nasce por reconhecer, e a tela destaca isso. A exceção é a carga
+    // de Contas a Pagar, em que o cadastro de quem reconhece despesa decide na
+    // entrada — e é `reconhecido_via` que separa os dois casos, para ninguém
+    // ler como conferência humana o que foi uma regra.
     reconhecido: Number(linha.reconhecido ?? 0) === 1,
     reconhecido_em: (linha.reconhecido_em as string | null) ?? null,
+    reconhecido_via: (linha.reconhecido_via as string | null) ?? null,
   };
 }
 
@@ -753,9 +762,13 @@ export function reconhecerLancamentos(
   if (!ids.length) throw erroValidacao('Informe ao menos um lançamento.');
   const alvo = reconhecido ? 1 : 0;
   const carimbo = reconhecido ? new Date().toISOString() : null;
+  // `reconhecido_via = 'manual'` porque AQUI alguém olhou: é o caminho da tela
+  // de Conferência. A carga tem caminho próprio e grava 'cadastro_origem' —
+  // sem essa distinção, uma regra automática ficaria indistinguível de uma
+  // conferência humana na hora em que alguém for auditar.
   const atualizar = db().prepare(
     `UPDATE lancamentos SET reconhecido = ?, reconhecido_em = ?, reconhecido_por = ?,
-            atualizado_em = datetime('now')
+            reconhecido_via = ?, atualizado_em = datetime('now')
       WHERE id = ? AND empresa_id = ? AND excluido_em IS NULL AND reconhecido <> ?`,
   );
 
@@ -768,7 +781,7 @@ export function reconhecerLancamentos(
         jaEstavam.push(id);
         continue;
       }
-      atualizar.run(alvo, carimbo, ctx.usuarioId, id, antes.empresa_id, alvo);
+      atualizar.run(alvo, carimbo, ctx.usuarioId, alvo ? 'manual' : null, id, antes.empresa_id, alvo);
       mudaram += 1;
       auditar(ctx, {
         entidade: 'lancamento',

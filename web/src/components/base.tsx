@@ -21,6 +21,7 @@ export function Cartao({
   descricao,
   acoes,
   classe,
+  padraoAberto = false,
   children,
 }: {
   titulo?: string;
@@ -28,10 +29,15 @@ export function Cartao({
   acoes?: ReactNode;
   /** Classe extra no cartão — hoje só a tela cheia do relatório usa. */
   classe?: string;
+  /**
+   * Abre expandido para quem ainda não escolheu nada. Vale para o cartão que
+   * AGRUPA outros: fechado, ele esconderia a própria razão de existir.
+   */
+  padraoAberto?: boolean;
   children: ReactNode;
 }) {
   const chave = chaveDoBloco(titulo);
-  const { aberto, alternar } = useDobra(chave);
+  const { aberto, alternar } = useDobra(chave, padraoAberto);
   const idConteudo = chave ? `${chave}-conteudo` : undefined;
 
   return (

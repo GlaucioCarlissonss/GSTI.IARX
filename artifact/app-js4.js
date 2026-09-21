@@ -56,7 +56,7 @@ function viewLancamentos() {
         <span class="nota">${inteiro(lista.length)} registros · ${brl(total)}${lista.length>400?' · exibindo os 400 mais recentes':''}</span></header>
       ${mostrados.length === 0 ? '<p class="vazio">Nenhum lançamento com estes filtros.</p>' : `
       <div class="rol"><table>
-        <thead><tr><th>Competência</th>${variasUnidades ? '<th>Unidade</th>' : ''}<th>Filial</th><th>Consumo</th><th>Tipo</th><th>Descrição</th>
+        <thead><tr><th>Competência</th>${variasUnidades ? '<th>Unidade</th>' : ''}<th>Filial</th><th>Consumo</th><th>Tipo</th><th>Documento</th><th>Descrição</th>
           <th>Origem</th><th>Natureza</th><th>Classificação</th><th class="n">Valor</th><th></th></tr></thead>
         <tbody>${mostrados.map((l) => `<tr data-id="${esc(l.id)}" data-comp="${l.competencia}" data-emp="${esc(l.empresa)}"${classeReconhecimento(l)}>
           <td>${mesExib(l.competencia)}</td>
@@ -64,10 +64,18 @@ function viewLancamentos() {
           <td>${l.filial ? esc(l.filial) : '<em style="color:var(--tinta3)">matriz</em>'}</td>
           <td title="${esc(detalheConsumo(l))}" style="white-space:nowrap">${etiquetaConsumoHtml(l)}</td>
           <td>${esc(l.tipo)}</td>
+          <!-- O número do documento na origem: é por ele que se confere o
+               lançamento contra a nota, e é ele que distingue cinco cobranças
+               do mesmo valor no mesmo dia. -->
+          <td style="white-space:nowrap;font-variant-numeric:tabular-nums">${
+            l.documento ? esc(l.documento) : '<span style="color:var(--tinta3)">—</span>'}</td>
           <td style="max-width:280px">${esc(l.descricao||'')}
             ${l.obs?`<div style="color:var(--tinta3);font-size:12px">${esc(l.obs)}</div>`:''}
             ${l.cenario!=='oficial'?`<div style="margin-top:3px"><span class="tag alerta">cenário: ${esc(l.cenario)}</span></div>`:''}</td>
-          <td><span class="tag" title="${esc(ORIGENS[origemDe(l)].nota)}"><i style="background:${COR_ORIGEM[origemDe(l)]}"></i>${esc(ORIGENS[origemDe(l)].curto)}</span></td>
+          <td><span class="tag" title="${esc(ORIGENS[origemDe(l)].nota)}"><i style="background:${COR_ORIGEM[origemDe(l)]}"></i>${esc(ORIGENS[origemDe(l)].curto)}</span>
+            ${l.usuarioOrigem ? `<div style="color:var(--tinta3);font-size:12px;margin-top:3px">por ${esc(l.usuarioOrigem)}</div>` : ''}
+            ${reconhecidoDe(l) && l.reconhecidoVia === 'cadastro_origem'
+              ? '<div style="color:var(--tinta3);font-size:12px">reconhecido pelo cadastro</div>' : ''}</td>
           <td>${NATUREZAS[l.natureza]||l.natureza}
             ${l.parcela?`<div style="color:var(--tinta3);font-size:12px">parcela ${l.parcela}/${l.qtdParcelas}</div>`:''}</td>
           <td><span class="tag"><i style="background:${l.classificacao==='investimento'?'var(--s2)':'var(--s1)'}"></i>${l.classificacao==='investimento'?'Investimento':'Despesa'}</span></td>
@@ -78,7 +86,7 @@ function viewLancamentos() {
             <button class="bt fant peq" data-rc>Reclassificar</button>
             <button class="bt fant peq" data-ex>Excluir</button></td>
         </tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="${variasUnidades ? 9 : 8}">Total exibido</td>
+        <tfoot><tr><td colspan="${variasUnidades ? 10 : 9}">Total exibido</td>
           <td class="n">${brl(reais(somaC(mostrados.map((l)=>l.valor))))}</td><td></td></tr></tfoot>
       </table></div>`}
     </section>`;
@@ -454,7 +462,7 @@ function reclassificar(l) {
  * competência e classificação seguem intactos; o que muda é a afirmação de que
  * alguém olhou aquilo.
  */
-async function alternarReconhecimento(lancamentos, forcar) {
+async function alternarReconhecimento(lancamentos, forcar, via = 'manual') {
   const alvos = lancamentos.filter(Boolean);
   if (!alvos.length) return;
   const destino = forcar === undefined ? !reconhecidoDe(alvos[0]) : !!forcar;
@@ -469,6 +477,10 @@ async function alternarReconhecimento(lancamentos, forcar) {
     if (item) {
       item.reconhecido = destino;
       item.reconhecidoEm = destino ? new Date().toISOString() : null;
+      // COMO foi reconhecido: alguém olhou ('manual') ou uma regra decidiu
+      // ('cadastro_origem'). Sem isso, a ficha não consegue dizer a diferença,
+      // e um reconhecimento automático passaria por conferência humana.
+      item.reconhecidoVia = destino ? via : null;
     }
   }
   for (const [m, itens] of porMes) await Loja.gravarMes(emp, m, itens);

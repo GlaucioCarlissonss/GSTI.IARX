@@ -69,6 +69,9 @@ export interface Lancamento {
   tipo_consumo: TipoConsumo;
   beneficia_todas: boolean;
   filiais_beneficiadas: FilialBeneficiada[];
+  usuario_origem: string | null;
+  reconhecido: boolean;
+  reconhecido_via: string | null;
 }
 
 interface Detalhe {
@@ -523,6 +526,18 @@ function DetalheLancamento({ lancamento: l, aoFechar }: { lancamento: Lancamento
         </dd>
         <dt>Procedência do dado</dt>
         <dd>{l.origem_rotulo}</dd>
+        {/* Quem lançou no sistema de ORIGEM. É a resposta a "por que este
+            lançamento já está reconhecido?" quando o cadastro decidiu. */}
+        <dt>Criador na origem</dt>
+        <dd>{l.usuario_origem ?? '—'}</dd>
+        <dt>Reconhecimento</dt>
+        <dd>
+          {!l.reconhecido
+            ? 'por reconhecer'
+            : l.reconhecido_via === 'cadastro_origem'
+              ? `reconhecido pelo cadastro de quem reconhece despesa${l.usuario_origem ? ` (${l.usuario_origem})` : ''}`
+              : 'reconhecido por conferência'}
+        </dd>
         <dt>Observações</dt>
         <dd>{l.observacoes ?? '—'}</dd>
       </dl>

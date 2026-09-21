@@ -1156,6 +1156,17 @@ tela: quem rola até o meio de uma tela longa precisa da chave de leitura ali.
 O indicador continua **consolidado** — é o que o gestor lê primeiro. O que
 mudou é como ele abre.
 
+- **Cada indicador vive dentro do MÓDULO a que pertence:** Financeiro, SLA e
+  Projetos. Abrir "Financeiro" abre os indicadores financeiros; fechá-lo recolhe
+  todos eles de uma vez, filtros do módulo junto. Antes os indicadores eram
+  IRMÃOS do cabeçalho do módulo, não filhos: fechar o módulo não fechava nada, e
+  a tela era uma pilha de nove blocos iguais em que não se via de que negócio era
+  cada número.
+- **O módulo abre EXPANDIDO; o indicador, fechado.** É a única exceção à regra
+  geral de "a tela abre enxuta", e é declarada: com o módulo fechado, a tela
+  seria três títulos e nada mais, e o agrupamento que ele existe para mostrar não
+  apareceria. Guarda-se sempre a EXCEÇÃO ao padrão, e não o estado bruto — assim
+  uma mudança futura de padrão alcança quem nunca escolheu nada.
 - **Um indicador por linha, em largura total.** Dois números concorrendo lado a
   lado é o que tornava a tela ilegível quando cada um passou a ter faixa,
   legenda e detalhamento. Cada bloco abre **comprimido**, com título e valor no
@@ -1279,6 +1290,29 @@ acordo para a prioridade nova, o chamado volta ao prazo que a origem informou; e
 sem esse, fica sem prazo, e a leitura volta a ser "fechado conta dentro, aberto
 conta fora". Manter o prazo do acordo ANTERIOR mediria a prioridade nova pela
 regra da antiga.
+
+## Como a despesa foi reconhecida
+
+Reconhecer é o gestor dizer "eu olhei isto e assumo como meu". A carga de Contas
+a Pagar abriu uma segunda porta: o cadastro de quem reconhece despesa decide na
+ENTRADA, sem que ninguém olhe lançamento nenhum.
+
+As duas portas precisam ficar distinguíveis, e é o que `lancamentos.reconhecido_via`
+faz — `'manual'` quando alguém conferiu na tela, `'cadastro_origem'` quando foi a
+regra. Sem essa coluna, `reconhecido_por` **mente**: numa carga ele guardaria
+quem rodou a importação, e a tela diria "gestora reconheceu 600 lançamentos"
+quando ninguém conferiu nenhum. Por isso o reconhecimento vindo do cadastro deixa
+`reconhecido_por` **nulo** — quem rodou a carga está no registro de importações,
+que é o lugar certo para essa pergunta.
+
+Na tela, o lançamento mostra o **criador na origem** (`CREATIONUSER` da carga) e,
+quando o reconhecimento veio da regra, diz isso em voz alta. Um "reconhecido" sem
+procedência é um carimbo: quem audita não teria como saber se houve conferência.
+
+O **número do documento** (`DOCNUMBER`) é coluna da tabela de lançamentos, e não
+só um campo da ficha: é por ele que se confere um lançamento contra a nota no
+ERP, e é ele que distingue cinco cobranças do mesmo valor, no mesmo dia, para a
+mesma unidade.
 
 ## Carga de Contas a Pagar
 

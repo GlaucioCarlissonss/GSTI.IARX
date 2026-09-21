@@ -366,6 +366,22 @@ textarea { resize: vertical; min-height: 62px; }
   padding: 16px 18px;
   box-shadow: var(--sombra);
 }
+/* MÓDULO nos Indicadores Gerais: Financeiro, SLA e Projetos, cada um um cartão
+   que abre e fecha com os indicadores dele dentro.
+
+   Antes os indicadores eram irmãos, numa pilha de nove cartões iguais em que
+   não se via a que negócio cada número pertencia. Agora a hierarquia está no
+   DOM, e fechar o módulo fecha os indicadores dele.
+
+   O indicador DENTRO do módulo perde fundo, borda e sombra: cartão dentro de
+   cartão vira moldura dupla, e a leitura passa a ser sobre as caixas em vez de
+   sobre os números. O que separa um do seguinte é uma linha fina. */
+.cartao-modulo > .cartao-corpo > .grade > .cartao,
+.cartao-modulo > .cartao-corpo > .cartao {
+  background: none; border: 0; border-radius: 0; box-shadow: none;
+  padding: 14px 0 0; border-top: 1px solid var(--borda); margin-top: 14px;
+}
+.cartao-modulo > .cartao-corpo > .cartao:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
 /* sem wrap, título + descrição + botão de ação não cabem em telas estreitas
    e o botão vaza para fora da página */
 .cartao > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }

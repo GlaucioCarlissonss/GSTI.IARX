@@ -188,6 +188,15 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   reconhecido         INTEGER NOT NULL DEFAULT 0 CHECK (reconhecido IN (0,1)),
   reconhecido_em      TEXT,
   reconhecido_por     INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  -- COMO o reconhecimento aconteceu. 'manual' (ou nulo, no histórico) é alguém
+  -- que olhou e confirmou; 'cadastro_origem' é a carga aplicando o cadastro de
+  -- quem reconhece despesa.
+  --
+  -- Existe porque `reconhecido_por` sozinho MENTE: numa carga, ele guarda quem
+  -- rodou a importação, e a tela diria "gestora reconheceu 600 lançamentos"
+  -- quando ninguém olhou lançamento nenhum — foi uma regra que decidiu. Quem
+  -- audita precisa poder separar as duas coisas.
+  reconhecido_via     TEXT CHECK (reconhecido_via IS NULL OR reconhecido_via IN ('manual','cadastro_origem')),
   excluido_em         TEXT,
   criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
   atualizado_em       TEXT NOT NULL DEFAULT (datetime('now')),

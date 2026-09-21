@@ -363,6 +363,13 @@ function detalheDoLancamento(l) {
         ${linha('Natureza', (NATUREZAS[l.natureza] || l.natureza) +
           (l.parcela && l.parcelas ? ` · parcela ${l.parcela} de ${l.parcelas}` : ''))}
         ${linha('Procedência do dado', ORIGENS[origemDe(l)].rotulo)}
+        ${linha('Criador na origem', l.usuarioOrigem || '—')}
+        ${linha('Reconhecimento', !reconhecidoDe(l)
+          ? 'por reconhecer'
+          : l.reconhecidoVia === 'cadastro_origem'
+            ? 'reconhecido pelo cadastro de quem reconhece despesa'
+              + (l.usuarioOrigem ? ` (${esc(l.usuarioOrigem)})` : '')
+            : 'reconhecido por conferência')}
         ${linha('Observações', l.obs || '—')}
       </dl>`,
     acoes: `<button type="button" class="bt" data-c>Fechar</button>`,

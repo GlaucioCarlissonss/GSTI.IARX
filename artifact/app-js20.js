@@ -869,7 +869,7 @@ function ligarAplicacaoDeReconhecimento() {
       if (!porEmpresa.has(l.empresa)) porEmpresa.set(l.empresa, []);
       porEmpresa.get(l.empresa).push(l);
     }
-    for (const alvos of porEmpresa.values()) await alternarReconhecimento(alvos, true);
+    for (const alvos of porEmpresa.values()) await alternarReconhecimento(alvos, true, 'cadastro_origem');
     await Loja.auditar({
       acao: 'aplicar', entidade: 'reconhecedor_origem',
       depois: { avaliados: r.avaliados, reconhecidos: r.reconhecidos },

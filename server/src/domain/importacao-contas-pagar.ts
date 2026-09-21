@@ -494,9 +494,13 @@ export function importarContasPagar(
       // recebe, e mandá-los por `reconhecerLancamentos` geraria uma linha de
       // auditoria por lançamento — mil linhas para um ato só. Quem responde por
       // esta carga é o registro de importação.
+      // `reconhecido_por` fica NULO de propósito quando quem decidiu foi o
+      // cadastro: apontá-lo para quem rodou a carga faria a tela dizer que essa
+      // pessoa conferiu seiscentos lançamentos, e ninguém conferiu nenhum. Quem
+      // rodou a importação está no registro de importações, que é o lugar certo.
       const carimbar = db().prepare(
         `UPDATE lancamentos
-            SET usuario_origem = ?, reconhecido = ?, reconhecido_em = ?, reconhecido_por = ?
+            SET usuario_origem = ?, reconhecido = ?, reconhecido_em = ?, reconhecido_via = ?
           WHERE id = ?`,
       );
       const agora = new Date().toISOString();
@@ -508,7 +512,7 @@ export function importarContasPagar(
 
         if (item && item.lancamentoId) {
           if (item.diferencas.length) {
-            atualizarPareado(item.lancamentoId, item.diferencas, resolvida, agora, ctx.usuarioId);
+            atualizarPareado(item.lancamentoId, item.diferencas, resolvida, agora);
             atualizadas += 1;
             if (item.diferencas.includes('reconhecido')) reconhecidos += 1;
           } else {
@@ -546,7 +550,7 @@ export function importarContasPagar(
           resolvida.usuarioOrigem || null,
           resolvida.reconhecido ? 1 : 0,
           resolvida.reconhecido ? agora : null,
-          resolvida.reconhecido ? ctx.usuarioId : null,
+          resolvida.reconhecido ? 'cadastro_origem' : null,
           criado.id,
         );
         if (resolvida.reconhecido) reconhecidos += 1;
@@ -606,7 +610,6 @@ function atualizarPareado(
   diferencas: string[],
   l: LinhaResolvida,
   agora: string,
-  usuarioId: number,
 ): void {
   const partes: string[] = [];
   const params: unknown[] = [];
@@ -622,7 +625,7 @@ function atualizarPareado(
   if (diferencas.includes('reconhecido')) {
     por('reconhecido', 1);
     por('reconhecido_em', agora);
-    por('reconhecido_por', usuarioId);
+    por('reconhecido_via', 'cadastro_origem');
   }
   if (!partes.length) return;
   db()

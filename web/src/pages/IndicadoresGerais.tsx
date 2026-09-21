@@ -252,8 +252,10 @@ export function PaginaIndicadoresGerais() {
       </div>
 
       <Aviso>
-        <strong>Leitura estratégica, separada da operação.</strong> Cada indicador ocupa a linha
-        inteira e abre para baixo, agrupado por empresa e, dentro dela, por filial. Escopo:{' '}
+        <strong>Leitura estratégica, separada da operação.</strong> Os indicadores estão agrupados
+        pelo módulo a que pertencem: abrir <em>Financeiro</em> abre os indicadores financeiros, e o
+        mesmo vale para SLA e Projetos. Dentro de cada indicador, a expansão continua por empresa e,
+        dentro dela, por filial. Escopo:{' '}
         <strong>{cliente?.nome}</strong> ·{' '}
         {escopo.empresas.length === 0
           ? `todas as unidades (${empresas.length})`
@@ -263,7 +265,17 @@ export function PaginaIndicadoresGerais() {
 
       {/* Os indicadores vêm um abaixo do outro, em largura total: é proibido
           dividir a linha com outro. `grade empilhada` é uma coluna só. */}
+      {/* Os indicadores vêm agrupados pelo MÓDULO a que pertencem, e dentro do
+          módulo um abaixo do outro, em largura total. O módulo abre expandido e
+          o indicador abre fechado: é o que faz a tela mostrar de que negócio é
+          cada número sem despejar nove blocos abertos de uma vez. */}
       <div className="grade empilhada">
+        <Cartao
+          titulo="Financeiro"
+          classe="cartao-modulo"
+          padraoAberto
+          descricao="despesa, rateio, plano de redução e conferência"
+        >
         {/* ---------------------------------------------- 1. plano de redução */}
         <Cartao
           titulo="Plano de redução de despesas"
@@ -606,7 +618,15 @@ export function PaginaIndicadoresGerais() {
           <LegendaDeConsumo cor={cores.get(v.por_unidade.empresas[0]?.empresa_id ?? -1)?.cor} />
         </Cartao>
 
-        {/* ------------------------------------------------------ 6. SLA */}
+        </Cartao>
+
+        {/* ------------------------------------------------------ módulo SLA */}
+        <Cartao
+          titulo="SLA"
+          classe="cartao-modulo"
+          padraoAberto
+          descricao={`meta de ${v.sla.meta}%`}
+        >
         <Cartao titulo="Atendidos dentro do SLA" descricao={`meta de ${v.sla.meta}%`}>
           <Indicador
             rotulo="Conformidade de SLA"
@@ -621,7 +641,15 @@ export function PaginaIndicadoresGerais() {
           />
         </Cartao>
 
-        {/* -------------------------------------------------- 7. projetos */}
+        </Cartao>
+
+        {/* ------------------------------------------------ módulo Projetos */}
+        <Cartao
+          titulo="Projetos"
+          classe="cartao-modulo"
+          padraoAberto
+          descricao="por competência de entrega planejada"
+        >
         <Cartao
           titulo="Tarefas entregues no prazo"
           descricao="por competência de entrega planejada"
@@ -639,6 +667,7 @@ export function PaginaIndicadoresGerais() {
             meta={v.projetos.meta_leitura}
             dica="O denominador é o que foi ENTREGUE: tarefa ainda em aberto não está fora do prazo enquanto o mês planejado não passa."
           />
+        </Cartao>
         </Cartao>
       </div>
 

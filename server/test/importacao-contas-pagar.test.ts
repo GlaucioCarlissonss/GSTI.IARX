@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ambienteLimpo } from './apoio.js';
 import { db } from '../src/db/index.js';
-import { listarLancamentos } from '../src/domain/financeiro.js';
+import { listarLancamentos, reconhecerLancamentos } from '../src/domain/financeiro.js';
 import { fecharCompetencia } from '../src/domain/fechamento.js';
 import { criarReconhecedor } from '../src/domain/reconhecedores.js';
 import { criarFilial } from '../src/domain/cadastros.js';
@@ -190,6 +190,53 @@ test('a carga fica no histórico de importações, com o que atingiu', () => {
   assert.equal(linha.arquivo_nome, 'contas-pagar.csv');
   assert.equal(linha.importadas, 13);
   assert.equal(linha.com_erro, 3);
+});
+
+test('o lançamento carrega o documento e o criador da origem até a tela', () => {
+  const { ctx } = ambienteLimpo();
+  criarReconhecedor(ctx, { usuario_origem: 'MIQUEIASSILVA' });
+  cargaCompleta(ctx);
+
+  const itens = listarLancamentos(ctx, {}).itens as unknown as Array<Record<string, unknown>>;
+  const link = itens.find((l) => l.descricao === 'Link dedicado de internet — janeiro')!;
+  // Sem estes três campos na resposta, a tela não tem como mostrar o número do
+  // documento nem explicar por que a despesa já está reconhecida — foi
+  // exatamente o que faltou na primeira entrega.
+  assert.equal(link.documento, '550120');
+  assert.equal(link.usuario_origem, 'MIQUEIASSILVA');
+  assert.equal(link.reconhecido, true);
+  assert.equal(link.reconhecido_via, 'cadastro_origem', 'quem decidiu foi o cadastro, não uma pessoa');
+
+  const deFora = itens.find((l) => l.descricao === 'Manutenção preventiva de rack')!;
+  assert.equal(deFora.reconhecido, false);
+  assert.equal(deFora.reconhecido_via, null);
+});
+
+test('o reconhecimento pela carga não é creditado a quem rodou a carga', () => {
+  const { ctx } = ambienteLimpo();
+  criarReconhecedor(ctx, { usuario_origem: 'MIQUEIASSILVA' });
+  cargaCompleta(ctx);
+
+  // `reconhecido_por` apontando para o gestor faria a tela dizer que ELE
+  // conferiu seiscentos lançamentos, quando ninguém conferiu nenhum.
+  const creditados = db()
+    .prepare("SELECT COUNT(*) AS n FROM lancamentos WHERE reconhecido = 1 AND reconhecido_por IS NOT NULL")
+    .get() as { n: number };
+  assert.equal(creditados.n, 0);
+});
+
+test('conferir na tela e reconhecer pela carga ficam distinguíveis', () => {
+  const { ctx } = ambienteLimpo();
+  cargaCompleta(ctx);
+
+  const alvo = listarLancamentos(ctx, {}).itens[0]!;
+  reconhecerLancamentos(ctx, [alvo.id], true, 'conferido na tela');
+
+  const linha = db()
+    .prepare('SELECT reconhecido_via, reconhecido_por FROM lancamentos WHERE id = ?')
+    .get(alvo.id) as { reconhecido_via: string; reconhecido_por: number | null };
+  assert.equal(linha.reconhecido_via, 'manual');
+  assert.equal(linha.reconhecido_por, ctx.usuarioId, 'aqui alguém olhou, e fica registrado quem');
 });
 
 test('leitor não é gestor: a carga é recusada antes de tocar no arquivo', () => {
