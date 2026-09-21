@@ -204,6 +204,68 @@ const alvoDe = (modulo, competencia) => {
 };
 
 /**
+ * As metas que regem os meses dados, da mais antiga para a mais nova.
+ *
+ * Existe porque um recorte é um PERÍODO, e o cadastro tem vigência: pedir
+ * 01/2026 a 01/2027 pode atravessar duas metas. Escolher uma só — como o
+ * sistema fazia, pegando a do último mês — julgava treze meses por uma regra
+ * que valia para cinco, e a outra meta sumia da tela sem explicação.
+ */
+function metasDoRecorte(modulo, competencias) {
+  const vistas = new Map();
+  for (const c of competencias) {
+    const m = metaVigente(modulo, c);
+    if (!m) continue;
+    const chave = m.nome + '\u0000' + m.alvoPct + '\u0000' + (m.vigenciaInicio || '');
+    if (!vistas.has(chave)) vistas.set(chave, m);
+  }
+  return [...vistas.values()].sort((a, b) =>
+    String(a.vigenciaInicio || '').localeCompare(String(b.vigenciaInicio || '')));
+}
+
+/**
+ * O resultado contra a meta, mês a mês.
+ *
+ * `pontos` são `{comp, valor}` — um por competência do recorte, com o valor que
+ * aquele mês atingiu. Cada um é medido contra a meta que rege AQUELE mês, que é
+ * a única leitura honesta quando o período atravessa vigências.
+ *
+ * Quando o recorte inteiro cai sob uma meta só (o caso comum), devolve a mesma
+ * leitura de sempre e a tela não muda de forma. Quando atravessa, devolve o
+ * placar — "9 de 13 meses dentro" — e a lista das metas envolvidas.
+ */
+function leituraMensalDeMeta(modulo, pontos, totalAtingido) {
+  const comMeta = pontos.filter((p) => p && p.comp);
+  const metas = metasDoRecorte(modulo, comMeta.map((p) => p.comp));
+
+  // Zero ou uma meta: nada muda. Uma comparação única continua sendo a leitura
+  // certa, e trocá-la por um placar de meses seria perder informação.
+  if (metas.length <= 1) {
+    const comp = comMeta.length ? comMeta[comMeta.length - 1].comp : null;
+    return leituraDeMeta(alvoDe(modulo, comp), totalAtingido, modulo);
+  }
+
+  const direcao = DIRECAO_META[modulo];
+  const meses = comMeta
+    .filter((p) => p.valor !== null && p.valor !== undefined)
+    .map((p) => {
+      const alvo = alvoDe(modulo, p.comp);
+      if (alvo === null || alvo === undefined) return null;
+      const bruto = direcao === 'minimo' ? p.valor - alvo : alvo - p.valor;
+      return { comp: p.comp, alvo, valor: p.valor, atinge: bruto >= 0 };
+    })
+    .filter(Boolean);
+
+  const dentro = meses.filter((m) => m.atinge).length;
+  return {
+    varias: true, metas, meses, dentro, total: meses.length, direcao,
+    // `atinge` só quando TODOS os meses atingiram: o indicador é do período, e
+    // dizer "atingiu" com um mês fora seria arredondar a favor.
+    atinge: meses.length > 0 && dentro === meses.length,
+  };
+}
+
+/**
  * O resultado lido contra o alvo. `null` quando não há meta — o indicador
  * continua mostrando o número, só não mostra a comparação. Inventar um alvo
  * para ter o que comparar seria pior do que não comparar.

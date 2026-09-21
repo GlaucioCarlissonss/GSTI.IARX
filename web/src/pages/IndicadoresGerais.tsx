@@ -27,8 +27,9 @@ import {
   Dica,
   Indicador,
   LegendaDeMatrizes,
+  resumoDeMeta,
   useDica,
-  type LeituraMeta,
+  type LeituraDeMeta,
   type NoEmpresa,
 } from '../components/graficos';
 import { LegendaDeConsumo } from '../components/consumo';
@@ -87,6 +88,7 @@ interface Indicadores {
       economia: number;
       tendencia: 'queda' | 'alta' | 'estavel' | 'indefinida';
       meses: number;
+      meta_leitura: LeituraDeMeta | null;
     };
     por_reconhecer: {
       quantidade: number;
@@ -101,7 +103,7 @@ interface Indicadores {
     fora: number;
     pct_dentro: number;
     meta: number;
-    meta_leitura: LeituraMeta | null;
+    meta_leitura: LeituraDeMeta | null;
   };
   projetos: {
     entregues: number;
@@ -109,7 +111,7 @@ interface Indicadores {
     pct_no_prazo: number;
     pendentes: number;
     pendentes_atrasadas: number;
-    meta_leitura: LeituraMeta | null;
+    meta_leitura: LeituraDeMeta | null;
   };
   consumo: {
     total: number;
@@ -128,7 +130,7 @@ interface Indicadores {
     atual: { competencia: string; pct: number } | null;
     anterior: { competencia: string; pct: number } | null;
     variacao_pp: number | null;
-    meta: LeituraMeta | null;
+    meta: LeituraDeMeta | null;
   };
   rateio: {
     compartilhado: number;
@@ -274,7 +276,9 @@ export function PaginaIndicadoresGerais() {
           titulo="Financeiro"
           classe="cartao-modulo"
           padraoAberto
-          descricao="despesa, rateio, plano de redução e conferência"
+          descricao={[resumoDeMeta(v.financeiro.reducao_custo.meta_leitura), 'despesa, rateio, plano de redução e conferência']
+            .filter(Boolean)
+            .join(' · ')}
         >
         {/* ---------------------------------------------- 1. plano de redução */}
         <Cartao
@@ -510,6 +514,7 @@ export function PaginaIndicadoresGerais() {
                 : ''
             }`}
             dica="Só a despesa de natureza fixa entra: uma compra pontual num mês e nenhuma no seguinte produziria uma redução que é só o fim da compra."
+            meta={v.financeiro.reducao_custo.meta_leitura}
             fatias={fatiasDoTotal}
             aoDetalhar={() =>
               abrirLancamentos('Custo recorrente — despesas fixas do recorte', { natureza: 'fixa' })
@@ -625,7 +630,7 @@ export function PaginaIndicadoresGerais() {
           titulo="SLA"
           classe="cartao-modulo"
           padraoAberto
-          descricao={`meta de ${v.sla.meta}%`}
+          descricao={resumoDeMeta(v.sla.meta_leitura) || `meta de ${v.sla.meta}%`}
         >
         <Cartao titulo="Atendidos dentro do SLA" descricao={`meta de ${v.sla.meta}%`}>
           <Indicador
@@ -648,7 +653,9 @@ export function PaginaIndicadoresGerais() {
           titulo="Projetos"
           classe="cartao-modulo"
           padraoAberto
-          descricao="por competência de entrega planejada"
+          descricao={[resumoDeMeta(v.projetos.meta_leitura), 'por competência de entrega planejada']
+            .filter(Boolean)
+            .join(' · ')}
         >
         <Cartao
           titulo="Tarefas entregues no prazo"

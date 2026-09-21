@@ -14,7 +14,7 @@
 import { db } from '../db/index.js';
 import { erroConflito, erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
 import { auditar } from './auditoria.js';
-import { ehCompetenciaValida, paraInterno } from './competencia.js';
+import { ehCompetenciaValida, paraExibicao, paraInterno } from './competencia.js';
 import type { Contexto } from './contexto.js';
 
 export type ModuloMeta = 'financeiro' | 'sla' | 'projetos' | 'equilibrio';
@@ -93,6 +93,22 @@ export function leituraDeMeta(
     atinge: bruto >= 0,
     distancia: Math.round(bruto * 10) / 10,
   };
+}
+
+/**
+ * A leitura quando o recorte atravessa vigências.
+ *
+ * `varias` é a marca que a tela usa para escolher o desenho: em vez de uma
+ * barra contra um alvo — que não existe para o período —, o placar de meses.
+ */
+export interface LeituraMetaMensal {
+  varias: true;
+  metas: LinhaMeta[];
+  meses: Array<{ competencia: string; alvo: number; valor: number; atinge: boolean }>;
+  dentro: number;
+  total: number;
+  direcao: DirecaoMeta;
+  atinge: boolean;
 }
 
 export interface LinhaMeta {
@@ -249,4 +265,65 @@ export function metaVigente(ctx: Contexto, modulo: ModuloMeta, competencia?: str
  */
 export function alvoDe(ctx: Contexto, modulo: ModuloMeta, competencia?: string): number | null {
   return metaVigente(ctx, modulo, competencia)?.alvo_pct ?? ALVO_PADRAO[modulo];
+}
+
+/**
+ * As metas que regem os meses dados, da mais antiga para a mais nova.
+ *
+ * Um recorte é um PERÍODO e o cadastro tem vigência: 01/2026 a 01/2027 pode
+ * atravessar duas metas. Escolher uma só — a do último mês, como o sistema
+ * fazia — julgava treze meses por uma regra que valia para cinco, e a outra
+ * meta sumia da tela sem explicação.
+ */
+export function metasDoRecorte(ctx: Contexto, modulo: ModuloMeta, competencias: string[]): LinhaMeta[] {
+  const vistas = new Map<number, LinhaMeta>();
+  for (const c of competencias) {
+    const m = metaVigente(ctx, modulo, c);
+    if (m) vistas.set(m.id, m);
+  }
+  return [...vistas.values()].sort((a, b) =>
+    String(a.vigencia_inicio ?? '').localeCompare(String(b.vigencia_inicio ?? '')));
+}
+
+/**
+ * O resultado contra a meta, mês a mês.
+ *
+ * `pontos` são `{competencia, valor}` — um por mês do recorte. Cada um é medido
+ * contra a meta que rege AQUELE mês, que é a única leitura honesta quando o
+ * período atravessa vigências.
+ *
+ * Com zero ou uma meta no período devolve a leitura de sempre: o caso comum não
+ * muda de forma, e trocar uma comparação única por um placar perderia
+ * informação.
+ */
+export function leituraMensalDeMeta(
+  ctx: Contexto,
+  modulo: ModuloMeta,
+  pontos: Array<{ competencia: string; valor: number | null }>,
+  totalAtingido: number | null,
+): LeituraMeta | LeituraMetaMensal | null {
+  const metas = metasDoRecorte(ctx, modulo, pontos.map((p) => p.competencia));
+  if (metas.length <= 1) {
+    const ultima = pontos.length ? pontos[pontos.length - 1]!.competencia : undefined;
+    return leituraDeMeta(alvoDe(ctx, modulo, ultima ? paraExibicao(ultima) : undefined), totalAtingido, modulo);
+  }
+
+  const direcao = DIRECAO_META[modulo];
+  const meses = pontos
+    .filter((p) => p.valor !== null)
+    .map((p) => {
+      const alvo = alvoDe(ctx, modulo, paraExibicao(p.competencia));
+      if (alvo === null) return null;
+      const bruto = direcao === 'minimo' ? p.valor! - alvo : alvo - p.valor!;
+      return { competencia: p.competencia, alvo, valor: p.valor!, atinge: bruto >= 0 };
+    })
+    .filter((m): m is { competencia: string; alvo: number; valor: number; atinge: boolean } => m !== null);
+
+  const dentro = meses.filter((m) => m.atinge).length;
+  return {
+    varias: true, metas, meses, dentro, total: meses.length, direcao,
+    // `atinge` só quando TODOS os meses atingiram: o indicador é do período, e
+    // dizer "atingiu" com um mês fora seria arredondar a favor.
+    atinge: meses.length > 0 && dentro === meses.length,
+  };
 }

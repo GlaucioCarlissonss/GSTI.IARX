@@ -19,7 +19,7 @@ import { escopoDeLeitura, escopoSql } from './escopo.js';
 import { paraReais } from './dinheiro.js';
 import { CENARIO_OFICIAL } from './financeiro.js';
 import { percentual } from './sla.js';
-import { ALVO_PADRAO, alvoDe, leituraDeMeta } from './metas.js';
+import { ALVO_PADRAO, alvoDe, leituraDeMeta, leituraMensalDeMeta } from './metas.js';
 import { planosVigentes } from './reducao.js';
 
 /**
@@ -149,6 +149,15 @@ export function reducaoDeCusto(ctx: Contexto, recorte: RecorteIndicadores = {}) 
   return {
     serie,
     meses: linhas.length,
+    // A meta de Financeiro limita a variação de cada mês contra o anterior, e
+    // é por mês que ela existe. O app web não a recebia de forma alguma: quem
+    // cadastrava um alvo de Financeiro não o via em lugar nenhum.
+    meta_leitura: leituraMensalDeMeta(
+      ctx,
+      'financeiro',
+      serie.map((p) => ({ competencia: p.competencia_interna, valor: p.variacao_pct })),
+      linhas.length < 2 || primeiro === 0 ? null : Math.round(((ultimo - primeiro) / primeiro) * 1000) / 10,
+    ),
     valor_inicial: paraReais(primeiro),
     valor_final: paraReais(ultimo),
     variacao_total_pct:
@@ -266,6 +275,19 @@ export function conformidadeSla(ctx: Contexto, recorte: RecorteIndicadores = {})
     )
     .get(...params) as { total: number; dentro: number };
 
+  // Por competência, para a meta poder ser medida mês a mês quando o recorte
+  // atravessa vigências. Sem isto, um período de treze meses era julgado por
+  // uma regra só — a do último mês —, e as demais metas sumiam da leitura.
+  const porMes = db()
+    .prepare(
+      `SELECT s.competencia,
+              COALESCE(SUM(s.total_atendidos), 0) AS total,
+              COALESCE(SUM(s.dentro_sla), 0) AS dentro
+         FROM tickets_sla s WHERE ${where}
+        GROUP BY s.competencia ORDER BY s.competencia`,
+    )
+    .all(...params) as Array<{ competencia: string; total: number; dentro: number }>;
+
   // A situação só existe para o chamado vindo de helpdesk: o registro agregado
   // do mês não tem status, e contá-lo como "aberto" seria invenção.
   const situacao = db()
@@ -299,7 +321,12 @@ export function conformidadeSla(ctx: Contexto, recorte: RecorteIndicadores = {})
     // A mesma meta na forma que o cartão consome. Acrescentada ao lado do
     // número, e não no lugar dele: o artifact e os testes leem `meta` como
     // número, e trocá-la quebraria os dois.
-    meta_leitura: leituraDeMeta(meta, totais.total ? pct : null, 'sla'),
+    meta_leitura: leituraMensalDeMeta(
+      ctx,
+      'sla',
+      porMes.map((m) => ({ competencia: m.competencia, valor: m.total ? percentual(m.dentro, m.total) : null })),
+      totais.total ? pct : null,
+    ),
     atinge_meta: totais.total > 0 && pct >= meta,
     // Distância até a meta em pontos percentuais: é o que o termômetro mostra.
     distancia_meta: totais.total > 0 ? Math.round((pct - meta) * 10) / 10 : null,
@@ -881,6 +908,23 @@ export function entregaDeTarefas(ctx: Contexto, recorte: RecorteIndicadores = {}
     atrasadas: number | null;
   };
 
+  // Por competência de entrega planejada — a mesma que a janela do recorte usa
+  // —, para a meta poder ser medida mês a mês quando o período cruza vigências.
+  const porMesProj = db()
+    .prepare(
+      `SELECT t.mes_fim_planejado AS competencia,
+              SUM(CASE WHEN t.status = 'concluida' AND t.mes_fim_real IS NOT NULL THEN 1 ELSE 0 END) AS entregues,
+              SUM(CASE WHEN t.status = 'concluida' AND t.mes_fim_real IS NOT NULL
+                        AND t.mes_fim_real <= t.mes_fim_planejado THEN 1 ELSE 0 END) AS no_prazo
+         FROM tarefas t
+         JOIN projetos p ON p.id = t.projeto_id
+        WHERE ${condicoes.join(' AND ')}
+        GROUP BY t.mes_fim_planejado ORDER BY t.mes_fim_planejado`,
+    )
+    // `params` começa com o mês corrente, que serve ao `?` do SELECT de
+    // atrasadas — e este SELECT não o tem. Passá-lo desalinharia a lista.
+    .all(...params.slice(1)) as Array<{ competencia: string; entregues: number | null; no_prazo: number | null }>;
+
   const entregues = linha.entregues ?? 0;
   const noPrazo = linha.no_prazo ?? 0;
   const pct = percentual(noPrazo, entregues);
@@ -895,7 +939,15 @@ export function entregaDeTarefas(ctx: Contexto, recorte: RecorteIndicadores = {}
     // "fora do prazo" enquanto o mês planejado não passou.
     pct_no_prazo: pct,
     meta,
-    meta_leitura: leituraDeMeta(meta, entregues ? pct : null, 'projetos'),
+    meta_leitura: leituraMensalDeMeta(
+      ctx,
+      'projetos',
+      porMesProj.map((m) => ({
+        competencia: m.competencia,
+        valor: m.entregues ? percentual(m.no_prazo ?? 0, m.entregues) : null,
+      })),
+      entregues ? pct : null,
+    ),
     atinge_meta: meta !== null && entregues > 0 && pct >= meta,
     distancia_meta: meta !== null && entregues > 0 ? Math.round((pct - meta) * 10) / 10 : null,
     pendentes: linha.pendentes ?? 0,

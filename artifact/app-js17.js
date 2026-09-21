@@ -42,6 +42,27 @@ const mesDoRecorte = (r) => (r && (r.ate || r.de)) || mesHoje();
 function metaHtml(leitura) {
   if (!leitura) return '';
   const comparador = leitura.direcao === 'minimo' ? 'mínimo' : 'teto';
+
+  // Recorte que atravessa vigências: o placar de meses, e as metas nomeadas.
+  // Uma barra única aqui mentiria — não há um alvo só para o período.
+  if (leitura.varias) {
+    const lista = leitura.metas
+      .map((m) => `${esc(m.nome)} ${Number(m.alvoPct).toLocaleString('pt-BR')}% (${esc(vigenciaEmTexto(m))})`)
+      .join(' · ');
+    if (!leitura.total) {
+      return `<span class="meta-kpi sem-dado">${esc(String(leitura.metas.length))} metas no período ·
+        sem resultado mensal para comparar<br><small>${lista}</small></span>`;
+    }
+    const pct = Math.round((leitura.dentro / leitura.total) * 100);
+    return `<span class="meta-kpi ${leitura.atinge ? 'dentro' : 'fora'}"
+        title="Cada mês é medido contra a meta que rege aquele mês: ${esc(lista)}.">
+        <span class="meta-barra" aria-hidden><i style="width:${pct}%"></i></span>
+        <span class="meta-texto">${leitura.atinge ? '✓' : '✗'} ${inteiro(leitura.dentro)} de
+          ${inteiro(leitura.total)} ${leitura.total === 1 ? 'mês dentro' : 'meses dentro'} da meta</span>
+        <small style="color:var(--tinta3);font-size:10.5px">${lista}</small>
+      </span>`;
+  }
+
   if (leitura.atingido === null) {
     return `<span class="meta-kpi sem-dado">meta ${leitura.alvo.toLocaleString('pt-BR')}% · sem resultado no período</span>`;
   }
@@ -53,6 +74,41 @@ function metaHtml(leitura) {
       <span class="meta-texto">${leitura.atinge ? '✓' : '✗'} ${esc(leitura.atingido.toLocaleString('pt-BR'))}% ·
         ${comparador} ${esc(leitura.alvo.toLocaleString('pt-BR'))}%</span>
     </span>`;
+}
+
+/**
+ * A meta em uma frase curta, para o cabeçalho do módulo.
+ *
+ * Existe porque só o bloco de SLA citava a meta: quem cadastrava um alvo de
+ * Financeiro olhava o bloco e não via sinal nenhum de que ele existia. O
+ * cabeçalho é onde se procura antes de abrir card nenhum.
+ */
+function resumoMetaDoModulo(leitura) {
+  if (!leitura) return '';
+  if (leitura.varias) {
+    return leitura.metas
+      .map((m) => `${Number(m.alvoPct).toLocaleString('pt-BR')}% ${vigenciaEmTexto(m)}`)
+      .join(' · ');
+  }
+  if (leitura.alvo === null || leitura.alvo === undefined) return '';
+  return `meta de ${Number(leitura.alvo).toLocaleString('pt-BR')}%`;
+}
+
+
+/**
+ * A meta do custo recorrente, medida como o período realmente é.
+ *
+ * A variação de cada mês contra o mês anterior é o que a meta de Financeiro
+ * limita ("não crescer mais que X%"), e é por mês que ela existe. O primeiro
+ * mês da série não tem variação — não há anterior —, e fica de fora em vez de
+ * entrar como zero.
+ */
+function metaDoCustoRecorrente(r, reducao) {
+  return leituraMensalDeMeta(
+    'financeiro',
+    reducao.serie.map((p) => ({ comp: p.comp, valor: p.variacao })),
+    reducao.variacaoTotal,
+  );
 }
 
 /** Recorte em branco de um bloco: período livre, todas as filiais, tudo. */
@@ -158,12 +214,17 @@ function calcularPorReconhecer(r) {
 function calcularSla(r) {
   let total = 0, dentro = 0, abertos = 0, andamento = 0, resolvidos = 0, vencidos = 0, comStatus = 0;
   const agora = new Date().toISOString();
+  // Por competência, para a meta poder ser medida mês a mês quando o recorte
+  // atravessa vigências. Sem isto, treze meses eram julgados por uma regra só.
+  const porMes = new Map();
   for (const e of escopoEmpresas()) {
     for (const s of (E.sla.get(e) || [])) {
       if (!naFilialDoBloco(s.filial, r)) continue;
       if (!naJanela(s.competencia, r)) continue;
       total += s.total || 0;
       dentro += s.dentro || 0;
+      const mes = porMes.get(s.competencia) || { total: 0, dentro: 0 };
+      porMes.set(s.competencia, { total: mes.total + (s.total || 0), dentro: mes.dentro + (s.dentro || 0) });
       if (!s.status) continue;
       comStatus += s.total || 1;
       const st = String(s.status).toLowerCase();
@@ -175,11 +236,13 @@ function calcularSla(r) {
   }
   const pct = total ? Math.round((dentro / total) * 1000) / 10 : 0;
   const meta = alvoDe('sla', mesDoRecorte(r)) ?? META_SLA;
+  const serie = [...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([comp, m]) => ({ comp, valor: m.total ? Math.round((m.dentro / m.total) * 1000) / 10 : null }));
   return {
-    total, dentro, fora: total - dentro, pct, meta,
+    total, dentro, fora: total - dentro, pct, meta, serie,
     atinge: total > 0 && pct >= meta,
     distancia: total > 0 ? Math.round((pct - meta) * 10) / 10 : null,
-    leitura: leituraDeMeta(meta, total ? pct : null, 'sla'),
+    leitura: leituraMensalDeMeta('sla', serie, total ? pct : null),
     abertos, andamento, resolvidos, vencidos, semStatus: total - comStatus,
   };
 }
@@ -474,6 +537,9 @@ function calcularEquilibrio(r) {
 function calcularProjetos(r) {
   let entregues = 0, noPrazo = 0, pendentes = 0, atrasadas = 0, canceladas = 0, total = 0;
   const hoje = mesHoje();
+  // Por competência de entrega planejada — a mesma que a janela do bloco usa —,
+  // para a meta poder ser medida mês a mês quando o recorte cruza vigências.
+  const porMes = new Map();
   for (const e of escopoEmpresas()) {
     for (const p of (E.projetos.get(e) || [])) {
       if (!naFilialDoBloco(p.filial, r)) continue;
@@ -483,7 +549,10 @@ function calcularProjetos(r) {
         if (t.status === 'cancelada') { canceladas += 1; continue; }
         if (t.status === 'concluida' && t.fimReal) {
           entregues += 1;
-          if (t.fimReal <= t.fimPlanejado) noPrazo += 1;
+          const mes = porMes.get(t.fimPlanejado) || { entregues: 0, noPrazo: 0 };
+          mes.entregues += 1;
+          if (t.fimReal <= t.fimPlanejado) { noPrazo += 1; mes.noPrazo += 1; }
+          porMes.set(t.fimPlanejado, mes);
         } else {
           pendentes += 1;
           if (t.fimPlanejado < hoje) atrasadas += 1;
@@ -492,12 +561,14 @@ function calcularProjetos(r) {
     }
   }
   const pct = entregues ? Math.round((noPrazo / entregues) * 1000) / 10 : 0;
+  const serie = [...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([comp, m]) => ({ comp, valor: m.entregues ? Math.round((m.noPrazo / m.entregues) * 1000) / 10 : null }));
   return {
-    total, entregues, noPrazo, foraDoPrazo: entregues - noPrazo, canceladas, pendentes, atrasadas, pct,
+    total, entregues, noPrazo, foraDoPrazo: entregues - noPrazo, canceladas, pendentes, atrasadas, pct, serie,
     // O 80 que pintava este card era um número solto, sem constante e sem dono.
     // Agora sai do mesmo cadastro que rege o SLA.
     meta: alvoDe('projetos', mesDoRecorte(r)),
-    leitura: leituraDeMeta(alvoDe('projetos', mesDoRecorte(r)), entregues ? pct : null, 'projetos'),
+    leitura: leituraMensalDeMeta('projetos', serie, entregues ? pct : null),
   };
 }
 
@@ -656,7 +727,10 @@ async function viewIndicadores() {
     <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
       <header>
         <h2>Financeiro</h2>
-        <span class="nota">${rf.somenteReconhecidas ? 'apenas despesas reconhecidas' : 'todas as despesas'}</span>
+        <span class="nota">${[
+          resumoMetaDoModulo(metaDoCustoRecorrente(rf, reducao)),
+          rf.somenteReconhecidas ? 'apenas despesas reconhecidas' : 'todas as despesas',
+        ].filter(Boolean).join(' · ')}</span>
       </header>
       ${filtrosDoBloco('financeiro', rf)}
 
@@ -767,7 +841,7 @@ async function viewIndicadores() {
       cor: reducao.tendencia === 'queda' ? 'var(--bomtxt)' : reducao.tendencia === 'alta' ? 'var(--crit)' : null,
       apoio: `${esc(seta[reducao.tendencia])} ${esc(palavra[reducao.tendencia])}${
         reducao.economia > 0 ? ` · economia de ${brl(reducao.economia)}/mês` : ''}`,
-      corpo: `${metaHtml(leituraDeMeta(alvoDe('financeiro', mesDoRecorte(rf)), reducao.variacaoTotal, 'financeiro'))}
+      corpo: `${metaHtml(metaDoCustoRecorrente(rf, reducao))}
         ${faixaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
         ${legendaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
         ${arvoreDeUnidadesHtml('ind-fixos', q.fixos, emDinheiro)}`,
@@ -865,7 +939,7 @@ async function viewIndicadores() {
     <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
       <header>
         <h2>SLA</h2>
-        <span class="nota">meta de ${sla.meta}%</span>
+        <span class="nota">${resumoMetaDoModulo(sla.leitura) || `meta de ${sla.meta}%`}</span>
       </header>
       ${filtrosDoBloco('sla', rs)}
 
@@ -911,7 +985,10 @@ async function viewIndicadores() {
     <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
       <header>
         <h2>Projetos</h2>
-        <span class="nota">por competência de entrega planejada</span>
+        <span class="nota">${[
+          resumoMetaDoModulo(proj.leitura),
+          'por competência de entrega planejada',
+        ].filter(Boolean).join(' · ')}</span>
       </header>
       ${filtrosDoBloco('projetos', rp)}
 

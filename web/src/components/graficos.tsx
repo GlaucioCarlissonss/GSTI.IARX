@@ -835,6 +835,45 @@ export interface LeituraMeta {
 }
 
 /**
+ * A leitura quando o recorte atravessa vigências de meta.
+ *
+ * Um recorte é um PERÍODO e o cadastro tem vigência: 01/2026 a 01/2027 pode
+ * cair sob duas metas. Uma barra contra um alvo único mentiria — não há um
+ * alvo só para o período —, então o que se mostra é o placar de meses.
+ */
+export interface LeituraMetaMensal {
+  varias: true;
+  metas: Array<{ id: number; nome: string; alvo_pct: number; vigencia_inicio: string | null; vigencia_fim: string | null }>;
+  meses: Array<{ competencia: string; alvo: number; valor: number; atinge: boolean }>;
+  dentro: number;
+  total: number;
+  direcao: 'minimo' | 'maximo';
+  atinge: boolean;
+}
+
+export type LeituraDeMeta = LeituraMeta | LeituraMetaMensal;
+
+const ehMensal = (m: LeituraDeMeta): m is LeituraMetaMensal => 'varias' in m && m.varias === true;
+
+/** "90% de 01/2026 a 08/2026" — a vigência legível ao lado do alvo. */
+export function vigenciaDaMeta(m: LeituraMetaMensal['metas'][number]): string {
+  const br = (c: string) => c.slice(5) + '/' + c.slice(0, 4);
+  if (!m.vigencia_inicio && !m.vigencia_fim) return 'sempre';
+  if (m.vigencia_inicio && !m.vigencia_fim) return `de ${br(m.vigencia_inicio)} em diante`;
+  if (!m.vigencia_inicio && m.vigencia_fim) return `até ${br(m.vigencia_fim)}`;
+  return `${br(m.vigencia_inicio!)} a ${br(m.vigencia_fim!)}`;
+}
+
+/** As metas do período em uma frase — para o cabeçalho do módulo. */
+export function resumoDeMeta(meta: LeituraDeMeta | null | undefined): string {
+  if (!meta) return '';
+  if (ehMensal(meta)) {
+    return meta.metas.map((m) => `${m.alvo_pct.toLocaleString('pt-BR')}% ${vigenciaDaMeta(m)}`).join(' · ');
+  }
+  return `meta de ${meta.alvo.toLocaleString('pt-BR')}%`;
+}
+
+/**
  * Meta vs Resultado — o alvo ao lado do número.
  *
  * Um indicador que mostra só o resultado obriga quem lê a saber de cabeça o
@@ -844,7 +883,37 @@ export interface LeituraMeta {
  * Sem resultado (nenhum atendimento no mês, nenhuma tarefa entregue) a barra
  * não aparece: uma barra vazia diria "0%", que é diferente de "não houve".
  */
-function MetaVsResultado({ meta }: { meta: LeituraMeta }) {
+function MetaVsResultado({ meta }: { meta: LeituraDeMeta }) {
+  // Recorte que atravessa vigências: o placar de meses e as metas nomeadas.
+  if (ehMensal(meta)) {
+    const lista = meta.metas
+      .map((m) => `${m.nome} ${m.alvo_pct.toLocaleString('pt-BR')}% (${vigenciaDaMeta(m)})`)
+      .join(' · ');
+    if (!meta.total) {
+      return (
+        <span className="meta-indicador sem-dado">
+          {meta.metas.length} metas no período · sem resultado mensal para comparar
+        </span>
+      );
+    }
+    const pct = Math.round((meta.dentro / meta.total) * 100);
+    return (
+      <span
+        className={`meta-indicador ${meta.atinge ? 'dentro' : 'fora'}`}
+        title={`Cada mês é medido contra a meta que rege aquele mês: ${lista}.`}
+      >
+        <span className="meta-barra" aria-hidden>
+          <i style={{ width: `${pct}%` }} />
+        </span>
+        <span className="meta-texto">
+          {meta.atinge ? '✓' : '✗'} {meta.dentro} de {meta.total}{' '}
+          {meta.total === 1 ? 'mês dentro' : 'meses dentro'} da meta
+        </span>
+        <small style={{ color: 'var(--tinta-fraca)', fontSize: 10.5 }}>{lista}</small>
+      </span>
+    );
+  }
+
   if (meta.atingido === null) {
     return <span className="meta-indicador sem-dado">meta {meta.alvo.toLocaleString('pt-BR')}% · sem resultado no período</span>;
   }
@@ -1164,7 +1233,7 @@ export function Indicador({
   /** A divisão por empresa matriz, para a faixa de cores e a legenda. */
   fatias?: FatiaIndicador[];
   /** O alvo contra o qual este número é lido. Ausente: o card mostra só o resultado. */
-  meta?: LeituraMeta | null;
+  meta?: LeituraDeMeta | null;
   /**
    * A sanfona: o detalhamento hierárquico matriz → filial, revelado abaixo do
    * card. Fica num botão PRÓPRIO, e não no corpo: o corpo já abre o

@@ -1264,6 +1264,32 @@ prazo —, que são exatamente os números que o sistema usava antes de a tabela
 existir. Sem resultado no período (nenhum chamado, nenhuma entrega) a
 comparação não aparece: nenhum atendimento no mês não é 0% de conformidade.
 
+### Quando o recorte atravessa vigências
+
+Um recorte de indicador é um **período**, e a meta tem vigência: pedir 01/2026 a
+01/2027 pode cair sob duas metas. O sistema escolhia **uma só** — a que regia o
+último mês — e julgava o período inteiro por ela. Treze meses eram medidos
+contra uma regra que valia para cinco, e a outra meta sumia da tela sem
+explicação.
+
+Hoje, quando mais de uma meta rege o período, **cada mês é medido contra a meta
+que rege aquele mês** e o indicador mostra o placar — *"9 de 13 meses dentro da
+meta"* — com as metas nomeadas ao lado. O período só conta como atingido quando
+**todos** os meses atingiram: dizer "atingiu" com um mês fora seria arredondar a
+favor.
+
+Com uma meta só regendo o recorte — o caso comum — nada muda de forma: continua
+a comparação única contra o alvo, com a barra de sempre. Mês sem resultado fica
+de fora do placar, nem a favor nem contra.
+
+### Onde a meta aparece
+
+**No cabeçalho de cada módulo**, antes de abrir card nenhum. Só o bloco de SLA a
+citava; quem cadastrava um alvo de Financeiro ou de Projetos olhava o bloco e
+não via sinal de que ele existia — que foi exatamente a falta relatada. Quando o
+período cruza vigências, o cabeçalho lista as duas com o alvo e a vigência de
+cada uma.
+
 ## Acordos de SLA: quantas horas o chamado tem
 
 Antes deste cadastro o prazo vinha pronto da origem. Quando o helpdesk não
