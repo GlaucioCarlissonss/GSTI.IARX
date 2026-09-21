@@ -456,8 +456,15 @@ export function reaplicarAcordos(
   const { resumo, mudancas } = avaliarReaplicacao(ctx.empresaId, comp);
   if (mudancas.length) {
     const atualizar = db().prepare(
+      // `prazo_origem` guarda a promessa do helpdesk ANTES de o acordo tomar o
+      // lugar dela. O chamado anterior a esta coluna tem a promessa só em
+      // `prazo_em`: sem o COALESCE, reaplicar o acordo a apagaria, e a
+      // contestação de um "fora do SLA" ficaria sem referência. No SQLite o
+      // lado direito do SET enxerga os valores ANTIGOS da linha, que é o que
+      // faz isto funcionar numa única passada.
       `UPDATE tickets_sla
-          SET prazo_em = ?, prazo_do_acordo = 1, dentro_sla = ?, fora_sla = ?,
+          SET prazo_origem = COALESCE(prazo_origem, CASE WHEN prazo_do_acordo = 0 THEN prazo_em END),
+              prazo_em = ?, prazo_do_acordo = 1, dentro_sla = ?, fora_sla = ?,
               atualizado_em = datetime('now')
         WHERE id = ? AND empresa_id = ?`,
     );

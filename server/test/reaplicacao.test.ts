@@ -89,6 +89,23 @@ test('aplicar move o prazo e o dentro/fora do chamado', () => {
   assert.equal(t!.prazo_do_acordo, 1, 'o prazo passou a ser nosso, e a ficha precisa saber disso');
 });
 
+test('reaplicar não apaga a promessa que o helpdesk tinha feito', () => {
+  const { ctx, empresaId } = ambienteLimpo();
+  // O chamado entra com prazo da origem e SEM acordo — é o estado de toda
+  // base carregada antes deste cadastro existir.
+  gravarChamado(empresaId, chamado({ due_at: '2026-03-20T09:00:00Z' }), {});
+  criarSla(ctx, { prioridade: 'high', horas: 1 });
+
+  reaplicarAcordos(ctx, COMP, POR_QUE);
+  const [t] = listarChamados(ctx, {}).itens;
+  assert.equal(t!.prazo_em, '2026-03-10T10:00:00.000Z', 'o acordo passou a valer');
+  assert.equal(t!.prazo_origem, '2026-03-20T09:00:00Z', 'e o prazo da origem foi preservado');
+
+  // Segunda passada não pode promover o prazo do acordo a "prazo da origem".
+  reaplicarAcordos(ctx, COMP, POR_QUE);
+  assert.equal(listarChamados(ctx, {}).itens[0]!.prazo_origem, '2026-03-20T09:00:00Z');
+});
+
 test('aplicar duas vezes não muda nada na segunda', () => {
   const { ctx } = baseSemAcordo();
   criarSla(ctx, { prioridade: 'high', horas: 1 });

@@ -70,6 +70,8 @@ interface Chamado {
   aberto_em: string | null;
   fechado_em: string | null;
   prazo_em: string | null;
+  prazo_do_acordo: number;
+  prazo_origem: string | null;
   horas: number | null;
   dentro_sla: number;
   synced_at: string | null;
@@ -641,7 +643,20 @@ function DetalheChamado({ id, aoFechar }: { id: number; aoFechar: () => void }) 
             <Linha rotulo="Fila" valor={c.fila ?? '—'} />
             <Linha rotulo="Tópico de ajuda" valor={c.topico_ajuda ?? '—'} />
             <Linha rotulo="Aberto em" valor={dataHora(c.aberto_em)} />
-            <Linha rotulo="Prazo" valor={dataHora(c.prazo_em)} />
+            {/* De onde veio o prazo importa: o acordo cadastrado tem
+                precedência sobre o que o helpdesk prometeu, e quem contesta um
+                "fora do SLA" precisa saber contra o que o chamado correu. */}
+            <Linha
+              rotulo="Prazo"
+              valor={
+                c.prazo_em
+                  ? `${dataHora(c.prazo_em)} · ${c.prazo_do_acordo === 1 ? 'do acordo cadastrado' : 'informado pelo helpdesk'}`
+                  : 'sem prazo'
+              }
+            />
+            {c.prazo_do_acordo === 1 && c.prazo_origem && (
+              <Linha rotulo="Prazo informado pela origem" valor={dataHora(c.prazo_origem)} />
+            )}
             <Linha rotulo="Fechado em" valor={c.fechado_em ? dataHora(c.fechado_em) : 'em aberto'} />
             <Linha rotulo="Horas" valor={c.horas === null ? '—' : String(c.horas)} />
             <Linha rotulo="Identificador na origem" valor={c.external_id} />

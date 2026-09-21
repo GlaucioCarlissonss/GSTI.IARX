@@ -436,7 +436,30 @@ interface AcordoSla {
   topico: string | null;
   prioridade: 'low' | 'medium' | 'high' | 'urgent';
   horas: number;
+  vigencia_inicio: string | null;
+  vigencia_fim: string | null;
   ativo: number;
+}
+
+/** O resumo que a reaplicação devolve — os mesmos nomes do servidor. */
+interface ResumoReaplicacao {
+  competencia: string;
+  avaliados: number;
+  alterados: number;
+  virou_dentro: number;
+  virou_fora: number;
+  sem_prioridade: number;
+  sem_acordo: number;
+  agregados_ignorados: number;
+}
+
+/** "de 01/03/2026 a 31/03/2026" — a vigência em texto, com pontas abertas. */
+function periodoEmTexto(inicio: string | null, fim: string | null): string {
+  const br = (d: string) => d.split('-').reverse().join('/');
+  if (!inicio && !fim) return 'sem vigência definida';
+  if (!inicio) return `até ${br(fim!)}`;
+  if (!fim) return `a partir de ${br(inicio)}`;
+  return `de ${br(inicio)} a ${br(fim)}`;
 }
 
 const ROTULO_PRIORIDADE_SLA: Record<AcordoSla['prioridade'], string> = {
@@ -485,6 +508,41 @@ export function PaginaSlas() {
     }
   };
 
+  // ---------------------------------------------- aplicar ao que já existe
+  //
+  // O acordo decide o prazo na ENTRADA do chamado. Alcançar o que já está
+  // gravado é um ATO: escolhe-se o mês, vê-se o que mudaria e só então se
+  // aplica. É o mesmo desenho da limpeza de base, e pela mesma razão —
+  // "recalcular 412 chamados, 37 saem de dentro para fora" é uma decisão;
+  // "recalcular" sozinho é um susto.
+  const [competencia, setCompetencia] = useState('');
+  const [justificativa, setJustificativa] = useState('');
+  const [resumo, setResumo] = useState<{ dados: ResumoReaplicacao; aplicado: boolean } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  const reaplicar = async (aplicar: boolean) => {
+    setErro(null);
+    setOcupado(true);
+    try {
+      // A unidade vai na QUERY também no POST: é de lá que `unidade(req)` a
+      // lê, e o acordo é da unidade em foco.
+      const dados = aplicar
+        ? await api.post<ResumoReaplicacao>(`/api/slas/reaplicacao?empresas=${empresa?.id ?? ''}`, {
+            competencia,
+            justificativa,
+          })
+        : await api.get<ResumoReaplicacao>('/api/slas/reaplicacao', {
+            empresas: empresa?.id,
+            competencia,
+          });
+      setResumo({ dados, aplicado: aplicar });
+    } catch (e) {
+      setResumo(null);
+      setErro(e instanceof Error ? e.message : 'Falha ao aplicar o acordo.');
+    }
+    setOcupado(false);
+  };
+
   return (
     <>
       <div className="barra-filtros">
@@ -517,6 +575,7 @@ export function PaginaSlas() {
                   <th>Tópico de ajuda</th>
                   <th>Prioridade</th>
                   <th className="num">Horas</th>
+                  <th>Vigência</th>
                   <th>Situação</th>
                   <th />
                 </tr>
@@ -531,6 +590,7 @@ export function PaginaSlas() {
                     </td>
                     <td>{ROTULO_PRIORIDADE_SLA[a.prioridade]}</td>
                     <td className="num">{a.horas.toLocaleString('pt-BR')} h</td>
+                    <td>{periodoEmTexto(a.vigencia_inicio, a.vigencia_fim)}</td>
                     <td>
                       <Etiqueta texto={a.ativo === 1 ? 'Ativo' : 'Inativo'} tom={a.ativo === 1 ? 'bom' : 'neutro'} />
                     </td>
@@ -572,18 +632,108 @@ export function PaginaSlas() {
                 })),
               },
               { chave: 'horas', rotulo: 'Horas', obrigatorio: true, tipo: 'numero', minimo: 0, largura: 100 },
+              { chave: 'vigencia_inicio', rotulo: 'Vigência de', tipo: 'data', largura: 150, dica: 'em branco: desde sempre' },
+              { chave: 'vigencia_fim', rotulo: 'até', tipo: 'data', largura: 150, dica: 'em branco: sem fim' },
             ]}
             aoEnviar={criar}
           />
         )}
 
         <p className="dica-filtro" style={{ marginTop: 10 }}>
-          O acordo do tópico ganha do geral. O prazo que o helpdesk de origem informa continua
-          tendo a palavra final — o cadastro entra onde não havia prazo nenhum. São horas corridas:
-          o sistema não tem calendário de expediente, e inventar um criaria um prazo que nenhum
-          contrato assinou. Chamados já gravados mantêm o prazo que tinham.
+          O acordo do tópico ganha do geral, e o acordo cadastrado ganha do prazo que o helpdesk
+          informou — o da origem fica guardado e aparece na ficha do chamado. Quem escolhe qual
+          acordo vale é a data de ABERTURA do chamado, e por isso dois acordos para a mesma
+          prioridade convivem enquanto os períodos não se sobrepõem. São horas corridas: o sistema
+          não tem calendário de expediente, e inventar um criaria um prazo que nenhum contrato
+          assinou. Chamado já gravado só muda pela reaplicação abaixo.
         </p>
       </Cartao>
+
+      <Cartao
+        titulo="Aplicar o acordo a uma competência"
+        descricao="Alcança o chamado que já está gravado — a base carregada por planilha, por exemplo"
+      >
+        <p className="dica-filtro">
+          O acordo decide o prazo na entrada do chamado. Aqui ele alcança o que já existe: escolha o
+          mês, veja o que mudaria e só então aplique. Mês fechado é recusado; mês que já passou exige
+          justificativa. Registro agregado e chamado sem prioridade ficam de fora — não há chamado
+          individual para medir.
+        </p>
+
+        <div className="barra-filtros" style={{ marginTop: 12 }}>
+          <Campo rotulo="Competência" dica="MM/AAAA">
+            <input
+              value={competencia}
+              onChange={(e) => setCompetencia(e.target.value)}
+              placeholder="MM/AAAA"
+              inputMode="numeric"
+              style={{ width: 110 }}
+            />
+          </Campo>
+          <Campo rotulo="Justificativa" dica="obrigatória em mês já encerrado">
+            <input
+              value={justificativa}
+              onChange={(e) => setJustificativa(e.target.value)}
+              style={{ width: 280 }}
+            />
+          </Campo>
+          <button
+            type="button"
+            className="botao discreto"
+            disabled={ocupado || !competencia}
+            onClick={() => reaplicar(false)}
+          >
+            Ver o que mudaria
+          </button>
+          {podeEditar && (
+            <button
+              type="button"
+              className="botao"
+              disabled={ocupado || !competencia}
+              onClick={() => reaplicar(true)}
+            >
+              Aplicar
+            </button>
+          )}
+        </div>
+
+        {resumo && (
+          <Aviso tipo={resumo.aplicado ? 'ok' : 'info'}>
+            <strong>
+              {/* A resposta traz a competência interna (AAAA-MM), como o
+                  resto da API; quem exibe é a tela, em MM/AAAA. */}
+              {resumo.aplicado
+                ? `Acordo aplicado a ${competenciaExib(resumo.dados.competencia)}.`
+                : `Prévia de ${competenciaExib(resumo.dados.competencia)} — nada foi gravado.`}
+            </strong>
+            <dl className="ficha" style={{ marginTop: 6 }}>
+              <Linha rotulo="Chamados avaliados" valor={inteiro(resumo.dados.avaliados)} />
+              <Linha
+                rotulo={resumo.aplicado ? 'Alterados' : 'Seriam alterados'}
+                valor={inteiro(resumo.dados.alterados)}
+              />
+              <Linha rotulo="Passaram a contar dentro" valor={inteiro(resumo.dados.virou_dentro)} />
+              <Linha rotulo="Passaram a contar fora" valor={inteiro(resumo.dados.virou_fora)} />
+              <Linha rotulo="Sem prioridade (intocados)" valor={inteiro(resumo.dados.sem_prioridade)} />
+              <Linha rotulo="Sem acordo vigente (intocados)" valor={inteiro(resumo.dados.sem_acordo)} />
+              <Linha
+                rotulo="Registros agregados (fora da conta)"
+                valor={inteiro(resumo.dados.agregados_ignorados)}
+              />
+            </dl>
+          </Aviso>
+        )}
+      </Cartao>
+    </>
+  );
+}
+
+/** Uma linha rótulo/valor da ficha — o mesmo par usado na ficha do chamado. */
+function Linha({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <>
+      <dt>{rotulo}</dt>
+      <dd>{valor}</dd>
     </>
   );
 }
@@ -876,7 +1026,7 @@ interface CampoCadastro {
   chave: string;
   rotulo: string;
   obrigatorio?: boolean;
-  tipo?: 'texto' | 'numero' | 'select' | 'competencia' | 'moeda';
+  tipo?: 'texto' | 'numero' | 'select' | 'competencia' | 'moeda' | 'data';
   opcoes?: Array<{ valor: string; rotulo: string }>;
   dica?: string;
   minimo?: number;
@@ -923,7 +1073,15 @@ function FormularioNovo({
             </select>
           ) : (
             <input
-              type={c.tipo === 'numero' || c.tipo === 'moeda' ? 'number' : 'text'}
+              type={
+                c.tipo === 'numero' || c.tipo === 'moeda'
+                  ? 'number'
+                  // A vigência do acordo de SLA é um DIA, e o seletor nativo
+                  // evita a ambiguidade entre 03/04 e 04/03 sem máscara nossa.
+                  : c.tipo === 'data'
+                    ? 'date'
+                    : 'text'
+              }
               inputMode={
                 c.tipo === 'competencia' ? 'numeric' : c.tipo === 'moeda' ? 'decimal' : undefined
               }

@@ -12,7 +12,7 @@
 //     para a planilha poder dizer quem CONSOME o que a filial paga. Fora das
 //     obrigatórias: um arquivo anterior continua entrando igual. A numeração
 //     acompanha a do servidor, que é quem o cliente vê na aba Modelo.
-const MODELO_VERSAO = '1.5';
+const MODELO_VERSAO = '1.6';
 
 /**
  * A coluna que diz de QUAL MATRIZ é a linha.
@@ -94,7 +94,7 @@ const ABAS_MODELO_BASE = {
     // preenchidas quando a linha veio do osTicket, e é o Ticket que permite
     // voltar ao chamado de origem.
     colunas: ['Filial', 'Competência', 'Fila', 'Tópico de Ajuda', 'Total Atendidos', 'Dentro SLA', 'Fora SLA',
-      'Ticket', 'Número', 'Assunto', 'Solicitante', 'Responsável', 'Nível', 'Status', 'Origem',
+      'Ticket', 'Número', 'Assunto', 'Solicitante', 'Responsável', 'Nível', 'Prioridade', 'Status', 'Origem',
       'Aberto em', 'Fechado em', 'Prazo', 'Horas', 'Observações'],
     obrigatorias: ['Competência', 'Fila', 'Total Atendidos', 'Dentro SLA'],
     apelidos: { 'Competência': ['competencia', 'mes', 'mescompetencia', 'mesreferencia'],
@@ -104,6 +104,9 @@ const ABAS_MODELO_BASE = {
       Ticket: ['ticket', 'ticketid', 'idchamado', 'idticket'], 'Número': ['numero', 'numerochamado', 'number'],
       Assunto: ['assunto', 'subject'], Solicitante: ['solicitante'], 'Responsável': ['responsavel', 'atendente'],
       'Nível': ['nivel', 'departamento'], Status: ['status'], Origem: ['origem', 'source'],
+      // A prioridade é o que casa o chamado com o acordo de SLA cadastrado.
+      // Sem esta coluna, o acordo não alcança chamado nenhum vindo de planilha.
+      Prioridade: ['prioridade', 'priority', 'urgencia'],
       'Aberto em': ['abertoem', 'criadoem', 'created'], 'Fechado em': ['fechadoem', 'closed'],
       Prazo: ['prazo', 'prazoem', 'duedate', 'estduedate'], Horas: ['horas'] },
   },
@@ -260,7 +263,9 @@ async function montarAbas(empresa, modulo) {
       'Tópico de Ajuda':s.topico||'', 'Total Atendidos':Number(s.total)||0,
       'Dentro SLA':Number(s.dentro)||0, 'Fora SLA':(Number(s.total)||0)-(Number(s.dentro)||0),
       Ticket:s.ticketId||'', 'Número':s.numero||'', Assunto:s.assunto||'', Solicitante:s.solicitante||'',
-      'Responsável':s.atendente||'', 'Nível':s.nivel||'', Status:s.status||'', Origem:s.origem||'',
+      'Responsável':s.atendente||'', 'Nível':s.nivel||'',
+      Prioridade: ROTULO_PRIORIDADE_SLA[s.prioridade] || s.prioridade || '',
+      Status:s.status||'', Origem:s.origem||'',
       'Aberto em':s.criadoEm||'', 'Fechado em':s.fechadoEm||'', Prazo:s.prazoEm||'',
       Horas:(s.horas ?? ''), 'Observações':s.obs||'' })),
   };
@@ -458,6 +463,7 @@ const NOTAS_MODELO = {
     'Competência': 'MM/AAAA.',
     'Total Atendidos': 'No agregado mensal, quantos chamados. Numa linha de chamado único, 1.',
     'Dentro SLA': 'Quantos dentro do prazo. Nunca maior que o total.',
+    'Prioridade': 'Baixa, Média, Alta ou Urgente. É o que liga o chamado ao acordo de SLA cadastrado.',
     'Fora SLA': 'NÃO preencha: é sempre total − dentro, e é calculado na entrada.',
     Ticket: 'Id do chamado no helpdesk. Junto com a Origem, é o que evita duplicar ao reimportar.',
     'Aberto em': 'dd/mm/aaaa hh:mm ou AAAA-MM-DDThh:mm.',
@@ -648,7 +654,8 @@ async function importarSla(empresa, aba, opcoes, rel) {
       Object.assign(reg, { ticketId,
         numero: ler(linha,'Número') || null, assunto: ler(linha,'Assunto') || null,
         solicitante: ler(linha,'Solicitante') || null, atendente: ler(linha,'Responsável') || null,
-        nivel: ler(linha,'Nível') || null, status: ler(linha,'Status') || null, origem: ler(linha,'Origem') || null,
+        nivel: ler(linha,'Nível') || null, prioridade: prioridadeDaPlanilha(ler(linha,'Prioridade')),
+        status: ler(linha,'Status') || null, origem: ler(linha,'Origem') || null,
         criadoEm: ler(linha,'Aberto em') || null, fechadoEm: ler(linha,'Fechado em') || null,
         prazoEm: ler(linha,'Prazo') || null,
         horas: ler(linha,'Horas') === '' ? null : lerValorPlanilha(ler(linha,'Horas')) });

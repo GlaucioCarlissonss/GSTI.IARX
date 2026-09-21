@@ -22,6 +22,7 @@ import { comEmpresaEmFoco } from '../domain/escopo.js';
 import { gravarChamado } from '../domain/suporte.js';
 import { criarProjeto, criarTarefa } from '../domain/projetos.js';
 import { criarPlano } from '../domain/reducao.js';
+import { criarSla } from '../domain/slas.js';
 import { clienteDaEmpresa } from '../domain/clientes.js';
 import { competenciaAtual, paraExibicao, somarMeses } from '../domain/competencia.js';
 import type { Contexto } from '../domain/contexto.js';
@@ -145,7 +146,14 @@ gravarChamado(
   { origem: 'preparar-verificacao-v2' },
 );
 
+// O acordo entra DEPOIS do chamado, de propósito: o chamado nasce medido pela
+// regra antiga (fechado, sem prazo, conta dentro) e o acordo de 1h o deixa
+// fora. É esse PAR que dá o que verificar — sem ele, aplicar o acordo a uma
+// competência passaria com zero alterações e não provaria nada.
+criarSla(ctx, { prioridade: 'low', horas: 1 });
+
 console.log(
   `base v2 pronta: usuário gestora · cliente com 2 matrizes (Holding TI, Hospital Norte) · ` +
-    `2 filiais · 2 lançamentos (1 compartilhado) · 1 projeto com 2 tarefas · 1 chamado · 1 item no plano de redução`,
+    `2 filiais · 2 lançamentos (1 compartilhado) · 1 projeto com 2 tarefas · 1 chamado · ` +
+    `1 item no plano de redução · 1 acordo de SLA que vira o chamado de dentro para fora`,
 );

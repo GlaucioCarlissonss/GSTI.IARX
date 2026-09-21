@@ -119,24 +119,62 @@ const SENHA = process.env.SENHA || 'varredura2026';
   console.log('\nSLAs — o acordo é da unidade, e a tela grava');
   await irPara('/slas');
   const telaSlas = await pag.evaluate(() => ({
-    vazio: !!document.querySelector('.vazio'),
+    // A base de verificação já traz um acordo (Baixa, 1h), justamente o que
+    // vira o chamado de dentro para fora quando aplicado.
+    linhas: [...document.querySelectorAll('tbody tr')].map((t) => t.textContent.replace(/\s+/g, ' ').trim()),
     // Aqui o seletor de unidade é obrigatório: o acordo é de uma unidade.
     foco: /Unidade em foco/i.test(document.body.textContent),
+    colunas: [...document.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
   }));
-  ok('a tela de SLAs abre vazia e explica o que vale sem cadastro', telaSlas.vazio);
+  ok('a tela de SLAs abre com o acordo da base', telaSlas.linhas.length === 1, String(telaSlas.linhas.length));
   ok('e oferece o seletor de unidade', telaSlas.foco);
+  ok('a tabela tem a coluna de vigência', telaSlas.colunas.includes('Vigência'), telaSlas.colunas.join(', '));
+  ok('acordo sem vigência é dito por extenso, e não em branco',
+    /sem vigência definida/i.test(telaSlas.linhas[0] || ''), telaSlas.linhas[0]);
 
   const selects = pag.locator('form select');
   await selects.nth(1).selectOption('high');
   await pag.fill('form input[type="number"]', '4');
+  await pag.fill('form input[type="date"] >> nth=0', '2026-03-01');
   await pag.click('form button[type="submit"]');
   await pag.waitForTimeout(1600);
-  const acordo = await pag.evaluate(() => {
-    const linha = document.querySelector('tbody tr');
-    return linha ? linha.textContent.replace(/\s+/g, ' ').trim() : '';
-  });
-  ok('o acordo aparece na lista', /Alta/.test(acordo) && /4/.test(acordo), acordo);
-  ok('e a regra geral é dita por extenso', /regra geral/i.test(acordo), acordo);
+  const acordos = await pag.evaluate(() =>
+    [...document.querySelectorAll('tbody tr')].map((t) => t.textContent.replace(/\s+/g, ' ').trim()));
+  const alta = acordos.find((l) => /Alta/.test(l)) || '';
+  ok('o acordo novo aparece na lista', /4/.test(alta), alta);
+  ok('e a regra geral é dita por extenso', /regra geral/i.test(alta), alta);
+  ok('com a vigência que foi digitada', /a partir de 01\/03\/2026/.test(alta), alta);
+
+  // ----------------------------------------- aplicar o acordo ao que existe
+  //
+  // A ligação que importa: o chamado da base foi gravado ANTES do acordo
+  // existir e conta dentro; o acordo de 1h para Baixa o deixa fora. Se a
+  // reaplicação não mexesse nele, o cadastro seria enfeite.
+  console.log('\nREAPLICAÇÃO — o acordo alcança o chamado que já estava gravado');
+  const comp = `${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`;
+  await pag.fill('input[placeholder="MM/AAAA"]', comp);
+  await pag.click('button:has-text("Ver o que mudaria")');
+  await pag.waitForTimeout(1200);
+  const previa = await pag.evaluate(() => (document.body.textContent || '').replace(/\s+/g, ' '));
+  ok('a prévia diz que nada foi gravado', /nada foi gravado/i.test(previa));
+  // O par <dt>/<dd> não deixa espaço entre rótulo e valor no textContent.
+  ok('e conta o chamado que passaria a contar fora',
+    /Passaram a contar fora\s*1/.test(previa),
+    (previa.match(/Chamados avaliados.{0,120}/) || [''])[0]);
+
+  await pag.click('button:text-is("Aplicar")');
+  await pag.waitForTimeout(1400);
+  const aplicado = await pag.evaluate(() => (document.body.textContent || '').replace(/\s+/g, ' '));
+  ok('aplicar confirma na tela', /Acordo aplicado/i.test(aplicado),
+    (aplicado.match(/(Acordo aplicado|Prévia|Falha|erro)[^.]{0,140}/i) || [''])[0]);
+
+  // E o efeito tem de aparecer onde o gestor lê o número, não só no aviso.
+  await irPara('/suporte/ostick', 1800);
+  await pag.evaluate(() => { const t = document.querySelector('tbody tr'); if (t) t.click(); });
+  await pag.waitForTimeout(1400);
+  const ficha = await pag.evaluate(() => (document.body.textContent || '').replace(/\s+/g, ' '));
+  ok('a ficha do chamado diz de onde veio o prazo',
+    /do acordo cadastrado/i.test(ficha), (ficha.match(/Prazo.{0,80}/i) || [''])[0]);
 
   // ------------------------------------------------ consumo no lançamento
   console.log('\nCONSUMO — a classificação aparece onde o lançamento aparece');

@@ -2,7 +2,8 @@
 //
 // Suba o servidor e rode com as credenciais do ambiente:
 //   npm start
-//   USUARIO=gestor SENHA=... node web/verificar-telas.cjs
+//   node web/verificar-telas.cjs        (usa gestora/varredura2026, da base v2)
+//   USUARIO=... SENHA=... node web/verificar-telas.cjs   (outra base)
 //
 // Falha em erro de console, página vazia, rolagem horizontal, ou aviso cujos
 // filhos viraram colunas (o sintoma de `display:flex` em texto corrido).
@@ -39,8 +40,8 @@ const BASE = process.env.BASE_URL || 'http://127.0.0.1:3333';
 
       await pag.goto(BASE + '/');
       await pag.waitForLoadState('networkidle');
-      await pag.fill('input[autocomplete="username"], input[name="usuario"]', process.env.USUARIO || 'gestor');
-      await pag.fill('input[type="password"], input[name="senha"]', process.env.SENHA || '');
+      await pag.fill('input[autocomplete="username"], input[name="usuario"]', process.env.USUARIO || 'gestora');
+      await pag.fill('input[type="password"], input[name="senha"]', process.env.SENHA || 'varredura2026');
       await pag.click('button[type="submit"], form button');
       await pag.waitForTimeout(2200);
       // A sessão começa escolhendo o cliente. Sem esse clique a varredura
@@ -90,8 +91,8 @@ const BASE = process.env.BASE_URL || 'http://127.0.0.1:3333';
     pag.on('pageerror', (e) => erros.push(e.message));
     await pag.goto(BASE + '/');
     await pag.waitForLoadState('networkidle');
-    await pag.fill('input[autocomplete="username"], input[name="usuario"]', process.env.USUARIO || 'gestor');
-    await pag.fill('input[type="password"], input[name="senha"]', process.env.SENHA || '');
+    await pag.fill('input[autocomplete="username"], input[name="usuario"]', process.env.USUARIO || 'gestora');
+    await pag.fill('input[type="password"], input[name="senha"]', process.env.SENHA || 'varredura2026');
     await pag.click('button[type="submit"], form button');
     await pag.waitForTimeout(2200);
     await pag.evaluate((t) => localStorage.setItem('gsti-tema', t), escolha);
@@ -131,8 +132,8 @@ const BASE = process.env.BASE_URL || 'http://127.0.0.1:3333';
     pag.on('pageerror', (e) => erros.push(e.message));
     await pag.goto(BASE + '/');
     await pag.waitForLoadState('networkidle');
-    await pag.fill('input[autocomplete="username"], input[name="usuario"]', process.env.USUARIO || 'gestor');
-    await pag.fill('input[type="password"], input[name="senha"]', process.env.SENHA || '');
+    await pag.fill('input[autocomplete="username"], input[name="usuario"]', process.env.USUARIO || 'gestora');
+    await pag.fill('input[type="password"], input[name="senha"]', process.env.SENHA || 'varredura2026');
     await pag.click('button[type="submit"], form button');
     await pag.waitForTimeout(2200);
     const escolha = await pag.$('.cartao button');

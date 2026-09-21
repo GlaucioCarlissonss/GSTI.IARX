@@ -1206,16 +1206,54 @@ O acordo é da **unidade**, por (tópico de ajuda, prioridade). O tópico nulo �
 uma linha por tópico deixaria chamados sem acordo sem ninguém perceber. O
 acordo do tópico ganha do geral.
 
-**O prazo da origem continua tendo a palavra final.** É o que o helpdesk
-prometeu ao solicitante, e sobrescrevê-lo faria o sistema discordar da tela que
-a pessoa viu ao abrir o chamado. O cadastro entra onde não havia prazo nenhum.
+**O acordo cadastrado tem a palavra final, à frente do prazo da origem.** Ele
+é o compromisso que o grupo negociou; o `due_at` do helpdesk é a conta que a
+ferramenta fez com a configuração dela. Onde não há acordo vigente, o prazo da
+origem segue valendo — quem não cadastrou nada não vê nada mudar.
+
+O prazo da origem **não é descartado**: fica em `tickets_sla.prazo_origem`, e a
+ficha do chamado mostra os dois, dizendo de qual deles o prazo vigente saiu.
+Sem isso, quem contesta um "fora do SLA" não teria contra o que comparar.
 
 São **horas corridas**, e não horas úteis: não há calendário de expediente
 cadastrado, e inventar um (segunda a sexta, 9 às 18) criaria um prazo que
 nenhum contrato assinou.
 
-O cadastro **não reescreve o passado**: ele decide o prazo do chamado na hora
-em que o chamado entra.
+### Vigência: quem escolhe o acordo é a abertura do chamado
+
+O acordo tem vigência em **data** (não em competência, como as metas), e o que
+decide qual acordo vale é a **data de abertura** do chamado. Trocar 24h por 8h
+hoje não pode rejulgar o chamado da semana passada, que correu contra o
+compromisso de então. Ponta vazia é ponta aberta: sem início vale desde sempre,
+sem fim vale indefinidamente.
+
+Por isso dois acordos para a mesma (tópico, prioridade) **convivem**, desde que
+os períodos não se sobreponham — é assim que se substitui uma regra sem apagar
+a anterior. A recusa do cadastro é por **sobreposição**, e não por existência:
+dois acordos valendo ao mesmo tempo dariam dois prazos ao mesmo chamado.
+
+### Reaplicação: alcançar o que já está gravado
+
+O cadastro **não reescreve o passado sozinho**: ele decide o prazo na hora em
+que o chamado entra. Para alcançar o que já está gravado — a base carregada por
+planilha, por exemplo — existe a **reaplicação por competência**, que é um ato
+explícito:
+
+- **prévia** primeiro, que conta o que mudaria sem gravar nada;
+- **aplicação** depois, que grava e devolve os mesmos números;
+- **uma** linha de auditoria por execução, com as contagens e a competência —
+  uma por chamado afogaria a trilha e esconderia o tamanho do efeito;
+- **mês fechado é recusado** (reabra antes) e **mês passado exige
+  justificativa**, como toda escrita com competência no sistema.
+
+Ficam de fora, contados à parte para a tela poder explicá-los: o **registro
+agregado do mês** (não tem abertura nem prioridade — não há chamado individual
+para medir, e arbitrar uma abertura seria fabricar dado), o **chamado sem
+prioridade** e a **prioridade sem acordo vigente**.
+
+No artifact, o acordo só alcança chamado que **tenha prioridade**, e a
+prioridade só entra pela coluna `Prioridade` da aba SLA, acrescentada ao modelo
+de planilha na versão 1.6.
 
 ## Reclassificação de prioridade
 
@@ -1235,7 +1273,12 @@ está como Alta?" se faz. A trilha de auditoria também registra o evento, para
 quem audita — são leituras diferentes da mesma mudança.
 
 A prioridade vigente passa a valer para o cálculo do SLA, e o prazo é refeito a
-partir do acordo da prioridade nova — **só quando o prazo era nosso**.
+partir do acordo da prioridade nova **sempre que houver um vigente** — elevar um
+chamado para Urgente sem encurtar o prazo dele seria elevação só no rótulo. Sem
+acordo para a prioridade nova, o chamado volta ao prazo que a origem informou; e
+sem esse, fica sem prazo, e a leitura volta a ser "fechado conta dentro, aberto
+conta fora". Manter o prazo do acordo ANTERIOR mediria a prioridade nova pela
+regra da antiga.
 
 ## Expansões previstas
 

@@ -137,17 +137,89 @@ function slasDa(empresa) {
   return (E.slasCad || []).filter((s) => s.empresa === empresa);
 }
 
+/** "de 01/03/2026 a 31/03/2026" — a vigência em texto, com as pontas abertas. */
+function periodoEmTexto(acordo) {
+  const br = (d) => String(d).split('-').reverse().join('/');
+  if (!acordo.vigenciaInicio && !acordo.vigenciaFim) return 'sem vigência definida';
+  if (!acordo.vigenciaInicio) return 'até ' + br(acordo.vigenciaFim);
+  if (!acordo.vigenciaFim) return 'a partir de ' + br(acordo.vigenciaInicio);
+  return 'de ' + br(acordo.vigenciaInicio) + ' a ' + br(acordo.vigenciaFim);
+}
+
+/** A prioridade como a planilha escreve: 'Alta', 'high', 'URGENTE'. */
+function prioridadeDaPlanilha(texto) {
+  const t = String(texto || '').trim().toLowerCase();
+  if (!t) return null;
+  if (PRIORIDADES_SLA.includes(t)) return t;
+  const porRotulo = PRIORIDADES_SLA.find((p) => ROTULO_PRIORIDADE_SLA[p].toLowerCase() === t);
+  return porRotulo || null;
+}
+
+/** A data (AAAA-MM-DD) de um carimbo ISO, ou null. */
+const diaDe = (t) => (t ? String(t).slice(0, 10) : null);
+
+/** O acordo estava valendo neste dia? Ponta vazia é ponta aberta. */
+function vigenteEm(acordo, dia) {
+  if (acordo.vigenciaInicio && (!dia || dia < acordo.vigenciaInicio)) return false;
+  if (acordo.vigenciaFim && (!dia || dia > acordo.vigenciaFim)) return false;
+  return true;
+}
+
 /**
  * As horas que valem para um chamado — ou `null` se não há acordo.
  *
  * O acordo do tópico ganha do geral: "Rede: 4h para alta" junto de "geral: 24h
  * para alta" quer dizer que rede é mais exigente, e não que as duas competem.
+ *
+ * Quem escolhe entre acordos de vigências diferentes é a ABERTURA do chamado:
+ * trocar 24h por 8h hoje não pode rejulgar o chamado da semana passada, que
+ * correu contra o compromisso de então. É a mesma regra do servidor
+ * (`horasDoAcordo` em `domain/slas.ts`).
  */
-function horasDoAcordo(empresa, prioridade, topico) {
-  const ativos = slasDa(empresa).filter((s) => s.ativo !== false && s.prioridade === prioridade);
+function horasDoAcordo(empresa, prioridade, topico, abertoEm) {
+  const dia = diaDe(abertoEm);
+  const ativos = slasDa(empresa)
+    .filter((s) => s.ativo !== false && s.prioridade === prioridade && vigenteEm(s, dia))
+    // Entre dois vigentes, o de início mais recente.
+    .sort((a, b) => String(b.vigenciaInicio || '').localeCompare(String(a.vigenciaInicio || '')));
   const doTopico = ativos.find((s) => s.topico && s.topico === topico);
   const geral = ativos.find((s) => !s.topico);
   return (doTopico || geral || {}).horas ?? null;
+}
+
+/**
+ * O prazo que o acordo dá a este chamado: abertura + horas, em ISO.
+ *
+ * Horas corridas, como no servidor: não há calendário de expediente
+ * cadastrado, e inventar um criaria prazo que nenhum contrato assinou.
+ */
+function prazoDoAcordo(empresa, abertoEm, prioridade, topico) {
+  if (!abertoEm) return null;
+  const horas = horasDoAcordo(empresa, prioridade, topico, abertoEm);
+  if (horas === null) return null;
+  const inicio = new Date(abertoEm);
+  if (Number.isNaN(inicio.getTime())) return null;
+  return new Date(inicio.getTime() + horas * 3600000).toISOString();
+}
+
+/**
+ * Como este chamado fica quando o acordo vale: prazo, dentro/fora e de onde o
+ * prazo veio. Devolve `null` quando o acordo não alcança o chamado.
+ *
+ * O acordo cadastrado GANHA do prazo que a origem informou — é o compromisso
+ * que o grupo negociou. O da origem fica guardado em `prazoOrigem`, para a
+ * ficha poder mostrar os dois.
+ */
+function medirPeloAcordo(empresa, registro) {
+  const prazo = prazoDoAcordo(empresa, registro.criadoEm, registro.prioridade, registro.topico);
+  if (!prazo) return null;
+  const referencia = registro.fechadoEm || new Date().toISOString();
+  return {
+    prazoEm: prazo,
+    prazoDoAcordo: true,
+    prazoOrigem: registro.prazoOrigem || (registro.prazoDoAcordo ? null : registro.prazoEm) || null,
+    dentro: referencia <= prazo ? 1 : 0,
+  };
 }
 
 function viewSlas() {
@@ -167,23 +239,44 @@ function viewSlas() {
       ${acordos.length === 0 ? `<p class="vazio">Nenhum acordo cadastrado. O prazo continua vindo do helpdesk
         de origem; onde ele não informa prazo, o chamado fechado conta como dentro e o aberto, como fora.</p>` : `
       <div class="rol"><table>
-        <thead><tr><th>Tópico de ajuda</th><th>Prioridade</th><th class="n">Horas</th><th>Situação</th><th></th></tr></thead>
+        <thead><tr><th>Tópico de ajuda</th><th>Prioridade</th><th class="n">Horas</th><th>Vigência</th><th>Situação</th><th></th></tr></thead>
         <tbody>${acordos.map((a, i) => `<tr>
           <td>${a.topico ? esc(a.topico) : '<em style="color:var(--tinta3)">regra geral desta prioridade</em>'}</td>
           <td>${esc(ROTULO_PRIORIDADE_SLA[a.prioridade] || a.prioridade)}</td>
           <td class="n">${Number(a.horas).toLocaleString('pt-BR')} h</td>
+          <td>${esc(periodoEmTexto(a))}</td>
           <td><span class="tag ${a.ativo === false ? '' : 'bom'}">${a.ativo === false ? 'Inativo' : 'Ativo'}</span></td>
           <td><button class="bt fant peq" data-alternar-sla="${i}">${a.ativo === false ? 'Reativar' : 'Desativar'}</button></td>
         </tr>`).join('')}</tbody>
       </table></div>`}
       <div style="margin-top:12px"><button class="bt" data-novo-sla>Cadastrar acordo</button></div>
-      <p class="nota" style="margin-top:10px">O acordo do tópico ganha do geral. O prazo que o helpdesk de
-        origem informa continua tendo a palavra final — o cadastro entra onde não havia prazo nenhum. São
-        horas corridas: o sistema não tem calendário de expediente, e inventar um criaria um prazo que
-        nenhum contrato assinou. Chamados já gravados mantêm o prazo que tinham.</p>
+      <p class="nota" style="margin-top:10px">O acordo do tópico ganha do geral, e o acordo cadastrado
+        ganha do prazo que o helpdesk informou — o da origem fica guardado e aparece na ficha do chamado.
+        São horas corridas: o sistema não tem calendário de expediente, e inventar um criaria um prazo que
+        nenhum contrato assinou. Chamado já gravado só muda pela reaplicação abaixo.</p>
+    </section>
+
+    <section class="bloco">
+      <header><h2>Aplicar o acordo a uma competência</h2></header>
+      <p class="nota">O acordo decide o prazo na ENTRADA do chamado. Para alcançar o que já está
+        gravado — a base carregada por planilha, por exemplo — escolha o mês e veja o que mudaria
+        antes de aplicar. Mês fechado é recusado; mês passado exige justificativa.</p>
+      <div class="grade g3" style="margin-top:10px">
+        <div class="campo"><label for="r-comp">Competência</label>
+          <select id="r-comp">${competenciasComChamados(emp)
+            .map((c) => `<option value="${esc(c)}">${esc(mesExib(c))}</option>`).join('')}</select></div>
+        <div class="campo"><label for="r-just">Justificativa</label>
+          <input id="r-just" placeholder="obrigatória em mês já encerrado"></div>
+      </div>
+      <div class="acoes" style="justify-content:flex-start;margin-top:10px">
+        <button class="bt" data-previa-sla>Ver o que mudaria</button>
+        <button class="bt pri" data-aplicar-sla>Aplicar</button>
+      </div>
+      <div id="r-resultado" style="margin-top:12px"></div>
     </section>`;
 
   el('#pagina').querySelector('[data-novo-sla]')?.addEventListener('click', () => formAcordoSla(emp));
+  ligarReaplicacao(emp);
   for (const bt of el('#pagina').querySelectorAll('[data-alternar-sla]')) {
     bt.addEventListener('click', async () => {
       const alvo = acordos[Number(bt.dataset.alternarSla)];
@@ -193,6 +286,99 @@ function viewSlas() {
       render();
     });
   }
+}
+
+/** As competências que têm chamado nesta unidade, da mais recente para trás. */
+function competenciasComChamados(empresa) {
+  return [...new Set((E.sla.get(empresa) || []).map((r) => r.competencia).filter(Boolean))]
+    .sort((a, b) => String(b).localeCompare(String(a)));
+}
+
+/**
+ * O que a reaplicação faria nesta competência — sem gravar.
+ *
+ * Mesma passada da aplicação, e de propósito: se a prévia contasse por um
+ * caminho e o botão fizesse por outro, a tela prometeria um número e a
+ * gravação faria outro. É a mesma regra do servidor (`avaliarReaplicacao`).
+ */
+function avaliarReaplicacao(empresa, competencia) {
+  const resumo = { avaliados:0, alterados:0, virouDentro:0, virouFora:0,
+    semPrioridade:0, semAcordo:0, agregadosIgnorados:0 };
+  const mudancas = [];
+  for (const r of registrosDoMes(empresa, competencia)) {
+    // O registro AGREGADO do mês não tem abertura nem prioridade: não há
+    // chamado individual para medir, e arbitrar uma abertura seria inventar.
+    if (Number(r.total) !== 1) { resumo.agregadosIgnorados += 1; continue; }
+    resumo.avaliados += 1;
+    if (!r.prioridade) { resumo.semPrioridade += 1; continue; }
+    const medida = medirPeloAcordo(empresa, r);
+    if (!medida) { resumo.semAcordo += 1; continue; }
+    if (medida.prazoEm === r.prazoEm && medida.dentro === Number(r.dentro)) continue;
+    resumo.alterados += 1;
+    if (medida.dentro !== Number(r.dentro)) {
+      if (medida.dentro === 1) resumo.virouDentro += 1; else resumo.virouFora += 1;
+    }
+    mudancas.push({ id: r.id, medida });
+  }
+  return { resumo, mudancas };
+}
+
+/** O resumo em texto — o que a tela mostra antes e depois de aplicar. */
+function resumoReaplicacaoHtml(resumo, aplicado) {
+  const linhas = [
+    ['Chamados avaliados', resumo.avaliados],
+    [aplicado ? 'Alterados' : 'Seriam alterados', resumo.alterados],
+    ['Passaram a contar dentro', resumo.virouDentro],
+    ['Passaram a contar fora', resumo.virouFora],
+    ['Sem prioridade (intocados)', resumo.semPrioridade],
+    ['Sem acordo vigente (intocados)', resumo.semAcordo],
+    ['Registros agregados (fora da conta)', resumo.agregadosIgnorados],
+  ];
+  return `<div class="msg ${aplicado ? 'ok' : ''}">
+    <strong>${aplicado ? 'Acordo aplicado.' : 'Prévia — nada foi gravado.'}</strong>
+    <dl class="ficha" style="margin-top:6px">${linhas
+      .map(([r, v]) => `<dt>${esc(r)}</dt><dd>${inteiro(v)}</dd>`).join('')}</dl></div>`;
+}
+
+function ligarReaplicacao(emp) {
+  const pagina = el('#pagina');
+  const saida = pagina.querySelector('#r-resultado');
+  const comp = () => pagina.querySelector('#r-comp')?.value || null;
+  if (!saida) return;
+
+  pagina.querySelector('[data-previa-sla]')?.addEventListener('click', () => {
+    const c = comp();
+    if (!c) { saida.innerHTML = '<div class="msg alerta">Esta unidade não tem chamado em mês nenhum.</div>'; return; }
+    saida.innerHTML = resumoReaplicacaoHtml(avaliarReaplicacao(emp, c).resumo, false);
+  });
+
+  pagina.querySelector('[data-aplicar-sla]')?.addEventListener('click', async (ev) => {
+    const c = comp();
+    if (!c) { saida.innerHTML = '<div class="msg alerta">Esta unidade não tem chamado em mês nenhum.</div>'; return; }
+    ev.target.disabled = true;
+    try {
+      const just = pagina.querySelector('#r-just')?.value || '';
+      // O mesmo porteiro de escrita do resto do sistema: mês fechado recusa,
+      // mês passado exige justificativa.
+      checarCompetencia(c, just, emp);
+      const { resumo, mudancas } = avaliarReaplicacao(emp, c);
+      if (mudancas.length) {
+        const porId = new Map(mudancas.map((m) => [String(m.id), m.medida]));
+        const itens = registrosDoMes(emp, c).map((r) => {
+          const m = porId.get(String(r.id));
+          return semCompetencia(m ? { ...r, ...m } : r);
+        });
+        await Loja.gravarSlaMes(emp, c, itens);
+        await Loja.slaDa(emp);
+      }
+      await Loja.auditar({ acao:'reaplicar', entidade:'sla', justificativa: just || null,
+        depois:{ ...resumo, competencia: mesExib(c) } }, emp);
+      saida.innerHTML = resumoReaplicacaoHtml(resumo, true);
+    } catch (e) {
+      saida.innerHTML = `<div class="msg erro">${esc(e.message)}</div>`;
+    }
+    ev.target.disabled = false;
+  });
 }
 
 function formAcordoSla(emp) {
@@ -213,7 +399,16 @@ function formAcordoSla(emp) {
         </select></div>
         <div class="campo"><label for="s-horas">Horas</label>
           <input id="s-horas" name="horas" type="number" min="0" step="0.5"></div>
-      </div>`,
+      </div>
+      <div class="grade g3">
+        <div class="campo"><label for="s-vi">Vigência de</label>
+          <input id="s-vi" name="vigenciaInicio" type="date"></div>
+        <div class="campo"><label for="s-vf">até</label>
+          <input id="s-vf" name="vigenciaFim" type="date"></div>
+      </div>
+      <p class="nota">Vigência em branco vale desde sempre, sem fim. Quem escolhe qual acordo vale
+        para um chamado é a data de ABERTURA dele — por isso dois acordos para a mesma prioridade
+        convivem, desde que os períodos não se sobreponham.</p>`,
     acoes: `<button type="button" class="bt" data-c>Cancelar</button>
             <button type="button" class="bt pri" data-s>Cadastrar</button>`,
     aoMontar({ raiz, fechar, erro, campo }) {
@@ -225,14 +420,30 @@ function formAcordoSla(emp) {
           const prioridade = campo('prioridade').value;
           const horas = Number(String(campo('horas').value).replace(',', '.'));
           if (!Number.isFinite(horas) || horas <= 0) throw new Error('As horas precisam ser um número maior que zero.');
-          if (slasDa(emp).some((s) => s.prioridade === prioridade && (s.topico || null) === topico)) {
-            throw new Error(topico
-              ? 'Já existe um acordo para este tópico nesta prioridade.'
-              : 'Já existe uma regra geral para esta prioridade.');
+          const vigenciaInicio = campo('vigenciaInicio').value || null;
+          const vigenciaFim = campo('vigenciaFim').value || null;
+          if (vigenciaInicio && vigenciaFim && vigenciaInicio > vigenciaFim) {
+            throw new Error('A vigência termina antes de começar. Confira as duas datas.');
           }
-          const novo = { empresa: emp, topico, prioridade, horas: Math.round(horas * 100) / 100, ativo: true };
+          // A recusa é por SOBREPOSIÇÃO, e não por existência: é assim que se
+          // substitui um acordo sem apagar o anterior. Dois valendo ao mesmo
+          // tempo dariam dois prazos ao mesmo chamado.
+          const conflito = slasDa(emp).find((s) => s.ativo !== false
+            && s.prioridade === prioridade && (s.topico || null) === topico
+            && (!vigenciaInicio || !s.vigenciaFim || vigenciaInicio <= s.vigenciaFim)
+            && (!vigenciaFim || !s.vigenciaInicio || s.vigenciaInicio <= vigenciaFim));
+          if (conflito) {
+            throw new Error((topico
+              ? 'Já existe um acordo para este tópico nesta prioridade'
+              : 'Já existe uma regra geral para esta prioridade')
+              + ' valendo no mesmo período (' + periodoEmTexto(conflito) + '). Encerre a vigência'
+              + ' do acordo anterior ou escolha outro período.');
+          }
+          const novo = { empresa: emp, topico, prioridade, horas: Math.round(horas * 100) / 100,
+            vigenciaInicio, vigenciaFim, ativo: true };
           await Loja.gravarCatalogo('slasCad', [...(E.slasCad || []), novo]);
-          await Loja.auditar({ acao:'criar', entidade:'sla', depois:{ topico, prioridade, horas: novo.horas } }, emp);
+          await Loja.auditar({ acao:'criar', entidade:'sla',
+            depois:{ topico, prioridade, horas: novo.horas, vigenciaInicio, vigenciaFim } }, emp);
           fechar(); render();
         } catch (e) { erro(e.message); ev.target.disabled = false; }
       };
@@ -285,7 +496,8 @@ function abrirReclassificacao(empresa, competencia, id) {
     corpo: `
       <div class="msg">Prioridade atual:
         <strong>${esc(rotuloPrioridade(registro.prioridade) || 'não definida')}</strong>.
-        A prioridade vigente é a que vale para o cálculo do SLA.</div>
+        A prioridade vigente é a que vale para o cálculo do SLA: o prazo é refeito pelo acordo
+        cadastrado da prioridade nova, e volta ao prazo da origem quando não houver acordo.</div>
 
       <section class="bloco" style="box-shadow:none">
         <header><h2>Histórico</h2><span class="nota">${inteiro(historico.length)}</span></header>
@@ -323,9 +535,25 @@ function abrirReclassificacao(empresa, competencia, id) {
           }
           const itens = registrosDoMes(empresa, competencia).map((r) => {
             if (String(r.id) !== String(id)) return semCompetencia(r);
+            const comNova = { ...r, prioridade: nova };
+            // A prioridade vigente passa a valer para o SLA: o prazo é refeito
+            // pelo acordo da prioridade NOVA. Elevar para Urgente sem encurtar
+            // o prazo seria elevação só no rótulo. Sem acordo para ela, o
+            // chamado volta ao prazo que a origem informou.
+            const medida = medirPeloAcordo(empresa, comNova);
+            const semAcordo = {
+              prazoEm: r.prazoDoAcordo ? (r.prazoOrigem || null) : (r.prazoEm || null),
+              prazoDoAcordo: false,
+            };
+            const efeito = medida || semAcordo;
+            const referencia = r.fechadoEm || new Date().toISOString();
+            const dentro = medida ? medida.dentro
+              : efeito.prazoEm ? (referencia <= efeito.prazoEm ? 1 : 0)
+              : (r.fechadoEm ? 1 : 0);
             return semCompetencia({
-              ...r,
-              prioridade: nova,
+              ...comNova,
+              ...efeito,
+              dentro,
               reclassificacoes: [...historicoDe(r), {
                 de: r.prioridade || null, para: nova, quando: new Date().toISOString(),
                 motivo: campo('motivo').value.trim() || null, solicitante,
