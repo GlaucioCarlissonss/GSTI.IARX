@@ -4,7 +4,7 @@ import { useDados, useSessao } from '../lib/sessao';
 import { useFiltroEscopo } from '../lib/filtros';
 import { Filtro, FiltroUnidades, SeletorUnidadeFoco } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta } from '../components/base';
-import { competenciaAtual, competenciaValida, dataHora, inteiro } from '../lib/formato';
+import { competenciaAtual, competenciaExib, competenciaValida, dataHora, inteiro } from '../lib/formato';
 
 // ==========================================================================
 // Fechamento de competência
@@ -271,6 +271,161 @@ export function PaginaCadastros() {
   );
 }
 
+// ==========================================================================
+// Metas
+// ==========================================================================
+
+interface Meta {
+  id: number;
+  nome: string;
+  modulo: 'financeiro' | 'sla' | 'projetos' | 'equilibrio';
+  alvo_pct: number;
+  vigencia_inicio: string | null;
+  vigencia_fim: string | null;
+  ativo: number;
+}
+
+const ROTULO_MODULO_META: Record<Meta['modulo'], string> = {
+  financeiro: 'Financeiro',
+  sla: 'SLA',
+  projetos: 'Projetos',
+  equilibrio: 'Equilíbrio de despesas',
+};
+
+/** O que o alvo significa em cada módulo — piso ou teto. */
+const SENTIDO_MODULO: Record<Meta['modulo'], string> = {
+  financeiro: 'teto para a variação de custo contra o mês anterior',
+  sla: 'mínimo de chamados atendidos no prazo',
+  projetos: 'mínimo de tarefas entregues no prazo',
+  equilibrio: 'teto para o gasto de uma unidade consumido por outras',
+};
+
+/**
+ * Cadastro de metas — o alvo contra o qual os indicadores são lidos.
+ *
+ * É tela de CLIENTE, e não de unidade: por isso não tem o seletor de unidade
+ * em foco que as outras têm. Uma meta de SLA que valesse só para uma matriz
+ * não responderia "como vai o atendimento deste contratante".
+ */
+export function PaginaMetas() {
+  const { pode } = useSessao();
+  const podeEditar = pode('configuracoes', 'edit');
+  const [erro, setErro] = useState<string | null>(null);
+  const metas = useDados<Meta[]>(() => api.get('/api/metas', { incluir_inativos: true }), []);
+
+  const criar = async (dados: Record<string, string>) => {
+    setErro(null);
+    try {
+      await api.post('/api/metas', dados);
+      metas.recarregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao cadastrar a meta.');
+    }
+  };
+
+  const alternar = async (m: Meta) => {
+    setErro(null);
+    try {
+      await api.patch(`/api/metas/${m.id}`, { ativo: m.ativo !== 1 });
+      metas.recarregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao atualizar a meta.');
+    }
+  };
+
+  const vigencia = (m: Meta) => {
+    if (!m.vigencia_inicio && !m.vigencia_fim) return 'sempre';
+    if (m.vigencia_inicio && !m.vigencia_fim) return `de ${competenciaExib(m.vigencia_inicio)} em diante`;
+    if (!m.vigencia_inicio && m.vigencia_fim) return `até ${competenciaExib(m.vigencia_fim)}`;
+    return `${competenciaExib(m.vigencia_inicio!)} a ${competenciaExib(m.vigencia_fim!)}`;
+  };
+
+  return (
+    <>
+      {erro && <Aviso tipo="erro">{erro}</Aviso>}
+
+      <Cartao
+        titulo="Metas"
+        descricao="O alvo que aparece ao lado do resultado em cada indicador geral"
+      >
+        {metas.carregando ? (
+          <Carregando />
+        ) : (metas.dados ?? []).length === 0 ? (
+          <p className="vazio">
+            Nenhuma meta cadastrada. Os indicadores seguem com os alvos de base: 80% para SLA e
+            para entrega de tarefas no prazo.
+          </p>
+        ) : (
+          <div className="tabela-envolucro">
+            <table>
+              <thead>
+                <tr>
+                  <th>Meta</th>
+                  <th>Módulo</th>
+                  <th className="num">Alvo</th>
+                  <th>Vigência</th>
+                  <th>Situação</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {(metas.dados ?? []).map((m) => (
+                  <tr key={m.id}>
+                    <td>{m.nome}</td>
+                    <td title={SENTIDO_MODULO[m.modulo]}>{ROTULO_MODULO_META[m.modulo]}</td>
+                    <td className="num">{m.alvo_pct.toLocaleString('pt-BR')}%</td>
+                    <td>{vigencia(m)}</td>
+                    <td>
+                      <Etiqueta texto={m.ativo === 1 ? 'Ativa' : 'Inativa'} tom={m.ativo === 1 ? 'bom' : 'neutro'} />
+                    </td>
+                    <td>
+                      {podeEditar && (
+                        <button type="button" className="botao discreto pequeno" onClick={() => alternar(m)}>
+                          {m.ativo === 1 ? 'Desativar' : 'Reativar'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {podeEditar && (
+          <FormularioNovo
+            rotulo="Cadastrar meta"
+            campos={[
+              { chave: 'nome', rotulo: 'Nome', obrigatorio: true, largura: 200 },
+              {
+                chave: 'modulo',
+                rotulo: 'Módulo',
+                obrigatorio: true,
+                tipo: 'select',
+                largura: 190,
+                opcoes: (Object.keys(ROTULO_MODULO_META) as Meta['modulo'][]).map((k) => ({
+                  valor: k,
+                  rotulo: ROTULO_MODULO_META[k],
+                })),
+              },
+              { chave: 'alvo_pct', rotulo: 'Alvo (%)', obrigatorio: true, tipo: 'numero', minimo: 0, maximo: 100, largura: 100 },
+              { chave: 'vigencia_inicio', rotulo: 'Vigência de', tipo: 'competencia', largura: 110, dica: 'em branco: desde sempre' },
+              { chave: 'vigencia_fim', rotulo: 'até', tipo: 'competencia', largura: 110, dica: 'em branco: sem fim' },
+            ]}
+            aoEnviar={criar}
+          />
+        )}
+
+        <p className="dica-filtro" style={{ marginTop: 10 }}>
+          A vigência decide qual meta rege qual mês: trocar o alvo em janeiro não reescreve a leitura
+          dos meses já fechados. Entre duas vigentes ganha a de início mais recente, e a meta sem
+          início é o alvo genérico — vale onde nenhum específico alcança.
+        </p>
+      </Cartao>
+    </>
+  );
+}
+
 /**
  * Endereço base do helpdesk. O id do chamado completa a URL, e é isso que faz o
  * número na tela de SLA virar link de volta para o sistema de origem.
@@ -371,16 +526,37 @@ function ListaCadastro({
   );
 }
 
+/**
+ * O formulário de um cadastro.
+ *
+ * Nasceu só com texto, porque os cadastros de então eram só nome. Metas e SLAs
+ * trouxeram número, escolha fechada e competência — daí o `tipo` por campo, em
+ * vez de um formulário próprio para cada um: a diferença entre eles é o tipo
+ * de três caixas, e não o comportamento.
+ */
+interface CampoCadastro {
+  chave: string;
+  rotulo: string;
+  obrigatorio?: boolean;
+  tipo?: 'texto' | 'numero' | 'select' | 'competencia';
+  opcoes?: Array<{ valor: string; rotulo: string }>;
+  dica?: string;
+  minimo?: number;
+  maximo?: number;
+  largura?: number;
+}
+
 function FormularioNovo({
   rotulo,
   campos,
   aoEnviar,
 }: {
   rotulo: string;
-  campos: Array<{ chave: string; rotulo: string; obrigatorio?: boolean }>;
+  campos: CampoCadastro[];
   aoEnviar: (dados: Record<string, string>) => Promise<void>;
 }) {
   const [valores, setValores] = useState<Record<string, string>>({});
+  const alterar = (chave: string, valor: string) => setValores((v) => ({ ...v, [chave]: valor }));
   return (
     <form
       className="barra-filtros"
@@ -392,12 +568,35 @@ function FormularioNovo({
       }}
     >
       {campos.map((c) => (
-        <Campo key={c.chave} rotulo={c.rotulo}>
-          <input
-            value={valores[c.chave] ?? ''}
-            onChange={(e) => setValores({ ...valores, [c.chave]: e.target.value })}
-            required={c.obrigatorio}
-          />
+        <Campo key={c.chave} rotulo={c.rotulo} dica={c.dica}>
+          {c.tipo === 'select' ? (
+            <select
+              value={valores[c.chave] ?? ''}
+              onChange={(e) => alterar(c.chave, e.target.value)}
+              required={c.obrigatorio}
+              style={c.largura ? { width: c.largura } : undefined}
+            >
+              <option value="">—</option>
+              {(c.opcoes ?? []).map((o) => (
+                <option key={o.valor} value={o.valor}>
+                  {o.rotulo}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type={c.tipo === 'numero' ? 'number' : 'text'}
+              inputMode={c.tipo === 'competencia' ? 'numeric' : undefined}
+              placeholder={c.tipo === 'competencia' ? 'MM/AAAA' : undefined}
+              min={c.minimo}
+              max={c.maximo}
+              step={c.tipo === 'numero' ? '0.1' : undefined}
+              value={valores[c.chave] ?? ''}
+              onChange={(e) => alterar(c.chave, e.target.value)}
+              required={c.obrigatorio}
+              style={c.largura ? { width: c.largura } : undefined}
+            />
+          )}
         </Campo>
       ))}
       <button type="submit" className="botao">
@@ -423,7 +622,7 @@ interface RegistroAuditoria {
   criado_em: string;
 }
 
-const ENTIDADES = ['lancamento', 'projeto', 'tarefa', 'ticket_sla', 'fechamento', 'importacao', 'filial', 'tipo_despesa'];
+const ENTIDADES = ['lancamento', 'projeto', 'tarefa', 'ticket_sla', 'fechamento', 'importacao', 'filial', 'tipo_despesa', 'meta'];
 
 export function PaginaAuditoria() {
   const { empresas } = useSessao();

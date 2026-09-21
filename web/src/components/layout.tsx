@@ -46,7 +46,12 @@ const NAVEGACAO = [
       // vai por item, não um selo único no cabeçalho da seção.
       { para: '/planilhas', glifo: '⇅', rotulo: 'Importar / Exportar', modulo: 'configuracoes', escopo: 'unidade' as const },
       { para: '/clientes', glifo: '⬢', rotulo: 'Clientes e unidades', modulo: 'configuracoes', escopo: 'cliente' as const },
+      // "Cadastro" agrupa o que é configuração de leitura — as metas, e os SLAs
+      // que entram em seguida. O subnível é o mesmo mecanismo dos Sistemas de
+      // Suporte acima: um subtítulo sem link e os filhos marcados com `sub`.
       { para: '/cadastros', glifo: '⚙', rotulo: 'Cadastros', modulo: 'configuracoes', escopo: 'unidade' as const },
+      { subtitulo: 'Cadastro' },
+      { para: '/metas', glifo: '·', rotulo: 'Metas', sub: true, modulo: 'configuracoes', escopo: 'cliente' as const },
       { para: '/acessos', glifo: '◈', rotulo: 'Usuários e acessos', modulo: 'usuarios', escopo: 'cliente' as const },
       { para: '/auditoria', glifo: '◉', rotulo: 'Auditoria', modulo: 'configuracoes', escopo: 'cliente' as const },
     ],
