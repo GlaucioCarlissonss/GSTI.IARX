@@ -310,6 +310,119 @@ export function conformidadeSla(ctx: Contexto, recorte: RecorteIndicadores = {})
   };
 }
 
+// ================================================= bloco despesa centralizada
+
+/**
+ * Despesa PAGA por uma unidade e CONSUMIDA por outras.
+ *
+ * A pergunta que este indicador responde não existia no sistema: o lançamento
+ * sempre disse quem pagou, e nunca quem usou. Uma matriz que centraliza
+ * licenças para seis filiais aparecia como a unidade cara — número certo,
+ * leitura errada.
+ *
+ * **Não há rateio.** O lançamento compartilhado conta pelo valor INTEGRAL da
+ * pagadora, e o detalhamento lista quem se beneficia sem atribuir número por
+ * filial. Dividir exigiria um critério que ninguém definiu, e um número
+ * inventado é pior que um número ausente. Por isso a lista de beneficiadas sai
+ * como NOMES: um valor ao lado de cada uma seria exatamente o rateio que esta
+ * decisão recusa.
+ */
+export function despesaCentralizada(ctx: Contexto, recorte: RecorteIndicadores = {}) {
+  const alcance = escopoSql(ctx, recorte.empresas, 'l.empresa_id');
+  const condicoes = [alcance.sql, 'l.excluido_em IS NULL'];
+  const params: unknown[] = [...alcance.params];
+  const aplicar = (c: { sql: string; params: unknown[] } | null) => {
+    if (!c) return;
+    condicoes.push(c.sql);
+    params.push(...c.params);
+  };
+  aplicar(clausulaEm('l.cenario', recorte.cenarios?.length ? recorte.cenarios : [CENARIO_OFICIAL]));
+  aplicar(clausulaEmComNulo('l.filial_id', recorte.filiais));
+  const j = janela(recorte, 'l.competencia');
+  condicoes.push(...j.condicoes);
+  params.push(...j.params);
+  const where = condicoes.join(' AND ');
+
+  const porPagadora = db()
+    .prepare(
+      `SELECT l.empresa_id, e.nome AS empresa, l.filial_id, f.nome AS filial,
+              COALESCE(SUM(l.valor_centavos), 0) AS total,
+              COALESCE(SUM(CASE WHEN l.tipo_consumo = 'compartilhado' THEN l.valor_centavos ELSE 0 END), 0) AS centralizado,
+              SUM(CASE WHEN l.tipo_consumo = 'compartilhado' THEN 1 ELSE 0 END) AS lancamentos
+         FROM lancamentos l
+         JOIN empresas e ON e.id = l.empresa_id
+         LEFT JOIN filiais f ON f.id = l.filial_id
+        WHERE ${where}
+        GROUP BY l.empresa_id, l.filial_id
+       HAVING centralizado > 0
+        ORDER BY centralizado DESC`,
+    )
+    .all(...params) as Array<{
+    empresa_id: number;
+    empresa: string;
+    filial_id: number | null;
+    filial: string | null;
+    total: number;
+    centralizado: number;
+    lancamentos: number;
+  }>;
+
+  // Quem consome o que cada pagadora paga — nomes, e só nomes.
+  const beneficiadas = db()
+    .prepare(
+      `SELECT DISTINCT l.empresa_id, l.filial_id, fb.nome AS beneficiada, eb.nome AS beneficiada_empresa
+         FROM lancamentos l
+         JOIN lancamento_beneficiadas b ON b.lancamento_id = l.id
+         JOIN filiais fb ON fb.id = b.filial_id
+         JOIN empresas eb ON eb.id = fb.empresa_id
+        WHERE ${where} AND l.tipo_consumo = 'compartilhado'
+        ORDER BY eb.nome, fb.nome`,
+    )
+    .all(...params) as Array<{
+    empresa_id: number;
+    filial_id: number | null;
+    beneficiada: string;
+    beneficiada_empresa: string;
+  }>;
+
+  const porUnidade = new Map<string, string[]>();
+  for (const b of beneficiadas) {
+    const chave = `${b.empresa_id}|${b.filial_id ?? ''}`;
+    const lista = porUnidade.get(chave) ?? [];
+    lista.push(b.beneficiada);
+    porUnidade.set(chave, lista);
+  }
+
+  const totalGeral = (
+    db()
+      .prepare(`SELECT COALESCE(SUM(l.valor_centavos), 0) AS soma FROM lancamentos l WHERE ${where}`)
+      .get(...params) as { soma: number }
+  ).soma;
+  const totalCentralizado = porPagadora.reduce((s, p) => s + p.centralizado, 0);
+
+  return {
+    total: paraReais(totalGeral),
+    centralizado: paraReais(totalCentralizado),
+    // Quanto do gasto do recorte é pago por uma unidade e usado por outras.
+    pct_centralizado: percentual(totalCentralizado, totalGeral),
+    lancamentos: porPagadora.reduce((s, p) => s + p.lancamentos, 0),
+    por_pagadora: porPagadora.map((p) => ({
+      empresa_id: p.empresa_id,
+      empresa: p.empresa,
+      filial_id: p.filial_id,
+      filial: p.filial ?? null,
+      unidade: p.filial ?? p.empresa,
+      valor: paraReais(p.centralizado),
+      valor_centavos: p.centralizado,
+      total_unidade: paraReais(p.total),
+      // Quanto do que ESTA unidade paga é consumido por outras.
+      pct_da_unidade: percentual(p.centralizado, p.total),
+      lancamentos: p.lancamentos,
+      beneficiadas: porUnidade.get(`${p.empresa_id}|${p.filial_id ?? ''}`) ?? [],
+    })),
+  };
+}
+
 // ============================================================ bloco projetos
 
 /**
@@ -392,5 +505,6 @@ export function indicadoresGerais(
     },
     sla: conformidadeSla(ctx, recortes.sla),
     projetos: entregaDeTarefas(ctx, recortes.projetos),
+    consumo: despesaCentralizada(ctx, recortes.financeiro),
   };
 }

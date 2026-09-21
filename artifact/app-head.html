@@ -57,6 +57,17 @@
    composição sem competir com o número, que é o que a pessoa veio ler. */
 .faixa-matrizes{display:flex;gap:2px;height:4px;margin-top:6px;border-radius:2px;overflow:hidden}
 .faixa-matrizes i{display:block;min-width:3px;border-radius:2px}
+/* Meta vs Resultado: a barra preenche o resultado e o traço marca o alvo — a
+   mesma leitura do termômetro, no tamanho de um KPI. A cor nunca é o único
+   canal: o simbolo e o texto dizem o mesmo. */
+.meta-kpi{display:flex;flex-direction:column;gap:3px;margin-top:6px;font-size:12px}
+.meta-kpi.sem-dado{color:var(--tinta3)}
+.meta-barra{position:relative;display:block;height:4px;border-radius:2px;background:var(--linha);overflow:hidden}
+.meta-barra i{display:block;height:100%;border-radius:2px;background:currentColor}
+.meta-barra b{position:absolute;top:-2px;width:2px;height:8px;background:var(--tinta2);border-radius:1px}
+.meta-kpi.dentro{color:var(--bomtxt)}
+.meta-kpi.fora{color:var(--crit)}
+.meta-kpi .meta-texto{font-weight:550}
 .legenda-matrizes{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:11px;color:var(--tinta2)}
 .legenda-matrizes span{display:inline-flex;align-items:center;gap:5px}
 .legenda-matrizes i{width:9px;height:9px;border-radius:3px;display:inline-block}

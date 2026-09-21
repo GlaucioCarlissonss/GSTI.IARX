@@ -55,6 +55,7 @@ const E = {
   cargas: new Map(),        // empresa -> registro das importações
   mapeamentos: [],          // apelidos de cabeçalho, por cliente
   empresas: [], filiais: [], tipos: [], filas: [], cenarios: [],
+  metas: [],                // alvos dos indicadores, por cliente
   aba: 'painel',
   lanc: new Map(),          // 'empresa__comp' -> {itens:[...]}
   mesesCarregados: new Set(),
@@ -164,6 +165,54 @@ function resumoConsumo(l) {
   return 'Beneficia ' + nomes.length + ' filiais';
 }
 
+/**
+ * METAS — o alvo contra o qual cada indicador é lido.
+ *
+ * Antes, o único alvo era `META_SLA = 80` escrito à mão aqui e em mais dois
+ * arquivos. Agora é cadastro, e o 80 sobrevive como PADRÃO: uma base sem
+ * nenhuma meta continua com o termômetro de sempre.
+ *
+ * A direção é propriedade do módulo, e não escolha de quem cadastra: SLA e
+ * entrega no prazo são piso, variação de custo e equilíbrio são teto. Sem
+ * isso, um custo acima da meta seria pintado de verde.
+ */
+const MODULOS_META = ['financeiro', 'sla', 'projetos', 'equilibrio'];
+const ROTULO_MODULO_META = { financeiro:'Financeiro', sla:'SLA', projetos:'Projetos', equilibrio:'Equilíbrio de despesas' };
+const ALVO_PADRAO = { sla: 80, projetos: 80, financeiro: null, equilibrio: null };
+const DIRECAO_META = { sla:'minimo', projetos:'minimo', financeiro:'maximo', equilibrio:'maximo' };
+
+/** As metas do cliente aberto. Entre duas vigentes ganha a de início mais recente. */
+function metaVigente(modulo, competencia) {
+  const doCliente = (E.metas || []).filter((m) =>
+    m && m.modulo === modulo && m.ativo !== false && (!m.cliente || m.cliente === E.clienteSel));
+  const vale = (m) =>
+    (!m.vigenciaInicio || !competencia || m.vigenciaInicio <= competencia) &&
+    (!m.vigenciaFim || !competencia || m.vigenciaFim >= competencia);
+  // A meta sem início ("desde sempre") é o alvo genérico: só vale onde nenhum
+  // específico alcança, e por isso desce para o fim da ordem.
+  const vigentes = doCliente.filter(vale)
+    .sort((a, b) => String(b.vigenciaInicio || '').localeCompare(String(a.vigenciaInicio || '')));
+  return vigentes[0] || null;
+}
+
+const alvoDe = (modulo, competencia) => {
+  const m = metaVigente(modulo, competencia);
+  return m ? Number(m.alvoPct) : (ALVO_PADRAO[modulo] ?? null);
+};
+
+/**
+ * O resultado lido contra o alvo. `null` quando não há meta — o indicador
+ * continua mostrando o número, só não mostra a comparação. Inventar um alvo
+ * para ter o que comparar seria pior do que não comparar.
+ */
+function leituraDeMeta(alvo, atingido, modulo) {
+  if (alvo === null || alvo === undefined) return null;
+  const direcao = DIRECAO_META[modulo];
+  if (atingido === null || atingido === undefined) return { alvo, atingido:null, direcao, atinge:false, distancia:null };
+  const bruto = direcao === 'minimo' ? atingido - alvo : alvo - atingido;
+  return { alvo, atingido, direcao, atinge: bruto >= 0, distancia: Math.round(bruto * 10) / 10 };
+}
+
 /** A frase longa, para dica e ficha: aqui a lista cabe. */
 function detalheConsumo(l) {
   if (consumoDe(l) === 'integral') return 'O custo é todo da filial que paga.';
@@ -258,9 +307,9 @@ Object.defineProperty(E, 'filiaisSel', {
 const Loja = {
   async catalogos() {
     const ler = async (p) => { const s = await E.db.doc('catalogo/' + p).get(); return s.exists ? (s.data().itens || []) : []; };
-    const [empresas, filiais, tipos, filas, cenarios] = await Promise.all(
-      ['empresas','filiais','tipos','filas','cenarios'].map(ler));
-    Object.assign(E, { empresas, filiais, tipos, filas, cenarios });
+    const [empresas, filiais, tipos, filas, cenarios, metas] = await Promise.all(
+      ['empresas','filiais','tipos','filas','cenarios','metas'].map(ler));
+    Object.assign(E, { empresas, filiais, tipos, filas, cenarios, metas });
   },
   async lancDaEmpresa(empresa) {
     const snap = await E.db.collection('lanc').where('empresa','==',empresa).get();

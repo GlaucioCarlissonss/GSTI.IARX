@@ -18,6 +18,7 @@ import { escopoDoCliente } from '../src/domain/escopo-operacao.js';
 import { exportarXlsx } from '../src/domain/exportacao.js';
 import { importarPlanilha } from '../src/domain/importacao.js';
 import { lerXlsx } from '../src/lib/planilha.js';
+import { despesaCentralizada } from '../src/domain/indicadores.js';
 import type { Contexto } from '../src/domain/contexto.js';
 
 /** Um cliente com duas matrizes e uma filial em cada — o caso da licença centralizada. */
@@ -217,4 +218,49 @@ test('beneficiada que não existe no cliente derruba a linha, e não a carga', a
   assert.equal(r.importadas, 0);
   assert.equal(r.com_erro, 1);
   assert.match(r.erros[0]!.mensagem, /não encontrada/i);
+});
+
+// ------------------------------------ o indicador de despesa centralizada (2.2)
+
+test('o indicador soma o valor INTEGRAL da pagadora, sem rateio', () => {
+  const { ctx, filialA, filialB } = grupoComDuasMatrizes();
+  lancar(ctx, { filialId: filialA.id, tipoConsumo: 'compartilhado', beneficiadas: [filialB.id] });
+  lancar(ctx, { filialId: filialA.id, descricao: 'Só da filial' });
+
+  const r = despesaCentralizada(ctx, {});
+  assert.equal(r.total, 2400, 'o total do recorte são os dois lançamentos');
+  assert.equal(r.centralizado, 1200, 'só o compartilhado é centralizado, e pelo valor cheio');
+  assert.equal(r.pct_centralizado, 50);
+  assert.equal(r.lancamentos, 1);
+});
+
+test('a pagadora aparece com quem consome, e sem número por filial', () => {
+  const { ctx, filialA, filialB } = grupoComDuasMatrizes();
+  lancar(ctx, { filialId: filialA.id, tipoConsumo: 'compartilhado', beneficiadas: 'todas' });
+
+  const linha = despesaCentralizada(ctx, {}).por_pagadora[0]!;
+  assert.equal(linha.filial_id, filialA.id);
+  assert.equal(linha.valor, 1200);
+  assert.equal(linha.pct_da_unidade, 100, 'tudo que esta filial paga é consumido por outras');
+  assert.deepEqual(linha.beneficiadas, ['Filial Oeste']);
+  // A decisão é explícita: o detalhamento diz QUEM consome, nunca QUANTO cada
+  // uma consome. Um valor por filial seria o rateio que este desenho recusa.
+  assert.ok(!Object.keys(linha).some((k) => /beneficiada.*valor|valor.*beneficiada/i.test(k)));
+  assert.ok(filialB);
+});
+
+test('sem lançamento compartilhado, o indicador é zero e não some', () => {
+  const { ctx, filialA } = grupoComDuasMatrizes();
+  lancar(ctx, { filialId: filialA.id });
+  const r = despesaCentralizada(ctx, {});
+  assert.equal(r.centralizado, 0);
+  assert.equal(r.pct_centralizado, 0);
+  assert.deepEqual(r.por_pagadora, [], 'sem despesa centralizada, não há pagadora a listar');
+});
+
+test('o indicador não atravessa para outro cliente', () => {
+  const { ctx, filialA, filialB } = grupoComDuasMatrizes();
+  lancar(ctx, { filialId: filialA.id, tipoConsumo: 'compartilhado', beneficiadas: [filialB.id] });
+  const alheia = criarEmpresa(ctx.usuarioId, { nome: 'Outra contratante' });
+  assert.equal(despesaCentralizada(contextoDe(ctx, alheia.id), {}).centralizado, 0);
 });

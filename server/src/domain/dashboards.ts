@@ -15,7 +15,7 @@ import { calcularAtraso } from './projetos.js';
 import { montarFiltroSla, percentual, type FiltroSla } from './sla.js';
 import { escopoSql } from './escopo.js';
 import { alvoDe, leituraDeMeta } from './metas.js';
-import { entregaDeTarefas } from './indicadores.js';
+import { despesaCentralizada, entregaDeTarefas } from './indicadores.js';
 
 /**
  * Recorte de um painel.
@@ -883,6 +883,14 @@ export function visaoExecutiva(ctx: Contexto, escopo: EscopoDashboard = {}) {
         'sla',
       ),
     },
+    // Pago por uma unidade, consumido por outras. Sem rateio: o valor é o
+    // integral da pagadora, e o detalhe lista quem usa.
+    consumo: despesaCentralizada(ctx, {
+      empresas: escopo.empresas,
+      filiais: escopo.filiais,
+      cenarios: escopo.cenario ? [escopo.cenario] : undefined,
+      competencias: [mes],
+    }),
     // De quem é cada pedaço: alimenta a faixa de cores e a sanfona por unidade.
     por_unidade: quebraPorUnidade(ctx, escopo),
   };

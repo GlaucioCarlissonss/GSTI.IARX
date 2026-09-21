@@ -49,6 +49,23 @@ interface VisaoExecutiva {
     meta: LeituraMeta | null;
   };
   sla: { total_atendidos: number; pct_dentro_sla: number; fora_sla: number; meta: LeituraMeta | null };
+  consumo: {
+    total: number;
+    centralizado: number;
+    pct_centralizado: number;
+    lancamentos: number;
+    por_pagadora: Array<{
+      empresa_id: number;
+      empresa: string;
+      filial_id: number | null;
+      unidade: string;
+      valor: number;
+      total_unidade: number;
+      pct_da_unidade: number;
+      lancamentos: number;
+      beneficiadas: string[];
+    }>;
+  };
   por_unidade: {
     gasto_mes: LinhaPorUnidade[];
     compromisso_proximos_12_meses: LinhaPorUnidade[];
@@ -378,6 +395,50 @@ export function PaginaPainelExecutivo() {
           }
         />
       </div>
+
+      {v.consumo.lancamentos > 0 && (
+        <Cartao
+          titulo="Despesa paga por uma unidade, consumida por outras"
+          descricao={`${moeda(v.consumo.centralizado)} de ${moeda(v.consumo.total)} no mês (${percentual(
+            v.consumo.pct_centralizado,
+          )}) saem de uma unidade e beneficiam outras.`}
+        >
+          {/* Sem rateio, por decisão: a linha mostra o valor INTEGRAL que a
+              pagadora desembolsa e diz QUEM consome, nunca quanto cada uma
+              consome. Dividir exigiria um critério que ninguém definiu. */}
+          <div className="rolagem">
+            <table>
+              <thead>
+                <tr>
+                  <th>Unidade pagadora</th>
+                  <th className="num">Centralizado</th>
+                  <th className="num">Do que ela paga</th>
+                  <th>Beneficia</th>
+                </tr>
+              </thead>
+              <tbody>
+                {v.consumo.por_pagadora.map((p) => (
+                  <tr key={`${p.empresa_id}-${p.filial_id ?? 'matriz'}`}>
+                    <td>
+                      {p.unidade}
+                      {p.filial_id === null && (
+                        <span style={{ color: 'var(--tinta-fraca)' }}> · nível empresa</span>
+                      )}
+                    </td>
+                    <td className="num">{moeda(p.valor)}</td>
+                    <td className="num">{percentual(p.pct_da_unidade)}</td>
+                    <td>{p.beneficiadas.length ? p.beneficiadas.join(', ') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="dica-filtro" style={{ marginTop: 8 }}>
+            O valor é o que a unidade pagadora desembolsa por inteiro. Não há divisão por filial
+            beneficiada: somar as linhas daria mais que o total, porque a mesma despesa serve a várias.
+          </p>
+        </Cartao>
+      )}
 
       {financeiro.dados && (
         <Cartao

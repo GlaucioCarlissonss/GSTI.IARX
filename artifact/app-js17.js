@@ -13,8 +13,47 @@
  */
 const BLOCOS_IND = ['financeiro', 'sla', 'projetos'];
 
-/** Meta de conformidade de SLA, em pontos percentuais. */
-const META_SLA = 80;
+/**
+ * Meta de conformidade de SLA quando o cliente não cadastrou nenhuma.
+ *
+ * Deriva de `ALVO_PADRAO` em vez de repetir o número: o 80 tem um dono só, e
+ * quem quiser outro alvo cadastra a meta em vez de editar código.
+ */
+const META_SLA = ALVO_PADRAO.sla;
+
+/**
+ * A competência que decide QUAL meta vale para este recorte.
+ *
+ * É a ponta mais recente da janela: uma meta que passou a valer em março não
+ * pode reger a leitura de janeiro.
+ */
+const mesDoRecorte = (r) => (r && (r.ate || r.de)) || mesHoje();
+
+/**
+ * Meta vs Resultado — o alvo ao lado do número, dentro do card.
+ *
+ * É a mesma leitura do termômetro, no tamanho de um KPI: a barra preenche o
+ * resultado e o traço marca o alvo. Sem meta cadastrada não desenha nada — o
+ * card continua mostrando o resultado, que é o que ele sempre mostrou.
+ *
+ * Sem resultado (nenhum atendimento, nenhuma entrega) a barra não aparece: uma
+ * barra vazia diria "0%", que é diferente de "não houve".
+ */
+function metaHtml(leitura) {
+  if (!leitura) return '';
+  const comparador = leitura.direcao === 'minimo' ? 'mínimo' : 'teto';
+  if (leitura.atingido === null) {
+    return `<span class="meta-kpi sem-dado">meta ${leitura.alvo.toLocaleString('pt-BR')}% · sem resultado no período</span>`;
+  }
+  const largura = Math.max(0, Math.min(100, leitura.atingido));
+  const alvo = Math.max(0, Math.min(100, leitura.alvo));
+  return `<span class="meta-kpi ${leitura.atinge ? 'dentro' : 'fora'}"
+      title="Resultado ${esc(leitura.atingido.toLocaleString('pt-BR'))}% contra ${comparador} de ${esc(leitura.alvo.toLocaleString('pt-BR'))}%.">
+      <span class="meta-barra" aria-hidden><i style="width:${largura}%"></i><b style="left:${alvo}%"></b></span>
+      <span class="meta-texto">${leitura.atinge ? '✓' : '✗'} ${esc(leitura.atingido.toLocaleString('pt-BR'))}% ·
+        ${comparador} ${esc(leitura.alvo.toLocaleString('pt-BR'))}%</span>
+    </span>`;
+}
 
 /** Recorte em branco de um bloco: período livre, todas as filiais, tudo. */
 const recorteVazio = () => ({ de: '', ate: '', filiais: new Set(), somenteReconhecidas: false });
@@ -135,11 +174,65 @@ function calcularSla(r) {
     }
   }
   const pct = total ? Math.round((dentro / total) * 1000) / 10 : 0;
+  const meta = alvoDe('sla', mesDoRecorte(r)) ?? META_SLA;
   return {
-    total, dentro, fora: total - dentro, pct, meta: META_SLA,
-    atinge: total > 0 && pct >= META_SLA,
-    distancia: total > 0 ? Math.round((pct - META_SLA) * 10) / 10 : null,
+    total, dentro, fora: total - dentro, pct, meta,
+    atinge: total > 0 && pct >= meta,
+    distancia: total > 0 ? Math.round((pct - meta) * 10) / 10 : null,
+    leitura: leituraDeMeta(meta, total ? pct : null, 'sla'),
     abertos, andamento, resolvidos, vencidos, semStatus: total - comStatus,
+  };
+}
+
+/**
+ * Despesa PAGA por uma unidade e CONSUMIDA por outras.
+ *
+ * **Não há rateio.** O lançamento compartilhado conta pelo valor INTEGRAL da
+ * pagadora, e a tabela lista QUEM se beneficia sem atribuir número por filial.
+ * Dividir exigiria um critério que ninguém definiu, e um número inventado é
+ * pior que um número ausente — por isso as beneficiadas saem como nomes.
+ */
+function calcularConsumo(r) {
+  let total = 0, centralizado = 0, lancamentos = 0;
+  const porUnidade = new Map();
+  for (const l of Loja.todosDoEscopo()) {
+    if (!passaNoFiltro(E.cenariosSel, l.cenario)) continue;
+    if (!naFilialDoBloco(l.filial, r)) continue;
+    if (!naJanela(l.competencia, r)) continue;
+    const c = cent(l.valor);
+    total += c;
+    const chave = l.empresa + '|' + (l.filial || '');
+    const atual = porUnidade.get(chave)
+      || { empresa: l.empresa, filial: l.filial || null, centralizado: 0, total: 0, lancamentos: 0, beneficiadas: new Set() };
+    atual.total += c;
+    if (consumoDe(l) === 'compartilhado') {
+      atual.centralizado += c;
+      atual.lancamentos += 1;
+      centralizado += c;
+      lancamentos += 1;
+      for (const n of beneficiadasDe(l)) atual.beneficiadas.add(n);
+    }
+    porUnidade.set(chave, atual);
+  }
+  const linhas = [...porUnidade.values()]
+    .filter((u) => u.centralizado > 0)
+    .map((u) => ({
+      empresa: u.empresa,
+      filial: u.filial,
+      unidade: u.filial || nomeEmpresa(u.empresa),
+      valor: reais(u.centralizado),
+      totalUnidade: reais(u.total),
+      pctDaUnidade: u.total ? Math.round((u.centralizado / u.total) * 1000) / 10 : 0,
+      lancamentos: u.lancamentos,
+      beneficiadas: [...u.beneficiadas].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    }))
+    .sort((a, b) => b.valor - a.valor);
+  return {
+    total: reais(total),
+    centralizado: reais(centralizado),
+    pct: total ? Math.round((centralizado / total) * 1000) / 10 : 0,
+    lancamentos,
+    linhas,
   };
 }
 
@@ -170,9 +263,13 @@ function calcularProjetos(r) {
       }
     }
   }
+  const pct = entregues ? Math.round((noPrazo / entregues) * 1000) / 10 : 0;
   return {
-    total, entregues, noPrazo, foraDoPrazo: entregues - noPrazo, canceladas, pendentes, atrasadas,
-    pct: entregues ? Math.round((noPrazo / entregues) * 1000) / 10 : 0,
+    total, entregues, noPrazo, foraDoPrazo: entregues - noPrazo, canceladas, pendentes, atrasadas, pct,
+    // O 80 que pintava este card era um número solto, sem constante e sem dono.
+    // Agora sai do mesmo cadastro que rege o SLA.
+    meta: alvoDe('projetos', mesDoRecorte(r)),
+    leitura: leituraDeMeta(alvoDe('projetos', mesDoRecorte(r)), entregues ? pct : null, 'projetos'),
   };
 }
 
@@ -243,6 +340,7 @@ async function viewIndicadores() {
   const rs = recorteDoBloco('sla');
   const rp = recorteDoBloco('projetos');
   const reducao = calcularReducao(rf);
+  const consumo = calcularConsumo(rf);
   const pendente = calcularPorReconhecer(rf);
   const sla = calcularSla(rs);
   const proj = calcularProjetos(rp);
@@ -257,7 +355,7 @@ async function viewIndicadores() {
   const q = {
     fixos: quebrarPorUnidade(fixosDoRecorte(rf), (l) => cent(l.valor)),
     pendentes: quebrarPorUnidade(naoReconhecidos, (l) => cent(l.valor)),
-    sla: quebraDeSla(tickets),
+    sla: quebraDeSla(tickets, sla.meta),
     entregues: quebrarPorUnidade(tarefasDoRecorte(rp, 'entregues'), () => 1),
     tarefasPendentes: quebrarPorUnidade(tarefasDoRecorte(rp, 'pendentes'), () => 1),
   };
@@ -291,6 +389,7 @@ async function viewIndicadores() {
             ${reducao.variacaoTotal === null ? '—' : (reducao.variacaoTotal > 0 ? '+' : '') + reducao.variacaoTotal.toLocaleString('pt-BR') + '%'}</span>
           <span class="a">${esc(seta[reducao.tendencia])} ${esc(palavra[reducao.tendencia])}${
             reducao.economia > 0 ? ` · economia de ${brl(reducao.economia)}/mês` : ''}</span>
+          ${metaHtml(leituraDeMeta(alvoDe('financeiro', mesDoRecorte(rf)), reducao.variacaoTotal, 'financeiro'))}
           ${faixaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
           ${legendaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
           ${sanfonaHtml('ind-fixos', q.fixos, emDinheiro)}
@@ -337,10 +436,30 @@ async function viewIndicadores() {
                 vêm rotuladas.</p>`}
         </section>
       </div>
+
+      ${consumo.lancamentos === 0 ? '' : `
+      <section class="bloco" style="box-shadow:none;margin-top:16px">
+        <header><h2>Despesa paga por uma unidade, consumida por outras</h2>
+          <span class="nota">${brl(consumo.centralizado)} de ${brl(consumo.total)} · ${
+            consumo.pct.toLocaleString('pt-BR')}%</span></header>
+        <div class="rol"><table>
+          <thead><tr><th>Unidade pagadora</th><th class="n">Centralizado</th>
+            <th class="n">Do que ela paga</th><th>Beneficia</th></tr></thead>
+          <tbody>${consumo.linhas.map((u) => `<tr>
+            <td>${esc(u.unidade)}${u.filial ? '' : ' <span style="color:var(--tinta3)">· nível empresa</span>'}</td>
+            <td class="n">${brl(u.valor)}</td>
+            <td class="n">${u.pctDaUnidade.toLocaleString('pt-BR')}%</td>
+            <td>${u.beneficiadas.length ? esc(u.beneficiadas.join(', ')) : '—'}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+        <p class="nota" style="margin-top:10px">O valor é o que a unidade pagadora desembolsa por inteiro.
+          Não há divisão por filial beneficiada: somar as linhas daria mais que o total, porque a mesma
+          despesa serve a várias.</p>
+      </section>`}
     </section>
 
     <section class="bloco" style="margin-top:16px">
-      <header><h2>SLA</h2><span class="nota">meta de ${META_SLA}%</span></header>
+      <header><h2>SLA</h2><span class="nota">meta de ${sla.meta}%</span></header>
       ${filtrosDoBloco('sla', rs)}
 
       <div class="kpis">
@@ -349,9 +468,10 @@ async function viewIndicadores() {
           <span class="n" style="color:${sla.total === 0 ? 'var(--tinta)' : sla.atinge ? 'var(--bomtxt)' : 'var(--crit)'}">${
             sla.total ? sla.pct.toLocaleString('pt-BR') + '%' : '—'}</span>
           <span class="a">${sla.total
-            ? `${sla.atinge ? '✓ atinge' : '✗ abaixo d'}a meta de ${META_SLA}% · ${
+            ? `${sla.atinge ? '✓ atinge' : '✗ abaixo d'}a meta de ${sla.meta}% · ${
                 sla.distancia > 0 ? '+' : ''}${sla.distancia.toLocaleString('pt-BR')} p.p.`
             : 'sem chamado no recorte'}</span>
+          ${metaHtml(sla.leitura)}
           ${faixaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
           ${legendaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
           ${sanfonaHtml('ind-sla', q.sla, inteiro, extraSla)}
@@ -389,11 +509,13 @@ async function viewIndicadores() {
       <div class="kpis">
         <div class="kpi">
           <span class="r">Tarefas entregues no prazo</span>
-          <span class="n" style="color:${proj.entregues === 0 ? 'var(--tinta)' : proj.pct >= 80 ? 'var(--bomtxt)' : 'var(--crit)'}">${
+          <span class="n" style="color:${proj.entregues === 0 ? 'var(--tinta)'
+            : proj.leitura ? (proj.leitura.atinge ? 'var(--bomtxt)' : 'var(--crit)') : 'var(--tinta)'}">${
             proj.entregues ? proj.pct.toLocaleString('pt-BR') + '%' : '—'}</span>
           <span class="a">${proj.entregues
             ? `${inteiro(proj.noPrazo)} de ${inteiro(proj.entregues)} entregues`
             : 'nenhuma tarefa entregue no recorte'}</span>
+          ${metaHtml(proj.leitura)}
           ${faixaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
           ${legendaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
           ${sanfonaHtml('ind-entregues', q.entregues, inteiro, { coluna: 'Tarefas', colunaExtra: '', matriz: () => '', filial: () => '' })}
@@ -421,7 +543,7 @@ async function viewIndicadores() {
   } else {
     el('#i-reducao').innerHTML = '<p class="vazio">Sem despesa recorrente neste recorte.</p>';
   }
-  termometro(el('#i-termometro'), sla.total ? sla.pct : 0, META_SLA, 'Atendidos dentro do SLA');
+  termometro(el('#i-termometro'), sla.total ? sla.pct : 0, sla.meta, 'Atendidos dentro do SLA');
 
   // ----------------------------------------------------------- ligações
   for (const bloco of BLOCOS_IND) {
@@ -469,13 +591,13 @@ async function viewIndicadores() {
         titulo: 'Despesas por reconhecer', tipo: 'indicadores',
         itens: linhasPendentes(), esperado: pendente.valor,
       }) },
-    { dica: `Atendidos dentro do prazo sobre o total de atendimentos do recorte, contra a meta de ${META_SLA}%. `
+    { dica: `Atendidos dentro do prazo sobre o total de atendimentos do recorte, contra a meta de ${sla.meta}%. `
       + 'É a mesma conta das telas de SLA. Clique para ver os chamados, com prazo e situação.',
       abrir: () => abrirRegistros({
         titulo: 'Atendidos dentro do SLA — chamados do recorte', tipo: 'indicadores',
         colunas: COLUNAS_TICKET, itens: ticketsDoRecorte(rs), contagem: null,
         nota: `${inteiro(sla.dentro)} de ${inteiro(sla.total)} atendimentos dentro do prazo `
-          + `(${sla.total ? sla.pct.toLocaleString('pt-BR') : '0'}%), contra a meta de ${META_SLA}%.`,
+          + `(${sla.total ? sla.pct.toLocaleString('pt-BR') : '0'}%), contra a meta de ${sla.meta}%.`,
       }) },
     { dica: 'Total de atendimentos no recorte, somando o chamado vindo de helpdesk e o registro '
       + 'agregado do mês. Clique para ver os registros; a tela Chamados é onde se mexe neles.',
@@ -574,7 +696,7 @@ function sanfonaHtml(id, quebra, formatar, extra) {
  * mais puxa o resultado geral para baixo aparece primeiro, que é a pergunta
  * que o gestor traz para esta tela.
  */
-function quebraDeSla(registros) {
+function quebraDeSla(registros, meta = META_SLA) {
   const matrizes = new Map();
   const acumular = (alvo, s) => {
     alvo.total += Number(s.total) || 0;
@@ -583,7 +705,7 @@ function quebraDeSla(registros) {
   const fechar = (x) => {
     x.fora = x.total - x.dentro;
     x.pct = x.total ? Math.round((x.dentro / x.total) * 1000) / 10 : 0;
-    x.atinge = x.total > 0 && x.pct >= META_SLA;
+    x.atinge = x.total > 0 && x.pct >= meta;
     // `valor` é o que a faixa pesa e a coluna mostra: no SLA é o VOLUME de
     // atendimento. Sem ele, a linha de filial sairia zerada enquanto o rótulo
     // ao lado dizia mil chamados fora — dois números discordando na mesma linha.

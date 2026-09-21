@@ -8,6 +8,7 @@
 import { Router } from 'express';
 import {
   conformidadeSla,
+  despesaCentralizada,
   despesasPorReconhecer,
   entregaDeTarefas,
   indicadoresGerais,
@@ -58,6 +59,10 @@ rotasIndicadores.get('/financeiro', exigir('financeiro', 'view'), (req, res) => 
     reducao_custo: reducaoDeCusto(ctx(req), recorte),
     por_reconhecer: despesasPorReconhecer(ctx(req), recorte),
   });
+});
+
+rotasIndicadores.get('/consumo', exigir('financeiro', 'view'), (req, res) => {
+  res.json(despesaCentralizada(ctx(req), recorteDaQuery(req.query as Record<string, unknown>)));
 });
 
 rotasIndicadores.get('/sla', exigir('suporte_ostick', 'view'), (req, res) => {
