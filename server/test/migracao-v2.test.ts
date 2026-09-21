@@ -48,7 +48,7 @@ test('as tabelas novas nascem com a abertura do banco', () => {
       (t) => t.name,
     ),
   );
-  for (const nova of ['metas', 'slas', 'lancamento_beneficiadas', 'ticket_reclassificacoes']) {
+  for (const nova of ['metas', 'slas', 'lancamento_beneficiadas', 'ticket_reclassificacoes', 'planos_reducao']) {
     assert.ok(tabelas.has(nova), `falta a tabela ${nova}`);
   }
 });

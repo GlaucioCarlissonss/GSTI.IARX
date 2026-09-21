@@ -697,3 +697,34 @@ CREATE TABLE IF NOT EXISTS ticket_reclassificacoes (
   origem              TEXT NOT NULL DEFAULT 'manual' CHECK (origem IN ('manual','integracao'))
 );
 CREATE INDEX IF NOT EXISTS ix_reclassificacao_ticket ON ticket_reclassificacoes(ticket_sla_id, ocorrido_em);
+
+-- Plano de redução de despesas: quanto uma despesa custa hoje, e para quanto
+-- ela deve cair.
+--
+-- O sistema já sabia dizer se o custo subiu ou desceu; não sabia contra o que.
+-- A meta percentual (`metas`) responde por indicador inteiro — "não crescer
+-- mais que X%" —, e não serve aqui: o que o gestor negocia é uma despesa
+-- específica, com um valor-alvo em reais.
+--
+-- Uma linha por despesa escolhida, e não uma linha com uma lista: é o que
+-- permite o par atual → alvo POR despesa, que é a leitura pedida. Um alvo
+-- único cobrindo cinco categorias não teria como mostrar de quanto para
+-- quanto cai cada uma.
+--
+-- `tipo_despesa_id` e `filial_id` anuláveis: nulo é "vale para o que o recorte
+-- alcançar". `cliente_id`, e não `empresa_id`, porque o plano é do grupo — é a
+-- mesma fronteira de `metas`.
+CREATE TABLE IF NOT EXISTS planos_reducao (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id          INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  nome                TEXT NOT NULL,
+  tipo_despesa_id     INTEGER REFERENCES tipos_despesa(id) ON DELETE CASCADE,
+  filial_id           INTEGER REFERENCES filiais(id) ON DELETE CASCADE,
+  valor_alvo_centavos INTEGER NOT NULL CHECK (valor_alvo_centavos >= 0),
+  vigencia_inicio     TEXT,
+  vigencia_fim        TEXT,
+  ativo               INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0,1)),
+  criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (cliente_id, nome)
+);
+CREATE INDEX IF NOT EXISTS ix_plano_cliente ON planos_reducao(cliente_id, ativo);

@@ -185,6 +185,179 @@ function calcularSla(r) {
 }
 
 /**
+ * Distribui um valor por pesos sem perder nem inventar centavo.
+ *
+ * `ratear` já existe em `app-js1.js` e divide em N partes IGUAIS (as parcelas
+ * de um lançamento); esta divide por PESO, que é outra conta. Daí o nome
+ * próprio, e não uma sobrecarga da outra.
+ *
+ * `Math.floor` em cada parcela sempre deixa resto; devolvê-lo ao maior peso,
+ * um centavo por vez, é o que faz a soma das parcelas dar EXATAMENTE o valor
+ * de partida. Sem isso, o "antes" e o "depois" do comparativo divergiriam por
+ * arredondamento, e a tela acusaria uma diferença que não existe.
+ *
+ * É a mesma conta de `ratear` em `server/src/domain/indicadores.ts`: as duas
+ * pontas têm de dar o mesmo número, e `testar-rateio.cjs` confere isso.
+ */
+function ratearPorPeso(centavos, pesos) {
+  const soma = pesos.reduce((s, p) => s + p, 0);
+  // Todos os pesos em zero — um grupo em que só há despesa compartilhada.
+  // Dividir igual é o único critério que não inventa desigualdade onde não há
+  // dado; qualquer outro atribuiria mais a alguém por nenhum motivo.
+  const base = soma > 0 ? pesos : pesos.map(() => 1);
+  const total = base.reduce((s, p) => s + p, 0);
+  if (total <= 0 || !base.length) return pesos.map(() => 0);
+
+  const parcelas = base.map((p) => Math.floor((centavos * p) / total));
+  let resto = centavos - parcelas.reduce((s, p) => s + p, 0);
+  const ordem = base.map((p, i) => ({ p, i }))
+    .sort((a, b) => b.p - a.p || a.i - b.i)
+    .map((x) => x.i);
+  for (let k = 0; resto > 0; k = (k + 1) % ordem.length) {
+    parcelas[ordem[k]] += 1;
+    resto -= 1;
+  }
+  return parcelas;
+}
+
+/**
+ * Despesas compartilhadas REGULARIZADAS: o rateio proporcional.
+ *
+ * `calcularConsumo` conta o compartilhado pelo valor INTEGRAL da pagadora — é
+ * a leitura de hoje, e ela não muda. Aqui é a outra: a mesma despesa
+ * distribuída entre as empresas do grupo, para que a pagadora deixe de
+ * carregar 100% de um custo que o grupo usa.
+ *
+ * As duas convivem de propósito. A integral é o **antes** do comparativo, e
+ * trocá-la pelo rateio faria um mês já lido mudar de número.
+ *
+ * O critério está escrito, e é uma escolha: proporcional à despesa PRÓPRIA de
+ * cada empresa no período. Própria, e não total, porque incluir o
+ * compartilhado no divisor tornaria a conta circular.
+ */
+function calcularRateio(r) {
+  const empresas = new Map();
+  const compartilhados = [];
+  for (const l of Loja.todosDoEscopo()) {
+    if (!passaNoFiltro(E.cenariosSel, l.cenario)) continue;
+    if (!naFilialDoBloco(l.filial, r)) continue;
+    if (!naJanela(l.competencia, r)) continue;
+    const c = cent(l.valor);
+    if (!empresas.has(l.empresa)) {
+      empresas.set(l.empresa, {
+        empresa: l.empresa, nome: String(nomeEmpresa(l.empresa)),
+        cor: corDaMatriz(l.empresa), corEscura: corCompartilhada(l.empresa),
+        proprio: 0, pago: 0, recebido: 0, segmentos: [],
+      });
+    }
+    const e = empresas.get(l.empresa);
+    if (consumoDe(l) === 'compartilhado') { e.pago += c; compartilhados.push(l); }
+    else e.proprio += c;
+  }
+
+  const lista = [...empresas.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const pesos = lista.map((e) => e.proprio);
+  for (const l of compartilhados) {
+    const parcelas = ratearPorPeso(cent(l.valor), pesos);
+    lista.forEach((e, i) => {
+      if (parcelas[i] <= 0) return;
+      e.recebido += parcelas[i];
+      e.segmentos.push({
+        descricao: l.descricao || l.tipo,
+        origem: String(nomeEmpresa(l.empresa)),
+        valor: reais(parcelas[i]),
+        pct: pct(parcelas[i], cent(l.valor)),
+        beneficiadas: beneficiadasDe(l),
+      });
+    });
+  }
+
+  const compartilhado = compartilhados.reduce((s, l) => s + cent(l.valor), 0);
+  const total = lista.reduce((s, e) => s + e.proprio + e.pago, 0);
+  return {
+    total: reais(total), compartilhado: reais(compartilhado),
+    pctCompartilhado: pct(compartilhado, total),
+    lancamentos: compartilhados.length,
+    divisaoIgual: lista.length > 0 && lista.every((e) => e.proprio === 0),
+    sanidade: reais(lista.reduce((s, e) => s + e.recebido, 0)),
+    porEmpresa: lista.map((e) => ({
+      ...e,
+      proprioValor: reais(e.proprio),
+      pagoValor: reais(e.pago),
+      recebidoValor: reais(e.recebido),
+      antes: reais(e.proprio + e.pago),
+      depois: reais(e.proprio + e.recebido),
+      variacao: reais((e.proprio + e.recebido) - (e.proprio + e.pago)),
+      pagadora: e.pago > 0,
+    })),
+  };
+}
+
+/**
+ * O plano de redução aplicado ao recorte: de quanto para quanto.
+ *
+ * Cada item do cadastro casa com os lançamentos pelo NOME do tipo de despesa
+ * e, quando informada, pelo nome da filial — é assim que o modelo do artifact
+ * guarda o lançamento. O valor ATUAL sai dos lançamentos; o ALVO, do cadastro.
+ * Nada aqui é estimado.
+ */
+function calcularPlanoReducao(r) {
+  const doRecorte = Loja.todosDoEscopo().filter((l) =>
+    passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, r) && naJanela(l.competencia, r));
+  const totalRecorte = doRecorte.reduce((s, l) => s + cent(l.valor), 0);
+
+  // Gasto de cada filial no recorte: o denominador do "quanto pesa NESTA
+  // filial", que é a segunda leitura que o plano pede.
+  const gastoDaFilial = new Map();
+  for (const l of doRecorte) {
+    const chave = l.empresa + '|' + (l.filial || '');
+    gastoDaFilial.set(chave, (gastoDaFilial.get(chave) || 0) + cent(l.valor));
+  }
+
+  const itens = planosVigentes(mesDoRecorte(r)).map((p) => {
+    const casam = doRecorte.filter((l) =>
+      (!p.tipo || l.tipo === p.tipo) && (!p.filial || l.filial === p.filial));
+    const atual = casam.reduce((s, l) => s + cent(l.valor), 0);
+    const alvo = cent(p.valorAlvo);
+
+    const porFilial = new Map();
+    for (const l of casam) {
+      const chave = l.empresa + '|' + (l.filial || '');
+      const no = porFilial.get(chave) || {
+        unidade: l.filial || String(nomeEmpresa(l.empresa)),
+        cor: corDaMatriz(l.empresa), valor: 0,
+      };
+      no.valor += cent(l.valor);
+      porFilial.set(chave, no);
+    }
+
+    return {
+      nome: p.nome, tipo: p.tipo, filial: p.filial,
+      atual: reais(atual), alvo: reais(alvo),
+      reducao: reais(atual - alvo),
+      pctReducao: pct(atual - alvo, atual),
+      semDespesa: atual === 0,
+      pctDoGrupo: pct(atual, totalRecorte),
+      porFilial: [...porFilial.entries()]
+        .map(([chave, f]) => ({ ...f, valorReais: reais(f.valor), pctDaFilial: pct(f.valor, gastoDaFilial.get(chave) || 0) }))
+        .sort((a, b) => b.valor - a.valor),
+      registros: casam,
+    };
+  });
+
+  const totalAtual = itens.reduce((s, i) => s + cent(i.atual), 0);
+  const totalAlvo = itens.reduce((s, i) => s + cent(i.alvo), 0);
+  return {
+    itens,
+    totalAtual: reais(totalAtual), totalAlvo: reais(totalAlvo),
+    totalReducao: reais(totalAtual - totalAlvo),
+    pctReducao: pct(totalAtual - totalAlvo, totalAtual),
+    pctDoGrupo: pct(totalAtual, totalRecorte),
+    despesaTotal: reais(totalRecorte),
+  };
+}
+
+/**
  * Despesa PAGA por uma unidade e CONSUMIDA por outras.
  *
  * **Não há rateio.** O lançamento compartilhado conta pelo valor INTEGRAL da
@@ -376,6 +549,48 @@ function filtrosDoBloco(bloco, r) {
     </div>`;
 }
 
+/**
+ * Um indicador da tela: um bloco de largura inteira, com o número no
+ * cabeçalho.
+ *
+ * Antes eram seis cartões em faixas de dois, lado a lado. Ler dois números
+ * concorrentes na mesma linha é o que o cliente reclamou, e com o corpo de
+ * cada um (faixa, legenda, árvore) a faixa dupla ficava ilegível. Agora cada
+ * indicador ocupa a linha inteira.
+ *
+ * O bloco é `section.bloco` com `<h2>`, e é só isso que ele precisa ser:
+ * `dobrarBlocos` o converte em acordeão fechado, com `aria-expanded`, seta
+ * `+/−` e memória entre visitas. O valor vai no cabeçalho — é o que o
+ * enunciado chama de "cabeçalho fixo: título, valor principal e estado".
+ */
+function blocoIndicador({ chave, titulo, valor, cor, apoio, corpo, nota }) {
+  return `
+    <section class="bloco bloco-indicador" style="margin-top:14px">
+      <header><h2>${esc(titulo)}</h2>
+        <span class="nota valor-cabecalho"${cor ? ` style="color:${cor}"` : ''}>${valor}</span></header>
+      <div class="kpi kpi-largo" data-kpi="${esc(chave)}">
+        <span class="r">${esc(titulo)}</span>
+        <span class="n"${cor ? ` style="color:${cor}"` : ''}>${valor}</span>
+        ${apoio ? `<span class="a">${apoio}</span>` : ''}
+        ${corpo || ''}
+      </div>
+      ${nota ? `<p class="nota" style="margin-top:10px">${nota}</p>` : ''}
+    </section>`;
+}
+
+/** A barra dupla do comparativo antes → depois. Mesma escala nas duas. */
+function barrasComparativasHtml(antes, depois, corAntes, corDepois, teto) {
+  const largura = (v) => (teto > 0 ? Math.max(0, Math.min(100, (v / teto) * 100)) : 0);
+  return `<span class="comparativo">
+    <span class="comparativo-linha"><b>antes</b>
+      <span aria-hidden="true"><i style="width:${largura(antes)}%;background:${corAntes}"></i></span>
+      <var>${brl(antes)}</var></span>
+    <span class="comparativo-linha"><b>depois</b>
+      <span aria-hidden="true"><i style="width:${largura(depois)}%;background:${corDepois}"></i></span>
+      <var>${brl(depois)}</var></span>
+  </span>`;
+}
+
 async function viewIndicadores() {
   await Loja.configuracao();
   for (const e of escopoEmpresas()) { await Loja.slaDa(e); await Loja.projetosDa(e); }
@@ -389,9 +604,11 @@ async function viewIndicadores() {
   const pendente = calcularPorReconhecer(rf);
   const sla = calcularSla(rs);
   const proj = calcularProjetos(rp);
+  const rateio = calcularRateio(rf);
+  const plano = calcularPlanoReducao(rf);
 
   // As quebras por unidade saem dos MESMOS registros que os cálculos acima
-  // percorrem — é isso que garante que a soma da sanfona seja o número do card.
+  // percorrem — é isso que garante que a soma da árvore seja o número do card.
   const emDinheiro = (v) => brl(reais(v));
   const naoReconhecidos = Loja.todosDoEscopo().filter((l) =>
     passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, rf) &&
@@ -412,198 +629,287 @@ async function viewIndicadores() {
     matriz: (m) => rotuloConformidade(m),
     filial: (f) => rotuloConformidade(f),
   };
+  const semExtra = { coluna: 'Tarefas', colunaExtra: '', matriz: () => '', filial: () => '' };
 
   const seta = { queda: '↓', alta: '↑', estavel: '→', indefinida: '·' };
   const palavra = { queda: 'em queda', alta: 'em alta', estavel: 'estável', indefinida: 'sem base para dizer' };
+  const corPrimeira = rateio.porEmpresa.length ? rateio.porEmpresa[0].cor : 'var(--m1)';
 
   el('#pagina').innerHTML = `
     <div class="msg"><strong>Leitura estratégica, separada da operação.</strong>
-      Cada bloco tem os próprios filtros, e eles não atravessam para as outras telas do sistema — nem sobrevivem
-      ao recarregar. Quem responde "a integração está viva?" é a tela de Integrações; aqui se responde como vão o
-      gasto, o atendimento e a entrega.</div>
+      Cada indicador ocupa a linha inteira e abre para baixo, agrupado por empresa e, dentro dela,
+      por filial. Os filtros são de cada bloco de negócio e não atravessam para as outras telas —
+      nem sobrevivem ao recarregar.</div>
 
-    <section class="bloco" style="margin-top:16px">
-      <header><h2>Financeiro</h2>
-        <span class="nota">${rf.somenteReconhecidas ? 'apenas despesas reconhecidas' : 'todas as despesas'}</span></header>
+    <div class="bloco" style="margin-top:16px">
+      <header style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <h2 style="font-size:15px">Financeiro</h2>
+        <span class="nota" style="margin-left:auto">${rf.somenteReconhecidas ? 'apenas despesas reconhecidas' : 'todas as despesas'}</span>
+      </header>
       ${filtrosDoBloco('financeiro', rf)}
+    </div>
 
-      <div class="kpis">
-        <div class="kpi">
-          <span class="r">Custo recorrente — variação no período</span>
-          <span class="n" style="color:${reducao.tendencia === 'queda' ? 'var(--bomtxt)' : reducao.tendencia === 'alta' ? 'var(--crit)' : 'var(--tinta)'}">
-            ${reducao.variacaoTotal === null ? '—' : (reducao.variacaoTotal > 0 ? '+' : '') + reducao.variacaoTotal.toLocaleString('pt-BR') + '%'}</span>
-          <span class="a">${esc(seta[reducao.tendencia])} ${esc(palavra[reducao.tendencia])}${
-            reducao.economia > 0 ? ` · economia de ${brl(reducao.economia)}/mês` : ''}</span>
-          ${metaHtml(leituraDeMeta(alvoDe('financeiro', mesDoRecorte(rf)), reducao.variacaoTotal, 'financeiro'))}
-          ${faixaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
-          ${legendaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
-          ${sanfonaHtml('ind-fixos', q.fixos, emDinheiro)}
-        </div>
-        <div class="kpi">
-          <span class="r">Despesas por reconhecer</span>
-          <span class="n" style="color:${pendente.quantidade ? 'var(--alerta)' : 'var(--bomtxt)'}">${brl(pendente.valor)}</span>
-          <span class="a">${inteiro(pendente.quantidade)} de ${inteiro(pendente.universoN)} lançamentos
-            (${pendente.pctQuantidade.toLocaleString('pt-BR')}%)</span>
-          ${faixaDeMatrizesHtml(fatiasDe(q.pendentes, emDinheiro))}
-          ${legendaDeMatrizesHtml(fatiasDe(q.pendentes, emDinheiro))}
-          ${sanfonaHtml('ind-pendentes', q.pendentes, emDinheiro)}
-        </div>
-      </div>
+    ${blocoIndicador({
+      chave: 'plano-reducao',
+      titulo: 'Plano de redução de despesas',
+      valor: plano.itens.length
+        ? `${brl(plano.totalAtual)} → ${brl(plano.totalAlvo)}`
+        : '—',
+      cor: plano.itens.length && plano.pctReducao > 0 ? 'var(--bomtxt)' : null,
+      apoio: plano.itens.length
+        ? `${inteiro(plano.itens.length)} despesa(s) no plano · ${pctTxt(plano.pctReducao)} de redução · `
+          + `${pctTxt(plano.pctDoGrupo)} da despesa do grupo`
+        : 'nenhuma despesa no plano — cadastre em Sistema › Cadastro › Plano de redução',
+      corpo: plano.itens.length === 0 ? '' : `
+        <div class="rol" style="margin-top:10px"><table>
+          <thead><tr><th>Item</th><th class="n">Atual</th><th class="n">Alvo</th>
+            <th>Atual × alvo</th><th class="n">Redução</th><th class="n">% do grupo</th></tr></thead>
+          <tbody>${plano.itens.map((i) => `<tr data-plano="${esc(i.nome)}">
+            <td>${esc(i.nome)}${i.tipo ? `<div class="arv-comp">${esc(i.tipo)}${i.filial ? ' · ' + esc(i.filial) : ''}</div>` : ''}</td>
+            <td class="n">${brl(i.atual)}</td>
+            <td class="n">${brl(i.alvo)}</td>
+            <td>${i.semDespesa
+              ? '<span class="nota">sem despesa no recorte</span>'
+              : barrasComparativasHtml(i.atual, i.alvo, 'var(--crit)', 'var(--bom)', Math.max(i.atual, i.alvo))}</td>
+            <td class="n" style="color:${i.reducao > 0 ? 'var(--bomtxt)' : 'var(--tinta2)'}">${
+              i.semDespesa ? '—' : pctTxt(i.pctReducao)}</td>
+            <td class="n">${pctTxt(i.pctDoGrupo)}</td>
+          </tr>
+          ${i.porFilial.length === 0 ? '' : `<tr class="plano-filiais"><td colspan="6">
+            <div class="plano-filiais-lista">${i.porFilial.map((f) => `<span>
+              <i style="background:${f.cor}" aria-hidden="true"></i>${esc(f.unidade)}
+              <b title="${esc(`${f.unidade}: ${brl(f.valorReais)} — ${pctTxt(f.pctDaFilial)} da despesa desta unidade`)}">${pctTxt(f.pctDaFilial)}</b>
+            </span>`).join('')}</div></td></tr>`}`).join('')}</tbody>
+        </table></div>`,
+      nota: plano.itens.length
+        ? 'O valor atual sai dos lançamentos do recorte; o alvo, do cadastro. O percentual ao lado de '
+          + 'cada filial é o peso da despesa <strong>dentro daquela unidade</strong>, e não no grupo.'
+        : 'Sem alvo cadastrado não há de quanto para quanto — e um alvo inventado seria pior que a ausência dele.',
+    })}
 
-      <div class="grade g2" style="margin-top:16px">
-        <section class="bloco" style="box-shadow:none">
-          <header><h2>Custo recorrente mês a mês</h2>
-            <span class="nota">${inteiro(reducao.serie.length)} competência(s)</span></header>
-          <div id="i-reducao"></div>
-          ${reducao.serie.length ? `<div class="rol rol-fixo" style="margin-top:12px;max-height:280px;min-height:0"><table>
-            <thead><tr><th>Competência</th><th class="n">Custo recorrente</th><th class="n">Variação</th></tr></thead>
-            <tbody>${reducao.serie.map((p) => `<tr>
-              <td>${esc(p.rot)}</td><td class="n">${brl(p.valor)}</td>
-              <td class="n"${p.variacao === null ? '' : ` style="color:${p.variacao < 0 ? 'var(--bomtxt)' : p.variacao > 0 ? 'var(--crit)' : 'var(--tinta2)'}"`}>${
-                p.variacao === null ? '—' : (p.variacao > 0 ? '+' : '') + p.variacao.toLocaleString('pt-BR') + '%'}</td>
-            </tr>`).join('')}</tbody></table></div>` : ''}
-          ${rf.somenteReconhecidas ? '<p class="nota" style="margin-top:10px">Exibindo apenas despesas reconhecidas.</p>' : ''}
-        </section>
+    ${blocoIndicador({
+      chave: 'rateio',
+      titulo: 'Despesas compartilhadas regularizadas',
+      valor: rateio.lancamentos ? brl(rateio.compartilhado) : '—',
+      apoio: rateio.lancamentos
+        ? `${inteiro(rateio.lancamentos)} lançamento(s) · ${pctTxt(rateio.pctCompartilhado)} da despesa do recorte`
+          + `${rateio.divisaoIgual ? ' · dividido igualmente (nenhuma empresa tem despesa própria)' : ''}`
+        : 'nenhuma despesa compartilhada no recorte',
+      corpo: rateio.lancamentos === 0 ? '' : `
+        ${legendaDeConsumoHtml(corPrimeira)}
+        <div class="rol" style="margin-top:10px"><table>
+          <thead><tr><th>Empresa</th><th class="n">Própria</th><th class="n">Rateio recebido</th>
+            <th>Antes → depois</th><th class="n">Variação</th></tr></thead>
+          <tbody>${rateio.porEmpresa.map((e) => {
+            const teto = Math.max(...rateio.porEmpresa.map((x) => Math.max(x.antes, x.depois)), 1);
+            return `<tr>
+            <td><i class="ponto-matriz" style="background:${e.cor}" aria-hidden="true"></i>${esc(e.nome)}
+              ${e.pagadora ? '<span class="tag" title="Esta empresa paga ao menos uma despesa compartilhada do grupo">pagadora</span>' : ''}</td>
+            <td class="n">${brl(e.proprioValor)}</td>
+            <td class="n" style="color:${e.corEscura}"${e.segmentos.length
+              ? ` title="${esc(e.segmentos.map((s) => `${s.descricao} (de ${s.origem}): ${brl(s.valor)} — ${pctTxt(s.pct)}`
+                  + (s.beneficiadas.length ? ` · beneficia ${s.beneficiadas.join(', ')}` : '')).join('\\n'))}"`
+              : ''}>${brl(e.recebidoValor)}</td>
+            <td>${barrasComparativasHtml(e.antes, e.depois, e.cor, e.corEscura, teto)}</td>
+            <td class="n" style="color:${e.variacao < 0 ? 'var(--bomtxt)' : e.variacao > 0 ? 'var(--alerta)' : 'var(--tinta2)'}">${
+              e.variacao === 0 ? '—' : (e.variacao > 0 ? '+' : '') + brl(e.variacao)}</td>
+          </tr>`;
+          }).join('')}</tbody>
+          <tfoot><tr><td>Total rateado</td><td class="n"></td>
+            <td class="n">${brl(rateio.sanidade)}</td><td></td><td class="n"></td></tr></tfoot>
+        </table></div>`,
+      nota: rateio.lancamentos
+        ? 'O <strong>antes</strong> é como a unidade aparece hoje: o que é dela mais 100% do que ela paga. '
+          + 'O <strong>depois</strong> é o que é dela mais a parcela que lhe cabe. O critério do rateio é '
+          + 'proporcional à despesa própria de cada empresa no período; com nenhuma empresa tendo despesa '
+          + 'própria, a divisão sai igual. O total redistribui, não cresce.'
+        : '',
+    })}
 
-        <section class="bloco" style="box-shadow:none">
-          <header><h2>Por reconhecer, por centro de custo</h2>
-            <span class="nota">${inteiro(pendente.centros.length)} centro(s)</span></header>
-          ${pendente.centros.length === 0
-            ? '<p class="vazio">Nada por reconhecer neste recorte.</p>'
-            : `<div class="rol"><table>
-                <thead><tr><th>Centro de custo</th><th class="n">Lançamentos</th><th class="n">Valor</th></tr></thead>
-                <tbody>${pendente.centros.map((c) => `<tr data-centro="${esc(c.centro)}">
-                  <td>${esc(c.centro)}</td><td class="n">${inteiro(c.quantidade)}</td>
-                  <td class="n" style="color:var(--alerta);font-weight:700">${brl(c.valor)}</td></tr>`).join('')}</tbody>
-                <tfoot><tr><td>Total</td><td class="n">${inteiro(pendente.quantidade)}</td>
-                  <td class="n">${brl(pendente.valor)}</td></tr></tfoot></table></div>
-              <p class="nota" style="margin-top:10px">O centro de custo é o tipo de despesa — é assim que as bases
-                vêm rotuladas.</p>`}
-        </section>
-      </div>
+    ${blocoIndicador({
+      chave: 'custo-recorrente',
+      titulo: 'Custo recorrente — variação no período',
+      valor: reducao.variacaoTotal === null
+        ? '—'
+        : (reducao.variacaoTotal > 0 ? '+' : '') + reducao.variacaoTotal.toLocaleString('pt-BR') + '%',
+      cor: reducao.tendencia === 'queda' ? 'var(--bomtxt)' : reducao.tendencia === 'alta' ? 'var(--crit)' : null,
+      apoio: `${esc(seta[reducao.tendencia])} ${esc(palavra[reducao.tendencia])}${
+        reducao.economia > 0 ? ` · economia de ${brl(reducao.economia)}/mês` : ''}`,
+      corpo: `${metaHtml(leituraDeMeta(alvoDe('financeiro', mesDoRecorte(rf)), reducao.variacaoTotal, 'financeiro'))}
+        ${faixaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
+        ${legendaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
+        ${arvoreDeUnidadesHtml('ind-fixos', q.fixos, emDinheiro)}`,
+    })}
 
-      ${consumo.lancamentos === 0 ? '' : `
-      <section class="bloco" style="box-shadow:none;margin-top:16px">
-        <header><h2>Despesa paga por uma unidade, consumida por outras</h2>
-          <span class="nota">${brl(consumo.centralizado)} de ${brl(consumo.total)} · ${
-            consumo.pct.toLocaleString('pt-BR')}%</span></header>
-        <div class="rol"><table>
-          <thead><tr><th>Unidade pagadora</th><th class="n">Centralizado</th>
-            <th class="n">Do que ela paga</th><th>Beneficia</th></tr></thead>
-          <tbody>${consumo.linhas.map((u) => `<tr>
-            <td>${esc(u.unidade)}${u.filial ? '' : ' <span style="color:var(--tinta3)">· nível empresa</span>'}</td>
-            <td class="n">${brl(u.valor)}</td>
-            <td class="n">${u.pctDaUnidade.toLocaleString('pt-BR')}%</td>
-            <td>${u.beneficiadas.length ? esc(u.beneficiadas.join(', ')) : '—'}</td>
+    ${blocoIndicador({
+      chave: 'por-reconhecer',
+      titulo: 'Despesas por reconhecer',
+      valor: brl(pendente.valor),
+      cor: pendente.quantidade ? 'var(--alerta)' : 'var(--bomtxt)',
+      apoio: `${inteiro(pendente.quantidade)} de ${inteiro(pendente.universoN)} lançamentos `
+        + `(${pendente.pctQuantidade.toLocaleString('pt-BR')}%)`,
+      corpo: `${faixaDeMatrizesHtml(fatiasDe(q.pendentes, emDinheiro))}
+        ${legendaDeMatrizesHtml(fatiasDe(q.pendentes, emDinheiro))}
+        ${arvoreDeUnidadesHtml('ind-pendentes', q.pendentes, emDinheiro)}`,
+    })}
+
+    <section class="bloco" style="margin-top:14px">
+      <header><h2>Custo recorrente mês a mês</h2>
+        <span class="nota">${inteiro(reducao.serie.length)} competência(s)</span></header>
+      <div id="i-reducao"></div>
+      ${reducao.serie.length ? `<div class="rol rol-fixo" style="margin-top:12px;max-height:280px;min-height:0"><table>
+        <thead><tr><th>Competência</th><th class="n">Custo recorrente</th><th class="n">Variação</th></tr></thead>
+        <tbody>${reducao.serie.map((p) => `<tr>
+          <td>${esc(p.rot)}</td><td class="n">${brl(p.valor)}</td>
+          <td class="n"${p.variacao === null ? '' : ` style="color:${p.variacao < 0 ? 'var(--bomtxt)' : p.variacao > 0 ? 'var(--crit)' : 'var(--tinta2)'}"`}>${
+            p.variacao === null ? '—' : (p.variacao > 0 ? '+' : '') + p.variacao.toLocaleString('pt-BR') + '%'}</td>
+        </tr>`).join('')}</tbody></table></div>` : ''}
+      ${rf.somenteReconhecidas ? '<p class="nota" style="margin-top:10px">Exibindo apenas despesas reconhecidas.</p>' : ''}
+    </section>
+
+    <section class="bloco" style="margin-top:14px">
+      <header><h2>Por reconhecer, por centro de custo</h2>
+        <span class="nota">${inteiro(pendente.centros.length)} centro(s)</span></header>
+      ${pendente.centros.length === 0
+        ? '<p class="vazio">Nada por reconhecer neste recorte.</p>'
+        : `<div class="rol"><table>
+            <thead><tr><th>Centro de custo</th><th class="n">Lançamentos</th><th class="n">Valor</th></tr></thead>
+            <tbody>${pendente.centros.map((c) => `<tr data-centro="${esc(c.centro)}">
+              <td>${esc(c.centro)}</td><td class="n">${inteiro(c.quantidade)}</td>
+              <td class="n" style="color:var(--alerta);font-weight:700">${brl(c.valor)}</td></tr>`).join('')}</tbody>
+            <tfoot><tr><td>Total</td><td class="n">${inteiro(pendente.quantidade)}</td>
+              <td class="n">${brl(pendente.valor)}</td></tr></tfoot></table></div>
+          <p class="nota" style="margin-top:10px">O centro de custo é o tipo de despesa — é assim que as bases
+            vêm rotuladas.</p>`}
+    </section>
+
+    ${consumo.lancamentos === 0 ? '' : `
+    <section class="bloco" style="margin-top:14px">
+      <header><h2>Despesa paga por uma unidade, consumida por outras</h2>
+        <span class="nota">${brl(consumo.centralizado)} de ${brl(consumo.total)} · ${
+          consumo.pct.toLocaleString('pt-BR')}%</span></header>
+      <div class="rol"><table>
+        <thead><tr><th>Unidade pagadora</th><th class="n">Centralizado</th>
+          <th class="n">Do que ela paga</th><th>Beneficia</th></tr></thead>
+        <tbody>${consumo.linhas.map((u) => `<tr>
+          <td>${esc(u.unidade)}${u.filial ? '' : ' <span style="color:var(--tinta3)">· nível empresa</span>'}</td>
+          <td class="n">${brl(u.valor)}</td>
+          <td class="n">${u.pctDaUnidade.toLocaleString('pt-BR')}%</td>
+          <td>${u.beneficiadas.length ? esc(u.beneficiadas.join(', ')) : '—'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+      <p class="nota" style="margin-top:10px">O valor é o que a unidade pagadora desembolsa por inteiro.
+        Não há divisão por filial beneficiada: somar as linhas daria mais que o total, porque a mesma
+        despesa serve a várias. A leitura <strong>rateada</strong> dessa mesma despesa está no indicador
+        de despesas compartilhadas regularizadas, acima.</p>
+
+      ${!equilibrio.atual ? '' : `
+      <div style="margin-top:14px;border-top:1px solid var(--linha);padding-top:12px">
+        <strong>Equilíbrio de despesas, mês a mês</strong>
+        <p style="margin:4px 0 0;font-size:13px">
+          ${equilibrio.atual.pct.toLocaleString('pt-BR')}% em ${esc(equilibrio.atual.rot)}${
+            equilibrio.anterior
+              ? ` · ${equilibrio.anterior.pct.toLocaleString('pt-BR')}% em ${esc(equilibrio.anterior.rot)}${
+                  equilibrio.variacaoPp === null ? '' :
+                  ` <span style="color:${equilibrio.variacaoPp > 0 ? 'var(--crit)' : 'var(--bomtxt)'}">(${
+                    equilibrio.variacaoPp > 0 ? '+' : ''}${equilibrio.variacaoPp.toLocaleString('pt-BR')} p.p.)</span>`}`
+              : ''}
+        </p>
+        ${equilibrio.anterior ? '' :
+          '<p class="nota" style="margin:4px 0 0">Sem mês anterior com movimento neste recorte — não há contra o que comparar.</p>'}
+        ${metaHtml(equilibrio.leitura)}
+        <div class="rol rol-fixo" style="margin-top:10px;max-height:200px;min-height:0"><table>
+          <thead><tr><th>Competência</th><th class="n">Centralizado</th><th class="n">Total</th><th class="n">%</th></tr></thead>
+          <tbody>${equilibrio.serie.map((m) => `<tr>
+            <td>${esc(m.rot)}</td><td class="n">${brl(m.centralizado)}</td>
+            <td class="n">${brl(m.total)}</td><td class="n">${m.pct.toLocaleString('pt-BR')}%</td>
           </tr>`).join('')}</tbody>
         </table></div>
-        <p class="nota" style="margin-top:10px">O valor é o que a unidade pagadora desembolsa por inteiro.
-          Não há divisão por filial beneficiada: somar as linhas daria mais que o total, porque a mesma
-          despesa serve a várias.</p>
+      </div>`}
+    </section>`}
 
-        ${!equilibrio.atual ? '' : `
-        <div style="margin-top:14px;border-top:1px solid var(--linha);padding-top:12px">
-          <strong>Equilíbrio de despesas, mês a mês</strong>
-          <p style="margin:4px 0 0;font-size:13px">
-            ${equilibrio.atual.pct.toLocaleString('pt-BR')}% em ${esc(equilibrio.atual.rot)}${
-              equilibrio.anterior
-                ? ` · ${equilibrio.anterior.pct.toLocaleString('pt-BR')}% em ${esc(equilibrio.anterior.rot)}${
-                    equilibrio.variacaoPp === null ? '' :
-                    ` <span style="color:${equilibrio.variacaoPp > 0 ? 'var(--crit)' : 'var(--bomtxt)'}">(${
-                      equilibrio.variacaoPp > 0 ? '+' : ''}${equilibrio.variacaoPp.toLocaleString('pt-BR')} p.p.)</span>`}`
-                : ''}
-          </p>
-          ${equilibrio.anterior ? '' :
-            '<p class="nota" style="margin:4px 0 0">Sem mês anterior com movimento neste recorte — não há contra o que comparar.</p>'}
-          ${metaHtml(equilibrio.leitura)}
-          <div class="rol rol-fixo" style="margin-top:10px;max-height:200px;min-height:0"><table>
-            <thead><tr><th>Competência</th><th class="n">Centralizado</th><th class="n">Total</th><th class="n">%</th></tr></thead>
-            <tbody>${equilibrio.serie.map((m) => `<tr>
-              <td>${esc(m.rot)}</td><td class="n">${brl(m.centralizado)}</td>
-              <td class="n">${brl(m.total)}</td><td class="n">${m.pct.toLocaleString('pt-BR')}%</td>
-            </tr>`).join('')}</tbody>
-          </table></div>
-        </div>`}
-      </section>`}
-    </section>
-
-    <section class="bloco" style="margin-top:16px">
-      <header><h2>SLA</h2><span class="nota">meta de ${sla.meta}%</span></header>
+    <div class="bloco" style="margin-top:16px">
+      <header style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <h2 style="font-size:15px">SLA</h2>
+        <span class="nota" style="margin-left:auto">meta de ${sla.meta}%</span>
+      </header>
       ${filtrosDoBloco('sla', rs)}
+    </div>
 
-      <div class="kpis">
-        <div class="kpi">
-          <span class="r">Atendidos dentro do SLA</span>
-          <span class="n" style="color:${sla.total === 0 ? 'var(--tinta)' : sla.atinge ? 'var(--bomtxt)' : 'var(--crit)'}">${
-            sla.total ? sla.pct.toLocaleString('pt-BR') + '%' : '—'}</span>
-          <span class="a">${sla.total
-            ? `${sla.atinge ? '✓ atinge' : '✗ abaixo d'}a meta de ${sla.meta}% · ${
-                sla.distancia > 0 ? '+' : ''}${sla.distancia.toLocaleString('pt-BR')} p.p.`
-            : 'sem chamado no recorte'}</span>
-          ${metaHtml(sla.leitura)}
-          ${faixaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
-          ${legendaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
-          ${sanfonaHtml('ind-sla', q.sla, inteiro, extraSla)}
-        </div>
-        <div class="kpi">
-          <span class="r">Chamados no recorte</span>
-          <span class="n">${inteiro(sla.total)}</span>
-          <span class="a">${inteiro(sla.dentro)} dentro · ${inteiro(sla.fora)} fora</span>
-          ${faixaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
-          ${legendaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
-          ${sanfonaHtml('ind-chamados', q.sla, inteiro, extraSla)}
-        </div>
-      </div>
+    ${blocoIndicador({
+      chave: 'sla-conformidade',
+      titulo: 'Atendidos dentro do SLA',
+      valor: sla.total ? sla.pct.toLocaleString('pt-BR') + '%' : '—',
+      cor: sla.total === 0 ? null : sla.atinge ? 'var(--bomtxt)' : 'var(--crit)',
+      apoio: sla.total
+        ? `${sla.atinge ? '✓ atinge' : '✗ abaixo d'}a meta de ${sla.meta}% · ${
+            sla.distancia > 0 ? '+' : ''}${sla.distancia.toLocaleString('pt-BR')} p.p.`
+        : 'sem chamado no recorte',
+      corpo: `${metaHtml(sla.leitura)}
+        ${faixaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
+        ${legendaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
+        ${arvoreDeUnidadesHtml('ind-sla', q.sla, inteiro, extraSla)}
+        <div id="i-termometro" style="margin-top:14px"></div>`,
+    })}
 
-      <div id="i-termometro" style="margin-top:16px"></div>
+    ${blocoIndicador({
+      chave: 'sla-chamados',
+      titulo: 'Chamados no recorte',
+      valor: inteiro(sla.total),
+      apoio: `${inteiro(sla.dentro)} dentro · ${inteiro(sla.fora)} fora`,
+      corpo: `${faixaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
+        ${legendaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
+        ${arvoreDeUnidadesHtml('ind-chamados', q.sla, inteiro, extraSla)}
+        <div class="grade g3" style="margin-top:14px">
+          ${[['Abertos', sla.abertos, ''], ['Em andamento', sla.andamento, ''],
+             ['Resolvidos', sla.resolvidos, 'bomtxt'], ['Vencidos', sla.vencidos, 'crit']]
+            .map(([rot, n, cor]) => `<div class="bloco" style="box-shadow:none">
+              <span style="font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tinta3)">${esc(rot)}</span>
+              <div style="font-size:25px;font-weight:600${cor ? `;color:var(--${cor})` : ''}">${inteiro(n)}</div>
+            </div>`).join('')}
+        </div>`,
+      nota: `<strong>Vencido</strong> atravessa aberto e em andamento — é o chamado cujo prazo passou e ninguém
+        resolveu. Por isso não soma com os outros três.${sla.semStatus > 0
+          ? ` ${inteiro(sla.semStatus)} atendimento(s) vêm de registro agregado do mês, que não tem situação.` : ''}`,
+    })}
 
-      <div class="grade g3" style="margin-top:16px">
-        ${[['Abertos', sla.abertos, ''], ['Em andamento', sla.andamento, ''],
-           ['Resolvidos', sla.resolvidos, 'bomtxt'], ['Vencidos', sla.vencidos, 'crit']]
-          .map(([rot, n, cor]) => `<div class="bloco" style="box-shadow:none">
-            <span class="r" style="font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tinta3)">${esc(rot)}</span>
-            <div style="font-size:25px;font-weight:600${cor ? `;color:var(--${cor})` : ''}">${inteiro(n)}</div>
-          </div>`).join('')}
-      </div>
-      <p class="nota" style="margin-top:10px">
-        <strong>Vencido</strong> atravessa aberto e em andamento — é o chamado cujo prazo passou e ninguém resolveu.
-        Por isso não soma com os outros três.${sla.semStatus > 0
-          ? ` ${inteiro(sla.semStatus)} atendimento(s) vêm de registro agregado do mês, que não tem situação.` : ''}</p>
-    </section>
-
-    <section class="bloco" style="margin-top:16px">
-      <header><h2>Projetos</h2><span class="nota">por competência de entrega planejada</span></header>
+    <div class="bloco" style="margin-top:16px">
+      <header style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <h2 style="font-size:15px">Projetos</h2>
+        <span class="nota" style="margin-left:auto">por competência de entrega planejada</span>
+      </header>
       ${filtrosDoBloco('projetos', rp)}
+    </div>
 
-      <div class="kpis">
-        <div class="kpi">
-          <span class="r">Tarefas entregues no prazo</span>
-          <span class="n" style="color:${proj.entregues === 0 ? 'var(--tinta)'
-            : proj.leitura ? (proj.leitura.atinge ? 'var(--bomtxt)' : 'var(--crit)') : 'var(--tinta)'}">${
-            proj.entregues ? proj.pct.toLocaleString('pt-BR') + '%' : '—'}</span>
-          <span class="a">${proj.entregues
-            ? `${inteiro(proj.noPrazo)} de ${inteiro(proj.entregues)} entregues`
-            : 'nenhuma tarefa entregue no recorte'}</span>
-          ${metaHtml(proj.leitura)}
-          ${faixaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
-          ${legendaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
-          ${sanfonaHtml('ind-entregues', q.entregues, inteiro, { coluna: 'Tarefas', colunaExtra: '', matriz: () => '', filial: () => '' })}
-        </div>
-        <div class="kpi">
-          <span class="r">Tarefas pendentes</span>
-          <span class="n"${proj.atrasadas ? ' style="color:var(--alerta)"' : ''}>${inteiro(proj.pendentes)}</span>
-          <span class="a">${proj.atrasadas
-            ? `${inteiro(proj.atrasadas)} com o mês planejado já vencido`
-            : 'nenhuma com o mês planejado vencido'}</span>
-          ${faixaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
-          ${legendaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
-          ${sanfonaHtml('ind-tarefas-pendentes', q.tarefasPendentes, inteiro, { coluna: 'Tarefas', colunaExtra: '', matriz: () => '', filial: () => '' })}
-        </div>
-      </div>
-      <p class="nota" style="margin-top:12px">O denominador do percentual é o que foi <strong>entregue</strong>:
-        tarefa ainda em aberto não está fora do prazo enquanto o mês planejado não passa.
-        ${proj.canceladas ? `${inteiro(proj.canceladas)} cancelada(s) ficam fora das duas contas.` : ''}</p>
-    </section>`;
+    ${blocoIndicador({
+      chave: 'projetos-prazo',
+      titulo: 'Tarefas entregues no prazo',
+      valor: proj.entregues ? proj.pct.toLocaleString('pt-BR') + '%' : '—',
+      cor: proj.entregues === 0 ? null : proj.leitura ? (proj.leitura.atinge ? 'var(--bomtxt)' : 'var(--crit)') : null,
+      apoio: proj.entregues
+        ? `${inteiro(proj.noPrazo)} de ${inteiro(proj.entregues)} entregues`
+        : 'nenhuma tarefa entregue no recorte',
+      corpo: `${metaHtml(proj.leitura)}
+        ${faixaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
+        ${legendaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
+        ${arvoreDeUnidadesHtml('ind-entregues', q.entregues, inteiro, semExtra)}`,
+      nota: `O denominador do percentual é o que foi <strong>entregue</strong>: tarefa ainda em aberto não
+        está fora do prazo enquanto o mês planejado não passa.${
+          proj.canceladas ? ` ${inteiro(proj.canceladas)} cancelada(s) ficam fora das duas contas.` : ''}`,
+    })}
+
+    ${blocoIndicador({
+      chave: 'projetos-pendentes',
+      titulo: 'Tarefas pendentes',
+      valor: inteiro(proj.pendentes),
+      cor: proj.atrasadas ? 'var(--alerta)' : null,
+      apoio: proj.atrasadas
+        ? `${inteiro(proj.atrasadas)} com o mês planejado já vencido`
+        : 'nenhuma com o mês planejado vencido',
+      corpo: `${faixaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
+        ${legendaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
+        ${arvoreDeUnidadesHtml('ind-tarefas-pendentes', q.tarefasPendentes, inteiro, semExtra)}`,
+    })}`;
 
   // ----------------------------------------------------------- desenho
   if (reducao.serie.length) {
@@ -612,7 +918,11 @@ async function viewIndicadores() {
   } else {
     el('#i-reducao').innerHTML = '<p class="vazio">Sem despesa recorrente neste recorte.</p>';
   }
-  termometro(el('#i-termometro'), sla.total ? sla.pct : 0, sla.meta, 'Atendidos dentro do SLA');
+  // O termômetro mora dentro do bloco de SLA, que abre fechado: desenhar num
+  // elemento escondido é legítimo — o SVG tem `viewBox`, e aparece pronto
+  // quando o bloco abre.
+  const alvoTermometro = el('#i-termometro');
+  if (alvoTermometro) termometro(alvoTermometro, sla.total ? sla.pct : 0, sla.meta, 'Atendidos dentro do SLA');
 
   // ----------------------------------------------------------- ligações
   for (const bloco of BLOCOS_IND) {
@@ -639,59 +949,101 @@ async function viewIndicadores() {
 
   // ----------------------------------------------------- detalhamento
   const linhasPendentes = () => naoReconhecidos;
+  const lancamentosDoPlano = () => plano.itens.flatMap((i) => i.registros);
 
-  // TODO indicador abre os registros que o compõem — inclusive os que mostram
-  // percentual. Um percentual não tem soma, mas tem registros por trás: são
-  // eles que a tela lista, e a conferência passa a ser pela CONTAGEM. Antes
-  // esses quatro não abriam, e o clique morria justamente onde a pergunta
-  // "de onde vem esse número?" mais aparece.
-  ligarKpis([
-    { dica: 'Variação do custo RECORRENTE entre o primeiro e o último mês do recorte. '
-      + 'Só a despesa de natureza fixa entra: uma compra pontual num mês e nenhuma no seguinte '
-      + 'produziria uma "redução" que é só o fim da compra. Clique para ver as despesas fixas.',
+  // O mapa é por CHAVE, e não por posição: a ordem dos blocos mudou nesta
+  // entrega e vai mudar de novo, e um mapa posicional ligaria em silêncio o
+  // tooltip de um indicador ao detalhamento de outro.
+  ligarKpis({
+    'plano-reducao': {
+      dica: 'As despesas escolhidas para cair, com o valor atual do recorte e o alvo cadastrado. '
+        + 'O percentual de redução é (atual − alvo) / atual. Clique para ver os lançamentos que '
+        + 'compõem o valor atual.',
+      abrir: plano.itens.length
+        ? () => abrirRegistros({
+            titulo: 'Plano de redução — lançamentos do recorte', tipo: 'indicadores',
+            colunas: COLUNAS_LANCAMENTO_SIMPLES, itens: lancamentosDoPlano(), contagem: null,
+            nota: `Valor atual ${brl(plano.totalAtual)}, alvo ${brl(plano.totalAlvo)} — `
+              + `${pctTxt(plano.pctReducao)} de redução.`,
+          })
+        : null,
+    },
+    rateio: {
+      dica: 'A despesa que uma unidade paga e o grupo consome, distribuída proporcionalmente à '
+        + 'despesa própria de cada empresa no período. O indicador abaixo, "paga por uma unidade, '
+        + 'consumida por outras", é a mesma despesa sem rateio — o "antes" deste comparativo. '
+        + 'Clique para ver os lançamentos compartilhados.',
+      abrir: rateio.lancamentos
+        ? () => abrirRegistros({
+            titulo: 'Despesas compartilhadas do recorte', tipo: 'indicadores',
+            colunas: COLUNAS_LANCAMENTO_SIMPLES,
+            itens: Loja.todosDoEscopo().filter((l) =>
+              passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, rf) &&
+              naJanela(l.competencia, rf) && consumoDe(l) === 'compartilhado'),
+            contagem: null,
+            nota: `${brl(rateio.compartilhado)} distribuídos entre ${inteiro(rateio.porEmpresa.length)} empresa(s). `
+              + 'A soma das parcelas é exatamente este valor.',
+          })
+        : null,
+    },
+    'custo-recorrente': {
+      dica: 'Variação do custo RECORRENTE entre o primeiro e o último mês do recorte. '
+        + 'Só a despesa de natureza fixa entra: uma compra pontual num mês e nenhuma no seguinte '
+        + 'produziria uma "redução" que é só o fim da compra. Clique para ver as despesas fixas.',
       abrir: () => abrirRegistros({
         titulo: 'Custo recorrente — despesas fixas do recorte', tipo: 'indicadores',
         colunas: COLUNAS_LANCAMENTO_SIMPLES, itens: fixosDoRecorte(rf), contagem: null,
         nota: 'A variação compara o primeiro e o último mês; a lista traz as despesas que formam a série.',
-      }) },
-    { dica: 'Soma e contagem das despesas que ninguém reconheceu ainda, no recorte do bloco. '
-      + 'Clique para ver os lançamentos e reconhecer em lote.',
+      }),
+    },
+    'por-reconhecer': {
+      dica: 'Soma e contagem das despesas que ninguém reconheceu ainda, no recorte do bloco. '
+        + 'Clique para ver os lançamentos e reconhecer em lote.',
       abrir: () => abrirDetalhe({
         titulo: 'Despesas por reconhecer', tipo: 'indicadores',
         itens: linhasPendentes(), esperado: pendente.valor,
-      }) },
-    { dica: `Atendidos dentro do prazo sobre o total de atendimentos do recorte, contra a meta de ${sla.meta}%. `
-      + 'É a mesma conta das telas de SLA. Clique para ver os chamados, com prazo e situação.',
+      }),
+    },
+    'sla-conformidade': {
+      dica: `Atendidos dentro do prazo sobre o total de atendimentos do recorte, contra a meta de ${sla.meta}%. `
+        + 'É a mesma conta das telas de SLA. Clique para ver os chamados, com prazo e situação.',
       abrir: () => abrirRegistros({
         titulo: 'Atendidos dentro do SLA — chamados do recorte', tipo: 'indicadores',
         colunas: COLUNAS_TICKET, itens: ticketsDoRecorte(rs), contagem: null,
         nota: `${inteiro(sla.dentro)} de ${inteiro(sla.total)} atendimentos dentro do prazo `
           + `(${sla.total ? sla.pct.toLocaleString('pt-BR') : '0'}%), contra a meta de ${sla.meta}%.`,
-      }) },
-    { dica: 'Total de atendimentos no recorte, somando o chamado vindo de helpdesk e o registro '
-      + 'agregado do mês. Clique para ver os registros; a tela Chamados é onde se mexe neles.',
+      }),
+    },
+    'sla-chamados': {
+      dica: 'Total de atendimentos no recorte, somando o chamado vindo de helpdesk e o registro '
+        + 'agregado do mês. Clique para ver os registros; a tela Chamados é onde se mexe neles.',
       abrir: () => abrirRegistros({
         titulo: 'Chamados no recorte', tipo: 'indicadores',
         colunas: COLUNAS_TICKET, itens: ticketsDoRecorte(rs), contagem: null,
         nota: 'Um registro agregado do mês pode valer por vários atendimentos — por isso a contagem '
           + 'de linhas nem sempre é o total de chamados.',
-      }) },
-    { dica: 'Entregues dentro do mês planejado sobre o total ENTREGUE — tarefa ainda em aberto não '
-      + 'está fora do prazo enquanto o mês planejado não passa. Clique para ver as entregas.',
+      }),
+    },
+    'projetos-prazo': {
+      dica: 'Entregues dentro do mês planejado sobre o total ENTREGUE — tarefa ainda em aberto não '
+        + 'está fora do prazo enquanto o mês planejado não passa. Clique para ver as entregas.',
       abrir: () => abrirRegistros({
         titulo: 'Tarefas entregues no recorte', tipo: 'indicadores',
         colunas: COLUNAS_TAREFA, itens: tarefasDoRecorte(rp, 'entregues'), contagem: proj.entregues,
         nota: `${inteiro(proj.noPrazo)} dentro do mês planejado.`,
-      }) },
-    { dica: 'Tarefas ainda pendentes ou em andamento cuja entrega estava planejada para o recorte. '
-      + 'Clique para ver quais são; o cronograma está na tela Projetos.',
+      }),
+    },
+    'projetos-pendentes': {
+      dica: 'Tarefas ainda pendentes ou em andamento cuja entrega estava planejada para o recorte. '
+        + 'Clique para ver quais são; o cronograma está na tela Projetos.',
       abrir: () => abrirRegistros({
         titulo: 'Tarefas pendentes no recorte', tipo: 'indicadores',
         colunas: COLUNAS_TAREFA, itens: tarefasDoRecorte(rp, 'pendentes'), contagem: proj.pendentes,
         nota: proj.atrasadas ? `${inteiro(proj.atrasadas)} com o mês planejado já vencido.` : '',
-      }) },
-  ]);
-  ligarSanfonasDeUnidade();
+      }),
+    },
+  });
+  ligarArvoresDeUnidade();
   el('#pagina').querySelectorAll('tr[data-centro]').forEach((tr) => {
     tr.style.cursor = 'pointer';
     tr.onclick = () => abrirDetalhe({
@@ -699,6 +1051,20 @@ async function viewIndicadores() {
       itens: linhasPendentes().filter((l) => (l.tipo || '(sem centro de custo)') === tr.dataset.centro),
       esperado: null,
     });
+  });
+  // Cada item do plano abre os lançamentos que compõem o valor ATUAL dele.
+  el('#pagina').querySelectorAll('tr[data-plano]').forEach((tr) => {
+    const item = plano.itens.find((i) => i.nome === tr.dataset.plano);
+    if (!item || !item.registros.length) return;
+    tr.style.cursor = 'pointer';
+    tr.onclick = (ev) => {
+      ev.stopPropagation();
+      abrirRegistros({
+        titulo: 'Plano de redução — ' + item.nome, tipo: 'indicadores',
+        colunas: COLUNAS_LANCAMENTO_SIMPLES, itens: item.registros, contagem: null,
+        nota: `Atual ${brl(item.atual)} · alvo ${brl(item.alvo)} · ${pctTxt(item.pctReducao)} de redução.`,
+      });
+    };
   });
 }
 
@@ -737,24 +1103,96 @@ const fatiasDe = (quebra, formatar) =>
   quebra.map((m) => ({ nome: m.nome, cor: m.cor, valor: m.valor, texto: formatar(m.valor) }));
 
 /**
- * A sanfona de um indicador: matriz → filial, com o valor de cada uma.
+ * Onde os registros de cada folha ficam entre a pintura e o clique.
+ *
+ * Não cabem no HTML: são objetos, e serializá-los num `data-` faria o bloco
+ * pesar megabytes por algo que quase ninguém abre. O mapa é reconstruído a
+ * cada `render()`, junto com a tela que o consome.
+ */
+const ARVORE_REGISTROS = new Map();
+
+/**
+ * A barra de representatividade: o peso de um nó dentro do pai.
+ *
+ * O percentual vai ESCRITO ao lado, e a barra é redundância visual — quem não
+ * distingue a cor lê o número, e quem lê rápido vê a proporção. A cor é a da
+ * empresa; no que é compartilhado, o tom escurecido dela.
+ */
+function barraDeRepresentatividadeHtml(pctValor, cor, dica) {
+  const largura = Math.max(0, Math.min(100, Number(pctValor) || 0));
+  return `<span class="barra-rep"${dica ? ` title="${esc(dica)}"` : ''}>`
+    + `<span aria-hidden="true"><i style="width:${largura}%;background:${cor}"></i></span>`
+    + `<b>${pctTxt(pctValor)}</b></span>`;
+}
+
+/**
+ * A árvore de um indicador: empresa (nível 1) → filial (nível 2) → lançamentos
+ * (nível 3), com o MESMO formato nos três níveis.
+ *
+ * Antes eram dois níveis numa tabela plana, com um botão só por cartão: dava
+ * para ver as filiais, não para abrir uma delas nem para comparar o peso de
+ * cada uma. Agora cada nó tem o seu controle, e cada linha tem a sua barra.
+ *
+ * O nível 3 é montado SÓ no primeiro clique da filial (`data-carregado`). Um
+ * recorte largo tem milhares de lançamentos, e montá-los na pintura do bloco
+ * custaria caro por algo que quase ninguém abre.
  *
  * Fica num botão PRÓPRIO, e não no corpo do card: o corpo já abre o
  * detalhamento, e dois gestos no mesmo alvo brigariam.
  */
-function sanfonaHtml(id, quebra, formatar, extra) {
+function arvoreDeUnidadesHtml(id, quebra, formatar, extra) {
   if (!quebra.length) return '';
-  const linhas = quebra.map((m) => `
-    <tr class="matriz"><td>${esc(m.nome)}</td><td class="num">${formatar(m.valor)}</td>
-      <td>${extra ? extra.matriz(m) : ''}</td></tr>
-    ${m.filiais.map((f) => `<tr class="filial"><td>${esc(f.nome)}</td>
-      <td class="num">${formatar(f.valor)}</td><td>${extra ? extra.filial(f, m) : ''}</td></tr>`).join('')}`).join('');
-  return `<div class="kpi-unidades" data-sanfona="${esc(id)}">
+  const total = quebra.reduce((s, m) => s + m.valor, 0);
+  // Cada pintura refaz o mapa desta árvore: um resto da pintura anterior
+  // entregaria ao clique registros de um recorte que não está mais na tela.
+  for (const chave of [...ARVORE_REGISTROS.keys()]) {
+    if (chave.startsWith(id + ':')) ARVORE_REGISTROS.delete(chave);
+  }
+  const linhas = quebra.map((m, i) => {
+    const chaveEmpresa = `${id}:e${i}`;
+    const filiais = m.filiais.map((f, j) => {
+      const chaveFilial = `${id}:e${i}:f${j}`;
+      // Só o nível de despesa tem lançamento por trás; a quebra de SLA e a de
+      // tarefas não carregam registros, e prometer um terceiro nível que não
+      // existe seria pior do que não oferecer.
+      const temItens = Array.isArray(f.registros) && f.registros.length > 0;
+      if (temItens) ARVORE_REGISTROS.set(chaveFilial, { registros: f.registros, cor: m.cor, nome: f.nome });
+      return `<tr class="nivel-2" data-no="${esc(chaveFilial)}" data-pai="${esc(chaveEmpresa)}" hidden>
+        <td>${temItens
+          ? `<button type="button" class="arv-abrir" aria-expanded="false" data-abrir-no="${esc(chaveFilial)}"
+               aria-label="Abrir os lançamentos de ${esc(f.nome)}"><span aria-hidden="true">+</span></button>`
+          : '<span class="arv-vazio" aria-hidden="true"></span>'}${esc(f.nome)}</td>
+        <td class="num">${formatar(f.valor)}</td>
+        <td>${barraDeRepresentatividadeHtml(pct(f.valor, m.valor), m.cor,
+          `${f.nome}: ${formatar(f.valor)} · ${pctTxt(pct(f.valor, m.valor))} de ${m.nome}`)}</td>
+        <td>${extra ? extra.filial(f, m) : ''}</td>
+      </tr>`;
+    }).join('');
+    return `<tr class="nivel-1" data-no="${esc(chaveEmpresa)}">
+        <td><button type="button" class="arv-abrir" aria-expanded="false" data-abrir-no="${esc(chaveEmpresa)}"
+              aria-label="Abrir as filiais de ${esc(m.nome)}"><span aria-hidden="true">+</span></button>
+          <i class="ponto-matriz" style="background:${m.cor}" aria-hidden="true"></i>${esc(m.nome)}</td>
+        <td class="num">${formatar(m.valor)}</td>
+        <td>${barraDeRepresentatividadeHtml(pct(m.valor, total), m.cor,
+          `${m.nome}: ${formatar(m.valor)} · ${pctTxt(pct(m.valor, total))} do recorte`)}</td>
+        <td>${extra ? extra.matriz(m) : ''}</td>
+      </tr>
+      ${m.filiais.length === 0
+        ? `<tr class="nivel-2 vazia" data-pai="${esc(chaveEmpresa)}" hidden><td colspan="4" class="vazio-no">Esta empresa não tem filial no recorte.</td></tr>`
+        : filiais}`;
+  }).join('');
+
+  return `<div class="kpi-unidades" data-arvore="${esc(id)}">
     <button type="button" class="bt" aria-expanded="false" data-abrir-unidades>+ por unidade</button>
-    <div class="kpi-corpo" hidden><table>
+    <div class="kpi-corpo" hidden><table class="arvore-unidades">
       <thead><tr><th>Empresa / filial</th><th class="num">${esc(extra ? extra.coluna : 'Valor')}</th>
-        <th>${esc(extra ? extra.colunaExtra : '')}</th></tr></thead>
+        <th>Representatividade</th><th>${esc(extra ? extra.colunaExtra : '')}</th></tr></thead>
       <tbody>${linhas}</tbody></table></div></div>`;
+}
+
+/** Compatibilidade: as telas que ainda pedem a sanfona recebem a árvore. */
+function sanfonaHtml(id, quebra, formatar, extra) {
+  return arvoreDeUnidadesHtml(id, quebra, formatar, extra);
 }
 
 /**
@@ -808,21 +1246,26 @@ function rotuloConformidade(x) {
     : `<span class="fora">✗ ${x.pct.toLocaleString('pt-BR')}% · fora (${inteiro(x.fora)} chamado(s))</span>`;
 }
 
-/** Liga as sanfonas da tela. Estado por card, e memória entre visitas. */
-function ligarSanfonasDeUnidade() {
-  el('#pagina').querySelectorAll('[data-sanfona]').forEach((caixa) => {
+/**
+ * Liga as árvores da tela: o botão do cartão e a expansão de cada nó.
+ *
+ * Três estados, todos na mesma loja de `blocosAbertos()` — a convenção do
+ * projeto é guardar a EXCEÇÃO, e um nó novo nasce fechado sem precisar ser
+ * cadastrado em lugar nenhum.
+ */
+function ligarArvoresDeUnidade() {
+  el('#pagina').querySelectorAll('[data-arvore]').forEach((caixa) => {
     const bt = caixa.querySelector('[data-abrir-unidades]');
     const corpo = caixa.querySelector('.kpi-corpo');
-    const chave = 'sanfona:' + caixa.dataset.sanfona;
-    const abertas = blocosAbertos();
+    const chave = 'sanfona:' + caixa.dataset.arvore;
     const aplicar = (aberto) => {
       bt.setAttribute('aria-expanded', String(aberto));
       bt.textContent = (aberto ? '− ' : '+ ') + 'por unidade';
       corpo.hidden = !aberto;
     };
-    aplicar(abertas.has(chave));
+    aplicar(blocosAbertos().has(chave));
     bt.onclick = (ev) => {
-      // O card é gatilho de drill-down: sem parar aqui, abrir a sanfona
+      // O card é gatilho de drill-down: sem parar aqui, abrir a árvore
       // abriria o modal junto.
       ev.stopPropagation();
       const atuais = blocosAbertos();
@@ -831,7 +1274,101 @@ function ligarSanfonasDeUnidade() {
       gravarBlocosAbertos(atuais);
       aplicar(vai);
     };
+
+    const tabela = caixa.querySelector('table');
+    if (!tabela) return;
+
+    const aplicarNo = (no, aberto) => {
+      const gatilho = tabela.querySelector(`[data-abrir-no="${CSS.escape(no)}"]`);
+      if (gatilho) {
+        gatilho.setAttribute('aria-expanded', String(aberto));
+        gatilho.firstElementChild.textContent = aberto ? '−' : '+';
+      }
+      for (const filho of tabela.querySelectorAll(`[data-pai="${CSS.escape(no)}"]`)) {
+        filho.hidden = !aberto;
+        // Fechar o pai fecha o que estava aberto abaixo dele: deixar netos
+        // visíveis sob um pai fechado seria uma árvore mentindo sobre si.
+        if (!aberto && filho.dataset.no) aplicarNo(filho.dataset.no, false);
+      }
+    };
+
+    for (const gatilho of tabela.querySelectorAll('[data-abrir-no]')) {
+      const no = gatilho.dataset.abrirNo;
+      const linha = tabela.querySelector(`tr[data-no="${CSS.escape(no)}"]`);
+      const chaveNo = 'arvore:' + no;
+      gatilho.onclick = (ev) => {
+        ev.stopPropagation();
+        const atuais = blocosAbertos();
+        const vai = !atuais.has(chaveNo);
+        if (vai) {
+          atuais.add(chaveNo);
+          // Carga sob demanda: o nível 3 só existe depois do primeiro clique.
+          if (linha && linha.classList.contains('nivel-2') && !linha.dataset.carregado) {
+            montarNivelDeLancamentos(tabela, linha, no);
+            linha.dataset.carregado = '1';
+          }
+        } else {
+          atuais.delete(chaveNo);
+        }
+        gravarBlocosAbertos(atuais);
+        aplicarNo(no, vai);
+      };
+      // Restaura o que estava aberto na visita anterior, de cima para baixo —
+      // um filho só aparece se o pai também estiver aberto.
+      if (blocosAbertos().has(chaveNo)) {
+        if (linha && linha.classList.contains('nivel-2') && !linha.dataset.carregado) {
+          montarNivelDeLancamentos(tabela, linha, no);
+          linha.dataset.carregado = '1';
+        }
+        if (!linha || !linha.hidden) aplicarNo(no, true);
+      }
+    }
   });
+}
+
+/**
+ * Monta o nível 3 — os lançamentos de uma filial — logo abaixo da linha dela.
+ *
+ * Os registros já vieram no nó (`quebrarPorUnidade` os carrega no mesmo laço
+ * do cálculo), então nada é reconsultado: é isso que garante que a soma dos
+ * filhos seja o número do pai.
+ */
+function montarNivelDeLancamentos(tabela, linha, no) {
+  const dados = ARVORE_REGISTROS.get(no);
+  if (!dados || !dados.registros.length) return;
+  const totalFilial = dados.registros.reduce((s, l) => s + cent(l.valor), 0);
+  const html = [...dados.registros]
+    .sort((a, b) => cent(b.valor) - cent(a.valor))
+    .slice(0, 200)
+    .map((l) => {
+      const c = cent(l.valor);
+      const compartilhada = consumoDe(l) === 'compartilhado';
+      const cor = compartilhada ? corCompartilhada(l.empresa) : dados.cor;
+      const rotulo = l.descricao || l.tipo;
+      return `<tr class="nivel-3" data-pai="${esc(no)}" hidden>
+        <td><span class="arv-vazio" aria-hidden="true"></span><span class="arv-vazio" aria-hidden="true"></span>${esc(rotulo)}
+          <span class="arv-comp">${esc(mesExib(l.competencia))}</span></td>
+        <td class="num">${brl(l.valor)}</td>
+        <td>${barraDeRepresentatividadeHtml(pct(c, totalFilial), cor,
+          `${rotulo}: ${brl(l.valor)} · ${pctTxt(pct(c, totalFilial))} de ${dados.nome} · ${mesExib(l.competencia)}`
+          + (compartilhada ? ' · compartilhada com o grupo' : ''))}</td>
+        <td>${compartilhada ? etiquetaConsumoHtml(l) : ''}</td>
+      </tr>`;
+    })
+    .join('');
+  linha.insertAdjacentHTML('afterend', html);
+  if (dados.registros.length > 200) {
+    linha.insertAdjacentHTML(
+      'afterend',
+      `<tr class="nivel-3" data-pai="${esc(no)}" hidden><td colspan="4" class="vazio-no">`
+        + `Exibindo os 200 maiores de ${inteiro(dados.registros.length)}. Estreite o recorte para ver o resto.</td></tr>`,
+    );
+  }
+}
+
+/** Compatibilidade: o nome antigo continua valendo para quem o chama. */
+function ligarSanfonasDeUnidade() {
+  ligarArvoresDeUnidade();
 }
 
 /**
@@ -982,7 +1519,7 @@ function abrirDetalhe({ titulo, tipo, itens, esperado }) {
                aria-label="Selecionar ${esc(l.descricao || l.tipo)}"></td>
           <td>${mesExib(l.competencia)}</td>
           <td>${esc(l.filial || 'empresa')}</td>
-          <td title="${esc(detalheConsumo(l))}">${esc(resumoConsumo(l))}</td>
+          <td title="${esc(detalheConsumo(l))}">${etiquetaConsumoHtml(l)}</td>
           <td>${esc(l.tipo)}</td>
           <td>${esc(l.descricao || '')}</td>
           <td class="n">${brl(l.valor)}</td></tr>`).join('')}</tbody>

@@ -4,7 +4,7 @@ import { useDados, useSessao } from '../lib/sessao';
 import { useFiltroEscopo } from '../lib/filtros';
 import { Filtro, FiltroUnidades, SeletorUnidadeFoco } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta } from '../components/base';
-import { competenciaAtual, competenciaExib, competenciaValida, dataHora, inteiro } from '../lib/formato';
+import { competenciaAtual, competenciaExib, competenciaValida, dataHora, inteiro, moeda } from '../lib/formato';
 
 // ==========================================================================
 // Fechamento de competência
@@ -588,6 +588,182 @@ export function PaginaSlas() {
   );
 }
 
+// ==========================================================================
+// Plano de redução de despesas
+// ==========================================================================
+
+interface ItemPlano {
+  id: number;
+  nome: string;
+  tipo_despesa_id: number | null;
+  tipo_despesa: string | null;
+  filial_id: number | null;
+  filial: string | null;
+  valor_alvo: number;
+  vigencia_inicio: string | null;
+  vigencia_fim: string | null;
+  ativo: number;
+}
+
+interface TipoDoCliente {
+  id: number;
+  nome: string;
+  empresa_nome: string;
+}
+
+interface FilialDoCliente {
+  id: number;
+  nome: string;
+  empresa_nome: string;
+}
+
+/**
+ * Cadastro do plano de redução: quais despesas serão cortadas, e para quanto.
+ *
+ * É do CLIENTE, como as metas, e por isso não traz seletor de unidade — o
+ * plano de corte é negociado para o grupo. Uma linha por despesa escolhida: é
+ * o que permite o par atual → alvo POR despesa, que é a leitura do indicador.
+ * Um alvo único cobrindo cinco categorias não teria como mostrar de quanto
+ * para quanto cai cada uma.
+ */
+export function PaginaReducao() {
+  const { pode } = useSessao();
+  const podeEditar = pode('configuracoes', 'edit');
+  const [erro, setErro] = useState<string | null>(null);
+  const planos = useDados<ItemPlano[]>(() => api.get('/api/planos-reducao', { incluir_inativos: true }), []);
+  // `cliente=true`: o plano atravessa as matrizes, então a lista de escolha
+  // também precisa atravessar. O nome da matriz vai no rótulo porque o mesmo
+  // tipo de despesa existe em cada uma, com id próprio.
+  const tipos = useDados<TipoDoCliente[]>(() => api.get('/api/tipos-despesa', { cliente: true }), []);
+  const filiais = useDados<FilialDoCliente[]>(() => api.get('/api/filiais'), []);
+
+  const criar = async (dados: Record<string, string>) => {
+    setErro(null);
+    try {
+      await api.post('/api/planos-reducao', dados);
+      planos.recarregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao cadastrar o item do plano.');
+    }
+  };
+
+  const alternar = async (p: ItemPlano) => {
+    setErro(null);
+    try {
+      await api.patch(`/api/planos-reducao/${p.id}`, { ativo: p.ativo !== 1 });
+      planos.recarregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao atualizar o item do plano.');
+    }
+  };
+
+  const vigencia = (p: ItemPlano) => {
+    if (!p.vigencia_inicio && !p.vigencia_fim) return 'sempre';
+    if (p.vigencia_inicio && !p.vigencia_fim) return `de ${competenciaExib(p.vigencia_inicio)} em diante`;
+    if (!p.vigencia_inicio && p.vigencia_fim) return `até ${competenciaExib(p.vigencia_fim)}`;
+    return `${competenciaExib(p.vigencia_inicio!)} a ${competenciaExib(p.vigencia_fim!)}`;
+  };
+
+  return (
+    <>
+      {erro && <Aviso tipo="erro">{erro}</Aviso>}
+
+      <Cartao
+        titulo="Plano de redução de despesas"
+        descricao="As despesas escolhidas para cair, e para quanto — é o indicador do topo dos Indicadores Gerais"
+      >
+        {planos.carregando ? (
+          <Carregando />
+        ) : (planos.dados ?? []).length === 0 ? (
+          <p className="vazio">
+            Nenhuma despesa no plano. O indicador de redução fica vazio até que ao menos uma seja
+            cadastrada aqui — sem alvo não há de quanto para quanto.
+          </p>
+        ) : (
+          <div className="tabela-envolucro">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Despesa</th>
+                  <th>Filial</th>
+                  <th className="num">Valor-alvo</th>
+                  <th>Vigência</th>
+                  <th>Situação</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {(planos.dados ?? []).map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.nome}</td>
+                    <td>{p.tipo_despesa ?? <em style={{ color: 'var(--tinta-fraca)' }}>toda despesa do recorte</em>}</td>
+                    <td>{p.filial ?? <em style={{ color: 'var(--tinta-fraca)' }}>todas</em>}</td>
+                    <td className="num">{moeda(p.valor_alvo)}</td>
+                    <td>{vigencia(p)}</td>
+                    <td>
+                      <Etiqueta texto={p.ativo === 1 ? 'Ativo' : 'Inativo'} tom={p.ativo === 1 ? 'bom' : 'neutro'} />
+                    </td>
+                    <td>
+                      {podeEditar && (
+                        <button type="button" className="botao discreto pequeno" onClick={() => alternar(p)}>
+                          {p.ativo === 1 ? 'Desativar' : 'Reativar'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {podeEditar && (
+          <FormularioNovo
+            rotulo="Adicionar ao plano"
+            campos={[
+              { chave: 'nome', rotulo: 'Item', obrigatorio: true, largura: 190 },
+              {
+                chave: 'tipo_despesa_id',
+                rotulo: 'Despesa',
+                tipo: 'select',
+                largura: 230,
+                dica: 'em branco: toda despesa do recorte',
+                opcoes: (tipos.dados ?? []).map((t) => ({
+                  valor: String(t.id),
+                  rotulo: `${t.empresa_nome} › ${t.nome}`,
+                })),
+              },
+              {
+                chave: 'filial_id',
+                rotulo: 'Filial',
+                tipo: 'select',
+                largura: 200,
+                dica: 'em branco: todas',
+                opcoes: (filiais.dados ?? []).map((f) => ({
+                  valor: String(f.id),
+                  rotulo: `${f.empresa_nome} › ${f.nome}`,
+                })),
+              },
+              { chave: 'valor_alvo', rotulo: 'Valor-alvo (R$)', obrigatorio: true, tipo: 'moeda', largura: 130 },
+              { chave: 'vigencia_inicio', rotulo: 'Vigência de', tipo: 'competencia', largura: 110, dica: 'em branco: desde sempre' },
+              { chave: 'vigencia_fim', rotulo: 'até', tipo: 'competencia', largura: 110, dica: 'em branco: sem fim' },
+            ]}
+            aoEnviar={criar}
+          />
+        )}
+
+        <p className="dica-filtro" style={{ marginTop: 10 }}>
+          O valor ATUAL de cada item sai dos lançamentos do recorte; o ALVO sai daqui. A vigência
+          decide qual alvo rege qual mês — trocar o alvo em janeiro não reescreve a leitura dos
+          meses já fechados. O tipo de despesa é cadastrado por matriz, então a lista traz a matriz
+          junto do nome.
+        </p>
+      </Cartao>
+    </>
+  );
+}
+
 /**
  * Endereço base do helpdesk. O id do chamado completa a URL, e é isso que faz o
  * número na tela de SLA virar link de volta para o sistema de origem.
@@ -700,7 +876,7 @@ interface CampoCadastro {
   chave: string;
   rotulo: string;
   obrigatorio?: boolean;
-  tipo?: 'texto' | 'numero' | 'select' | 'competencia';
+  tipo?: 'texto' | 'numero' | 'select' | 'competencia' | 'moeda';
   opcoes?: Array<{ valor: string; rotulo: string }>;
   dica?: string;
   minimo?: number;
@@ -747,12 +923,16 @@ function FormularioNovo({
             </select>
           ) : (
             <input
-              type={c.tipo === 'numero' ? 'number' : 'text'}
-              inputMode={c.tipo === 'competencia' ? 'numeric' : undefined}
-              placeholder={c.tipo === 'competencia' ? 'MM/AAAA' : undefined}
-              min={c.minimo}
+              type={c.tipo === 'numero' || c.tipo === 'moeda' ? 'number' : 'text'}
+              inputMode={
+                c.tipo === 'competencia' ? 'numeric' : c.tipo === 'moeda' ? 'decimal' : undefined
+              }
+              placeholder={c.tipo === 'competencia' ? 'MM/AAAA' : c.tipo === 'moeda' ? '0,00' : undefined}
+              min={c.tipo === 'moeda' ? 0 : c.minimo}
               max={c.maximo}
-              step={c.tipo === 'numero' ? '0.1' : undefined}
+              // Dinheiro anda de centavo em centavo; um passo de 0,1 faria a
+              // seta do campo pular dez centavos por clique.
+              step={c.tipo === 'moeda' ? '0.01' : c.tipo === 'numero' ? '0.1' : undefined}
               value={valores[c.chave] ?? ''}
               onChange={(e) => alterar(c.chave, e.target.value)}
               required={c.obrigatorio}
@@ -784,7 +964,7 @@ interface RegistroAuditoria {
   criado_em: string;
 }
 
-const ENTIDADES = ['lancamento', 'projeto', 'tarefa', 'ticket_sla', 'fechamento', 'importacao', 'filial', 'tipo_despesa', 'meta', 'sla'];
+const ENTIDADES = ['lancamento', 'projeto', 'tarefa', 'ticket_sla', 'fechamento', 'importacao', 'filial', 'tipo_despesa', 'meta', 'sla', 'plano_reducao'];
 
 export function PaginaAuditoria() {
   const { empresas } = useSessao();

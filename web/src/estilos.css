@@ -466,6 +466,31 @@ tfoot td { padding: 8px 10px; font-weight: 600; border-top: 1px solid var(--eixo
 .etiqueta.bom { color: var(--positivo-texto); border-color: color-mix(in srgb, var(--bom) 45%, transparent); }
 .etiqueta.critico { color: var(--critico); border-color: color-mix(in srgb, var(--critico) 45%, transparent); }
 .etiqueta.atencao { color: var(--tinta); border-color: color-mix(in srgb, var(--atencao) 55%, transparent); }
+/* Despesa compartilhada: a cor da EMPRESA em tom escuro, passada em `--cor`
+   por quem monta (depende de qual matriz paga, então não cabe num token fixo).
+   A etiqueta traz o texto junto — a cor nunca é o único canal. */
+.etiqueta.compartilhada {
+  color: var(--cor); border-color: var(--cor);
+  background: color-mix(in srgb, var(--cor) 12%, transparent);
+}
+.etiqueta.compartilhada i { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--cor); }
+.legenda-consumo { font-size: 11.5px; margin-top: 10px; }
+/* No pivô a etiqueta não cabe: a linha do lançamento recebe um filete na cor
+   escura da empresa, à esquerda, onde o olho já corre. O `title` da linha
+   continua dizendo por extenso quem consome. */
+tr.lancamento[data-compartilhada] > th:first-child { box-shadow: inset 3px 0 0 var(--cor); }
+/* A barra de representatividade de uma filial dentro da empresa. O percentual
+   vai escrito ao lado: a barra é redundância visual, não o dado. */
+.barra-rep { display: inline-flex; align-items: center; gap: 6px; width: 100%; min-width: 90px; }
+.barra-rep > span {
+  position: relative; flex: 1 1 auto; height: 6px; border-radius: 3px;
+  background: color-mix(in srgb, var(--tinta-fraca) 18%, transparent); overflow: hidden;
+}
+.barra-rep > span > i { display: block; height: 100%; border-radius: 3px; min-width: 2px; }
+.barra-rep > b {
+  flex: none; font-weight: 600; font-size: 11px;
+  font-variant-numeric: tabular-nums; color: var(--tinta-2);
+}
 
 /* -------------------------------------------------------------------- avisos */
 /* Texto corrido: `display:flex` transformava cada <strong> e <a> em coluna,

@@ -25,10 +25,27 @@ export function corDaPosicao(indice: number): string {
   return indice >= 0 && indice < CORES_MATRIZ ? `var(--matriz-${indice + 1})` : COR_OUTRAS;
 }
 
+/**
+ * A mesma cor, em tom mais ESCURO: a despesa que a unidade paga e o grupo
+ * consome.
+ *
+ * Escurecer em vez de trocar de cor é o que mantém a leitura — a unidade
+ * continua reconhecível, e o tom diz que aquele custo não é só dela. Duas
+ * cores diferentes fariam parecer duas empresas.
+ *
+ * 68% preserva contraste de componente (≥3:1) contra `--superficie` nos dois
+ * temas; no escuro, misturar mais preto apagaria o segmento.
+ */
+export function corCompartilhada(cor: string): string {
+  return `color-mix(in srgb, ${cor} 68%, #000)`;
+}
+
 export interface MatrizComCor {
   id: number;
   nome: string;
   cor: string;
+  /** A mesma cor em tom escuro, para o que é pago por ela e consumido pelo grupo. */
+  corCompartilhada: string;
 }
 
 /**
@@ -40,7 +57,10 @@ export interface MatrizComCor {
 export function coresDasMatrizes(empresas: Array<{ id: number; nome: string }>): Map<number, MatrizComCor> {
   const ordenadas = [...empresas].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   return new Map(
-    ordenadas.map((e, i) => [e.id, { id: e.id, nome: e.nome, cor: corDaPosicao(i) }]),
+    ordenadas.map((e, i) => {
+      const cor = corDaPosicao(i);
+      return [e.id, { id: e.id, nome: e.nome, cor, corCompartilhada: corCompartilhada(cor) }];
+    }),
   );
 }
 

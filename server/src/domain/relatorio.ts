@@ -246,7 +246,11 @@ export function lancamentosDoRelatorio(
               l.parcela_numero, l.qtd_parcelas, l.descricao, l.observacoes,
               l.origem, l.origem_custo, l.destino_pagamento, l.documento, l.cenario,
               l.tipo_consumo, l.beneficia_todas,
-              l.filial_id, fi.nome AS filial_nome, l.tipo_despesa_id, td.nome AS tipo_despesa
+              l.filial_id, fi.nome AS filial_nome, l.tipo_despesa_id, td.nome AS tipo_despesa,
+              -- A empresa pagadora: é dela a cor com que a tela pinta a linha,
+              -- e sem o id a etiqueta de consumo sairia cinza nas quatro telas
+              -- que abrem este detalhe.
+              l.empresa_id
          FROM lancamentos l
          LEFT JOIN filiais fi ON fi.id = l.filial_id
          JOIN tipos_despesa td ON td.id = l.tipo_despesa_id

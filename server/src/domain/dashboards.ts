@@ -15,7 +15,13 @@ import { calcularAtraso } from './projetos.js';
 import { montarFiltroSla, percentual, type FiltroSla } from './sla.js';
 import { escopoSql } from './escopo.js';
 import { alvoDe, leituraDeMeta } from './metas.js';
-import { despesaCentralizada, entregaDeTarefas, equilibrioDeDespesas } from './indicadores.js';
+import {
+  despesaCentralizada,
+  entregaDeTarefas,
+  equilibrioDeDespesas,
+  planoDeReducao,
+  rateioDeCompartilhadas,
+} from './indicadores.js';
 
 /**
  * Recorte de um painel.
@@ -886,6 +892,21 @@ export function visaoExecutiva(ctx: Contexto, escopo: EscopoDashboard = {}) {
     // Pago por uma unidade, consumido por outras. Sem rateio: o valor é o
     // integral da pagadora, e o detalhe lista quem usa.
     consumo: despesaCentralizada(ctx, {
+      empresas: escopo.empresas,
+      filiais: escopo.filiais,
+      cenarios: escopo.cenario ? [escopo.cenario] : undefined,
+      competencias: [mes],
+    }),
+    // A mesma despesa compartilhada, regularizada: distribuída entre as
+    // empresas do grupo em vez de 100% na pagadora. Convive com `consumo`, que
+    // é o "antes" — trocar um pelo outro faria um mês já lido mudar de número.
+    rateio: rateioDeCompartilhadas(ctx, {
+      empresas: escopo.empresas,
+      filiais: escopo.filiais,
+      cenarios: escopo.cenario ? [escopo.cenario] : undefined,
+      competencias: [mes],
+    }),
+    plano_reducao: planoDeReducao(ctx, {
       empresas: escopo.empresas,
       filiais: escopo.filiais,
       cenarios: escopo.cenario ? [escopo.cenario] : undefined,

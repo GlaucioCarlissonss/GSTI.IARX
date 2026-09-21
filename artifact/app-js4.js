@@ -62,9 +62,7 @@ function viewLancamentos() {
           <td>${mesExib(l.competencia)}</td>
           ${variasUnidades ? `<td>${esc(nomeEmpresa(l.empresa))}</td>` : ''}
           <td>${l.filial ? esc(l.filial) : '<em style="color:var(--tinta3)">matriz</em>'}</td>
-          <td title="${esc(detalheConsumo(l))}" style="white-space:nowrap">${consumoDe(l) === 'compartilhado'
-            ? `<span class="tag alerta">${esc(resumoConsumo(l))}</span>`
-            : '<span style="color:var(--tinta3)">—</span>'}</td>
+          <td title="${esc(detalheConsumo(l))}" style="white-space:nowrap">${etiquetaConsumoHtml(l)}</td>
           <td>${esc(l.tipo)}</td>
           <td style="max-width:280px">${esc(l.descricao||'')}
             ${l.obs?`<div style="color:var(--tinta3);font-size:12px">${esc(l.obs)}</div>`:''}

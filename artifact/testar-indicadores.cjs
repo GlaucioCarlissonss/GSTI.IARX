@@ -19,20 +19,44 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   await pag.waitForSelector('#modulos button', { timeout: 20000 });
   await irPara(pag, 'Indicadores Gerais', 1500);
 
-  console.log('\n--- três blocos, dois indicadores cada ---');
-  const estrutura = await pag.evaluate(() => ({
+  console.log('\n--- indicadores empilhados, um por linha ---');
+  const estrutura = await pag.evaluate(() => {
     // O título agora mora dentro do botão que dobra o bloco, e traz a seta
     // junto — a mesma limpeza que `testar-relatorio.cjs` faz nos grupos.
-    blocos: [...document.querySelectorAll('#pagina > .bloco > header h2')].map((h) =>
-      h.textContent.trim().replace(/^[−+]\s*/, ''),
-    ),
-    kpis: document.querySelectorAll('.kpi').length,
-    termometro: !!document.querySelector('#i-termometro svg'),
-    serie: !!document.querySelector('#i-reducao svg'),
-  }));
-  ok('os três blocos estão na tela', JSON.stringify(estrutura.blocos) === JSON.stringify(['Financeiro', 'SLA', 'Projetos']),
+    const limpar = (t) => t.trim().replace(/^[−+]\s*/, '');
+    const blocos = [...document.querySelectorAll('#pagina > .bloco > header h2')].map((h) => limpar(h.textContent));
+    // Nenhum indicador pode dividir a linha com outro: o teste é geométrico,
+    // e não de classe CSS — é o que o enunciado proíbe, em pixels.
+    const caixas = [...document.querySelectorAll('#pagina > .bloco-indicador')]
+      .map((b) => b.getBoundingClientRect());
+    const ladoALado = caixas.some((a, i) =>
+      caixas.slice(i + 1).some((b) => a.top < b.bottom - 1 && b.top < a.bottom - 1));
+    // A área ÚTIL da página, sem o respiro lateral dela: é contra isso que
+    // "100% da largura" se mede — comparar com a caixa externa acusaria o
+    // padding do contêiner como se fosse um indicador encolhido.
+    const area = document.querySelector('#pagina');
+    const respiro = getComputedStyle(area);
+    const util = area.getBoundingClientRect().width
+      - parseFloat(respiro.paddingLeft) - parseFloat(respiro.paddingRight);
+    return {
+      blocos,
+      indicadores: [...document.querySelectorAll('[data-kpi]')].map((k) => k.dataset.kpi),
+      ladoALado,
+      // "100% da largura" na prática: o bloco ocupa a área útil da página.
+      larguraCheia: caixas.every((c) => c.width >= util - 2),
+      termometro: !!document.querySelector('#i-termometro svg'),
+      serie: !!document.querySelector('#i-reducao svg'),
+    };
+  });
+  ok('o plano de redução vem no topo', estrutura.indicadores[0] === 'plano-reducao', estrutura.indicadores[0]);
+  ok('e o rateio logo abaixo dele', estrutura.indicadores[1] === 'rateio', estrutura.indicadores[1]);
+  ok('nenhum indicador divide a linha com outro', !estrutura.ladoALado);
+  ok('cada um ocupa a largura inteira', estrutura.larguraCheia);
+  ok('os oito indicadores estão na tela', estrutura.indicadores.length === 8,
+    estrutura.indicadores.join(' · '));
+  ok('os três blocos de negócio continuam nomeados',
+    ['Financeiro', 'SLA', 'Projetos'].every((n) => estrutura.blocos.includes(n)),
     estrutura.blocos.join(' · '));
-  ok('dois indicadores por bloco', estrutura.kpis === 6, `${estrutura.kpis}`);
   ok('a série do custo recorrente é desenhada', estrutura.serie);
   ok('e o termômetro do SLA também', estrutura.termometro);
 
@@ -72,14 +96,14 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   const comTudo = await pag.evaluate(() => ({
     nota: document.querySelector('#pagina > .bloco > header .nota').textContent.trim(),
     serie: [...document.querySelectorAll('#i-reducao svg circle')].length,
-    kpi: document.querySelectorAll('.kpi .n')[0].textContent.trim(),
+    kpi: document.querySelector('[data-kpi="custo-recorrente"] .n').textContent.trim(),
   }));
   await pag.selectOption('#i-rec', 'rec');
   await pag.waitForTimeout(1200);
   const soReconhecidas = await pag.evaluate(() => ({
     nota: document.querySelector('#pagina > .bloco > header .nota').textContent.trim(),
     serie: [...document.querySelectorAll('#i-reducao svg circle')].length,
-    kpi: document.querySelectorAll('.kpi .n')[0].textContent.trim(),
+    kpi: document.querySelector('[data-kpi="custo-recorrente"] .n').textContent.trim(),
     aviso: document.querySelector('#pagina').textContent.includes('Exibindo apenas despesas reconhecidas'),
     vazio: !!document.querySelector('#i-reducao .vazio'),
   }));
@@ -97,12 +121,15 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   console.log('\n--- por reconhecer se agrupa por centro de custo ---');
   const centros = await pag.evaluate(() => {
     const linhas = [...document.querySelectorAll('tr[data-centro]')];
-    const total = document.querySelector('#pagina tfoot td:last-child');
+    // O rateio também tem rodapé: o total conferido é o da tabela de
+    // centros de custo, que é a que tem as linhas `data-centro`.
+    const tabela = linhas.length ? linhas[0].closest('table') : null;
+    const total = tabela ? tabela.querySelector('tfoot td:last-child') : null;
     return {
       quantos: linhas.length,
       ordenado: linhas.map((l) => Number(l.querySelector('td:last-child').textContent.replace(/[^\d,]/g, '').replace(',', '.'))),
       total: total ? total.textContent.trim() : '',
-      kpi: document.querySelectorAll('.kpi .n')[1].textContent.trim(),
+      kpi: document.querySelector('[data-kpi="por-reconhecer"] .n').textContent.trim(),
     };
   });
   ok('há centro de custo na tabela', centros.quantos > 0, `${centros.quantos}`);
@@ -111,8 +138,9 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   ok('o total da tabela bate com o indicador', centros.total === centros.kpi, `${centros.total} vs ${centros.kpi}`);
 
   console.log('\n--- o detalhamento abre e reconhece em lote ---');
-  const antesPendentes = await pag.evaluate(() => document.querySelectorAll('.kpi .n')[1].textContent.trim());
-  await pag.evaluate(() => document.querySelectorAll('.kpi')[1].click());
+  const antesPendentes = await pag.evaluate(() =>
+    document.querySelector('[data-kpi="por-reconhecer"] .n').textContent.trim());
+  await pag.evaluate(() => document.querySelector('[data-kpi="por-reconhecer"]').click());
   await pag.waitForTimeout(1000);
   const modal = await pag.evaluate(() => {
     const m = document.querySelector('.modal');
@@ -145,7 +173,7 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   const depoisRec = await pag.evaluate(async () => {
     const trilha = await E.db.doc('auditoria/cliente__' + E.clienteSel).get();
     return {
-      kpi: document.querySelectorAll('.kpi .n')[1].textContent.trim(),
+      kpi: document.querySelector('[data-kpi="por-reconhecer"] .n').textContent.trim(),
       auditado: (trilha.exists ? trilha.data().itens : []).some((a) => a.acao === 'reconhecer'),
       modalFechado: !document.querySelector('.modal'),
     };
@@ -206,53 +234,114 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   ok('nenhuma cor se repete dentro da mesma faixa', composicao.repetidas === 0, String(composicao.repetidas));
   ok('cada segmento diz de quem é e quanto', composicao.comTitulo);
 
-  console.log('\n--- a sanfona do SLA aponta quem puxa o resultado para baixo ---');
-  const fechada = await pag.$eval('[data-sanfona="ind-sla"] [data-abrir-unidades]',
+  console.log('\n--- a árvore do SLA aponta quem puxa o resultado para baixo ---');
+  const fechada = await pag.$eval('[data-arvore="ind-sla"] [data-abrir-unidades]',
     (b) => b.getAttribute('aria-expanded'));
-  ok('a sanfona nasce fechada', fechada === 'false', String(fechada));
-  await pag.click('[data-sanfona="ind-sla"] [data-abrir-unidades]');
+  ok('a árvore nasce fechada', fechada === 'false', String(fechada));
+  await pag.click('[data-arvore="ind-sla"] [data-abrir-unidades]');
   await pag.waitForTimeout(400);
-  const sanfona = await pag.evaluate(() => {
-    const caixa = document.querySelector('[data-sanfona="ind-sla"]');
+  const arvore = await pag.evaluate(() => {
+    const caixa = document.querySelector('[data-arvore="ind-sla"]');
     const corpo = caixa.querySelector('.kpi-corpo');
-    const num = document.querySelectorAll('.kpi')[3].querySelector('.n').textContent;
-    const soma = [...corpo.querySelectorAll('tr.matriz td.num')]
+    const num = document.querySelector('[data-kpi="sla-chamados"] .n').textContent;
+    const soma = [...corpo.querySelectorAll('tr.nivel-1 td.num')]
       .reduce((s, td) => s + Number(String(td.textContent).replace(/\./g, '').replace(',', '.')), 0);
-    const filiais = [...corpo.querySelectorAll('tr.filial')].map((tr) => ({
-      fora: !!tr.querySelector('.fora'),
-      dentro: !!tr.querySelector('.dentro'),
-      qtdFora: Number((String(tr.textContent).match(/fora \(([\d.]+)/) || [0, '0'])[1].replace(/\./g, '')),
-    }));
     return {
       aberta: caixa.querySelector('[data-abrir-unidades]').getAttribute('aria-expanded') === 'true',
       abriuModal: !!document.querySelector('.modal'),
-      matrizes: corpo.querySelectorAll('tr.matriz').length,
-      filiais: filiais.length,
+      empresas: corpo.querySelectorAll('tr.nivel-1').length,
+      // A filial nasce ESCONDIDA: a hierarquia abre um nível por vez.
+      filiaisVisiveis: [...corpo.querySelectorAll('tr.nivel-2')].filter((tr) => !tr.hidden).length,
+      filiais: corpo.querySelectorAll('tr.nivel-2').length,
       soma,
       numeroDoCard: Number(String(num).replace(/\./g, '')),
-      todasClassificadas: filiais.every((f) => f.fora || f.dentro),
-      // A hierarquia é matriz -> filial: a ordenação por volume fora vale
-      // DENTRO de cada matriz, e as matrizes vêm ordenadas do mesmo jeito.
-      // Assim a primeira filial da primeira matriz é a que mais puxa o geral.
-      ordenadaPorFora: [...corpo.querySelectorAll('tr.matriz')].every((linhaMatriz) => {
-        const doGrupo = [];
-        let n = linhaMatriz.nextElementSibling;
-        while (n && n.classList.contains('filial')) {
-          doGrupo.push(Number((String(n.textContent).match(/fora \(([\d.]+)/) || [0, '0'])[1].replace(/\./g, '')));
-          n = n.nextElementSibling;
-        }
-        return doGrupo.every((v, i) => i === 0 || doGrupo[i - 1] >= v);
-      }),
+      // Cada empresa tem o seu controle, e ele se anuncia.
+      controles: corpo.querySelectorAll('tr.nivel-1 [data-abrir-no][aria-expanded="false"]').length,
+      // A barra de representatividade, com o percentual escrito ao lado.
+      barras: corpo.querySelectorAll('tr.nivel-1 .barra-rep').length,
+      comPercentual: [...corpo.querySelectorAll('tr.nivel-1 .barra-rep b')].every((b) => /%$/.test(b.textContent.trim())),
+      comDica: [...corpo.querySelectorAll('tr.nivel-1 .barra-rep')].every((b) => (b.getAttribute('title') || '').length > 5),
     };
   });
-  ok('abre e marca aria-expanded', sanfona.aberta);
-  ok('abrir a sanfona NÃO abre o detalhamento do card', !sanfona.abriuModal);
-  ok('mostra a hierarquia matriz -> filial', sanfona.matrizes > 0 && sanfona.filiais >= sanfona.matrizes,
-    `${sanfona.matrizes} matriz(es), ${sanfona.filiais} filial(is)`);
-  ok('a soma por matriz bate com o número do card', sanfona.soma === sanfona.numeroDoCard,
-    `${sanfona.soma} vs ${sanfona.numeroDoCard}`);
-  ok('toda filial diz se está dentro ou fora da meta', sanfona.todasClassificadas);
-  ok('as filiais vêm ordenadas por volume fora do SLA', sanfona.ordenadaPorFora);
+  ok('abre e marca aria-expanded', arvore.aberta);
+  ok('abrir a árvore NÃO abre o detalhamento do card', !arvore.abriuModal);
+  ok('o primeiro nível é a EMPRESA, e a filial vem escondida',
+    arvore.empresas > 0 && arvore.filiaisVisiveis === 0,
+    `${arvore.empresas} empresa(s), ${arvore.filiaisVisiveis} de ${arvore.filiais} filial(is) à mostra`);
+  ok('cada empresa tem o seu controle de expansão', arvore.controles === arvore.empresas,
+    `${arvore.controles} controle(s) para ${arvore.empresas} empresa(s)`);
+  ok('a soma por empresa bate com o número do card', arvore.soma === arvore.numeroDoCard,
+    `${arvore.soma} vs ${arvore.numeroDoCard}`);
+  ok('cada empresa traz a barra de representatividade', arvore.barras === arvore.empresas,
+    `${arvore.barras} barra(s)`);
+  ok('com o percentual escrito ao lado, e não só a cor', arvore.comPercentual);
+  ok('e a barra explica o valor no hover', arvore.comDica);
+
+  console.log('\n--- expandir a empresa revela as filiais dela, e só as dela ---');
+  const primeiraEmpresa = await pag.$eval('[data-arvore="ind-sla"] tr.nivel-1 [data-abrir-no]',
+    (b) => b.dataset.abrirNo);
+  await pag.click(`[data-arvore="ind-sla"] [data-abrir-no="${primeiraEmpresa}"]`);
+  await pag.waitForTimeout(350);
+  const expandida = await pag.evaluate((no) => {
+    const corpo = document.querySelector('[data-arvore="ind-sla"] .kpi-corpo');
+    const doGrupo = [...corpo.querySelectorAll(`tr.nivel-2[data-pai="${no}"]`)];
+    const deOutros = [...corpo.querySelectorAll('tr.nivel-2')].filter((tr) => tr.dataset.pai !== no);
+    return {
+      expandido: corpo.querySelector(`[data-abrir-no="${no}"]`).getAttribute('aria-expanded') === 'true',
+      abertas: doGrupo.filter((tr) => !tr.hidden).length,
+      total: doGrupo.length,
+      vizinhasEscondidas: deOutros.every((tr) => tr.hidden),
+      // O mesmo formato do nível de cima: barra, percentual e valor.
+      mesmoFormato: doGrupo.filter((tr) => !tr.hidden).every((tr) =>
+        tr.querySelector('.barra-rep') && tr.querySelector('td.num')),
+    };
+  }, primeiraEmpresa);
+  ok('a empresa se anuncia expandida', expandida.expandido);
+  ok('as filiais dela aparecem', expandida.abertas > 0 && expandida.abertas === expandida.total,
+    `${expandida.abertas} de ${expandida.total}`);
+  ok('as das outras empresas continuam escondidas', expandida.vizinhasEscondidas);
+  ok('e a filial usa o mesmo formato da empresa', expandida.mesmoFormato);
+
+  console.log('\n--- na despesa, a filial abre os lançamentos (nível 3, sob demanda) ---');
+  await pag.click('[data-arvore="ind-fixos"] [data-abrir-unidades]');
+  await pag.waitForTimeout(350);
+  const antesDoClique = await pag.evaluate(() =>
+    document.querySelectorAll('[data-arvore="ind-fixos"] tr.nivel-3').length);
+  ok('o nível 3 não existe antes de alguém pedir', antesDoClique === 0, String(antesDoClique));
+
+  const empresaFixos = await pag.$eval('[data-arvore="ind-fixos"] tr.nivel-1 [data-abrir-no]',
+    (b) => b.dataset.abrirNo);
+  await pag.click(`[data-arvore="ind-fixos"] [data-abrir-no="${empresaFixos}"]`);
+  await pag.waitForTimeout(350);
+  const filialFixos = await pag.$eval(
+    '[data-arvore="ind-fixos"] tr.nivel-2:not([hidden]) [data-abrir-no]', (b) => b.dataset.abrirNo);
+  await pag.click(`[data-arvore="ind-fixos"] [data-abrir-no="${filialFixos}"]`);
+  await pag.waitForTimeout(450);
+  const nivel3 = await pag.evaluate((no) => {
+    const corpo = document.querySelector('[data-arvore="ind-fixos"] .kpi-corpo');
+    const itens = [...corpo.querySelectorAll(`tr.nivel-3[data-pai="${no}"]`)];
+    return {
+      quantos: itens.length,
+      visiveis: itens.filter((tr) => !tr.hidden).length,
+      // A linha de "exibindo os N maiores" não é um lançamento: ela é o aviso
+      // de corte, e cobrar dela barra e valor seria cobrar o que não existe.
+      mesmoFormato: itens.filter((tr) => !tr.hidden && !tr.querySelector('.vazio-no')).every((tr) =>
+        tr.querySelector('.barra-rep') && tr.querySelector('td.num')),
+    };
+  }, filialFixos);
+  ok('os lançamentos aparecem só depois do clique', nivel3.quantos > 0, `${nivel3.quantos} lançamento(s)`);
+  ok('e todos visíveis', nivel3.visiveis === nivel3.quantos, `${nivel3.visiveis}/${nivel3.quantos}`);
+  ok('com o mesmo formato dos níveis de cima', nivel3.mesmoFormato);
+
+  // Fechar a empresa esconde o que estava aberto abaixo dela: uma árvore que
+  // deixasse netos à mostra sob um pai fechado estaria mentindo sobre si.
+  await pag.click(`[data-arvore="ind-fixos"] [data-abrir-no="${empresaFixos}"]`);
+  await pag.waitForTimeout(350);
+  const aposFechar = await pag.evaluate(() => {
+    const corpo = document.querySelector('[data-arvore="ind-fixos"] .kpi-corpo');
+    return [...corpo.querySelectorAll('tr.nivel-2, tr.nivel-3')].filter((tr) => !tr.hidden).length;
+  });
+  ok('fechar a empresa recolhe filiais e lançamentos juntos', aposFechar === 0, String(aposFechar));
 
   console.log('\n--- sem erro de console no caminho todo ---');
   ok('nenhum erro de página', erros.length === 0, erros.slice(0, 3).join(' | '));

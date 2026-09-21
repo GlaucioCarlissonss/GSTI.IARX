@@ -10,10 +10,12 @@ import {
   listarFiliais,
   listarFilas,
   listarTiposDespesa,
+  tiposDespesaDoCliente,
   listarTopicosAjuda,
 } from '../domain/cadastros.js';
 import { atualizarMeta, criarMeta, listarMetas } from '../domain/metas.js';
 import { atualizarSla, criarSla, listarSlas } from '../domain/slas.js';
+import { atualizarPlano, criarPlano, listarPlanos } from '../domain/reducao.js';
 import { atualizarEmpresa } from '../domain/empresas.js';
 import { listarAuditoria } from '../domain/auditoria.js';
 import { fecharCompetencia, listarFechamentos, reabrirCompetencia } from '../domain/fechamento.js';
@@ -52,7 +54,15 @@ function unidade(req: Parameters<typeof ctx>[0]) {
 }
 
 rotasCadastros.get('/tipos-despesa', (req, res) => {
-  res.json(listarTiposDespesa(unidade(req), req.query.incluir_inativos === 'true'));
+  const incluirInativos = req.query.incluir_inativos === 'true';
+  // `cliente=true` pede a lista do grupo, qualificada pela matriz — é o que o
+  // cadastro do plano de redução precisa, porque o plano é do cliente. Sem o
+  // parâmetro, segue valendo a lista da unidade em foco, como sempre.
+  res.json(
+    req.query.cliente === 'true'
+      ? tiposDespesaDoCliente(ctx(req), incluirInativos)
+      : listarTiposDespesa(unidade(req), incluirInativos),
+  );
 });
 
 rotasCadastros.post('/tipos-despesa', exigir('configuracoes', 'create'), (req, res) => {
@@ -125,6 +135,22 @@ rotasCadastros.post('/slas', exigir('configuracoes', 'create'), (req, res) => {
 
 rotasCadastros.patch('/slas/:id', exigir('configuracoes', 'edit'), (req, res) => {
   res.json(atualizarSla(unidade(req), Number(req.params.id), req.body ?? {}));
+});
+
+// -------------------------------------------- Plano de redução de despesas
+// Do CLIENTE, como as metas: o plano de corte é negociado para o grupo, e um
+// item que valesse só numa matriz não responderia "quanto isso é do grupo?",
+// que é metade da leitura pedida.
+rotasCadastros.get('/planos-reducao', (req, res) => {
+  res.json(listarPlanos(ctx(req), req.query.incluir_inativos === 'true'));
+});
+
+rotasCadastros.post('/planos-reducao', exigir('configuracoes', 'create'), (req, res) => {
+  res.status(201).json(criarPlano(ctx(req), req.body ?? {}));
+});
+
+rotasCadastros.patch('/planos-reducao/:id', exigir('configuracoes', 'edit'), (req, res) => {
+  res.json(atualizarPlano(ctx(req), Number(req.params.id), req.body ?? {}));
 });
 
 // -------------------------------------------------------------- Auditoria

@@ -12,7 +12,7 @@
  * O nível 3 é carregado sob demanda: trazer todos os lançamentos junto do
  * macro tornaria a primeira tela lenta pelo que quase nunca é olhado.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { useFiltroEscopo } from '../lib/filtros';
@@ -20,7 +20,8 @@ import { EXPLICACAO, Filtro, FiltroUnidades } from '../components/filtro-escopo'
 import { Aviso, Campo, Carregando, Cartao, Etiqueta, Modal, UltimaAtualizacao } from '../components/base';
 import { SeletorMulti } from '../components/seletor-multi';
 import { competenciaValida, inteiro, moeda } from '../lib/formato';
-import { detalheConsumo, type FilialBeneficiada, type TipoConsumo } from '../lib/consumo';
+import { detalheConsumo, tipoDe, type FilialBeneficiada, type TipoConsumo } from '../lib/consumo';
+import { EtiquetaConsumo, LegendaDeConsumo, useCorCompartilhada } from '../components/consumo';
 import { useExpansao } from '../lib/expansao';
 import { BlocosPorUnidade, SeletorModo, useModoVisao } from '../components/visao-financeira';
 
@@ -47,6 +48,8 @@ interface Relatorio {
 
 export interface Lancamento {
   id: number;
+  /** A matriz pagadora: é dela a cor com que a linha marca a despesa compartilhada. */
+  empresa_id: number;
   competencia: string;
   valor_centavos: number;
   natureza: string;
@@ -308,6 +311,7 @@ export function PaginaRelatorio() {
               </tfoot>
             </table>
           </div>
+          <LegendaDeConsumo />
         </Cartao>
       )}
 
@@ -413,25 +417,7 @@ function LinhasDetalhe({
   return (
     <>
       {estado.itens.map((l) => (
-        <tr key={l.id} className="lancamento" onClick={() => aoAbrir(l)} title={resumoDoLancamento(l)}>
-          <th scope="row" style={{ position: 'sticky', left: 0, background: 'var(--superficie)', paddingLeft: 54, fontWeight: 400 }}>
-            <span style={{ color: 'var(--tinta-2)' }}>{l.descricao || l.tipo_despesa}</span>
-            {l.origem_custo && (
-              <div style={{ fontSize: 11, color: 'var(--tinta-fraca)' }}>
-                {l.origem_custo}
-                {l.destino_pagamento ? ` → ${l.destino_pagamento}` : ''}
-              </div>
-            )}
-          </th>
-          {colunas.map((m) => (
-            <td key={m} className="num" style={{ color: 'var(--tinta-2)' }}>
-              {l.competencia === m ? dinheiro(l.valor_centavos) : ''}
-            </td>
-          ))}
-          <td className="num" style={{ color: 'var(--tinta-2)' }}>
-            {dinheiro(l.valor_centavos)}
-          </td>
-        </tr>
+        <LinhaLancamentoPivo key={l.id} lancamento={l} colunas={colunas} aoAbrir={aoAbrir} />
       ))}
       {/* A soma do detalhe, ao lado do número que estava no macro: se
           divergirem, a divergência aparece aqui e não num lugar qualquer. */}
@@ -449,6 +435,55 @@ function LinhasDetalhe({
         <td className="num">{dinheiro(estado.total_centavos)}</td>
       </tr>
     </>
+  );
+}
+
+/**
+ * A linha de um lançamento no pivô (nível 3).
+ *
+ * A etiqueta de consumo não cabe numa célula do pivô, que já é estreita e
+ * rolável. A marca é um filete na cor ESCURA da empresa, à esquerda, onde o
+ * olho já corre — a mesma convenção do tom escurecido do resto do financeiro.
+ * O `title` da linha continua dizendo por extenso quem consome, que é o canal
+ * que não depende de enxergar cor.
+ */
+function LinhaLancamentoPivo({
+  lancamento: l,
+  colunas,
+  aoAbrir,
+}: {
+  lancamento: Lancamento;
+  colunas: string[];
+  aoAbrir: (l: Lancamento) => void;
+}) {
+  const cor = useCorCompartilhada(l.empresa_id);
+  const compartilhada = tipoDe(l) === 'compartilhado';
+  return (
+    <tr
+      className="lancamento"
+      onClick={() => aoAbrir(l)}
+      title={resumoDoLancamento(l)}
+      data-compartilhada={compartilhada ? '' : undefined}
+      style={compartilhada ? ({ ['--cor' as string]: cor } as CSSProperties) : undefined}
+    >
+      <th scope="row" style={{ position: 'sticky', left: 0, background: 'var(--superficie)', paddingLeft: 54, fontWeight: 400 }}>
+        <span style={{ color: 'var(--tinta-2)' }}>{l.descricao || l.tipo_despesa}</span>
+        {l.origem_custo && (
+          <div style={{ fontSize: 11, color: 'var(--tinta-fraca)' }}>
+            {l.origem_custo}
+            {l.destino_pagamento ? ` → ${l.destino_pagamento}` : ''}
+          </div>
+        )}
+      </th>
+      {colunas.map((m) => (
+        <td key={m} className="num" style={{ color: 'var(--tinta-2)' }}>
+          {l.competencia === m ? dinheiro(l.valor_centavos) : ''}
+        </td>
+      ))}
+      <td className="num" style={{ color: 'var(--tinta-2)' }}>
+        {dinheiro(l.valor_centavos)}
+      </td>
+    </tr>
   );
 }
 
@@ -471,7 +506,10 @@ function DetalheLancamento({ lancamento: l, aoFechar }: { lancamento: Lancamento
         <dt>Destino do pagamento</dt>
         <dd>{l.destino_pagamento ?? 'não informado'}</dd>
         <dt>Consumo</dt>
-        <dd>{detalheConsumo(l)}</dd>
+        <dd>
+          <EtiquetaConsumo lancamento={l} />
+          <div style={{ marginTop: 4 }}>{detalheConsumo(l)}</div>
+        </dd>
         <dt>Documento vinculado</dt>
         <dd>{l.documento ?? '—'}</dd>
         <dt>Filial</dt>

@@ -134,6 +134,27 @@ export function listarTiposDespesa(ctx: Contexto, incluirInativos = false) {
     .all(ctx.empresaId);
 }
 
+/**
+ * Os tipos de despesa do CLIENTE inteiro, qualificados pela matriz.
+ *
+ * O tipo de despesa é cadastrado POR MATRIZ — "Licenças de Softwares" existe
+ * uma vez em cada, com id próprio. Quem cadastra um plano de redução escolhe do
+ * grupo, então precisa da lista inteira, e precisa saber de qual matriz é cada
+ * entrada: duas linhas com o mesmo nome e nenhuma pista seriam impossíveis de
+ * distinguir.
+ */
+export function tiposDespesaDoCliente(ctx: Contexto, incluirInativos = false) {
+  const alcance = escopoSql(ctx, null, 'td.empresa_id');
+  return db()
+    .prepare(
+      `SELECT td.id, td.nome, td.ativo, td.empresa_id, e.nome AS empresa_nome
+         FROM tipos_despesa td JOIN empresas e ON e.id = td.empresa_id
+        WHERE ${alcance.sql} ${incluirInativos ? '' : 'AND td.ativo = 1'}
+        ORDER BY e.nome, td.nome`,
+    )
+    .all(...alcance.params);
+}
+
 export function criarTipoDespesa(ctx: Contexto, nome: string) {
   const limpo = nome.trim();
   if (!limpo) throw erroValidacao('Nome do tipo de despesa é obrigatório.');

@@ -10,14 +10,16 @@ import { BlocosPorUnidade, SeletorModo, useModoVisao, type LinhaVisao } from '..
 import { useExpansao } from '../lib/expansao';
 import {
   detalheConsumo,
-  resumoConsumo,
   tipoDe,
   type FilialBeneficiada,
   type TipoConsumo,
 } from '../lib/consumo';
+import { EtiquetaConsumo, LegendaDeConsumo } from '../components/consumo';
 
 interface Lancamento {
   id: number;
+  /** A matriz pagadora: é dela a cor com que a linha pinta a despesa compartilhada. */
+  empresa_id: number;
   filial_id: number | null;
   filial_nome: string | null;
   tipo_despesa_id: number;
@@ -355,7 +357,7 @@ export function PaginaLancamentos() {
                     <td>{l.filial_nome ?? <em style={{ color: 'var(--tinta-fraca)' }}>empresa</em>}</td>
                     <td title={detalheConsumo(l)} style={{ whiteSpace: 'nowrap' }}>
                       {tipoDe(l) === 'compartilhado' ? (
-                        <Etiqueta texto={resumoConsumo(l)} tom="atencao" />
+                        <EtiquetaConsumo lancamento={l} />
                       ) : (
                         <span style={{ color: 'var(--tinta-fraca)' }}>—</span>
                       )}
@@ -425,6 +427,9 @@ export function PaginaLancamentos() {
             </table>
           </div>
         )}
+        {/* A chave de leitura fica no bloco que usa a distinção, e não uma vez
+            no topo da tela: quem rola até aqui precisa dela aqui. */}
+        <LegendaDeConsumo />
       </Cartao>
 
       <FormularioLancamento

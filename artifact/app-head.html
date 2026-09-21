@@ -75,12 +75,59 @@
    detalhamento, e dois gestos no mesmo alvo brigariam. */
 .kpi-unidades{margin-top:8px}
 .kpi-unidades>button{font-size:11px;padding:2px 8px}
-.kpi-corpo{margin-top:8px;max-height:220px;overflow:auto}
+/* Espaço para a árvore de três níveis, que é mais alta que a sanfona de
+   duas linhas que a antecedeu. */
+.kpi-corpo{margin-top:8px;max-height:340px;overflow:auto}
 .kpi-corpo table{width:100%;border-collapse:collapse;font-size:12px}
 .kpi-corpo th,.kpi-corpo td{padding:3px 6px;text-align:left;border-bottom:1px solid var(--linha)}
 .kpi-corpo td.num,.kpi-corpo th.num{text-align:right;font-family:var(--mono)}
 .kpi-corpo tr.matriz td{font-weight:600}
 .kpi-corpo tr.filial td:first-child{padding-left:18px;color:var(--tinta2)}
+/* A árvore de três níveis. A indentação é o canal da hierarquia; o botão de
+   cada nó é o que a torna operável, e `aria-expanded` é o que a anuncia. */
+.arvore-unidades tr.nivel-1>td{font-weight:600}
+.arvore-unidades tr.nivel-2>td:first-child{padding-left:20px;color:var(--tinta2)}
+.arvore-unidades tr.nivel-3>td:first-child{padding-left:20px;color:var(--tinta3);font-size:11.5px}
+.arvore-unidades tr.nivel-3>td{color:var(--tinta3)}
+.arvore-unidades td:first-child{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
+.arv-abrir{flex:none;width:17px;height:17px;padding:0;border:1px solid var(--linha2);border-radius:5px;
+  background:var(--sup2);color:var(--tinta2);font:inherit;font-size:12px;line-height:1;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center}
+.arv-abrir:hover{border-color:var(--s1);color:var(--s1)}
+.arv-abrir:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+/* O espaço de um botão que não existe, para os rótulos alinharem por nível. */
+.arv-vazio{flex:none;display:inline-block;width:17px}
+.ponto-matriz{flex:none;width:8px;height:8px;border-radius:2px;display:inline-block}
+.arv-comp{color:var(--tinta3);font-size:10.5px;font-family:var(--mono)}
+.vazio-no{color:var(--tinta3);font-style:italic}
+/* Indicador de largura inteira: um por linha, sem vizinho lateral. O `.kpi`
+   dentro dele perde a borda e o padding da faixa de cartões — aqui o cartão é
+   o bloco, e uma borda dentro de outra viraria moldura dupla. */
+.bloco-indicador>.bloco-corpo>.kpi.kpi-largo,
+.bloco-indicador>.kpi.kpi-largo{padding:0;border-right:0;gap:3px}
+/* O rótulo se repete no cabeçalho do bloco; some daqui para quem enxerga, e
+   permanece para o leitor de tela, que lê o cartão fora do contexto do
+   cabeçalho quando ele é um gatilho de drill-down. */
+.kpi-largo>.r{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.bloco-indicador>header .valor-cabecalho{font-weight:600;font-variant-numeric:tabular-nums;
+  font-size:14px;color:var(--tinta)}
+/* Antes → depois: duas barras na mesma escala, uma sobre a outra. Escalas
+   diferentes fariam a segunda parecer maior por acidente de largura. */
+.comparativo{display:flex;flex-direction:column;gap:3px;min-width:180px}
+.comparativo-linha{display:flex;align-items:center;gap:6px;font-size:11px}
+.comparativo-linha>b{flex:none;width:38px;color:var(--tinta3);font-weight:500;text-transform:uppercase;
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.06em}
+.comparativo-linha>span{flex:1 1 auto;height:7px;border-radius:3px;
+  background:color-mix(in srgb,var(--tinta3) 16%,transparent);overflow:hidden}
+.comparativo-linha>span>i{display:block;height:100%;border-radius:3px;min-width:2px}
+.comparativo-linha>var{flex:none;font-style:normal;font-family:var(--mono);font-size:10.5px;
+  font-variant-numeric:tabular-nums;color:var(--tinta2)}
+/* O peso do item do plano em cada filial, embaixo da linha dele. */
+.plano-filiais>td{padding-top:0!important;border-bottom:1px solid var(--linha)}
+.plano-filiais-lista{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--tinta2);padding-left:6px}
+.plano-filiais-lista span{display:inline-flex;align-items:center;gap:5px}
+.plano-filiais-lista i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.plano-filiais-lista b{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .kpi-corpo .dentro{color:var(--bomtxt)}
 .kpi-corpo .fora{color:var(--crit);font-weight:600}
 @media (prefers-reduced-motion:no-preference){
@@ -420,6 +467,25 @@ tr.tot td{border-top:1px solid var(--linha2);background:var(--sup2)}
 .tag.bom{color:var(--bomtxt);border-color:color-mix(in srgb,var(--bom) 45%,transparent)}
 .tag.crit{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 45%,transparent)}
 .tag.alerta{color:var(--alerta);border-color:color-mix(in srgb,var(--alerta) 50%,transparent)}
+/* Despesa compartilhada: a cor da EMPRESA em tom escuro, passada em `--cor`
+   pelo chamador (a cor depende de qual matriz paga, então não cabe aqui).
+   A etiqueta traz o texto junto — a cor nunca é o único canal. */
+.tag.compartilhada{color:var(--cor);border-color:var(--cor);
+  background:color-mix(in srgb,var(--cor) 12%,transparent)}
+.tag.compartilhada i{background:var(--cor)}
+.legenda-consumo{font-size:11px}
+/* No pivô do relatório a etiqueta não cabe: a linha do lançamento recebe um
+   filete na cor escura da empresa, à esquerda, onde o olho já corre. O `title`
+   da linha continua dizendo por extenso quem consome. */
+tr.lancamento[data-compartilhada]>th:first-child{box-shadow:inset 3px 0 0 var(--cor)}
+/* A barra de representatividade de uma filial dentro da empresa. O percentual
+   vai escrito ao lado: a barra é redundância visual, não o dado. */
+.barra-rep{display:inline-flex;align-items:center;gap:6px;width:100%;min-width:90px}
+.barra-rep>span{position:relative;flex:1 1 auto;height:6px;border-radius:3px;
+  background:color-mix(in srgb,var(--tinta3) 18%,transparent);overflow:hidden}
+.barra-rep>span>i{display:block;height:100%;border-radius:3px;min-width:2px}
+.barra-rep>b{flex:none;font-weight:600;font-family:var(--mono);font-size:11px;
+  font-variant-numeric:tabular-nums;color:var(--tinta2)}
 
 .vazio{color:var(--tinta3);text-align:center;padding:26px 12px}
 /* Despesa por reconhecer: negrito e laranja onde o gestor procura — a

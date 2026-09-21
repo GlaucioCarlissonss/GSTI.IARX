@@ -302,7 +302,8 @@ async function viewRelatorio() {
 
       // Nível 3: os lançamentos, montados só quando a categoria está aberta.
       const soma = linha.itens.reduce((s, l) => s + l.valor, 0);
-      const detalhe = linha.itens.map((l) => `<tr class="lancamento" data-rlanc="${esc(l.id)}" title="${esc(resumoDoLancamento(l))}">
+      const detalhe = linha.itens.map((l) => `<tr class="lancamento" data-rlanc="${esc(l.id)}" title="${esc(resumoDoLancamento(l))}"${
+          consumoDe(l) === 'compartilhado' ? ` data-compartilhada style="--cor:${corCompartilhada(l.empresa)}"` : ''}>
           <th style="padding-left:54px;font-weight:400"><span style="color:var(--tinta2)">${esc(l.descricao || l.tipo)}</span>
             ${l.origemCusto ? `<div style="font-size:11px;color:var(--tinta3)">${esc(l.origemCusto)}${
               l.destinoPagamento ? ' → ' + esc(l.destinoPagamento) : ''}</div>` : ''}</th>
@@ -349,6 +350,7 @@ function detalheDoLancamento(l) {
         <span class="tag">${l.classificacao === 'investimento' ? 'Investimento' : 'Despesa'}</span>
         <span class="tag">${esc(ORIGENS[origemDe(l)].rotulo)}</span>
         ${l.cenario && l.cenario !== 'oficial' ? `<span class="tag alerta">Cenário ${esc(l.cenario)}</span>` : ''}
+        ${consumoDe(l) === 'compartilhado' ? etiquetaConsumoHtml(l) : ''}
       </div>
       <dl class="ficha">
         ${linha('Descrição', l.descricao || '—')}

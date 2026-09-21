@@ -20,6 +20,7 @@ import { paraReais } from './dinheiro.js';
 import { CENARIO_OFICIAL } from './financeiro.js';
 import { percentual } from './sla.js';
 import { ALVO_PADRAO, alvoDe, leituraDeMeta } from './metas.js';
+import { planosVigentes } from './reducao.js';
 
 /**
  * Meta de conformidade de SLA quando o cliente não cadastrou nenhuma.
@@ -295,6 +296,10 @@ export function conformidadeSla(ctx: Contexto, recorte: RecorteIndicadores = {})
     fora: totais.total - totais.dentro,
     pct_dentro: pct,
     meta,
+    // A mesma meta na forma que o cartão consome. Acrescentada ao lado do
+    // número, e não no lugar dele: o artifact e os testes leem `meta` como
+    // número, e trocá-la quebraria os dois.
+    meta_leitura: leituraDeMeta(meta, totais.total ? pct : null, 'sla'),
     atinge_meta: totais.total > 0 && pct >= meta,
     // Distância até a meta em pontos percentuais: é o que o termômetro mostra.
     distancia_meta: totais.total > 0 ? Math.round((pct - meta) * 10) / 10 : null,
@@ -486,6 +491,326 @@ export function equilibrioDeDespesas(ctx: Contexto, recorte: RecorteIndicadores 
   };
 }
 
+// ============================== rateio das despesas compartilhadas (fase 4)
+
+/**
+ * Distribui um valor por pesos sem perder nem inventar centavo.
+ *
+ * `Math.floor` em cada parcela sempre deixa resto; devolvê-lo ao maior peso,
+ * um centavo por vez, é o que faz a soma das parcelas dar EXATAMENTE o valor
+ * original. Sem isso, o "antes" e o "depois" do comparativo divergiriam por
+ * arredondamento, e a tela acusaria uma diferença que não existe.
+ */
+export function ratear(centavos: number, pesos: number[]): number[] {
+  const soma = pesos.reduce((s, p) => s + p, 0);
+  // Todos os pesos em zero — um grupo em que só há despesa compartilhada.
+  // Dividir igual é o único critério que não inventa desigualdade onde não há
+  // dado; qualquer outro atribuiria mais a alguém por nenhum motivo.
+  const base = soma > 0 ? pesos : pesos.map(() => 1);
+  const total = base.reduce((s, p) => s + p, 0);
+  if (total <= 0 || !base.length) return pesos.map(() => 0);
+
+  const parcelas = base.map((p) => Math.floor((centavos * p) / total));
+  let resto = centavos - parcelas.reduce((s, p) => s + p, 0);
+  // Ordem estável: maior peso primeiro, e o índice desempata. Sem o desempate,
+  // a mesma entrada poderia render distribuições diferentes entre execuções.
+  const ordem = base
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => b.p - a.p || a.i - b.i)
+    .map((x) => x.i);
+  for (let k = 0; resto > 0; k = (k + 1) % ordem.length) {
+    parcelas[ordem[k]!] = parcelas[ordem[k]!]! + 1;
+    resto -= 1;
+  }
+  return parcelas;
+}
+
+export interface SegmentoRateio {
+  lancamento_id: number;
+  descricao: string;
+  origem_empresa_id: number;
+  origem_empresa: string;
+  valor: number;
+  valor_centavos: number;
+  /** Quanto desta despesa coube a esta empresa. */
+  pct: number;
+  beneficiadas: string[];
+}
+
+/**
+ * Despesas compartilhadas REGULARIZADAS: o rateio proporcional.
+ *
+ * O indicador de despesa centralizada (`despesaCentralizada`) conta o
+ * lançamento compartilhado pelo valor INTEGRAL da pagadora — é a leitura de
+ * hoje, e ela não muda. Aqui é a outra leitura: a mesma despesa distribuída
+ * entre as empresas do grupo, para que a pagadora deixe de carregar 100% de um
+ * custo que o grupo usa.
+ *
+ * As duas convivem de propósito. A integral é o **antes** do comparativo, e
+ * trocá-la pelo rateio faria um mês já lido mudar de número.
+ *
+ * **O critério está escrito, e é uma escolha:** proporcional à despesa PRÓPRIA
+ * de cada empresa no período. Própria, e não total, porque incluir o
+ * compartilhado no divisor tornaria a conta circular — o valor a dividir
+ * entraria no peso que decide como dividi-lo.
+ */
+export function rateioDeCompartilhadas(ctx: Contexto, recorte: RecorteIndicadores = {}) {
+  const { where, params } = filtroDeLancamentos(ctx, recorte);
+
+  // As empresas do recorte, com o que cada uma paga de próprio e de
+  // compartilhado. Sai daqui tanto o peso quanto o "antes" de cada uma.
+  const empresas = db()
+    .prepare(
+      `SELECT l.empresa_id, e.nome AS empresa,
+              COALESCE(SUM(CASE WHEN l.tipo_consumo = 'compartilhado' THEN 0 ELSE l.valor_centavos END), 0) AS proprio,
+              COALESCE(SUM(CASE WHEN l.tipo_consumo = 'compartilhado' THEN l.valor_centavos ELSE 0 END), 0) AS pago
+         FROM lancamentos l
+         JOIN empresas e ON e.id = l.empresa_id
+        WHERE ${where}
+        GROUP BY l.empresa_id
+        ORDER BY e.nome`,
+    )
+    .all(...params) as Array<{ empresa_id: number; empresa: string; proprio: number; pago: number }>;
+
+  const compartilhados = db()
+    .prepare(
+      `SELECT l.id, l.empresa_id, e.nome AS empresa, l.valor_centavos,
+              COALESCE(NULLIF(l.descricao, ''), td.nome) AS descricao
+         FROM lancamentos l
+         JOIN empresas e ON e.id = l.empresa_id
+         JOIN tipos_despesa td ON td.id = l.tipo_despesa_id
+        WHERE ${where} AND l.tipo_consumo = 'compartilhado'
+        ORDER BY l.valor_centavos DESC`,
+    )
+    .all(...params) as Array<{
+    id: number;
+    empresa_id: number;
+    empresa: string;
+    valor_centavos: number;
+    descricao: string;
+  }>;
+
+  const beneficiadasPorId = new Map<number, string[]>();
+  if (compartilhados.length) {
+    const marcas = compartilhados.map(() => '?').join(', ');
+    const linhas = db()
+      .prepare(
+        `SELECT b.lancamento_id, f.nome AS filial, e.nome AS empresa
+           FROM lancamento_beneficiadas b
+           JOIN filiais f ON f.id = b.filial_id
+           JOIN empresas e ON e.id = f.empresa_id
+          WHERE b.lancamento_id IN (${marcas})
+          ORDER BY e.nome, f.nome`,
+      )
+      .all(...compartilhados.map((l) => l.id)) as Array<{
+      lancamento_id: number;
+      filial: string;
+      empresa: string;
+    }>;
+    for (const l of linhas) {
+      const lista = beneficiadasPorId.get(l.lancamento_id) ?? [];
+      lista.push(`${l.empresa} › ${l.filial}`);
+      beneficiadasPorId.set(l.lancamento_id, lista);
+    }
+  }
+
+  const indice = new Map(empresas.map((e, i) => [e.empresa_id, i]));
+  const recebido = empresas.map(() => 0);
+  const segmentos: SegmentoRateio[][] = empresas.map(() => []);
+  const pesos = empresas.map((e) => e.proprio);
+
+  for (const l of compartilhados) {
+    const parcelas = ratear(l.valor_centavos, pesos);
+    for (let i = 0; i < empresas.length; i += 1) {
+      const parcela = parcelas[i] ?? 0;
+      if (parcela <= 0) continue;
+      recebido[i] = recebido[i]! + parcela;
+      segmentos[i]!.push({
+        lancamento_id: l.id,
+        descricao: l.descricao,
+        origem_empresa_id: l.empresa_id,
+        origem_empresa: l.empresa,
+        valor: paraReais(parcela),
+        valor_centavos: parcela,
+        pct: percentual(parcela, l.valor_centavos),
+        beneficiadas: beneficiadasPorId.get(l.id) ?? [],
+      });
+    }
+  }
+
+  const totalCompartilhado = compartilhados.reduce((s, l) => s + l.valor_centavos, 0);
+  const totalGeral = empresas.reduce((s, e) => s + e.proprio + e.pago, 0);
+
+  const porEmpresa = empresas.map((e, i) => {
+    const antes = e.proprio + e.pago;
+    const depois = e.proprio + recebido[i]!;
+    return {
+      empresa_id: e.empresa_id,
+      empresa: e.empresa,
+      proprio: paraReais(e.proprio),
+      proprio_centavos: e.proprio,
+      rateado_pago: paraReais(e.pago),
+      rateado_pago_centavos: e.pago,
+      rateado_recebido: paraReais(recebido[i]!),
+      rateado_recebido_centavos: recebido[i]!,
+      /** Como a unidade aparece HOJE: o que é dela mais 100% do que ela paga. */
+      antes: paraReais(antes),
+      antes_centavos: antes,
+      /** Como ela apareceria regularizada: o que é dela mais a parcela que lhe cabe. */
+      depois: paraReais(depois),
+      depois_centavos: depois,
+      variacao: paraReais(depois - antes),
+      variacao_centavos: depois - antes,
+      pagadora: e.pago > 0,
+      segmentos: segmentos[i]!,
+    };
+  });
+
+  return {
+    total: paraReais(totalGeral),
+    compartilhado: paraReais(totalCompartilhado),
+    pct_compartilhado: percentual(totalCompartilhado, totalGeral),
+    lancamentos: compartilhados.length,
+    empresas: porEmpresa.length,
+    por_empresa: porEmpresa,
+    criterio: 'proporcional à despesa própria de cada empresa no período',
+    // Uma empresa sem despesa própria nenhuma não tem peso: quando TODAS estão
+    // nessa condição, o rateio divide igual. Dizer isso na resposta evita que a
+    // tela apresente uma divisão idêntica como se fosse coincidência.
+    divisao_igual: empresas.length > 0 && empresas.every((e) => e.proprio === 0),
+    // `sanidade` existe para o teste e para a tela: a soma das parcelas tem de
+    // ser exatamente o valor compartilhado, ou o comparativo mente.
+    sanidade_centavos: porEmpresa.reduce((s, e) => s + e.rateado_recebido_centavos, 0),
+    indice_empresas: [...indice.keys()],
+  };
+}
+
+// ============================ plano de redução de despesas (fase 4)
+
+/**
+ * O plano de redução aplicado ao recorte: de quanto para quanto.
+ *
+ * Cada item do cadastro (`domain/reducao.ts`) casa com os lançamentos do
+ * recorte pelo tipo de despesa e, quando informada, pela filial. O valor ATUAL
+ * sai dos lançamentos; o ALVO, do cadastro. Nada aqui é estimado.
+ *
+ * Sem item cadastrado a resposta vem vazia, e a tela diz isso com o caminho
+ * para o cadastro — um bloco vazio sem explicação faria procurar defeito onde
+ * há só ausência de cadastro.
+ */
+export function planoDeReducao(ctx: Contexto, recorte: RecorteIndicadores = {}) {
+  const planos = planosVigentes(ctx, competenciaDoRecorte(recorte));
+  const { where, params } = filtroDeLancamentos(ctx, recorte);
+
+  const totalRecorte = (
+    db()
+      .prepare(`SELECT COALESCE(SUM(l.valor_centavos), 0) AS soma FROM lancamentos l WHERE ${where}`)
+      .get(...params) as { soma: number }
+  ).soma;
+
+  // O gasto de cada filial no recorte: é o denominador do "quanto esta despesa
+  // pesa NESTA filial", que é a segunda leitura que o plano pede.
+  const porFilial = db()
+    .prepare(
+      `SELECT l.empresa_id, e.nome AS empresa, l.filial_id, f.nome AS filial,
+              COALESCE(SUM(l.valor_centavos), 0) AS total
+         FROM lancamentos l
+         JOIN empresas e ON e.id = l.empresa_id
+         LEFT JOIN filiais f ON f.id = l.filial_id
+        WHERE ${where}
+        GROUP BY l.empresa_id, l.filial_id`,
+    )
+    .all(...params) as Array<{
+    empresa_id: number;
+    empresa: string;
+    filial_id: number | null;
+    filial: string | null;
+    total: number;
+  }>;
+  const gastoDaFilial = new Map(porFilial.map((f) => [`${f.empresa_id}|${f.filial_id ?? ''}`, f.total]));
+
+  const itens = planos.map((plano) => {
+    const condicoes = [where];
+    const args = [...params];
+    if (plano.tipo_despesa_id !== null) {
+      condicoes.push('l.tipo_despesa_id = ?');
+      args.push(plano.tipo_despesa_id);
+    }
+    if (plano.filial_id !== null) {
+      condicoes.push('l.filial_id = ?');
+      args.push(plano.filial_id);
+    }
+    const filtro = condicoes.join(' AND ');
+
+    const atual = (
+      db()
+        .prepare(`SELECT COALESCE(SUM(l.valor_centavos), 0) AS soma FROM lancamentos l WHERE ${filtro}`)
+        .get(...args) as { soma: number }
+    ).soma;
+
+    const distribuicao = db()
+      .prepare(
+        `SELECT l.empresa_id, e.nome AS empresa, l.filial_id, f.nome AS filial,
+                COALESCE(SUM(l.valor_centavos), 0) AS valor
+           FROM lancamentos l
+           JOIN empresas e ON e.id = l.empresa_id
+           LEFT JOIN filiais f ON f.id = l.filial_id
+          WHERE ${filtro}
+          GROUP BY l.empresa_id, l.filial_id
+          ORDER BY valor DESC`,
+      )
+      .all(...args) as Array<{
+      empresa_id: number;
+      empresa: string;
+      filial_id: number | null;
+      filial: string | null;
+      valor: number;
+    }>;
+
+    const reducao = atual - plano.valor_alvo_centavos;
+    return {
+      plano_id: plano.id,
+      nome: plano.nome,
+      tipo_despesa: plano.tipo_despesa,
+      filial: plano.filial,
+      atual: paraReais(atual),
+      atual_centavos: atual,
+      alvo: plano.valor_alvo,
+      alvo_centavos: plano.valor_alvo_centavos,
+      /** Positiva quando o alvo é menor que o atual — que é o caso de um corte. */
+      reducao: paraReais(reducao),
+      reducao_centavos: reducao,
+      pct_reducao: percentual(reducao, atual),
+      /** Sem despesa no recorte não há de que cortar, e a tela precisa dizer isso. */
+      sem_despesa_no_recorte: atual === 0,
+      /** Quanto esta despesa é da despesa total do grupo no recorte. */
+      pct_do_grupo: percentual(atual, totalRecorte),
+      por_filial: distribuicao.map((d) => ({
+        empresa_id: d.empresa_id,
+        empresa: d.empresa,
+        filial_id: d.filial_id,
+        filial: d.filial ?? null,
+        unidade: d.filial ?? d.empresa,
+        valor: paraReais(d.valor),
+        valor_centavos: d.valor,
+        pct_da_filial: percentual(d.valor, gastoDaFilial.get(`${d.empresa_id}|${d.filial_id ?? ''}`) ?? 0),
+      })),
+    };
+  });
+
+  const totalAtual = itens.reduce((s, i) => s + i.atual_centavos, 0);
+  const totalAlvo = itens.reduce((s, i) => s + i.alvo_centavos, 0);
+  return {
+    itens,
+    total_atual: paraReais(totalAtual),
+    total_alvo: paraReais(totalAlvo),
+    total_reducao: paraReais(totalAtual - totalAlvo),
+    pct_reducao: percentual(totalAtual - totalAlvo, totalAtual),
+    pct_do_grupo: percentual(totalAtual, totalRecorte),
+    despesa_total: paraReais(totalRecorte),
+  };
+}
+
 // ============================================================ bloco projetos
 
 /**
@@ -549,10 +874,159 @@ export function entregaDeTarefas(ctx: Contexto, recorte: RecorteIndicadores = {}
     // "fora do prazo" enquanto o mês planejado não passou.
     pct_no_prazo: pct,
     meta,
+    meta_leitura: leituraDeMeta(meta, entregues ? pct : null, 'projetos'),
     atinge_meta: meta !== null && entregues > 0 && pct >= meta,
     distancia_meta: meta !== null && entregues > 0 ? Math.round((pct - meta) * 10) / 10 : null,
     pendentes: linha.pendentes ?? 0,
     pendentes_atrasadas: linha.atrasadas ?? 0,
+  };
+}
+
+/** Um lançamento na folha da árvore. Só o que a linha precisa mostrar. */
+export interface FolhaDespesa {
+  id: number;
+  competencia: string;
+  descricao: string;
+  tipo_despesa: string;
+  compartilhada: boolean;
+  valor: number;
+  valor_centavos: number;
+  /** Peso deste lançamento dentro da filial — a barra do nível 3. */
+  pct_da_filial: number;
+}
+
+/**
+ * A despesa do recorte em três níveis: empresa → filial → lançamento.
+ *
+ * Sai do MESMO `filtroDeLancamentos` que os indicadores do bloco financeiro
+ * percorrem, e é isso que garante que a soma da árvore seja o número do card.
+ * Uma quebra vinda de outra janela divergiria do indicador, e o gestor não
+ * teria como saber qual dos dois está certo.
+ *
+ * Os percentuais vêm prontos porque são o dado da barra de representatividade,
+ * e calculá-los na tela daria dois arredondamentos diferentes para o mesmo
+ * número nas duas pontas do sistema.
+ */
+export function arvoreDeDespesas(ctx: Contexto, recorte: RecorteIndicadores = {}) {
+  const { where, params } = filtroDeLancamentos(ctx, recorte);
+
+  const linhas = db()
+    .prepare(
+      `SELECT l.id, l.empresa_id, e.nome AS empresa, l.filial_id, f.nome AS filial,
+              l.competencia, l.valor_centavos, l.tipo_consumo,
+              COALESCE(NULLIF(l.descricao, ''), td.nome) AS descricao, td.nome AS tipo_despesa
+         FROM lancamentos l
+         JOIN empresas e ON e.id = l.empresa_id
+         LEFT JOIN filiais f ON f.id = l.filial_id
+         JOIN tipos_despesa td ON td.id = l.tipo_despesa_id
+        WHERE ${where}
+        ORDER BY e.nome, f.nome, l.valor_centavos DESC`,
+    )
+    .all(...params) as Array<{
+    id: number;
+    empresa_id: number;
+    empresa: string;
+    filial_id: number | null;
+    filial: string | null;
+    competencia: string;
+    valor_centavos: number;
+    tipo_consumo: string | null;
+    descricao: string;
+    tipo_despesa: string;
+  }>;
+
+  interface NoFilial {
+    filial_id: number | null;
+    filial: string;
+    valor_centavos: number;
+    compartilhado_centavos: number;
+    itens: Array<Omit<FolhaDespesa, 'pct_da_filial'>>;
+  }
+  interface NoEmpresa {
+    empresa_id: number;
+    empresa: string;
+    valor_centavos: number;
+    compartilhado_centavos: number;
+    filiais: Map<string, NoFilial>;
+  }
+
+  const empresas = new Map<number, NoEmpresa>();
+  let total = 0;
+  for (const l of linhas) {
+    const compartilhada = l.tipo_consumo === 'compartilhado';
+    total += l.valor_centavos;
+    let emp = empresas.get(l.empresa_id);
+    if (!emp) {
+      emp = {
+        empresa_id: l.empresa_id,
+        empresa: l.empresa,
+        valor_centavos: 0,
+        compartilhado_centavos: 0,
+        filiais: new Map(),
+      };
+      empresas.set(l.empresa_id, emp);
+    }
+    emp.valor_centavos += l.valor_centavos;
+    if (compartilhada) emp.compartilhado_centavos += l.valor_centavos;
+
+    // Lançamento sem filial é da matriz, e tem nó próprio: somá-lo a uma
+    // filial qualquer atribuiria a ela um custo que não é dela.
+    const chave = String(l.filial_id ?? '');
+    let fil = emp.filiais.get(chave);
+    if (!fil) {
+      fil = {
+        filial_id: l.filial_id,
+        filial: l.filial ?? 'Sem filial (nível empresa)',
+        valor_centavos: 0,
+        compartilhado_centavos: 0,
+        itens: [],
+      };
+      emp.filiais.set(chave, fil);
+    }
+    fil.valor_centavos += l.valor_centavos;
+    if (compartilhada) fil.compartilhado_centavos += l.valor_centavos;
+    fil.itens.push({
+      id: l.id,
+      competencia: paraExibicao(l.competencia),
+      descricao: l.descricao,
+      tipo_despesa: l.tipo_despesa,
+      compartilhada,
+      valor: paraReais(l.valor_centavos),
+      valor_centavos: l.valor_centavos,
+    });
+  }
+
+  return {
+    total: paraReais(total),
+    total_centavos: total,
+    empresas: [...empresas.values()]
+      .map((e) => ({
+        empresa_id: e.empresa_id,
+        empresa: e.empresa,
+        valor: paraReais(e.valor_centavos),
+        valor_centavos: e.valor_centavos,
+        compartilhado: paraReais(e.compartilhado_centavos),
+        compartilhado_centavos: e.compartilhado_centavos,
+        /** Peso desta empresa no total do recorte — a barra do nível 1. */
+        pct_do_total: percentual(e.valor_centavos, total),
+        filiais: [...e.filiais.values()]
+          .map((f) => ({
+            filial_id: f.filial_id,
+            filial: f.filial,
+            valor: paraReais(f.valor_centavos),
+            valor_centavos: f.valor_centavos,
+            compartilhado: paraReais(f.compartilhado_centavos),
+            compartilhado_centavos: f.compartilhado_centavos,
+            /** Peso desta filial dentro da empresa — a barra do nível 2. */
+            pct_da_empresa: percentual(f.valor_centavos, e.valor_centavos),
+            itens: f.itens.map((i) => ({
+              ...i,
+              pct_da_filial: percentual(i.valor_centavos, f.valor_centavos),
+            })),
+          }))
+          .sort((a, b) => b.valor_centavos - a.valor_centavos),
+      }))
+      .sort((a, b) => b.valor_centavos - a.valor_centavos),
   };
 }
 
@@ -561,14 +1035,26 @@ export function indicadoresGerais(
   ctx: Contexto,
   recortes: { financeiro?: RecorteIndicadores; sla?: RecorteIndicadores; projetos?: RecorteIndicadores } = {},
 ) {
+  const financeiro = recortes.financeiro ?? {};
   return {
     financeiro: {
-      reducao_custo: reducaoDeCusto(ctx, recortes.financeiro),
-      por_reconhecer: despesasPorReconhecer(ctx, recortes.financeiro),
+      reducao_custo: reducaoDeCusto(ctx, financeiro),
+      por_reconhecer: despesasPorReconhecer(ctx, financeiro),
     },
     sla: conformidadeSla(ctx, recortes.sla),
     projetos: entregaDeTarefas(ctx, recortes.projetos),
-    consumo: despesaCentralizada(ctx, recortes.financeiro),
-    equilibrio: equilibrioDeDespesas(ctx, recortes.financeiro),
+    consumo: despesaCentralizada(ctx, financeiro),
+    equilibrio: equilibrioDeDespesas(ctx, financeiro),
+    // Os dois indicadores estratégicos da fase 4. O rateio vem DEPOIS do
+    // consumo de propósito: um é o "antes" do outro, e lê-los na mesma
+    // resposta é o que permite mostrar o par sem uma segunda ida ao servidor.
+    rateio: rateioDeCompartilhadas(ctx, financeiro),
+    plano_reducao: planoDeReducao(ctx, financeiro),
+    // De quem é cada pedaço — a árvore Empresa → Filial e as barras de
+    // representatividade. `visaoExecutiva` já devolvia uma quebra própria; esta
+    // resposta não devolvia nenhuma, e sem ela a tela de Indicadores Gerais da
+    // web não teria de onde tirar a hierarquia que o artifact calcula em
+    // memória.
+    por_unidade: arvoreDeDespesas(ctx, financeiro),
   };
 }

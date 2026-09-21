@@ -13,7 +13,7 @@ import { api } from '../lib/api';
 import { Aviso, Carregando, Etiqueta, Modal } from './base';
 import { inteiro, moeda, ROTULO_STATUS_PROJETO, ROTULO_STATUS_TAREFA } from '../lib/formato';
 import { ligarColunasAjustaveis } from '../lib/colunas';
-import { resumoConsumo, type ComConsumo } from '../lib/consumo';
+import { EtiquetaConsumo, type ComConsumoEEmpresa } from './consumo';
 
 /** Coluna do detalhamento. `n` alinha à direita, para números. */
 export interface ColunaDetalhe<T> {
@@ -259,7 +259,9 @@ export function detalheDeLancamentos(
       { rotulo: 'Destino', valor: (l) => (l.destino_pagamento as string) ?? '—', texto: true },
       // Uma coluna aqui aparece de uma vez em Conferência, Financeiro, Painel
       // Executivo e Relatório: as quatro abrem os registros por este pedido.
-      { rotulo: 'Consumo', valor: (l) => resumoConsumo(l as ComConsumo), texto: true },
+      // A etiqueta resolve a cor da empresa por conta própria (`useSessao`),
+      // porque esta fábrica não alcança o estado da tela que a chamou.
+      { rotulo: 'Consumo', valor: (l) => <EtiquetaConsumo lancamento={l as ComConsumoEEmpresa} />, texto: true },
       { rotulo: 'Procedência', valor: (l) => String(l.origem_rotulo) },
       { rotulo: 'Valor', valor: (l) => moeda(Number(l.valor_centavos) / 100), n: true },
     ],

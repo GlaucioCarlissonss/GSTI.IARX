@@ -7,12 +7,15 @@
  */
 import { Router } from 'express';
 import {
+  arvoreDeDespesas,
   conformidadeSla,
   despesaCentralizada,
   despesasPorReconhecer,
   equilibrioDeDespesas,
   entregaDeTarefas,
   indicadoresGerais,
+  planoDeReducao,
+  rateioDeCompartilhadas,
   reducaoDeCusto,
   type RecorteIndicadores,
 } from '../domain/indicadores.js';
@@ -67,7 +70,25 @@ rotasIndicadores.get('/consumo', exigir('financeiro', 'view'), (req, res) => {
   res.json({
     ...despesaCentralizada(ctx(req), recorte),
     equilibrio: equilibrioDeDespesas(ctx(req), recorte),
+    // O rateio vem junto: ele é a mesma despesa lida de outro jeito, e pedi-lo
+    // numa segunda ida deixaria o "antes" e o "depois" fora de sincronia
+    // enquanto a segunda resposta não chegasse.
+    rateio: rateioDeCompartilhadas(ctx(req), recorte),
   });
+});
+
+/**
+ * As despesas do recorte em três níveis: empresa → filial → lançamento.
+ *
+ * Rota própria porque a árvore é grande e nem toda tela a quer — quem só
+ * mostra os cartões não paga por ela.
+ */
+rotasIndicadores.get('/unidades', exigir('financeiro', 'view'), (req, res) => {
+  res.json(arvoreDeDespesas(ctx(req), recorteDaQuery(req.query as Record<string, unknown>)));
+});
+
+rotasIndicadores.get('/plano-reducao', exigir('financeiro', 'view'), (req, res) => {
+  res.json(planoDeReducao(ctx(req), recorteDaQuery(req.query as Record<string, unknown>)));
 });
 
 rotasIndicadores.get('/sla', exigir('suporte_ostick', 'view'), (req, res) => {

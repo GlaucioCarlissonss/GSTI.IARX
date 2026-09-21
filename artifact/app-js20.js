@@ -342,3 +342,149 @@ function abrirReclassificacao(empresa, competencia, id) {
     },
   });
 }
+
+// ===========================================================================
+// Cadastro > Plano de redução de despesas
+// ===========================================================================
+//
+// `metas` dá um alvo PERCENTUAL por indicador inteiro ("não crescer mais que
+// X%"). Isso não responde à pergunta que o gestor leva para a reunião de
+// corte: *esta* despesa custa R$ 50.000 e precisa cair para R$ 35.000 — quanto
+// isso é do grupo, e quanto pesa em cada filial?
+//
+// Daí um cadastro próprio, com alvo em REAIS e uma linha por despesa. Um alvo
+// único cobrindo cinco categorias não teria como mostrar de quanto para quanto
+// cai cada uma, que é exatamente a leitura pedida.
+//
+// Aqui a despesa e a filial são NOMES, não ids: é assim que o modelo do
+// artifact guarda o lançamento, e casar por id exigiria um cadastro que este
+// aplicativo não tem.
+
+function planosDoCliente() {
+  return (E.reducao || []).filter((p) => !p.cliente || p.cliente === E.clienteSel);
+}
+
+function viewReducao() {
+  const planos = planosDoCliente();
+  el('#pagina').innerHTML = `
+    <div class="msg"><strong>O plano de redução é do cliente inteiro.</strong>
+      Cada linha é uma despesa escolhida para cair, com o valor para onde ela deve ir. O valor
+      ATUAL sai dos lançamentos do recorte; o ALVO sai daqui. Sem nenhuma linha, o indicador do
+      topo de Indicadores Gerais fica vazio — sem alvo não há de quanto para quanto.</div>
+
+    <section class="bloco" style="margin-top:16px">
+      <header><h2>Plano de redução de despesas</h2>
+        <span class="nota">${inteiro(planos.length)} item(ns)</span></header>
+      ${planos.length === 0 ? '<p class="vazio">Nenhuma despesa no plano.</p>' : `
+      <div class="rol"><table>
+        <thead><tr><th>Item</th><th>Despesa</th><th>Filial</th><th class="n">Valor-alvo</th>
+          <th>Vigência</th><th>Situação</th><th></th></tr></thead>
+        <tbody>${planos.map((p, i) => `<tr>
+          <td>${esc(p.nome)}</td>
+          <td>${p.tipo ? esc(p.tipo) : '<em style="color:var(--tinta3)">toda despesa do recorte</em>'}</td>
+          <td>${p.filial ? esc(p.filial) : '<em style="color:var(--tinta3)">todas</em>'}</td>
+          <td class="n">${brl(p.valorAlvo)}</td>
+          <td>${esc(vigenciaEmTexto(p))}</td>
+          <td><span class="tag ${p.ativo === false ? '' : 'bom'}">${p.ativo === false ? 'Inativo' : 'Ativo'}</span></td>
+          <td><button class="bt fant peq" data-alternar-plano="${i}">${p.ativo === false ? 'Reativar' : 'Desativar'}</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`}
+      <div style="margin-top:12px"><button class="bt" data-novo-plano>Adicionar ao plano</button></div>
+      <p class="nota" style="margin-top:10px">A vigência decide qual alvo rege qual mês: trocar o
+        alvo em janeiro não reescreve a leitura dos meses já fechados.</p>
+    </section>`;
+
+  el('#pagina').querySelector('[data-novo-plano]')?.addEventListener('click', formPlanoReducao);
+  for (const bt of el('#pagina').querySelectorAll('[data-alternar-plano]')) {
+    bt.addEventListener('click', async () => {
+      const alvo = planos[Number(bt.dataset.alternarPlano)];
+      const todos = (E.reducao || []).map((p) => (p === alvo ? { ...p, ativo: p.ativo === false } : p));
+      await Loja.gravarCatalogo('reducao', todos);
+      await Loja.auditar({
+        acao: 'atualizar', entidade: 'plano_reducao',
+        depois: { nome: alvo.nome, ativo: alvo.ativo === false },
+      });
+      render();
+    });
+  }
+}
+
+function formPlanoReducao() {
+  const tipos = tiposDoEscopo();
+  const filiais = filiaisDoEscopo();
+  abrirModal({
+    titulo: 'Adicionar ao plano de redução',
+    corpo: `
+      <div class="grade g2">
+        <div class="campo"><label for="p-nome">Item</label><input id="p-nome" name="nome"></div>
+        <div class="campo"><label for="p-tipo">Despesa</label><select id="p-tipo" name="tipo">
+          <option value="">Toda despesa do recorte</option>
+          ${tipos.map((t) => `<option value="${esc(t.nome)}">${esc(t.nome)}</option>`).join('')}
+        </select></div>
+      </div>
+      <div class="grade g3">
+        <div class="campo"><label for="p-filial">Filial</label><select id="p-filial" name="filial">
+          <option value="">Todas</option>
+          ${filiais.map((f) => `<option value="${esc(f.nome)}">${esc(f.nome)}</option>`).join('')}
+        </select></div>
+        <div class="campo"><label for="p-alvo">Valor-alvo (R$)</label>
+          <input id="p-alvo" name="alvo" type="number" min="0" step="0.01" placeholder="0,00"></div>
+        <div class="campo"><label for="p-de">Vigência de (MM/AAAA)</label>
+          <input id="p-de" name="de" inputmode="numeric" placeholder="em branco: desde sempre"></div>
+      </div>
+      <div class="campo" style="max-width:220px"><label for="p-ate">até (MM/AAAA)</label>
+        <input id="p-ate" name="ate" inputmode="numeric" placeholder="em branco: sem fim"></div>`,
+    acoes: `<button type="button" class="bt" data-c>Cancelar</button>
+            <button type="button" class="bt pri" data-s>Adicionar</button>`,
+    aoMontar({ raiz, fechar, erro, campo }) {
+      raiz.querySelector('[data-c]').onclick = fechar;
+      raiz.querySelector('[data-s]').onclick = async (ev) => {
+        ev.target.disabled = true; erro('');
+        try {
+          const nome = campo('nome').value.trim();
+          if (!nome) throw new Error('Informe o nome do item.');
+          if (planosDoCliente().some((p) => p.nome.toLowerCase() === nome.toLowerCase())) {
+            throw new Error('Já existe um item com este nome no plano deste cliente.');
+          }
+          const alvo = Number(String(campo('alvo').value).replace(',', '.'));
+          if (!Number.isFinite(alvo) || alvo < 0) {
+            throw new Error('Informe o valor-alvo em reais.');
+          }
+          const ponta = (texto, rotulo) => {
+            const bruto = texto.trim();
+            if (!bruto) return null;
+            const m = mesInterno(bruto);
+            if (!m) throw new Error(rotulo + ' inválida: use MM/AAAA.');
+            return m;
+          };
+          const de = ponta(campo('de').value, 'Vigência inicial');
+          const ate = ponta(campo('ate').value, 'Vigência final');
+          if (de && ate && de > ate) throw new Error('A vigência final é anterior à inicial.');
+
+          const novo = {
+            cliente: E.clienteSel, nome,
+            tipo: campo('tipo').value || null,
+            filial: campo('filial').value || null,
+            valorAlvo: Math.round(alvo * 100) / 100,
+            vigenciaInicio: de, vigenciaFim: ate, ativo: true,
+          };
+          await Loja.gravarCatalogo('reducao', [...(E.reducao || []), novo]);
+          await Loja.auditar({
+            acao: 'criar', entidade: 'plano_reducao',
+            depois: { nome, tipo: novo.tipo, alvo: novo.valorAlvo },
+          });
+          fechar(); render();
+        } catch (e) { erro(e.message); ev.target.disabled = false; }
+      };
+    },
+  });
+}
+
+/** Os itens do plano que regem esta competência. */
+function planosVigentes(competencia) {
+  const comp = competencia || mesHoje();
+  return planosDoCliente().filter((p) =>
+    p.ativo !== false &&
+    (!p.vigenciaInicio || p.vigenciaInicio <= comp) &&
+    (!p.vigenciaFim || p.vigenciaFim >= comp));
+}

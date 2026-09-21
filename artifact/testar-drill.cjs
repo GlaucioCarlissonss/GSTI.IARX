@@ -55,13 +55,24 @@ const TELAS = ['Painel', 'Conferência', 'Projetos', 'Indicadores', 'Indicadores
     const gatilhos = await pag.$$('.kpi.drill');
     const kpis = await pag.$$('.kpi');
     if (!kpis.length) { console.log(`  · ${tela}: sem indicadores`); continue; }
-    // Em Indicadores Gerais a exigência é TODOS: é a tela de leitura
-    // estratégica, e um número que não abre ali é justamente onde a pergunta
-    // "de onde vem isso?" fica sem resposta. Nas demais, basta haver.
+    // Indicador cujo número é "—" não tem registro por trás neste recorte, e
+    // a regra escrita é que ele NÃO abre: um detalhamento vazio faria o gestor
+    // duvidar do número em vez de esclarecê-lo. Ele sai da conta do "todos".
+    const semDrill = await pag.$$eval('.kpi', (es) =>
+      es
+        .filter((k) => {
+          const n = k.querySelector('.n');
+          return !(n && n.textContent.trim() === '—') && !k.classList.contains('drill');
+        })
+        .map((k) => (k.querySelector('.r') || {}).textContent || '(sem rótulo)'));
+    // Em Indicadores Gerais a exigência é TODOS os que têm número: é a tela de
+    // leitura estratégica, e um número que não abre ali é justamente onde a
+    // pergunta "de onde vem isso?" fica sem resposta. Nas demais, basta haver.
     const exigeTodos = tela === 'Indicadores Gerais';
     confere(
-      `${tela}: há indicadores com drill-down (${gatilhos.length} de ${kpis.length})`,
-      exigeTodos ? gatilhos.length === kpis.length : gatilhos.length > 0,
+      `${tela}: há indicadores com drill-down (${gatilhos.length} de ${kpis.length}`
+        + `${semDrill.length ? `; sem drill e com número: ${semDrill.join(', ')}` : ''})`,
+      exigeTodos ? semDrill.length === 0 : gatilhos.length > 0,
       true,
     );
 

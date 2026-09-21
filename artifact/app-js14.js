@@ -84,9 +84,12 @@ function abrirDetalhamento({ titulo, subtitulo, colunas, linhas, total, formatar
               const v = c.valor ? c.valor(l) : l[c.campo];
               if (v === null || v === undefined || v === '') return `<td${c.n ? ' class="n"' : ''}>—</td>`;
               const href = c.link ? c.link(l) : null;
+              // `html: true` é a exceção declarada pela coluna, e só vale para
+              // marcação que a própria tela monta (a etiqueta de consumo, com a
+              // cor da empresa). Nada vindo do dado passa por aqui sem `esc`.
               const conteudo = href
                 ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(String(v))}</a>`
-                : esc(String(v));
+                : c.html ? String(v) : esc(String(v));
               // Coluna de texto longo quebra em linha em vez de cortar: ao
               // esticar a tela flutuante, ela usa o espaço que apareceu.
               const classe = c.n ? ' class="n"' : c.texto ? ' class="texto"' : '';
@@ -120,7 +123,10 @@ function detalharLancamentos(titulo, lista, total, subtitulo) {
       { rotulo: 'Descrição', valor: (l) => l.descricao || '—', texto: true },
       { rotulo: 'Origem do custo', valor: (l) => l.origemCusto || '—', texto: true },
       { rotulo: 'Destino', valor: (l) => l.destinoPagamento || '—', texto: true },
-      { rotulo: 'Consumo', valor: (l) => resumoConsumo(l), texto: true },
+      // `html: true` porque a etiqueta traz a cor da empresa em tom escuro — é a
+      // mesma identidade das outras telas do financeiro, e sem ela o detalhamento
+      // seria o único lugar onde compartilhada e própria se parecem.
+      { rotulo: 'Consumo', valor: (l) => etiquetaConsumoHtml(l), html: true, texto: true },
       { rotulo: 'Procedência', valor: (l) => ORIGENS[origemDe(l)].rotulo },
       { rotulo: 'Valor', valor: (l) => brl(l.valor), n: true },
     ],
@@ -196,14 +202,20 @@ function detalharProjetos(titulo, lista, total, subtitulo) {
 /**
  * Liga os indicadores (`.kpi`) de uma tela ao seu detalhamento.
  *
- * `mapa`: `{ [índice do KPI]: () => void }` — cada entrada abre os registros
+ * `mapa`: `{ [chave do KPI]: () => void }` — cada entrada abre os registros
  * daquele número. O KPI sem entrada no mapa não vira botão: nem todo número
  * tem registros por trás (uma mediana, um percentual isolado), e fingir que
  * tem seria pior do que não oferecer.
+ *
+ * A chave é o `data-kpi` do elemento quando ele tem um, e a POSIÇÃO quando não
+ * tem. A posição bastou enquanto a ordem dos cartões era fixa; em Indicadores
+ * Gerais ela deixou de ser, e um mapa posicional ali ligaria em silêncio o
+ * tooltip de um indicador ao detalhamento de outro. Telas de ordem fixa seguem
+ * pelo índice, sem mudança.
  */
 function ligarKpis(mapa) {
   el('#pagina').querySelectorAll('.kpi').forEach((kpi, i) => {
-    const entrada = mapa[i];
+    const entrada = mapa[kpi.dataset.kpi ?? i];
     if (!entrada) return;
     // Uma função sozinha é só o drill-down; o objeto permite dizer também o que
     // o número significa, que é o que o tooltip mostra.

@@ -57,6 +57,7 @@ const E = {
   empresas: [], filiais: [], tipos: [], filas: [], cenarios: [],
   metas: [],                // alvos dos indicadores, por cliente
   slasCad: [],              // acordos de SLA (horas por tópico e prioridade), por unidade
+  reducao: [],              // plano de redução: despesa escolhida e valor-alvo, por cliente
   aba: 'painel',
   lanc: new Map(),          // 'empresa__comp' -> {itens:[...]}
   mesesCarregados: new Set(),
@@ -308,9 +309,9 @@ Object.defineProperty(E, 'filiaisSel', {
 const Loja = {
   async catalogos() {
     const ler = async (p) => { const s = await E.db.doc('catalogo/' + p).get(); return s.exists ? (s.data().itens || []) : []; };
-    const [empresas, filiais, tipos, filas, cenarios, metas, slasCad] = await Promise.all(
-      ['empresas','filiais','tipos','filas','cenarios','metas','slasCad'].map(ler));
-    Object.assign(E, { empresas, filiais, tipos, filas, cenarios, metas, slasCad });
+    const [empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao] = await Promise.all(
+      ['empresas','filiais','tipos','filas','cenarios','metas','slasCad','reducao'].map(ler));
+    Object.assign(E, { empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao });
   },
   async lancDaEmpresa(empresa) {
     const snap = await E.db.collection('lanc').where('empresa','==',empresa).get();
@@ -811,6 +812,36 @@ function corDaMatriz(empresaId) {
 }
 
 /**
+ * A mesma cor da matriz, em tom mais ESCURO: a despesa que ela paga e o grupo
+ * consome.
+ *
+ * Escurecer em vez de trocar de cor é o que mantém a leitura: a unidade
+ * continua reconhecível pela cor dela, e o tom diz que aquele custo não é só
+ * dela. Duas cores diferentes fariam parecer duas empresas.
+ *
+ * 68% é o ponto que preserva contraste de componente (≥3:1) contra `--sup`
+ * nos dois temas — no escuro, misturar mais preto apagaria o segmento.
+ * `color-mix` já é o idioma de derivação de tom desta folha de estilo.
+ */
+function corCompartilhada(empresaId) {
+  return `color-mix(in srgb, ${corDaMatriz(empresaId)} 68%, #000)`;
+}
+
+/**
+ * A etiqueta de consumo de um lançamento, igual em toda tela do financeiro.
+ *
+ * Uma redação por tela seriam três chances de parecerem dados diferentes —
+ * e, agora que há cor, três chances de a mesma despesa aparecer em tons
+ * diferentes. Lançamento próprio não recebe etiqueta: é o caso comum, e
+ * etiquetar o comum faz a tabela gritar sem informar.
+ */
+function etiquetaConsumoHtml(l) {
+  if (consumoDe(l) !== 'compartilhado') return '<span style="color:var(--tinta3)">—</span>';
+  return `<span class="tag compartilhada" style="--cor:${corCompartilhada(l.empresa)}">`
+    + `<i></i>${esc(resumoConsumo(l))}</span>`;
+}
+
+/**
  * A faixa que divide o número por matriz.
  *
  * Com uma matriz só ela não aparece: não haveria o que distinguir, e uma barra
@@ -833,4 +864,21 @@ function legendaDeMatrizesHtml(fatias) {
   return `<div class="legenda-matrizes">${visiveis
     .map((f) => `<span><i style="background:${f.cor}"></i>${esc(f.nome)} · ${esc(f.texto)}</span>`)
     .join('')}</div>`;
+}
+
+/**
+ * A legenda fixa dos dois tons: próprio e compartilhado.
+ *
+ * Vai no bloco que usa a distinção, e não uma vez na tela: quem rola até o
+ * meio de uma tela longa precisa da chave de leitura ali, não lá em cima. A
+ * amostra sai da cor de uma matriz de verdade — a da primeira fatia — porque
+ * uma amostra cinza não ensinaria a ler as cores que estão logo ao lado.
+ */
+function legendaDeConsumoHtml(corBase) {
+  const base = corBase || 'var(--m1)';
+  const escura = `color-mix(in srgb, ${base} 68%, #000)`;
+  return `<div class="legenda-matrizes legenda-consumo">
+    <span><i style="background:${base}"></i>tom da unidade · despesa 100% dela</span>
+    <span><i style="background:${escura}"></i>tom escurecido · paga por ela, consumida pelo grupo</span>
+  </div>`;
 }
