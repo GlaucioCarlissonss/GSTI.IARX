@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { importarPlanilha, listarImportacoes, obterImportacao, ultimaCarga } from '../domain/importacao.js';
 import { analisarFoc, importarFoc } from '../domain/importacao-foc.js';
+import { analisarContasPagar, importarContasPagar } from '../domain/importacao-contas-pagar.js';
 import { previaLimpeza, limparLancamentos } from '../domain/limpeza.js';
 import type { Decisao } from '../domain/conciliacao.js';
 import { criarMapeamento, listarMapeamentos, removerMapeamento } from '../domain/mapeamentos.js';
@@ -194,6 +195,55 @@ rotasPlanilhas.post(
     }
     const resultado = await importarFoc(ctx(req), req.file.buffer, {
       decisoes,
+      arquivoNome: req.file.originalname,
+      modo: req.body?.modo === 'inicial' ? 'inicial' : 'incremental',
+      escopo: escopoDoPedido(req),
+    });
+    res.status(resultado.com_erro > 0 ? 207 : 200).json(resultado);
+  }),
+);
+
+// ------------------------------------- carga de Contas a Pagar (layout do ERP)
+//
+// Mesmos dois passos da carga FOC, e um a mais dentro do primeiro: quando não
+// há decisão de cadastro pendente, `/conciliacao` já devolve o confronto
+// LANÇAMENTO a lançamento contra a base do cliente. É o que impede a carga de
+// dobrar uma base que já tem quase a mesma despesa vinda de outro relatório do
+// mesmo ERP.
+
+/** As decisões da conciliação, como a tela as manda (JSON num campo do form). */
+function decisoesDoPedido(bruto: unknown): Decisao[] {
+  try {
+    return typeof bruto === 'string' ? JSON.parse(bruto) : Array.isArray(bruto) ? bruto : [];
+  } catch {
+    throw erroValidacao('As decisões da conciliação vieram num formato que não deu para ler.');
+  }
+}
+
+rotasPlanilhas.post(
+  '/contas-pagar/conciliacao',
+  exigir('financeiro', 'import'),
+  upload.single('arquivo'),
+  assincrono(async (req, res) => {
+    if (!req.file) throw erroValidacao('Envie o arquivo no campo "arquivo" (multipart/form-data).');
+    res.json(
+      analisarContasPagar(ctx(req), req.file.buffer, {
+        arquivoNome: req.file.originalname,
+        decisoes: decisoesDoPedido(req.body?.decisoes),
+        escopo: escopoDoPedido(req),
+      }),
+    );
+  }),
+);
+
+rotasPlanilhas.post(
+  '/contas-pagar/carga',
+  exigir('financeiro', 'import'),
+  upload.single('arquivo'),
+  assincrono(async (req, res) => {
+    if (!req.file) throw erroValidacao('Envie o arquivo no campo "arquivo" (multipart/form-data).');
+    const resultado = importarContasPagar(ctx(req), req.file.buffer, {
+      decisoes: decisoesDoPedido(req.body?.decisoes),
       arquivoNome: req.file.originalname,
       modo: req.body?.modo === 'inicial' ? 'inicial' : 'incremental',
       escopo: escopoDoPedido(req),

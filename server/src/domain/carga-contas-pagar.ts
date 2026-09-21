@@ -18,14 +18,19 @@
  *    cliente, e a que casa com a base que já existe (1.125 das 1.148 linhas
  *    encontram par, contra 998 pela emissão). Emissão e vencimento caem em
  *    meses diferentes em 365 linhas, então a escolha move um terço da carga.
- * 3. O CENTRO DE CUSTO NÃO TEM COLUNA PRÓPRIA: vem dentro do texto de rateio
+ * 3. CADA PARCELA JÁ É UMA LINHA. `INSTALLMENTQTY` diz "12", mas o arquivo
+ *    traz as doze linhas — uma por vencimento. Por isso a natureza aqui é
+ *    sempre `pontual_unica`: marcar `pontual_parcelada` faria o sistema gerar
+ *    doze lançamentos a partir de uma linha que já é uma das doze, e a carga
+ *    entraria com doze vezes a despesa. A parcela vira texto nas observações.
+ * 4. O CENTRO DE CUSTO NÃO TEM COLUNA PRÓPRIA: vem dentro do texto de rateio
  *    (`07.05 Serviços Tecnicos: R$ 2.630,00 (100,00%)`), com prefixo numérico
  *    que o cadastro do sistema não usa.
  */
 import { paraCentavos } from './dinheiro.js';
 import type { ProblemaLinha } from './carga-foc.js';
 
-/** As colunas de que este leitor depende. O arquivo traz 86; usamos 13. */
+/** As colunas de que este leitor depende. O arquivo traz 86; usamos 14. */
 export const COLUNAS_USADAS = [
   'ID',
   'GLBCOMPANYCOMMERCIALNAME',
@@ -37,6 +42,7 @@ export const COLUNAS_USADAS = [
   'ORIGINALVALUE',
   'LISTOFPRORATEBYCC',
   'MOTIVE',
+  'INSTALLMENT',
   'INSTALLMENTQTY',
   'CREATIONUSER',
   'DOCISSUBSTITUTE',
@@ -122,7 +128,9 @@ export interface LinhaContasPagar {
   centroCusto: string;
   descricao: string;
   documento: string;
-  natureza: 'fixa' | 'pontual_unica' | 'pontual_parcelada';
+  /** "03" de "12", como o ERP escreve. Informação, não instrução — ver abaixo. */
+  parcela: string;
+  qtdParcelas: string;
   dataEmissao: string;
   dataVencimento: string;
   dataPagamento: string | null;
@@ -187,12 +195,6 @@ function valorPtBr(texto: string): string {
   return String(texto ?? '').trim().replace(/\./g, '').replace(',', '.');
 }
 
-/** `Única` → uma parcela; `03` de `12` → parcelada. */
-function naturezaDe(qtdParcelas: string): LinhaContasPagar['natureza'] {
-  const n = Number(String(qtdParcelas ?? '').trim());
-  return Number.isFinite(n) && n > 1 ? 'pontual_parcelada' : 'pontual_unica';
-}
-
 /**
  * Interpreta o arquivo inteiro, sem tocar no banco.
  *
@@ -229,15 +231,32 @@ export function lerLinhasContasPagar(linhasBrutas: string[][], primeiraLinha = 2
       erros.push({ linha: numero, campo: 'ACTUALDUEDATE', mensagem: 'Data de vencimento inválida — é ela que define a competência.' });
       return;
     }
-    const valorCentavos = paraCentavos(valorPtBr(valor));
+    // `paraCentavos` LANÇA em texto que não é número, e uma linha com valor em
+    // branco não pode derrubar a leitura do arquivo inteiro: aqui ela vira erro
+    // de linha, como toda outra recusa deste leitor.
+    let valorCentavos = 0;
+    try {
+      valorCentavos = paraCentavos(valorPtBr(valor));
+    } catch {
+      valorCentavos = 0;
+    }
     if (!Number.isFinite(valorCentavos) || valorCentavos <= 0) {
       erros.push({ linha: numero, campo: 'ORIGINALVALUE', mensagem: `Valor inválido ou não positivo: "${valor}".` });
       return;
     }
 
     const { centro, multiplo } = centroDoRateio(em(linha, 'LISTOFPRORATEBYCC'));
+    // Sem centro de custo a linha NÃO entra, e isto é erro e não aviso: o
+    // lançamento não existe sem tipo de despesa, e inventar um ("Sem centro de
+    // custo") criaria cadastro que ninguém pediu e um balde onde a despesa se
+    // esconde. No arquivo real do cliente, nenhuma das 1.148 linhas cai aqui.
     if (!centro) {
-      avisos.push({ linha: numero, campo: 'LISTOFPRORATEBYCC', mensagem: 'Sem centro de custo no rateio — a linha entra sem classificação.' });
+      erros.push({
+        linha: numero,
+        campo: 'LISTOFPRORATEBYCC',
+        mensagem: 'Sem centro de custo no rateio — sem ele não há como classificar a despesa.',
+      });
+      return;
     }
     if (multiplo) {
       avisos.push({
@@ -261,7 +280,8 @@ export function lerLinhasContasPagar(linhasBrutas: string[][], primeiraLinha = 2
       centroCusto: centro,
       descricao,
       documento: em(linha, 'DOCNUMBER'),
-      natureza: naturezaDe(em(linha, 'INSTALLMENTQTY')),
+      parcela: em(linha, 'INSTALLMENT'),
+      qtdParcelas: em(linha, 'INSTALLMENTQTY'),
       dataEmissao: dataDoCarimbo(em(linha, 'DOCEMISSIONDATE')) ?? '',
       dataVencimento: vencimento,
       dataPagamento: dataDoCarimbo(em(linha, 'DOCPAIDDATE')),

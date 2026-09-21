@@ -767,3 +767,27 @@ CREATE TABLE IF NOT EXISTS reconhecedores_origem (
   UNIQUE (cliente_id, chave)
 );
 CREATE INDEX IF NOT EXISTS ix_reconhecedor_cliente ON reconhecedores_origem(cliente_id, ativo);
+
+-- O DE-PARA DE VALORES DA CARGA, guardado por cliente.
+--
+-- A conciliação (`domain/conciliacao.ts`) já resolve que "NATAL HOME" é a
+-- filial "HR RN" — mas a decisão valia só para aquela carga. Com 18 unidades
+-- e uma carga por mês, o gestor refazia 18 vínculos todo mês, e um engano em
+-- qualquer um deles pendurava a despesa na unidade errada.
+--
+-- Não reusa `mapeamentos_importacao` porque aquela tabela é de CABEÇALHO: ela
+-- valida contra as colunas do template (`criarMapeamento`), e a tela de
+-- Administração a lista como "apelido de coluna". Guardar de-para de VALOR ali
+-- faria as duas coisas aparecerem misturadas na mesma tela.
+--
+-- `alvo` é o nome do cadastro, não o id: a filial pode ser recriada, e o que o
+-- vínculo afirma é "este texto do arquivo quer dizer aquele nome".
+CREATE TABLE IF NOT EXISTS vinculos_importacao (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  dimensao   TEXT NOT NULL,
+  valor      TEXT NOT NULL,
+  alvo       TEXT NOT NULL,
+  criado_em  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (cliente_id, dimensao, valor)
+);
