@@ -1,4 +1,4 @@
-// Varredura das telas do app local: 12 páginas × 2 temas × 2 larguras.
+// Varredura das telas do app local: 20 páginas × 2 temas × 2 larguras.
 //
 // Suba o servidor e rode com as credenciais do ambiente:
 //   npm start
@@ -16,6 +16,7 @@ const PAGINAS = [
   ['/suporte/ostick', 'Sistema OStick'], ['/suporte/bitrix24', 'Sistema Bitrix24'],
   ['/suporte/integracoes', 'Integrações'],
   ['/planilhas', 'Planilhas'], ['/clientes', 'Clientes e unidades'], ['/cadastros', 'Cadastros'],
+  ['/metas', 'Metas'], ['/slas', 'SLAs'],
   ['/acessos', 'Usuários e acessos'], ['/auditoria', 'Auditoria'],
 ];
 
