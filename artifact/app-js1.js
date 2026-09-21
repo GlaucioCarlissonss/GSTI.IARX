@@ -58,6 +58,7 @@ const E = {
   metas: [],                // alvos dos indicadores, por cliente
   slasCad: [],              // acordos de SLA (horas por tópico e prioridade), por unidade
   reducao: [],              // plano de redução: despesa escolhida e valor-alvo, por cliente
+  reconhecedores: [],       // quem, na origem, lança despesa que já chega conferida
   aba: 'painel',
   lanc: new Map(),          // 'empresa__comp' -> {itens:[...]}
   mesesCarregados: new Set(),
@@ -309,9 +310,9 @@ Object.defineProperty(E, 'filiaisSel', {
 const Loja = {
   async catalogos() {
     const ler = async (p) => { const s = await E.db.doc('catalogo/' + p).get(); return s.exists ? (s.data().itens || []) : []; };
-    const [empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao] = await Promise.all(
-      ['empresas','filiais','tipos','filas','cenarios','metas','slasCad','reducao'].map(ler));
-    Object.assign(E, { empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao });
+    const [empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao, reconhecedores] = await Promise.all(
+      ['empresas','filiais','tipos','filas','cenarios','metas','slasCad','reducao','reconhecedores'].map(ler));
+    Object.assign(E, { empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao, reconhecedores });
   },
   async lancDaEmpresa(empresa) {
     const snap = await E.db.collection('lanc').where('empresa','==',empresa).get();

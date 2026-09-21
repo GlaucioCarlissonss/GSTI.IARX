@@ -23,6 +23,7 @@ import {
   PaginaCadastros,
   PaginaFechamentos,
   PaginaMetas,
+  PaginaReconhecedores,
   PaginaReducao,
   PaginaSlas,
 } from './pages/Administracao';
@@ -66,6 +67,7 @@ function Rotas() {
         <Route path="metas" element={<PaginaMetas />} />
         <Route path="slas" element={<PaginaSlas />} />
         <Route path="reducao" element={<PaginaReducao />} />
+        <Route path="reconhecedores" element={<PaginaReconhecedores />} />
         <Route path="clientes" element={<PaginaClientes />} />
         <Route path="acessos" element={<PaginaAcessos />} />
         <Route path="auditoria" element={<PaginaAuditoria />} />

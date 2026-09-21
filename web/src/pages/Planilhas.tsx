@@ -12,7 +12,7 @@ import {
 } from '../components/escopo-operacao';
 import { Aviso, Campo, Cartao, Etiqueta } from '../components/base';
 import { PainelConciliacao, type Analise, type Decisao } from '../components/conciliacao';
-import { dataHora, inteiro } from '../lib/formato';
+import { competenciaExib, dataHora, inteiro, moeda } from '../lib/formato';
 
 interface Previa {
   lancamentos: number;
@@ -25,6 +25,36 @@ interface ResultadoFoc {
   atualizadas: number;
   duplicadas: number;
   rejeitadas: number;
+  cadastros_criados: { centros_custo: string[]; filiais: string[] };
+}
+
+/**
+ * A análise da carga de Contas a Pagar.
+ *
+ * É a mesma `Analise` da conciliação de dimensões, com três campos que só este
+ * layout tem: quantas linhas chegaram tortas, que de-para já estava guardado e
+ * o confronto LANÇAMENTO a lançamento contra a base.
+ */
+interface AnaliseAp extends Analise {
+  realinhadas: number;
+  vinculos_aplicados: Array<{ dimensao: string; valor: string; alvo: string }>;
+  lancamentos: {
+    total: number;
+    igual: number;
+    atualiza: number;
+    novo: number;
+    pareados_por_ordem: number;
+    sobras_na_base: Array<{ lancamentoId: number; competencia: string; valorCentavos: number; descricao: string | null }>;
+  } | null;
+}
+
+interface ResultadoAp {
+  importadas: number;
+  atualizadas: number;
+  duplicadas: number;
+  rejeitadas: number;
+  reconhecidos: number;
+  vinculos_guardados: number;
   cadastros_criados: { centros_custo: string[]; filiais: string[] };
 }
 
@@ -152,6 +182,16 @@ export function PaginaPlanilhas() {
   const [erroFoc, setErroFoc] = useState<string | null>(null);
   const [enviandoFoc, setEnviandoFoc] = useState(false);
 
+  // Carga de Contas a Pagar: três passos, porque a base já tem quase a mesma
+  // despesa. Analisar (dimensões) → conciliar (lançamentos, com as decisões
+  // tomadas) → gravar. O passo do meio é o que impede a base de dobrar.
+  const [arquivoAp, setArquivoAp] = useState<File | null>(null);
+  const [analiseAp, setAnaliseAp] = useState<AnaliseAp | null>(null);
+  const [decisoesAp, setDecisoesAp] = useState<Decisao[] | null>(null);
+  const [resultadoAp, setResultadoAp] = useState<ResultadoAp | null>(null);
+  const [erroAp, setErroAp] = useState<string | null>(null);
+  const [enviandoAp, setEnviandoAp] = useState(false);
+
   // Limpeza da base: a contagem vem antes, e a confirmação é informada.
   const podeLimpar = pode('financeiro', 'delete');
   const [limpeza, setLimpeza] = useState({ de: '', ate: '' });
@@ -243,6 +283,59 @@ export function PaginaPlanilhas() {
       setErroFoc(e instanceof Error ? e.message : 'A importação não pôde ser concluída.');
     } finally {
       setEnviandoFoc(false);
+      setEtapa(null);
+    }
+  };
+
+  const limparAp = () => {
+    setAnaliseAp(null);
+    setDecisoesAp(null);
+    setResultadoAp(null);
+    setErroAp(null);
+  };
+
+  /** Passo 1 e 2: sem decisões, confere as dimensões; com elas, os lançamentos. */
+  const analisarAp = async (decisoes: Decisao[] | null) => {
+    if (!arquivoAp) return;
+    setEnviandoAp(true);
+    setErroAp(null);
+    setResultadoAp(null);
+    setEtapa(decisoes ? 'Confrontando a carga com os lançamentos da base' : 'Lendo o arquivo e conciliando com o cadastro');
+    try {
+      const r = await api.enviarArquivo<AnaliseAp>('/api/planilhas/contas-pagar/conciliacao', arquivoAp, {
+        ...(decisoes ? { decisoes: JSON.stringify(decisoes) } : {}),
+        ...parametrosDoEscopo(escopo),
+      });
+      setAnaliseAp(r);
+      setDecisoesAp(decisoes);
+    } catch (e) {
+      setErroAp(e instanceof Error ? e.message : 'Não foi possível ler o arquivo.');
+    } finally {
+      setEnviandoAp(false);
+      setEtapa(null);
+    }
+  };
+
+  /** Passo 3: grava o que a conciliação mostrou. */
+  const importarAp = async () => {
+    if (!arquivoAp) return;
+    setEnviandoAp(true);
+    setErroAp(null);
+    setEtapa('Gravando os lançamentos');
+    try {
+      const r = await api.enviarArquivo<ResultadoAp>('/api/planilhas/contas-pagar/carga', arquivoAp, {
+        decisoes: JSON.stringify(decisoesAp ?? []),
+        ...parametrosDoEscopo(escopo),
+      });
+      setResultadoAp(r);
+      // Gravada a carga, a conciliação daquele arquivo não descreve mais a base.
+      setAnaliseAp(null);
+      setDecisoesAp(null);
+      historico.recarregar();
+    } catch (e) {
+      setErroAp(e instanceof Error ? e.message : 'A importação não pôde ser concluída.');
+    } finally {
+      setEnviandoAp(false);
       setEtapa(null);
     }
   };
@@ -494,6 +587,98 @@ export function PaginaPlanilhas() {
             <p style={{ color: 'var(--tinta-fraca)', fontSize: 13, margin: 0 }}>
               Analisar não grava nada: mostra o que a planilha traz de diferente do cadastro e espera a sua decisão em
               cada caso. Só depois disso a importação fica disponível.
+            </p>
+          )}
+        </Cartao>
+
+        <Cartao
+          titulo="Carga de Contas a Pagar (CSV do ERP)"
+          descricao="O dump cru do contas a pagar, conferido contra o cadastro E contra os lançamentos que já existem"
+        >
+          {erroAp && <Aviso tipo="erro">{erroAp}</Aviso>}
+          {resultadoAp && (
+            <Aviso tipo="ok">
+              <strong>{resultadoAp.importadas}</strong> lançamento(s) novo(s)
+              {resultadoAp.atualizadas > 0 && ` · ${resultadoAp.atualizadas} completado(s) na base`}
+              {resultadoAp.duplicadas > 0 && ` · ${resultadoAp.duplicadas} já estava(m) igual(is)`}
+              {resultadoAp.rejeitadas > 0 && ` · ${resultadoAp.rejeitadas} recusada(s)`}
+              {resultadoAp.reconhecidos > 0 && (
+                <div style={{ fontSize: 12.5, marginTop: 4 }}>
+                  {resultadoAp.reconhecidos} já entrou como reconhecido, pelo cadastro de quem reconhece despesa.
+                </div>
+              )}
+              {resultadoAp.vinculos_guardados > 0 && (
+                <div style={{ fontSize: 12.5, marginTop: 4 }}>
+                  {resultadoAp.vinculos_guardados} vínculo(s) guardado(s) — a próxima carga não vai perguntar de novo.
+                </div>
+              )}
+              {resultadoAp.cadastros_criados.filiais.length > 0 && (
+                <div style={{ fontSize: 12.5, marginTop: 4 }}>
+                  Unidades criadas: {resultadoAp.cadastros_criados.filiais.join(', ')}
+                </div>
+              )}
+            </Aviso>
+          )}
+
+          <div className="barra-filtros" style={{ marginBottom: 12 }}>
+            <Campo rotulo="Arquivo do ERP (.csv)">
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => {
+                  setArquivoAp(e.target.files?.[0] ?? null);
+                  limparAp();
+                }}
+              />
+            </Campo>
+            <button
+              type="button"
+              className="botao"
+              disabled={!arquivoAp || enviandoAp || !podeEditar || !escopoCompleto(escopo)}
+              onClick={() => analisarAp(null)}
+            >
+              {enviandoAp && !analiseAp ? 'Analisando…' : 'Analisar'}
+            </button>
+          </div>
+          <EtapaOperacao etapa={enviandoAp ? etapa : null} />
+
+          {analiseAp ? (
+            <>
+              {analiseAp.realinhadas > 0 && (
+                <Aviso tipo="info">
+                  <strong>{inteiro(analiseAp.realinhadas)}</strong> linha(s) chegaram com campo omitido e foram
+                  recolocadas na coluna certa. O exportador do ERP deixa de emitir o separador quando o campo está
+                  vazio; sem essa correção, o criador do documento receberia um carimbo de data.
+                </Aviso>
+              )}
+              {analiseAp.vinculos_aplicados.length > 0 && (
+                <Aviso>
+                  De-para já guardado, aplicado sozinho:{' '}
+                  {analiseAp.vinculos_aplicados.map((v) => `${v.valor} → ${v.alvo}`).join(' · ')}
+                </Aviso>
+              )}
+
+              {analiseAp.lancamentos ? (
+                <ConfrontoDeLancamentos
+                  dados={analiseAp.lancamentos}
+                  enviando={enviandoAp}
+                  podeGravar={podeEditar}
+                  aoImportar={importarAp}
+                  aoVoltar={() => analisarAp(null)}
+                />
+              ) : (
+                <PainelConciliacao
+                  analise={analiseAp}
+                  enviando={enviandoAp}
+                  aoImportar={(decisoes) => analisarAp(decisoes)}
+                />
+              )}
+            </>
+          ) : (
+            <p style={{ color: 'var(--tinta-fraca)', fontSize: 13, margin: 0 }}>
+              São três passos, e nenhum deles grava antes do último: conferir os nomes contra o cadastro, confrontar
+              cada linha com os lançamentos que a base já tem, e só então importar. O passo do meio existe porque a
+              base do cliente já contém quase a mesma despesa, exportada por outro relatório do mesmo ERP.
             </p>
           )}
         </Cartao>
@@ -946,5 +1131,72 @@ export function PaginaPlanilhas() {
         <small style={{ color: 'var(--tinta-fraca)' }}>Colunas destacadas são obrigatórias.</small>
       </Cartao>
     </>
+  );
+}
+
+
+/**
+ * O CONFRONTO com a base, que é o passo que impede a carga de dobrar.
+ *
+ * As três contagens respondem à única pergunta que importa antes de gravar:
+ * quanto disto a base já tem. As SOBRAS respondem à outra metade — o que está
+ * na base e não veio na carga costuma ser lançamento feito à mão, e some sem
+ * aviso em qualquer "substituir tudo".
+ */
+function ConfrontoDeLancamentos({
+  dados,
+  enviando,
+  podeGravar,
+  aoImportar,
+  aoVoltar,
+}: {
+  dados: NonNullable<AnaliseAp['lancamentos']>;
+  enviando: boolean;
+  podeGravar: boolean;
+  aoImportar: () => void;
+  aoVoltar: () => void;
+}) {
+  return (
+    <div>
+      <h3 style={{ margin: '0 0 8px', fontSize: 15 }}>O que esta carga faria na base</h3>
+      <div className="barra-filtros" style={{ gap: 18, marginBottom: 10 }}>
+        <Etiqueta texto={`${inteiro(dados.novo)} novo(s)`} tom={dados.novo > 0 ? 'atencao' : 'neutro'} />
+        <Etiqueta texto={`${inteiro(dados.atualiza)} completado(s)`} tom="bom" />
+        <Etiqueta texto={`${inteiro(dados.igual)} já igual(is)`} tom="neutro" />
+      </div>
+
+      {dados.pareados_por_ordem > 0 && (
+        <Aviso tipo="info">
+          {inteiro(dados.pareados_por_ordem)} par(es) foram formados pela ORDEM, e não pelo número do documento — é o
+          que acontece enquanto os lançamentos da base não têm documento gravado. Esta carga preenche o número, e a
+          próxima vai casar sem heurística nenhuma.
+        </Aviso>
+      )}
+
+      {dados.sobras_na_base.length > 0 && (
+        <Aviso tipo="info">
+          <strong>{inteiro(dados.sobras_na_base.length)}</strong> lançamento(s) estão na base, nos meses desta carga, e
+          não vieram no arquivo. Não serão tocados — normalmente são lançamentos feitos à mão.
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5 }}>
+            {dados.sobras_na_base.slice(0, 8).map((s) => (
+              <li key={s.lancamentoId}>
+                {competenciaExib(s.competencia)} · {moeda(s.valorCentavos / 100)} ·{' '}
+                {s.descricao ?? 'sem descrição'}
+              </li>
+            ))}
+            {dados.sobras_na_base.length > 8 && <li>… e mais {dados.sobras_na_base.length - 8}.</li>}
+          </ul>
+        </Aviso>
+      )}
+
+      <div className="barra-filtros" style={{ marginTop: 12 }}>
+        <button type="button" className="botao discreto" disabled={enviando} onClick={aoVoltar}>
+          Voltar às decisões
+        </button>
+        <button type="button" className="botao" disabled={enviando || !podeGravar} onClick={aoImportar}>
+          {enviando ? 'Importando…' : 'Importar'}
+        </button>
+      </div>
+    </div>
   );
 }

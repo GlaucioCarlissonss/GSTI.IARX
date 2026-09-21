@@ -81,7 +81,7 @@ seguintes ficam em TDZ quando ele executa.
 | `app-js17.js` | Indicadores Gerais: financeiro, SLA e projetos |
 | `app-js18.js` | clientes: a escolha do contratante, antes de qualquer tela |
 | `app-js19.js` | tela de seleção de cliente e boas-vindas |
-| `app-js20.js` | cadastros de leitura: metas, acordos de SLA, plano de redução, e a reclassificação de prioridade |
+| `app-js20.js` | cadastros de leitura: metas, acordos de SLA, plano de redução, quem reconhece despesa, e a reclassificação de prioridade |
 | `app-js7.js` | abas, seletores globais e inicialização |
 
 ## Testar
@@ -335,6 +335,7 @@ Vinte e uma suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-rateio.cjs` | o rateio das compartilhadas: a soma das parcelas fecha exatamente, o grupo inteiro entra na tabela, e a leitura integral continua ao lado como o "antes" |
 | `testar-reducao.cjs` | o plano de redução: sem cadastro o indicador diz isso, cadastrar muda o indicador do topo, e desativar devolve ao vazio |
 | `testar-acordos.cjs` | o acordo de SLA que decide: a vigência escolhe pela abertura do chamado, a prévia não grava, a reaplicação vira dentro/fora, agregado e sem-prioridade ficam de fora, e mês fechado recusa |
+| `testar-reconhecedores.cjs` | quem reconhece despesa: o mesmo nome escrito de outro jeito é a mesma pessoa, a prévia não grava, aplicar marca só quem o cadastro alcança, e desativar não desfaz o passado |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

@@ -22,6 +22,7 @@ import { comEmpresaEmFoco } from '../domain/escopo.js';
 import { gravarChamado } from '../domain/suporte.js';
 import { criarProjeto, criarTarefa } from '../domain/projetos.js';
 import { criarPlano } from '../domain/reducao.js';
+import { criarReconhecedor } from '../domain/reconhecedores.js';
 import { criarSla } from '../domain/slas.js';
 import { clienteDaEmpresa } from '../domain/clientes.js';
 import { competenciaAtual, paraExibicao, somarMeses } from '../domain/competencia.js';
@@ -90,6 +91,23 @@ criarLancamento(ctx, {
   descricao: 'Telefonia da sede',
 });
 
+// Uma despesa que ENTROU POR CARGA, com o criador da origem gravado, e a pessoa
+// correspondente no cadastro de quem reconhece. É o par que a verificação
+// precisa: sem um lançamento com `usuario_origem`, aplicar o cadastro contaria
+// "0 de 0" e a tela passaria verde sem provar nada.
+const daCarga = criarLancamento(ctx, {
+  filialId: sede.id,
+  tipoDespesaId: tipo,
+  competencia: mes,
+  valor: 2630,
+  natureza: 'pontual_unica',
+  classificacao: 'despesa',
+  descricao: 'Link dedicado de internet',
+  origem: 'planilha',
+});
+db().prepare('UPDATE lancamentos SET usuario_origem = ? WHERE id = ?').run('MIQUEIASSILVA', daCarga.id);
+criarReconhecedor(ctx, { usuario_origem: 'MIQUEIASSILVA', nome_exibicao: 'Miqueias Silva' });
+
 // Um projeto com tarefa entregue: sem ele a tela de Projetos abre vazia, e a
 // varredura não teria como distinguir "tela quebrada" de "base sem projeto".
 const projeto = criarProjeto(ctx, {
@@ -154,6 +172,6 @@ criarSla(ctx, { prioridade: 'low', horas: 1 });
 
 console.log(
   `base v2 pronta: usuário gestora · cliente com 2 matrizes (Holding TI, Hospital Norte) · ` +
-    `2 filiais · 2 lançamentos (1 compartilhado) · 1 projeto com 2 tarefas · 1 chamado · ` +
+    `2 filiais · 3 lançamentos (1 compartilhado, 1 com criador na origem) · 1 projeto com 2 tarefas · 1 chamado · ` +
     `1 item no plano de redução · 1 acordo de SLA que vira o chamado de dentro para fora`,
 );

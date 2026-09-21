@@ -1,4 +1,4 @@
-// Varredura das telas do app local: 22 páginas × 2 temas × 2 larguras.
+// Varredura das telas do app local: 23 páginas × 2 temas × 2 larguras.
 //
 // Suba o servidor e rode com as credenciais do ambiente:
 //   npm start
@@ -19,6 +19,7 @@ const PAGINAS = [
   ['/suporte/integracoes', 'Integrações'],
   ['/planilhas', 'Planilhas'], ['/clientes', 'Clientes e unidades'], ['/cadastros', 'Cadastros'],
   ['/metas', 'Metas'], ['/slas', 'SLAs'], ['/reducao', 'Plano de redução'],
+  ['/reconhecedores', 'Quem reconhece despesa'],
   ['/acessos', 'Usuários e acessos'], ['/auditoria', 'Auditoria'],
 ];
 

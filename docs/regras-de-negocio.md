@@ -1280,6 +1280,127 @@ sem esse, fica sem prazo, e a leitura volta a ser "fechado conta dentro, aberto
 conta fora". Manter o prazo do acordo ANTERIOR mediria a prioridade nova pela
 regra da antiga.
 
+## Carga de Contas a Pagar
+
+A segunda carga de terceiro que o sistema lê, ao lado da base FOC. É o dump cru
+do contas a pagar do ERP do cliente: **86 colunas** com os nomes internos dele
+(`GLBCOMPANYCOMMERCIALNAME`, `ORIGINALVALUE`, `CREATIONUSER`), em CSV
+**Windows-1252**. Não tem parentesco com o FOC de 16 colunas, e por isso vive em
+arquivo próprio (`domain/carga-contas-pagar.ts`): quando o ERP mudar, muda só ali.
+
+Cinco coisas que este layout obriga, e que valem como regra:
+
+1. **O arquivo chega torto.** O exportador OMITE o campo vazio em vez de emitir o
+   separador, então as linhas chegam com 84, 85 ou 86 campos. Lidas pela
+   esquerda, a cauda desliza e `CREATIONUSER` recebe o carimbo de data. O
+   realinhamento usa três âncoras por NOME e apenas INSERE posições vazias: a
+   sequência de valores não vazios fica idêntica à da origem. O relatório diz
+   quantas linhas foram recolocadas.
+2. **A competência sai do VENCIMENTO** (`ACTUALDUEDATE`), não da emissão. É
+   decisão do cliente, e é a que casa com a base que já existe. Emissão e
+   vencimento caem em meses diferentes em cerca de um terço das linhas, então a
+   escolha move um terço da carga de mês.
+3. **Cada parcela já é uma linha.** `INSTALLMENTQTY` diz "12", mas o arquivo traz
+   as doze — uma por vencimento. A natureza do lançamento é sempre pontual
+   única: marcá-lo como parcelado faria o sistema gerar doze lançamentos a partir
+   de uma linha que já é uma das doze. A parcela vira texto nas observações.
+4. **O centro de custo vem dentro do texto de rateio**
+   (`07.05 Serviços Técnicos: R$ 2.630,00 (100,00%)`), sem coluna própria. O
+   prefixo numérico sai, porque o cadastro do sistema não o usa. Documento
+   rateado entre VÁRIOS centros **não é dividido**: dividir criaria lançamentos
+   que não existem no contas a pagar e quebraria o casamento com o número do
+   documento. Fica o centro de maior peso, com aviso nominal no relatório.
+   Linha SEM nenhum centro é recusada — o lançamento não existe sem tipo de
+   despesa, e inventar um criaria um balde onde a despesa se esconde.
+5. **O número do documento entra na chave** de deduplicação. No arquivo real há
+   cinco boletos do mesmo valor, no mesmo dia, para a mesma unidade — cobranças
+   distintas, uma por linha telefônica. Sem o documento, quatro delas sumiriam
+   como duplicata.
+
+### A conciliação de lançamentos
+
+A conciliação que já existia confere DIMENSÕES (esta unidade é aquela filial,
+este centro de custo é aquele cadastro). A carga de Contas a Pagar acrescenta uma
+segunda, que confere o LANÇAMENTO, e ela existe por um número: das 1.148 linhas
+do arquivo do cliente, 1.125 encontram par de competência e valor entre os 1.898
+lançamentos que a base já tem. São a mesma despesa, exportada por outro relatório
+do mesmo ERP. Importar sem conferir dobraria a base.
+
+O pareamento é por grupo homogêneo — matriz, filial, competência, valor e centro
+de custo. Dentro do grupo, quando o número do documento casa, o par é esse: é a
+única identidade forte que existe. Sem documento na base, o par é por ORDEM, e
+cada candidato é consumido, para que cinco cobranças iguais continuem cinco. Cada
+linha sai classificada como:
+
+| Classe | Significado | O que a gravação faz |
+| --- | --- | --- |
+| `igual` | existe e nada difere | nada |
+| `atualiza` | existe, e o arquivo traz campo que falta na base | completa só esses campos |
+| `novo` | a base não tem | insere |
+
+Não existe classe "ambíguo". Como a base não tem `documento` em nenhuma linha,
+ela marcaria mil linhas e não ajudaria ninguém a decidir nada. O que a tela
+mostra no lugar são as **sobras da base**: lançamento que está lá, nos meses da
+carga, e não veio no arquivo. Costuma ser lançamento feito à mão, e é o que
+sumiria sem aviso num "substituir tudo" — a carga não o toca.
+
+**O ganho permanente é o `documento`.** A carga preenche o número nos lançamentos
+que casarem, e a carga seguinte passa a casar por documento, sem heurística
+nenhuma.
+
+### O de-para guardado
+
+As 18 unidades do arquivo não se deduzem do cadastro: "NATAL HOME" é a filial
+"HR RN", "HOSPITAL MILAGRES - JP" é "HM PB". Um humano decide isso uma vez, e o
+vínculo fica guardado por cliente (`vinculos_importacao`). Sem guardar, o gestor
+refaria 18 vínculos a cada carga mensal, e um engano em qualquer um deles
+penduraria a despesa na unidade errada. A tela mostra os vínculos que foram
+aplicados sozinhos — quem confere precisa poder ver que "NATAL HOME" virou
+"HR RN" sem ter clicado em nada.
+
+Unidade que não existe e não é vinculada nasce na matriz do escopo da carga: o
+arquivo não diz a que matriz a unidade pertence, e adivinhar pelo nome é o erro
+que a conciliação existe para evitar. Com o cliente tendo mais de uma matriz, o
+caminho certo é vincular.
+
+### Competência passada e competência fechada
+
+A carga cobre meses já encerrados por definição, então ela mesma é a
+justificativa da escrita em competência PASSADA — o registro de importação
+responde por ela. Competência **fechada** recusa o lote inteiro, nomeando o mês:
+fechar um mês é dizer que os números dele estão conferidos, e a recusa é do lote
+porque este importador é tudo-ou-nada — gravar sete meses e calar sobre o oitavo
+faria o total do arquivo não bater com o do sistema.
+
+## Quem reconhece despesa
+
+Toda despesa que entra por carga nasce **por reconhecer**, e alguém precisa olhar
+uma a uma. Parte dela, porém, vem de quem já conferiu na origem: o documento
+criado pela própria equipe de TI no ERP chega revisado, e marcar isso à mão é
+trabalho repetido de milhares de linhas.
+
+A lista de quem reconhece é **cadastro do cliente**, como as metas e o plano de
+redução: a mesma pessoa lança para todas as unidades do grupo. O valor guardado é
+um nome de usuário de OUTRO sistema, texto livre — não há id interno para
+referenciar, e exigir um usuário cadastrado aqui faria o cadastro não cobrir
+justamente quem não usa este sistema.
+
+A comparação é normalizada (maiúsculas, sem acento, sem espaço): o ERP escreve
+`MIQUEIASSILVA` e a pessoa cadastra `Miqueias Silva`. São o mesmo usuário, e sem
+normalizar o cadastro nunca alcançaria a carga.
+
+Não há exclusão, só desativação — quem saiu do time para de reconhecer na próxima
+carga, sem que nada do que já entrou seja apagado.
+
+**O cadastro decide na ENTRADA da carga.** Alcançar os meses já carregados é um
+ATO, com recorte, prévia e contagem, como a reaplicação do acordo de SLA: um
+número apresentado numa reunião não pode mudar porque alguém mexeu numa lista. A
+prévia conta avaliados, quantos seriam reconhecidos, quantos já estavam, quantos
+não têm criador na origem e quantos têm criador fora do cadastro. A aplicação
+deixa uma linha de auditoria com esses números e a justificativa — é ela que
+explica, depois, por que seiscentos lançamentos mudaram de estado no mesmo
+segundo.
+
 ## Expansões previstas
 
 O modelo já acomoda novos tipos de despesa, filiais, empresas, filas e tópicos

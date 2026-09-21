@@ -720,3 +720,199 @@ function planosVigentes(competencia) {
     (!p.vigenciaInicio || p.vigenciaInicio <= comp) &&
     (!p.vigenciaFim || p.vigenciaFim >= comp));
 }
+
+// ===========================================================================
+// QUEM RECONHECE DESPESA
+// ===========================================================================
+//
+// A lista de quem, na origem, lança despesa que já nasce conferida. É cadastro
+// do CLIENTE, como o plano de redução: a mesma pessoa lança para todas as
+// unidades do grupo.
+//
+// O valor guardado é um NOME DE USUÁRIO DE OUTRO SISTEMA, texto livre — não há
+// id interno para referenciar, e exigir um usuário cadastrado aqui faria o
+// cadastro não cobrir justamente quem não usa este sistema.
+
+/**
+ * A forma comparável do nome: maiúsculas, sem acento, sem espaço.
+ *
+ * O ERP escreve `MIQUEIASSILVA`; a pessoa cadastra `Miqueias Silva`. São o
+ * mesmo usuário, e sem normalizar o cadastro nunca alcançaria a carga.
+ */
+function chaveDoUsuario(valor) {
+  return String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, '')
+    .toUpperCase();
+}
+
+function reconhecedoresDoCliente() {
+  return (E.reconhecedores || []).filter((r) => !r.cliente || r.cliente === E.clienteSel);
+}
+
+/** Este usuário da origem reconhece despesa? Só o cadastro ATIVO conta. */
+function reconhecePorOrigem(usuarioOrigem) {
+  const chave = chaveDoUsuario(usuarioOrigem);
+  if (!chave) return false;
+  return reconhecedoresDoCliente().some((r) => r.ativo !== false && chaveDoUsuario(r.usuario) === chave);
+}
+
+/**
+ * O que a aplicação retroativa mudaria. Não grava nada.
+ *
+ * `usuarioOrigem` só existe em lançamento que entrou pela carga de Contas a
+ * Pagar do servidor — e é por isso que a tela diz, quando ninguém tem o campo,
+ * que não há o que aplicar. Contar "0 de 0" sem explicar por quê faria o
+ * gestor achar que o cadastro não funciona.
+ */
+function avaliarReconhecimento() {
+  const resumo = { avaliados: 0, reconhecidos: 0, jaReconhecidos: 0, semOrigem: 0, foraDoCadastro: 0, marcar: [] };
+  for (const l of Loja.todosDoEscopo()) {
+    resumo.avaliados += 1;
+    if (reconhecidoDe(l)) { resumo.jaReconhecidos += 1; continue; }
+    if (!l.usuarioOrigem) { resumo.semOrigem += 1; continue; }
+    if (!reconhecePorOrigem(l.usuarioOrigem)) { resumo.foraDoCadastro += 1; continue; }
+    resumo.reconhecidos += 1;
+    resumo.marcar.push(l);
+  }
+  return resumo;
+}
+
+function resumoReconhecimentoHtml(r, aplicado) {
+  return `<div class="msg ${aplicado ? 'ok' : ''}" data-resumo-reconhecimento>
+    <strong>${aplicado ? 'Reconhecimento aplicado.' : 'Prévia — nada foi gravado.'}</strong>
+    <dl class="ficha" style="margin-top:6px">
+      <dt>Lançamentos avaliados</dt><dd>${inteiro(r.avaliados)}</dd>
+      <dt>${aplicado ? 'Reconhecidos agora' : 'Seriam reconhecidos'}</dt><dd>${inteiro(r.reconhecidos)}</dd>
+      <dt>Já estavam reconhecidos</dt><dd>${inteiro(r.jaReconhecidos)}</dd>
+      <dt>Criador fora do cadastro</dt><dd>${inteiro(r.foraDoCadastro)}</dd>
+      <dt>Sem criador na origem</dt><dd>${inteiro(r.semOrigem)}</dd>
+    </dl>
+  </div>`;
+}
+
+function viewReconhecedores() {
+  const lista = reconhecedoresDoCliente();
+  el('#pagina').innerHTML = `
+    <div class="msg"><strong>O cadastro é do cliente inteiro.</strong>
+      Toda despesa que entra por carga nasce POR RECONHECER, e alguém precisa olhar uma a uma.
+      Parte dela, porém, vem de quem já conferiu na origem: o documento criado pela própria equipe
+      de TI no sistema do cliente chega revisado. Quem está nesta lista dispensa essa conferência.</div>
+
+    <section class="bloco" style="margin-top:16px">
+      <header><h2>Quem reconhece despesa</h2>
+        <span class="nota">${inteiro(lista.length)} pessoa(s)</span></header>
+      ${lista.length === 0 ? '<p class="vazio">Ninguém cadastrado — toda a carga vai nascer por reconhecer.</p>' : `
+      <div class="rol"><table>
+        <thead><tr><th>Usuário na origem</th><th>Nome</th><th>Situação</th><th></th></tr></thead>
+        <tbody>${lista.map((r, i) => `<tr>
+          <td><code>${esc(r.usuario)}</code></td>
+          <td>${r.nome ? esc(r.nome) : '<em style="color:var(--tinta3)">—</em>'}</td>
+          <td><span class="tag ${r.ativo === false ? '' : 'bom'}">${r.ativo === false ? 'Inativo' : 'Ativo'}</span></td>
+          <td><button class="bt fant peq" data-alternar-rec="${i}">${r.ativo === false ? 'Reativar' : 'Desativar'}</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`}
+      <div style="margin-top:12px"><button class="bt" data-novo-rec>Adicionar pessoa</button></div>
+      <p class="nota" style="margin-top:10px">A comparação ignora acento, espaço e caixa:
+        <code>Miqueias Silva</code> e <code>MIQUEIASSILVA</code> são a mesma pessoa. Desativar quem
+        saiu do time faz a próxima carga dele nascer por reconhecer, sem apagar o que já entrou.</p>
+    </section>
+
+    <section class="bloco" style="margin-top:16px">
+      <header><h2>Aplicar ao que já está na base</h2></header>
+      <p class="nota">O cadastro decide na ENTRADA da carga. Aqui ele alcança o que já foi
+        carregado — veja o que mudaria e só então aplique. Nada é recalculado sozinho: um número
+        apresentado numa reunião não pode mudar porque alguém mexeu numa lista.</p>
+      <div class="acoes" style="justify-content:flex-start;margin-top:10px">
+        <button class="bt" data-previa-rec>Ver o que mudaria</button>
+        <button class="bt pri" data-aplicar-rec>Aplicar</button>
+      </div>
+      <div data-saida-rec style="margin-top:12px"></div>
+    </section>`;
+
+  el('#pagina').querySelector('[data-novo-rec]')?.addEventListener('click', formReconhecedor);
+  for (const bt of el('#pagina').querySelectorAll('[data-alternar-rec]')) {
+    bt.addEventListener('click', async () => {
+      const alvo = lista[Number(bt.dataset.alternarRec)];
+      const todos = (E.reconhecedores || []).map((r) => (r === alvo ? { ...r, ativo: r.ativo === false } : r));
+      await Loja.gravarCatalogo('reconhecedores', todos);
+      await Loja.auditar({
+        acao: 'atualizar', entidade: 'reconhecedor_origem',
+        depois: { usuario: alvo.usuario, ativo: alvo.ativo === false },
+      });
+      render();
+    });
+  }
+  ligarAplicacaoDeReconhecimento();
+}
+
+function ligarAplicacaoDeReconhecimento() {
+  const saida = el('#pagina').querySelector('[data-saida-rec]');
+  if (!saida) return;
+
+  el('#pagina').querySelector('[data-previa-rec]')?.addEventListener('click', () => {
+    saida.innerHTML = resumoReconhecimentoHtml(avaliarReconhecimento(), false);
+  });
+
+  el('#pagina').querySelector('[data-aplicar-rec]')?.addEventListener('click', async () => {
+    const r = avaliarReconhecimento();
+    if (!r.marcar.length) {
+      saida.innerHTML = resumoReconhecimentoHtml(r, false);
+      return;
+    }
+    // `alternarReconhecimento` opera dentro de UMA matriz por vez, porque a
+    // trilha do lançamento é por empresa. O cadastro é do cliente, então o
+    // agrupamento acontece aqui.
+    const porEmpresa = new Map();
+    for (const l of r.marcar) {
+      if (!porEmpresa.has(l.empresa)) porEmpresa.set(l.empresa, []);
+      porEmpresa.get(l.empresa).push(l);
+    }
+    for (const alvos of porEmpresa.values()) await alternarReconhecimento(alvos, true);
+    await Loja.auditar({
+      acao: 'aplicar', entidade: 'reconhecedor_origem',
+      depois: { avaliados: r.avaliados, reconhecidos: r.reconhecidos },
+    });
+    render();
+    const novaSaida = el('#pagina').querySelector('[data-saida-rec]');
+    if (novaSaida) novaSaida.innerHTML = resumoReconhecimentoHtml(r, true);
+  });
+}
+
+function formReconhecedor() {
+  abrirModal({
+    titulo: 'Adicionar quem reconhece despesa',
+    corpo: `
+      <div class="grade g2">
+        <div class="campo"><label for="r-usuario">Usuário na origem</label>
+          <input id="r-usuario" name="usuario" placeholder="como aparece na carga, ex.: MIQUEIASSILVA"></div>
+        <div class="campo"><label for="r-nome">Nome</label>
+          <input id="r-nome" name="nome" placeholder="opcional, para quem lê a lista"></div>
+      </div>`,
+    acoes: `<button type="button" class="bt" data-c>Cancelar</button>
+            <button type="button" class="bt pri" data-s>Adicionar</button>`,
+    aoMontar({ raiz, fechar, erro, campo }) {
+      raiz.querySelector('[data-c]').onclick = fechar;
+      raiz.querySelector('[data-s]').onclick = async (ev) => {
+        ev.target.disabled = true; erro('');
+        try {
+          const usuario = campo('usuario').value.trim();
+          if (!usuario) throw new Error('Informe o usuário da origem, como ele aparece na carga.');
+          const chave = chaveDoUsuario(usuario);
+          if (!chave) throw new Error('O usuário da origem precisa ter ao menos uma letra ou número.');
+          const existente = reconhecedoresDoCliente().find((r) => chaveDoUsuario(r.usuario) === chave);
+          if (existente) throw new Error(`"${existente.usuario}" já está na lista — é o mesmo usuário.`);
+
+          const novo = {
+            cliente: E.clienteSel, usuario,
+            nome: campo('nome').value.trim() || null, ativo: true,
+          };
+          await Loja.gravarCatalogo('reconhecedores', [...(E.reconhecedores || []), novo]);
+          await Loja.auditar({ acao: 'criar', entidade: 'reconhecedor_origem', depois: { usuario, nome: novo.nome } });
+          fechar(); render();
+        } catch (e) { erro(e.message); ev.target.disabled = false; }
+      };
+    },
+  });
+}

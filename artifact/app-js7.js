@@ -15,7 +15,7 @@ const MODULOS_NAV = [
   { id:'financeiro', rotulo:'Controle Financeiro',  abas:['painel', 'lancamentos', 'relatorio', 'conferencia'] },
   { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos'] },
   { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados', 'OSTICK', 'BITRIX24', 'integracoes'] },
-  { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'clientes', 'cadastros', 'metas', 'slas', 'reducao', 'acessos', 'auditoria'] },
+  { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'clientes', 'cadastros', 'metas', 'slas', 'reducao', 'reconhecedores', 'acessos', 'auditoria'] },
 ];
 
 const ABAS = [
@@ -39,6 +39,7 @@ const ABAS = [
   { id:'metas',       rotulo:'Metas',        view: viewMetas },
   { id:'slas',        rotulo:'SLAs',         view: viewSlas },
   { id:'reducao',     rotulo:'Plano de redução', view: viewReducao },
+  { id:'reconhecedores', rotulo:'Quem reconhece despesa', view: viewReconhecedores },
   { id:'acessos',     rotulo:'Usuários e acessos', view: viewAcessos },
   { id:'auditoria',   rotulo:'Auditoria',    view: viewAuditoria },
 ];
@@ -47,7 +48,7 @@ const ABAS = [
 // olham a unidade em foco, trocável na própria tela; Clientes e unidades,
 // Usuários e acessos e Auditoria olham o cliente inteiro. Um selo único no
 // grupo seria impreciso — por isso o ponto vai por aba, só nestas três.
-const ESCOPO_CLIENTE = new Set(['clientes', 'metas', 'reducao', 'acessos', 'auditoria']);
+const ESCOPO_CLIENTE = new Set(['clientes', 'metas', 'reducao', 'reconhecedores', 'acessos', 'auditoria']);
 
 /** Módulo a que a aba pertence. */
 const moduloDaAba = (aba) => MODULOS_NAV.find((m) => m.abas.includes(aba)) || MODULOS_NAV[0];
@@ -176,6 +177,7 @@ const FILTROS_DA_TELA = {
   slas:        { foco: 'Os acordos de SLA valem para os chamados desta unidade.' },
   // O plano de corte é negociado para o GRUPO, como as metas: sem seletor.
   reducao:     {},
+  reconhecedores: {},
   dados:       { foco: 'A carga e a exportação são desta unidade: o arquivo traz os cadastros dela, e reimportá-lo volta para a mesma.' },
 };
 

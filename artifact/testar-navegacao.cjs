@@ -44,7 +44,7 @@ const MODULOS_ESPERADOS = ['Indicadores Gerais', 'Controle Financeiro', 'Gestão
   conferir('sistema reúne dados, clientes, os três cadastros, acessos e auditoria',
     JSON.stringify(por('Sistema'))
       === JSON.stringify(['Dados', 'Clientes e unidades', 'Cadastros', 'Metas', 'SLAs',
-        'Plano de redução', 'Usuários e acessos', 'Auditoria']),
+        'Plano de redução', 'Quem reconhece despesa', 'Usuários e acessos', 'Auditoria']),
     por('Sistema').join(', '));
   // "Indicadores Gerais" é a leitura estratégica dos três módulos, e mora fora
   // deles de propósito — a regra aqui é sobre a OPERAÇÃO de suporte não vazar.

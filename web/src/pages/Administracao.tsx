@@ -914,6 +914,223 @@ export function PaginaReducao() {
   );
 }
 
+/** Uma pessoa da origem cujo lançamento já nasce conferido. */
+interface Reconhecedor {
+  id: number;
+  usuario_origem: string;
+  chave: string;
+  nome_exibicao: string | null;
+  ativo: number;
+}
+
+/** O resumo da aplicação retroativa — os mesmos nomes do servidor. */
+interface ResumoReconhecimento {
+  de: string | null;
+  ate: string | null;
+  avaliados: number;
+  reconhecidos: number;
+  ja_reconhecidos: number;
+  sem_usuario_origem: number;
+  fora_do_cadastro: number;
+}
+
+/**
+ * QUEM RECONHECE DESPESA — a lista de quem, na origem, lança despesa que já
+ * nasce conferida.
+ *
+ * Cadastro do CLIENTE, como Metas e o Plano de redução: a mesma pessoa lança
+ * para todas as unidades do grupo.
+ */
+export function PaginaReconhecedores() {
+  const { pode } = useSessao();
+  const podeEditar = pode('configuracoes', 'edit');
+  const [erro, setErro] = useState<string | null>(null);
+  const lista = useDados<Reconhecedor[]>(
+    () => api.get('/api/reconhecedores', { incluir_inativos: true }),
+    [],
+  );
+
+  const criar = async (dados: Record<string, string>) => {
+    setErro(null);
+    try {
+      await api.post('/api/reconhecedores', dados);
+      lista.recarregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao cadastrar a pessoa.');
+    }
+  };
+
+  const alternar = async (r: Reconhecedor) => {
+    setErro(null);
+    try {
+      await api.patch(`/api/reconhecedores/${r.id}`, { ativo: r.ativo !== 1 });
+      lista.recarregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao atualizar a pessoa.');
+    }
+  };
+
+  // ------------------------------------------ aplicar ao que já está gravado
+  //
+  // O cadastro decide na ENTRADA da carga. Alcançar o que já foi carregado é um
+  // ATO, com prévia e contagem — o mesmo desenho da reaplicação do acordo de
+  // SLA, e pela mesma razão: um número apresentado numa reunião não pode mudar
+  // porque alguém mexeu numa lista.
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
+  const [justificativa, setJustificativa] = useState('');
+  const [resumo, setResumo] = useState<{ dados: ResumoReconhecimento; aplicado: boolean } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  const aplicar = async (gravar: boolean) => {
+    setErro(null);
+    setOcupado(true);
+    try {
+      const dados = gravar
+        ? await api.post<ResumoReconhecimento>('/api/reconhecedores/aplicacao', { de, ate, justificativa })
+        : await api.get<ResumoReconhecimento>('/api/reconhecedores/aplicacao', { de, ate });
+      setResumo({ dados, aplicado: gravar });
+    } catch (e) {
+      setResumo(null);
+      setErro(e instanceof Error ? e.message : 'Falha ao aplicar o reconhecimento.');
+    }
+    setOcupado(false);
+  };
+
+  const recorte = (r: ResumoReconhecimento) => {
+    if (!r.de && !r.ate) return 'toda a base';
+    if (r.de && !r.ate) return `de ${competenciaExib(r.de)} em diante`;
+    if (!r.de && r.ate) return `até ${competenciaExib(r.ate)}`;
+    return `${competenciaExib(r.de!)} a ${competenciaExib(r.ate!)}`;
+  };
+
+  return (
+    <>
+      {erro && <Aviso tipo="erro">{erro}</Aviso>}
+
+      <Cartao
+        titulo="Quem reconhece despesa"
+        descricao="As pessoas que, na origem, lançam despesa que já chega conferida"
+      >
+        {lista.carregando ? (
+          <Carregando />
+        ) : (lista.dados ?? []).length === 0 ? (
+          <p className="vazio">
+            Ninguém cadastrado. Toda despesa que entrar por carga vai nascer por reconhecer, e
+            alguém terá de conferir uma a uma na tela de Conferência.
+          </p>
+        ) : (
+          <div className="tabela-envolucro">
+            <table>
+              <thead>
+                <tr>
+                  <th>Usuário na origem</th>
+                  <th>Nome</th>
+                  <th>Situação</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {(lista.dados ?? []).map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      <code>{r.usuario_origem}</code>
+                    </td>
+                    <td>{r.nome_exibicao ?? <em style={{ color: 'var(--tinta-fraca)' }}>—</em>}</td>
+                    <td>
+                      <Etiqueta texto={r.ativo === 1 ? 'Ativo' : 'Inativo'} tom={r.ativo === 1 ? 'bom' : 'neutro'} />
+                    </td>
+                    <td>
+                      {podeEditar && (
+                        <button type="button" className="botao discreto pequeno" onClick={() => alternar(r)}>
+                          {r.ativo === 1 ? 'Desativar' : 'Reativar'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {podeEditar && (
+          <FormularioNovo
+            rotulo="Adicionar pessoa"
+            campos={[
+              {
+                chave: 'usuario_origem',
+                rotulo: 'Usuário na origem',
+                obrigatorio: true,
+                largura: 210,
+                dica: 'como aparece na carga, ex.: MIQUEIASSILVA',
+              },
+              { chave: 'nome_exibicao', rotulo: 'Nome', largura: 210, dica: 'opcional, para quem lê a lista' },
+            ]}
+            aoEnviar={criar}
+          />
+        )}
+
+        <p className="dica-filtro" style={{ marginTop: 10 }}>
+          A comparação ignora acento, espaço e caixa: <code>Miqueias Silva</code> e{' '}
+          <code>MIQUEIASSILVA</code> são a mesma pessoa. Desativar alguém que saiu do time faz a
+          próxima carga dele nascer por reconhecer, sem apagar o que já entrou.
+        </p>
+      </Cartao>
+
+      <Cartao
+        titulo="Aplicar ao que já está na base"
+        descricao="O cadastro vale na entrada da carga; aqui ele alcança os meses já carregados"
+      >
+        <p className="dica-filtro">
+          Escolha o recorte, veja o que mudaria e só então aplique. Nada é recalculado sozinho — um
+          número apresentado numa reunião não pode mudar porque alguém mexeu numa lista.
+        </p>
+
+        <div className="barra-filtros" style={{ marginTop: 12 }}>
+          <Campo rotulo="De" dica="MM/AAAA — em branco: desde o início">
+            <input value={de} onChange={(e) => setDe(e.target.value)} placeholder="MM/AAAA" inputMode="numeric" style={{ width: 110 }} />
+          </Campo>
+          <Campo rotulo="Até" dica="MM/AAAA — em branco: até o fim">
+            <input value={ate} onChange={(e) => setAte(e.target.value)} placeholder="MM/AAAA" inputMode="numeric" style={{ width: 110 }} />
+          </Campo>
+          <Campo rotulo="Justificativa" dica="entra na trilha de auditoria">
+            <input value={justificativa} onChange={(e) => setJustificativa(e.target.value)} style={{ width: 280 }} />
+          </Campo>
+          <button type="button" className="botao discreto" disabled={ocupado} onClick={() => aplicar(false)}>
+            Ver o que mudaria
+          </button>
+          {podeEditar && (
+            <button type="button" className="botao" disabled={ocupado} onClick={() => aplicar(true)}>
+              Aplicar
+            </button>
+          )}
+        </div>
+
+        {resumo && (
+          <Aviso tipo={resumo.aplicado ? 'ok' : 'info'}>
+            <strong>
+              {resumo.aplicado
+                ? `Reconhecimento aplicado a ${recorte(resumo.dados)}.`
+                : `Prévia de ${recorte(resumo.dados)} — nada foi gravado.`}
+            </strong>
+            <dl className="ficha" style={{ marginTop: 6 }}>
+              <Linha rotulo="Lançamentos avaliados" valor={inteiro(resumo.dados.avaliados)} />
+              <Linha
+                rotulo={resumo.aplicado ? 'Reconhecidos agora' : 'Seriam reconhecidos'}
+                valor={inteiro(resumo.dados.reconhecidos)}
+              />
+              <Linha rotulo="Já estavam reconhecidos" valor={inteiro(resumo.dados.ja_reconhecidos)} />
+              <Linha rotulo="Criador fora do cadastro" valor={inteiro(resumo.dados.fora_do_cadastro)} />
+              <Linha rotulo="Sem criador na origem" valor={inteiro(resumo.dados.sem_usuario_origem)} />
+            </dl>
+          </Aviso>
+        )}
+      </Cartao>
+    </>
+  );
+}
+
 /**
  * Endereço base do helpdesk. O id do chamado completa a URL, e é isso que faz o
  * número na tela de SLA virar link de volta para o sistema de origem.
@@ -1122,7 +1339,7 @@ interface RegistroAuditoria {
   criado_em: string;
 }
 
-const ENTIDADES = ['lancamento', 'projeto', 'tarefa', 'ticket_sla', 'fechamento', 'importacao', 'filial', 'tipo_despesa', 'meta', 'sla', 'plano_reducao'];
+const ENTIDADES = ['lancamento', 'projeto', 'tarefa', 'ticket_sla', 'fechamento', 'importacao', 'filial', 'tipo_despesa', 'meta', 'sla', 'plano_reducao', 'reconhecedor_origem'];
 
 export function PaginaAuditoria() {
   const { empresas } = useSessao();
