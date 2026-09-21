@@ -105,6 +105,7 @@ rotasFinanceiro.post('/', exigir('financeiro', 'create'), (req, res) => {
       observacoes: corpo.observacoes ?? null,
       origemCusto: corpo.origem_custo ?? null,
       destinoPagamento: corpo.destino_pagamento ?? null,
+      fornecedor: corpo.fornecedor ?? null,
       documento: corpo.documento ?? null,
       tipoConsumo: corpo.tipo_consumo ?? null,
       beneficiadas: beneficiadasDoCorpo(corpo.filiais_beneficiadas) ?? null,
@@ -141,6 +142,7 @@ rotasFinanceiro.patch('/:id', exigir('financeiro', 'edit'), (req, res) => {
       // `undefined` mantém o valor atual; `null` limpa o campo.
       origemCusto: corpo.origem_custo,
       destinoPagamento: corpo.destino_pagamento,
+      fornecedor: corpo.fornecedor,
       documento: corpo.documento,
       tipoConsumo: corpo.tipo_consumo,
       beneficiadas: beneficiadasDoCorpo(corpo.filiais_beneficiadas),

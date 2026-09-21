@@ -244,7 +244,7 @@ export function lancamentosDoRelatorio(
     .prepare(
       `SELECT l.id, l.competencia, l.valor_centavos, l.natureza, l.classificacao,
               l.parcela_numero, l.qtd_parcelas, l.descricao, l.observacoes,
-              l.origem, l.origem_custo, l.destino_pagamento, l.documento, l.cenario,
+              l.origem, l.origem_custo, l.destino_pagamento, l.fornecedor, l.documento, l.cenario,
               l.tipo_consumo, l.beneficia_todas,
               l.filial_id, fi.nome AS filial_nome, l.tipo_despesa_id, td.nome AS tipo_despesa,
               -- A empresa pagadora: é dela a cor com que a tela pinta a linha,

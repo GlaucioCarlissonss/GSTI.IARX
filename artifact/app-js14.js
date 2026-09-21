@@ -121,6 +121,7 @@ function detalharLancamentos(titulo, lista, total, subtitulo) {
       { rotulo: 'Filial', valor: (l) => l.filial || 'Nível empresa' },
       { rotulo: 'Tipo', campo: 'tipo' },
       { rotulo: 'Descrição', valor: (l) => l.descricao || '—', texto: true },
+      { rotulo: 'Fornecedor', valor: (l) => l.fornecedor || '—', texto: true },
       { rotulo: 'Origem do custo', valor: (l) => l.origemCusto || '—', texto: true },
       { rotulo: 'Destino', valor: (l) => l.destinoPagamento || '—', texto: true },
       // `html: true` porque a etiqueta traz a cor da empresa em tom escuro — é a

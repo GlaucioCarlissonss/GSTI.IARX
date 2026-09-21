@@ -40,7 +40,7 @@ const porDescricao = (ctx: Contexto, descricao: string) =>
   listarLancamentos(ctx, {}).itens.find((l) => l.descricao === descricao)!;
 
 test('a coluna existe no modelo, e fora das obrigatórias', () => {
-  assert.equal(TEMPLATE_VERSAO_ATUAL, '1.6');
+  assert.equal(TEMPLATE_VERSAO_ATUAL, '1.7');
   assert.ok(ABAS.Financeiro.colunas.includes('Reconhecido'));
   // Fora das obrigatórias de propósito: um arquivo 1.5 continua entrando.
   assert.ok(!ABAS.Financeiro.obrigatorias.includes('Reconhecido'));

@@ -12,7 +12,10 @@ function lancFiltrados() {
     if (f.de && l.competencia < f.de) return false;
     if (f.ate && l.competencia > f.ate) return false;
     if (f.busca) {
-      const alvo = (l.descricao||'') + ' ' + (l.obs||'') + ' ' + l.tipo + ' ' + (l.filial||'');
+      // O fornecedor entra porque o campo já promete "fornecedor, motivo…" e
+      // procurava em tudo menos nele.
+      const alvo = (l.descricao||'') + ' ' + (l.obs||'') + ' ' + l.tipo + ' ' + (l.filial||'')
+        + ' ' + (l.fornecedor||'');
       if (!alvo.toLowerCase().includes(f.busca.toLowerCase())) return false;
     }
     return true;
@@ -56,7 +59,7 @@ function viewLancamentos() {
         <span class="nota">${inteiro(lista.length)} registros · ${brl(total)}${lista.length>400?' · exibindo os 400 mais recentes':''}</span></header>
       ${mostrados.length === 0 ? '<p class="vazio">Nenhum lançamento com estes filtros.</p>' : `
       <div class="rol"><table>
-        <thead><tr><th>Competência</th>${variasUnidades ? '<th>Unidade</th>' : ''}<th>Filial</th><th>Consumo</th><th>Tipo</th><th>Documento</th><th>Descrição</th>
+        <thead><tr><th>Competência</th>${variasUnidades ? '<th>Unidade</th>' : ''}<th>Filial</th><th>Consumo</th><th>Tipo</th><th>Fornecedor</th><th>Documento</th><th>Descrição</th>
           <th>Origem</th><th>Natureza</th><th>Classificação</th><th class="n">Valor</th><th></th></tr></thead>
         <tbody>${mostrados.map((l) => `<tr data-id="${esc(l.id)}" data-comp="${l.competencia}" data-emp="${esc(l.empresa)}"${classeReconhecimento(l)}>
           <td>${mesExib(l.competencia)}</td>
@@ -64,6 +67,10 @@ function viewLancamentos() {
           <td>${l.filial ? esc(l.filial) : '<em style="color:var(--tinta3)">matriz</em>'}</td>
           <td title="${esc(detalheConsumo(l))}" style="white-space:nowrap">${etiquetaConsumoHtml(l)}</td>
           <td>${esc(l.tipo)}</td>
+          <!-- O favorecido. Em branco nos lançamentos antigos de planilha, que
+               nunca o tiveram; chega preenchido pela carga de Contas a Pagar. -->
+          <td style="max-width:180px">${
+            l.fornecedor ? esc(l.fornecedor) : '<span style="color:var(--tinta3)">—</span>'}</td>
           <!-- O número do documento na origem: é por ele que se confere o
                lançamento contra a nota, e é ele que distingue cinco cobranças
                do mesmo valor no mesmo dia. -->
@@ -86,7 +93,7 @@ function viewLancamentos() {
             <button class="bt fant peq" data-rc>Reclassificar</button>
             <button class="bt fant peq" data-ex>Excluir</button></td>
         </tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="${variasUnidades ? 10 : 9}">Total exibido</td>
+        <tfoot><tr><td colspan="${variasUnidades ? 11 : 10}">Total exibido</td>
           <td class="n">${brl(reais(somaC(mostrados.map((l)=>l.valor))))}</td><td></td></tr></tfoot>
       </table></div>`}
     </section>`;
@@ -183,8 +190,13 @@ function formLancamento(existente) {
       </div>
       <div id="c-extra"></div>
       <div class="campo"><label for="c-cen">Cenário</label><select id="c-cen" name="cenario"${ed?' disabled':''}></select></div>
+      <!-- O favorecido em campo próprio. Era digitado dentro da Descrição, e
+           por isso não somava, não filtrava e não conciliava. -->
+      <div class="campo"><label for="c-forn">Fornecedor</label>
+        <input id="c-forn" name="fornecedor" value="${esc(v.fornecedor||'')}"
+          placeholder="a quem se paga — não é o centro de custo nem a conta"></div>
       <div class="campo"><label for="c-desc">Descrição</label>
-        <input id="c-desc" name="descricao" value="${esc(v.descricao||'')}" placeholder="fornecedor, contrato"></div>
+        <input id="c-desc" name="descricao" value="${esc(v.descricao||'')}" placeholder="o que é a despesa"></div>
       <div class="campo"><label for="c-obs">Observações</label><textarea id="c-obs" name="obs">${esc(v.obs||'')}</textarea></div>
       <div class="campo"><label for="c-just">Justificativa</label>
         <input id="c-just" name="just" placeholder="obrigatória para competências passadas"></div>`,
@@ -354,6 +366,7 @@ async function salvarLancamento(existente, campo, empresa, filial) {
     filial: pagadora,
     tipo: campo('tipo').value,
     classificacao: campo('classificacao').value,
+    fornecedor: campo('fornecedor').value.trim() || null,
     descricao: campo('descricao').value.trim() || null,
     obs: campo('obs').value.trim() || null,
     tipoConsumo: escolhaConsumo,

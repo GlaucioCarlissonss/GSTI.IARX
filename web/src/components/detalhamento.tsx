@@ -255,6 +255,7 @@ export function detalheDeLancamentos(
       { rotulo: 'Filial', valor: (l) => String(l.filial_nome ?? 'Nível empresa') },
       { rotulo: 'Tipo', valor: (l) => String(l.tipo_despesa) },
       { rotulo: 'Descrição', valor: (l) => (l.descricao as string) ?? '—', texto: true },
+      { rotulo: 'Fornecedor', valor: (l) => (l.fornecedor as string) ?? '—', texto: true },
       { rotulo: 'Origem do custo', valor: (l) => (l.origem_custo as string) ?? '—', texto: true },
       { rotulo: 'Destino', valor: (l) => (l.destino_pagamento as string) ?? '—', texto: true },
       // Uma coluna aqui aparece de uma vez em Conferência, Financeiro, Painel

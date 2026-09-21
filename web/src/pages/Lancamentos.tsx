@@ -39,6 +39,8 @@ interface Lancamento {
   tipo_consumo: TipoConsumo;
   beneficia_todas: boolean;
   filiais_beneficiadas: FilialBeneficiada[];
+  /** A quem se pagou — o favorecido. Distinto de origem do custo e de destino do pagamento. */
+  fornecedor: string | null;
   /** Número do documento na origem (`DOCNUMBER` da carga de Contas a Pagar). */
   documento: string | null;
   /** Quem criou o documento no sistema de origem (`CREATIONUSER`). */
@@ -349,6 +351,7 @@ export function PaginaLancamentos() {
                   <th>Filial</th>
                   <th>Consumo</th>
                   <th>Tipo de despesa</th>
+                  <th>Fornecedor</th>
                   <th>Documento</th>
                   <th>Descrição</th>
                   <th>Origem</th>
@@ -369,6 +372,12 @@ export function PaginaLancamentos() {
                       ) : (
                         <span style={{ color: 'var(--tinta-fraca)' }}>—</span>
                       )}
+                    </td>
+                    {/* O favorecido. Fica em branco nos lançamentos antigos de
+                        planilha, que nunca o tiveram — e chega preenchido pela
+                        carga de Contas a Pagar. */}
+                    <td style={{ maxWidth: 200 }}>
+                      {l.fornecedor ?? <span style={{ color: 'var(--tinta-fraca)' }}>—</span>}
                     </td>
                     {/* O número do documento na origem. É por ele que alguém
                         confere um lançamento contra a nota no ERP, e é ele que
@@ -445,7 +454,7 @@ export function PaginaLancamentos() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={8}>Total exibido</td>
+                  <td colSpan={9}>Total exibido</td>
                   <td className="num">{moeda(consulta.dados.itens.reduce((s, l) => s + l.valor, 0))}</td>
                   <td />
                 </tr>
@@ -570,6 +579,7 @@ function FormularioLancamento({
     qtd_parcelas: '',
     valor_refere_se: 'total',
     repetir_ate: '',
+    fornecedor: '',
     descricao: '',
     observacoes: '',
     tipo_consumo: 'integral',
@@ -623,6 +633,7 @@ function FormularioLancamento({
         qtd_parcelas: form.natureza === 'pontual_parcelada' ? Number(form.qtd_parcelas) : null,
         valor_refere_se: form.valor_refere_se,
         repetir_ate: form.natureza === 'fixa' && form.repetir_ate ? form.repetir_ate : null,
+        fornecedor: form.fornecedor || null,
         descricao: form.descricao || null,
         observacoes: form.observacoes || null,
         tipo_consumo: form.tipo_consumo,
@@ -759,8 +770,13 @@ function FormularioLancamento({
           </Campo>
         )}
 
+        {/* O favorecido em campo próprio. Era digitado dentro da Descrição —
+            e por isso não somava, não filtrava e não conciliava. */}
+        <Campo rotulo="Fornecedor" dica="A quem se paga. Não é o centro de custo nem a conta de destino.">
+          <input value={form.fornecedor} onChange={(e) => alterar('fornecedor', e.target.value)} placeholder="razão social ou nome do favorecido" />
+        </Campo>
         <Campo rotulo="Descrição">
-          <input value={form.descricao} onChange={(e) => alterar('descricao', e.target.value)} placeholder="Fornecedor / contrato" />
+          <input value={form.descricao} onChange={(e) => alterar('descricao', e.target.value)} placeholder="o que é a despesa" />
         </Campo>
         <Campo rotulo="Observações">
           <textarea value={form.observacoes} onChange={(e) => alterar('observacoes', e.target.value)} />

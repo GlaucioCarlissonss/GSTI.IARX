@@ -115,7 +115,7 @@ function linhasFinanceiro(_ctx: Contexto, escopo: EscopoOperacao) {
         `SELECT l.id, e.nome AS empresa, f.nome AS filial, t.nome AS tipo, l.competencia, l.valor_centavos,
                 l.natureza, l.classificacao, l.qtd_parcelas, l.parcela_numero, l.lancamento_origem_id,
                 l.cenario, l.origem, l.descricao, l.observacoes, l.tipo_consumo, l.beneficia_todas,
-                l.reconhecido
+                l.reconhecido, l.fornecedor
            FROM lancamentos l
            JOIN empresas e ON e.id = l.empresa_id
            JOIN tipos_despesa t ON t.id = l.tipo_despesa_id
@@ -142,6 +142,7 @@ function linhasFinanceiro(_ctx: Contexto, escopo: EscopoOperacao) {
       tipo_consumo: TipoConsumo | null;
       beneficia_todas: number | null;
       reconhecido: number | null;
+      fornecedor: string | null;
     }>
   );
 
@@ -170,6 +171,7 @@ function linhasFinanceiro(_ctx: Contexto, escopo: EscopoOperacao) {
     'Filiais Beneficiadas': Number(l.beneficia_todas ?? 0) === 1
       ? 'Todas'
       : (beneficiadas.get(l.id) ?? []).map((f) => `${f.empresa_nome} > ${f.nome}`).join('|'),
+    Fornecedor: l.fornecedor ?? '',
     Descrição: l.descricao ?? '',
     Observações: l.observacoes ?? '',
     // Sempre Sim ou Não, nunca vazio: em branco é o que a importação lê como

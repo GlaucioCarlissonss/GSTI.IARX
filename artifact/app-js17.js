@@ -1431,6 +1431,7 @@ function montarNivelDeLancamentos(tabela, linha, no) {
             { nome: 'Peso em ' + dados.nome, valor: pctTxt(pct(c, totalFilial)), cor },
             { nome: 'Competência', valor: mesExib(l.competencia) },
             { nome: 'Tipo de despesa', valor: String(l.tipo || '—') },
+            ...(l.fornecedor ? [{ nome: 'Fornecedor', valor: String(l.fornecedor) }] : []),
             ...(l.origemCusto ? [{ nome: 'Origem do custo', valor: String(l.origemCusto) }] : []),
             ...(l.destinoPagamento ? [{ nome: 'Destino', valor: String(l.destinoPagamento) }] : []),
             { nome: 'Consumo', valor: compartilhada ? resumoConsumo(l) : '100% da filial' },

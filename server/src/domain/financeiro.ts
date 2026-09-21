@@ -283,6 +283,11 @@ function apresentar(linha: LinhaLancamento & Record<string, unknown>, beneficiad
     origem_rotulo: ROTULO_ORIGEM[linha.origem] ?? linha.origem,
     origem_custo: (linha.origem_custo as string | null) ?? null,
     destino_pagamento: (linha.destino_pagamento as string | null) ?? null,
+    // A QUEM SE PAGOU. Distinto de `origem_custo` (centro de custo, setor) e de
+    // `destino_pagamento` (conta): é o favorecido, e é por ele que a carga de
+    // Contas a Pagar concilia. A coluna era gravada desde sempre e morria aqui,
+    // neste mapeador — nenhuma tela tinha o que mostrar.
+    fornecedor: (linha.fornecedor as string | null) ?? null,
     documento: (linha.documento as string | null) ?? null,
     tipo_consumo: tipoConsumo,
     tipo_consumo_rotulo: ROTULO_CONSUMO[tipoConsumo] ?? tipoConsumo,
@@ -582,9 +587,11 @@ function montarFiltro(ctx: Contexto, filtro: FiltroLancamentos) {
     params.push(filtro.reconhecido ? 1 : 0);
   }
   if (filtro.busca?.trim()) {
-    condicoes.push('(l.descricao LIKE ? OR l.observacoes LIKE ? OR t.nome LIKE ?)');
+    // O fornecedor entra aqui porque o campo de busca das telas já promete
+    // "fornecedor, motivo…" desde sempre, e procurava em tudo menos nele.
+    condicoes.push('(l.descricao LIKE ? OR l.observacoes LIKE ? OR t.nome LIKE ? OR l.fornecedor LIKE ?)');
     const alvo = `%${filtro.busca.trim()}%`;
-    params.push(alvo, alvo, alvo);
+    params.push(alvo, alvo, alvo, alvo);
   }
   return { where: condicoes.join(' AND '), params };
 }
@@ -660,6 +667,7 @@ export interface AtualizacaoLancamento {
   observacoes?: string | null;
   origemCusto?: string | null;
   destinoPagamento?: string | null;
+  fornecedor?: string | null;
   documento?: string | null;
   tipoConsumo?: TipoConsumo | null;
   beneficiadas?: number[] | 'todas' | null;
@@ -721,8 +729,8 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
     .prepare(
       `UPDATE lancamentos
           SET filial_id = ?, tipo_despesa_id = ?, competencia = ?, valor_centavos = ?, classificacao = ?,
-              descricao = ?, observacoes = ?, origem_custo = ?, destino_pagamento = ?, documento = ?,
-              tipo_consumo = ?, beneficia_todas = ?,
+              descricao = ?, observacoes = ?, origem_custo = ?, destino_pagamento = ?, fornecedor = ?,
+              documento = ?, tipo_consumo = ?, beneficia_todas = ?,
               atualizado_em = datetime('now')
         WHERE id = ? AND empresa_id = ?`,
     )
@@ -738,6 +746,7 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
       // veio o custo nem para onde foi o pagamento.
       dados.origemCusto !== undefined ? dados.origemCusto : antes.origem_custo,
       dados.destinoPagamento !== undefined ? dados.destinoPagamento : antes.destino_pagamento,
+      dados.fornecedor !== undefined ? dados.fornecedor : antes.fornecedor,
       dados.documento !== undefined ? dados.documento : antes.documento,
       tipoConsumo,
       dados.beneficiadas === 'todas' ? 1 : mexeNoConsumo ? 0 : Number(antes.beneficia_todas ?? 0),

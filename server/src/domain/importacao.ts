@@ -892,6 +892,8 @@ function importarLancamento(
   // reimportar numa base nova preservar a conferência, sem que reimportar um
   // arquivo velho por cima da base viva desfaça a de ninguém.
   const reconhecido = interpretarReconhecido(ler(linha, 'Reconhecido')) === true;
+  // O favorecido (modelo 1.7). Coluna ausente vale nulo, como todo campo novo.
+  const fornecedor = ler(linha, 'Fornecedor') || null;
 
   if (natureza === 'pontual_parcelada' && parcelaNumero === null && (qtdParcelas === null || qtdParcelas < 2)) {
     throw new Error('Despesa pontual parcelada exige "Qtd Parcelas" maior ou igual a 2.');
@@ -975,8 +977,8 @@ function importarLancamento(
       `INSERT INTO lancamentos
          (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
           qtd_parcelas, parcela_numero, lancamento_origem_id, cenario, origem, descricao, observacoes, dedup_hash,
-          tipo_consumo, beneficia_todas, reconhecido, reconhecido_em, reconhecido_via)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          tipo_consumo, beneficia_todas, reconhecido, reconhecido_em, reconhecido_via, fornecedor)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       ctx.empresaId,
@@ -1002,6 +1004,7 @@ function importarLancamento(
       // decidiu): foi a planilha que afirmou. É essa diferença que a auditoria
       // procura quando alguém pergunta quem conferiu.
       reconhecido ? 'planilha' : null,
+      fornecedor,
     );
   const idNovo = Number(info.lastInsertRowid);
   if (tipoConsumo === 'compartilhado') {

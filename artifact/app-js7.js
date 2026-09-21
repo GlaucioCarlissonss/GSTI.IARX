@@ -374,6 +374,9 @@ function semBanco(motivo) {
     // Antes de montar qualquer tela: saber se esta visualização escreve. A tela
     // precisa disso para não oferecer um botão que o armazenamento vai recusar.
     await apurarEscrita();
+    // Depois de saber que escreve, e antes de qualquer número aparecer: tirar
+    // da base a folha de TI que o sistema inventou. Ver `purgarFolhaTI`.
+    await purgarFolhaTI();
     // O cliente vem antes de tudo: é o recorte mais externo, e abrir uma tela
     // antes de escolhê-lo mostraria números de um contratante que ninguém pediu.
     await garantirClientes();

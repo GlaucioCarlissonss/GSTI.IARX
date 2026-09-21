@@ -528,6 +528,60 @@ CREATE INDEX IF NOT EXISTS ix_auditoria_empresa ON auditoria(empresa_id, criado_
   }
 
   semearReconhecedores(db);
+  purgarFolhaTI(db);
+}
+
+/**
+ * Tira da base os lançamentos que o SISTEMA inventou como folha da equipe de TI.
+ *
+ * A carga inicial transformava `dados-origem/TI.xlsx` em lançamento: 57 linhas,
+ * R$ 273.929,60, tipo "Pessoas" e origem "folha_ti". Nenhuma delas existe como
+ * linha de planilha do cliente — era alocação e rateio calculados aqui —, e o
+ * gestor as declarou incorretas em 21/09/2026. `seed.ts` deixou de criá-las;
+ * esta função remove as que já estavam gravadas.
+ *
+ * **É exclusão DEFINITIVA, a pedido, e contraria a regra de exclusão lógica do
+ * projeto.** Por isso deixa uma linha de auditoria com a contagem e o valor: a
+ * pergunta "para onde foram R$ 273.929,60?" precisa ter resposta daqui a seis
+ * meses. `usuario_id` fica nulo porque não houve pessoa — foi a abertura da
+ * base, e inventar um autor seria pior do que admitir que não há um.
+ *
+ * As DUAS condições são exigidas juntas. Na base real elas coincidem
+ * exatamente, mas pedir as duas é o que garante que uma despesa de "Pessoas"
+ * digitada à mão por alguém nunca seja alcançada por esta limpeza.
+ *
+ * Idempotente por natureza: na segunda abertura não há o que apagar.
+ */
+function purgarFolhaTI(db: Conexao): void {
+  const alvo = `FROM lancamentos
+     WHERE origem = 'folha_ti'
+       AND tipo_despesa_id IN (SELECT id FROM tipos_despesa WHERE nome = 'Pessoas')`;
+
+  const resumo = db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(valor_centavos), 0) AS centavos ${alvo}`).get() as {
+    n: number;
+    centavos: number;
+  };
+  if (resumo.n === 0) return;
+
+  // Os clientes atingidos, antes de apagar: depois do DELETE não há como saber.
+  const clientes = (
+    db.prepare(`SELECT DISTINCT cliente_id ${alvo} AND cliente_id IS NOT NULL`).all() as Array<{ cliente_id: number }>
+  ).map((l) => l.cliente_id);
+
+  db.prepare(`DELETE ${alvo}`).run();
+
+  const trilha = db.prepare(
+    `INSERT INTO auditoria (cliente_id, entidade, acao, justificativa, dados_antes)
+     VALUES (?, 'lancamento', 'excluir_definitivo', ?, ?)`,
+  );
+  for (const clienteId of clientes) {
+    trilha.run(
+      clienteId,
+      'Folha da equipe de TI removida a pedido do gestor: os lançamentos eram calculados pelo sistema e não '
+        + 'correspondiam a nenhuma linha das planilhas do cliente.',
+      JSON.stringify({ lancamentos: resumo.n, valor_centavos: resumo.centavos, origem: 'folha_ti', tipo: 'Pessoas' }),
+    );
+  }
 }
 
 /**

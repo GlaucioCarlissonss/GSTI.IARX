@@ -139,7 +139,7 @@ gestor — e isso precisa ser verificável, não explicado:
 | origem | significado |
 |---|---|
 | `planilha` | linha importada das bases enviadas, com o valor intocado |
-| `folha_ti` | custo de pessoal de TI alocado ou rateado; não existia como linha de despesa nas planilhas |
+| `folha_ti` | **descontinuada.** Era o custo de pessoal de TI alocado ou rateado pelo sistema; os 57 lançamentos foram removidos em 21/09/2026 (ver "A folha de TI que saiu da base"). O valor permanece no `type` para que base antiga abra |
 | `projecao_spincare` | mensalidade projetada do novo ERP, ainda não realizada |
 | `manual` | criado ou editado por um usuário dentro do sistema |
 
@@ -1035,6 +1035,64 @@ registrada, com o motivo, e a tela de acesso avisa que o envio não está de pé
 sugerindo pedir a um gestor. Dizer que enviou sem ter enviado é pior do que não
 enviar. O corpo do e-mail **não entra no log**: ele carrega o link. Para ligar
 o envio de verdade, defina `SMTP_URL` e `SMTP_DE`.
+
+## O favorecido: a quem se pagou
+
+Três campos vizinhos do lançamento respondem perguntas diferentes, e confundi-los
+é o erro fácil:
+
+| campo | pergunta |
+| --- | --- |
+| **Fornecedor** | **a quem se pagou** — o favorecido |
+| Origem do custo | de onde o custo veio: centro de custo, setor |
+| Destino do pagamento | para onde o dinheiro foi: conta, agência |
+
+`fornecedor` é gravado desde a primeira carga e por muito tempo **não aparecia
+em lugar nenhum**: o mapeador de linha do domínio o descartava, e daí para
+frente nenhuma tela tinha o que mostrar. Quem precisava dele digitava-o dentro
+da **Descrição** — e por isso ele não somava, não filtrava e não conciliava.
+
+Hoje ele aparece na tabela de Lançamentos, na ficha do Relatório, no
+detalhamento que Conferência, Financeiro, Painel Executivo e Relatório abrem, e
+na planilha (modelo 1.7). É **editável** no formulário e **pesquisável** pela
+busca — que já prometia "fornecedor, motivo…" e procurava em tudo menos nele.
+
+Fica em branco nos lançamentos antigos de planilha: eles nunca tiveram
+favorecido. Chega preenchido pela carga de Contas a Pagar, a partir de
+`SUPPLIERNAME`, e é por ele que essa carga concilia.
+
+## A folha de TI que saiu da base
+
+A carga inicial transformava `dados-origem/TI.xlsx` em lançamento: **57 linhas,
+R$ 273.929,60**, tipo `Pessoas` e origem `folha_ti`. Era o custo de pessoal de
+TI alocado e rateado pelo próprio sistema — **nenhuma dessas linhas existe nas
+planilhas do cliente**, e era essa a maior fonte de divergência entre o total do
+sistema e o que o gestor conhecia.
+
+Em 21/09/2026 o gestor as declarou incorretas e pediu remoção. Duas coisas
+mudaram:
+
+- **A carga deixou de criá-las** (`seed.ts`). O arquivo continua em
+  `dados-origem/`, intocado: o que deixou de existir é a conversão dele em
+  lançamento, não o dado de origem.
+- **As que já estavam gravadas saem sozinhas**, na abertura da base
+  (`purgarFolhaTI` em `db/index.ts`) e na abertura da página hospedada
+  (`purgarFolhaTI` em `app-js16.js`). Uma vez, idempotente, e nunca numa
+  visualização somente-leitura.
+
+Duas condições são exigidas **juntas** — origem `folha_ti` **e** tipo `Pessoas`.
+Na base real elas coincidem exatamente; pedir as duas é o que garante que uma
+despesa de "Pessoas" digitada à mão nunca seja alcançada por uma limpeza que
+roda sozinha.
+
+**É exclusão DEFINITIVA, e contraria a regra de exclusão lógica deste
+documento.** Foi decisão do gestor, registrada aqui. Em troca, a limpeza deixa
+uma linha de auditoria (`entidade: 'lancamento'`, `acao: 'excluir_definitivo'`)
+com a contagem e o valor, sem autor — não houve pessoa, foi a abertura da base,
+e inventar um autor seria pior do que admitir que não há um.
+
+**Os totais do cliente mudaram:** −57 lançamentos, −R$ 273.929,60. Relatório
+apresentado antes disso com o total antigo deixa de bater, e a razão é esta.
 
 ## Consumo da despesa: quem paga e quem usa
 

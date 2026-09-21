@@ -21,7 +21,10 @@
 //     com uma regra a mais, que a importação respeita: coluna AUSENTE OU
 //     VAZIA não mexe em nada. Reimportar uma exportação antiga não pode
 //     desfazer a conferência de ninguém.
-export const TEMPLATE_VERSAO_ATUAL = '1.6';
+// 1.7 acrescentou "Fornecedor" ao Financeiro — o favorecido, que a carga de
+//     Contas a Pagar já gravava e a planilha não levava. Fora das obrigatórias,
+//     como as anteriores.
+export const TEMPLATE_VERSAO_ATUAL = '1.7';
 
 export type NomeAba =
   | 'Filiais'
@@ -78,6 +81,7 @@ const ABAS_BASE: Record<NomeAba, DefinicaoAba> = {
       'Origem',
       'Tipo de Consumo',
       'Filiais Beneficiadas',
+      'Fornecedor',
       'Descrição',
       'Observações',
       'Reconhecido',
@@ -97,6 +101,7 @@ const ABAS_BASE: Record<NomeAba, DefinicaoAba> = {
       Descrição: ['descricao'],
       Observações: ['observacoes', 'obs'],
       Reconhecido: ['reconhecido', 'conferido', 'reconhecidosn', 'despesareconhecida'],
+      Fornecedor: ['fornecedor', 'favorecido', 'credor', 'beneficiario', 'razaosocial'],
     },
     obrigatorias: ['Tipo de Despesa', 'Competência', 'Valor', 'Natureza', 'Classificação'],
   },
@@ -250,6 +255,9 @@ const NOTAS: Partial<Record<NomeAba, Record<string, string>>> = {
     'Filiais Beneficiadas':
       'Só para "beneficia outras": nomes das filiais separados por | (ex.: Filial Norte|Filial Oeste), '
       + 'ou a palavra Todas para todas as filiais do grupo do cliente. A lista é congelada na importação.',
+    Fornecedor:
+      'A quem se pagou — o favorecido. Não confundir com "origem do custo" (centro de custo, setor) '
+      + 'nem com "destino do pagamento" (conta). É por ele que a carga de Contas a Pagar concilia.',
     Reconhecido:
       'Sim | Não — a despesa já foi conferida. EM BRANCO não altera nada: reimportar um arquivo antigo '
       + 'não desfaz conferência. Escrever "Não" numa despesa já reconhecida a devolve para a fila.',

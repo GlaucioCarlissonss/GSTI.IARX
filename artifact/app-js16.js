@@ -160,6 +160,83 @@ const PERFIL_LEITURA_COMPARTILHADA = () => ({
  * uma gravação de sonda que o dono e os editores concluem e quem só vê tem
  * recusada. É uma escrita por abertura, num documento que não é de negócio.
  */
+/**
+ * Tira da base a folha da equipe de TI que o sistema inventou como lançamento.
+ *
+ * A carga inicial transformava `TI.xlsx` em 57 lançamentos de tipo "Pessoas" e
+ * origem "folha_ti" — R$ 273.929,60 que não correspondem a linha nenhuma das
+ * planilhas do cliente: eram alocação e rateio calculados pelo sistema. O
+ * gestor os declarou incorretos em 21/09/2026, e a carga deixou de criá-los.
+ * Esta função remove os que já estavam gravados.
+ *
+ * **É exclusão DEFINITIVA, a pedido**, e contraria a regra de exclusão lógica
+ * do projeto — daí a linha de trilha com a contagem e o valor.
+ *
+ * Quatro cuidados, e cada um evita um estrago:
+ *
+ * 1. **Roda uma vez.** A marca fica no próprio armazenamento; sem ela, cada
+ *    abertura varreria a base inteira para não achar nada.
+ * 2. **Não escreve em visualização só de leitura.** Quem abriu o link para ver
+ *    não tem o que gravar, e insistir só produziria erro no console.
+ * 3. **As DUAS condições juntas** (origem E tipo): uma despesa de "Pessoas"
+ *    digitada à mão por alguém nunca pode ser alcançada por isto.
+ * 4. **Regrava só os meses que mudaram.** Reescrever documento que não mudou
+ *    gera escrita por nada e reabre a janela de conflito com outro editor.
+ */
+const MARCA_PURGA_FOLHA = 'sistema/purga-folha-ti';
+
+async function purgarFolhaTI() {
+  if (E.somenteLeitura) return;
+  try {
+    const marca = await E.db.doc(MARCA_PURGA_FOLHA).get();
+    if (marca.exists) return;
+
+    const snap = await E.db.collection('lanc').get();
+    let removidos = 0;
+    let centavos = 0;
+    const clientes = new Set();
+
+    for (const d of snap.docs) {
+      const dados = d.data() || {};
+      const itens = dados.itens || [];
+      const ficam = itens.filter((it) => !(it.origem === 'folha_ti' && it.tipo === 'Pessoas'));
+      if (ficam.length === itens.length) continue;
+
+      for (const it of itens) {
+        if (ficam.includes(it)) continue;
+        removidos += 1;
+        centavos += cent(it.valor);
+      }
+      const empresa = E.empresas.find((e) => e.id === dados.empresa);
+      if (empresa) clientes.add(clienteDaEmpresa(empresa));
+
+      const corpo = { ...dados, itens: ficam };
+      await E.db.doc('lanc/' + d.id).set(corpo);
+      E.lanc.set(d.id, corpo);
+    }
+
+    await E.db.doc(MARCA_PURGA_FOLHA).set({ quando: new Date().toISOString(), removidos, centavos });
+    if (!removidos) return;
+
+    for (const cliente of clientes) {
+      const anterior = E.clienteSel;
+      E.clienteSel = cliente;
+      await Loja.auditar({
+        entidade: 'lancamento',
+        acao: 'excluir_definitivo',
+        justificativa: 'Folha da equipe de TI removida a pedido do gestor: os lançamentos eram calculados pelo '
+          + 'sistema e não correspondiam a nenhuma linha das planilhas do cliente.',
+        antes: { lancamentos: removidos, valor: reais(centavos), origem: 'folha_ti', tipo: 'Pessoas' },
+      }, null);
+      E.clienteSel = anterior;
+    }
+  } catch (e) {
+    // Uma limpeza que falha não pode impedir o sistema de abrir: o gestor
+    // precisa da tela mais do que da limpeza, e a próxima abertura tenta de novo.
+    console.warn('Não foi possível remover a folha de TI:', e && e.message);
+  }
+}
+
 async function apurarEscrita() {
   try {
     await E.db.doc('sonda/escrita').set({ quando: new Date().toISOString() });

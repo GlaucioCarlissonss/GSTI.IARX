@@ -319,137 +319,17 @@ async function carregarDespesas(amb: Ambiente): Promise<Resumo> {
   return resumo;
 }
 
-// -------------------------------------------------------- folha da equipe de TI
-
-/** Alocação nominal definida pelo gestor; os demais entram por rateio. */
-const ALOCACAO_DIRETA: Record<string, { empresa: string; filial: string }> = {
-  SARA: { empresa: 'MILAGRES', filial: 'HM PB' },
-  ROBERTO: { empresa: 'MILAGRES', filial: 'HM PB' },
-  KAUA: { empresa: 'RESIDENCIAL', filial: 'HR JP' },
-};
-
-function chaveColaborador(nome: string): string {
-  return nome
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .split(/\s+/)[0]!;
-}
-
-async function carregarFolhaTI(amb: Ambiente, gastoPorEmpresaMes: Map<string, number>): Promise<Resumo> {
-  const resumo: Resumo = { inseridos: 0, ignorados: 0, centavos: 0, porCompetencia: new Map(), avisos: [] };
-  const caminho = resolve(DIR_DADOS, 'TI.xlsx');
-  if (!existsSync(caminho)) {
-    resumo.avisos.push('Arquivo TI.xlsx ausente: a folha da equipe de TI não foi carregada.');
-    return resumo;
-  }
-
-  const linhas = await lerAba('TI.xlsx', 'Geral');
-  const colaboradores = linhas
-    .map((l) => ({
-      nome: texto(l['COLABORADOR ']) || texto(l.COLABORADOR),
-      admissao: l['ADMISSÃO '] ?? l['ADMISSÃO'],
-      custo: l['CUSTO MÉDIO do COLABORADOR com TRIBUTO'],
-      funcao: texto(l['FUNÇÃO']),
-      vinculo: texto(l.VINCULO),
-    }))
-    // A linha de total da planilha não tem colaborador.
-    .filter((c) => c.nome && c.custo !== null && c.custo !== undefined && String(c.custo).trim() !== '');
-
-  const competencias = intervalo(paraInterno('01/2026'), paraInterno('08/2026'));
-  const inserir = db().prepare(
-    `INSERT INTO lancamentos
-       (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
-        descricao, observacoes, cenario, origem, dedup_hash)
-     VALUES (?, ?, ?, ?, ?, 'fixa', 'despesa', ?, ?, 'oficial', 'folha_ti', ?)`,
-  );
-
-  for (const competencia of competencias) {
-    const exibicao = paraExibicao(competencia);
-    const ativos = colaboradores.filter((c) => {
-      const admissao = c.admissao instanceof Date ? c.admissao : new Date(String(c.admissao));
-      if (Number.isNaN(admissao.getTime())) return true;
-      const mesAdmissao = `${admissao.getUTCFullYear()}-${String(admissao.getUTCMonth() + 1).padStart(2, '0')}`;
-      return mesAdmissao <= competencia;
-    });
-
-    // 1) Alocação direta nas unidades indicadas pelo gestor.
-    const rateaveis: typeof ativos = [];
-    for (const colaborador of ativos) {
-      const destino = ALOCACAO_DIRETA[chaveColaborador(colaborador.nome)];
-      if (!destino) {
-        rateaveis.push(colaborador);
-        continue;
-      }
-      const ctx = contextoDe(amb, destino.empresa);
-      const centavos = paraCentavos(colaborador.custo as number);
-      inserir.run(
-        ctx.empresaId,
-        idFilial(amb, destino.empresa, destino.filial),
-        idTipo(amb, destino.empresa, 'Pessoas'),
-        competencia,
-        centavos,
-        `${colaborador.funcao || 'Equipe de TI'} — ${colaborador.nome}`,
-        `Custo médio com tributos. Alocação direta em ${destino.filial}. Vínculo: ${colaborador.vinculo || 'n/d'}.`,
-        chaveDedup(['folha-ti', competencia, colaborador.nome]),
-      );
-      resumo.inseridos += 1;
-      resumo.centavos += centavos;
-      resumo.porCompetencia.set(exibicao, (resumo.porCompetencia.get(exibicao) ?? 0) + centavos);
-    }
-
-    // 2) Equipe corporativa rateada proporcionalmente ao gasto de TI do mês.
-    const totalRateavel = rateaveis.reduce((s, c) => s + paraCentavos(c.custo as number), 0);
-    if (totalRateavel === 0) continue;
-
-    const pesos = EMPRESAS.map((empresa) => gastoPorEmpresaMes.get(`${empresa}::${competencia}`) ?? 0);
-    const somaPesos = pesos.reduce((a, b) => a + b, 0);
-    // Sem gasto no mês (base ausente), o rateio cai para partes iguais.
-    const cotas =
-      somaPesos > 0
-        ? distribuirProporcional(totalRateavel, pesos)
-        : ratear(totalRateavel, EMPRESAS.length);
-
-    EMPRESAS.forEach((empresa, i) => {
-      const cota = cotas[i]!;
-      if (cota <= 0) return;
-      const ctx = contextoDe(amb, empresa);
-      const participacao = somaPesos > 0 ? ((pesos[i]! / somaPesos) * 100).toFixed(1) : (100 / EMPRESAS.length).toFixed(1);
-      inserir.run(
-        ctx.empresaId,
-        null, // rateio corporativo fica no nível empresa, sem filial
-        idTipo(amb, empresa, 'Pessoas'),
-        competencia,
-        cota,
-        'Equipe corporativa de TI (rateio)',
-        `Rateio de ${rateaveis.length} colaborador(es) corporativo(s) de TI, proporcional ao gasto de TI do grupo no mês (${participacao}%).`,
-        chaveDedup(['folha-ti-rateio', competencia, empresa]),
-      );
-      resumo.inseridos += 1;
-      resumo.centavos += cota;
-      resumo.porCompetencia.set(exibicao, (resumo.porCompetencia.get(exibicao) ?? 0) + cota);
-    });
-  }
-  return resumo;
-}
-
-/** Rateio proporcional que fecha exatamente no total (sobras nos maiores pesos). */
-export function distribuirProporcional(total: number, pesos: number[]): number[] {
-  const soma = pesos.reduce((a, b) => a + b, 0);
-  if (soma <= 0) return pesos.map(() => 0);
-  const brutos = pesos.map((p) => (total * p) / soma);
-  const cotas = brutos.map((b) => Math.floor(b));
-  let resto = total - cotas.reduce((a, b) => a + b, 0);
-  const ordem = brutos
-    .map((b, i) => ({ i, frac: b - Math.floor(b) }))
-    .sort((a, b) => b.frac - a.frac);
-  for (const { i } of ordem) {
-    if (resto <= 0) break;
-    cotas[i] = cotas[i]! + 1;
-    resto -= 1;
-  }
-  return cotas;
-}
+// A FOLHA DA EQUIPE DE TI SAIU DA CARGA, a pedido do gestor.
+//
+// `TI.xlsx` virava 57 lançamentos de tipo "Pessoas" e origem "folha_ti" —
+// R$ 273.929,60 que o SISTEMA inventava: o custo de pessoal alocado e
+// rateado não constava como linha em planilha nenhuma do cliente, e os
+// números não conferiam com o que ele conhecia. Em 21/09/2026 ficou decidido
+// que esses lançamentos saem de vez (ver `purgarFolhaTI` em `db/index.ts`,
+// que limpa o que já estava gravado).
+//
+// O arquivo continua em `dados-origem/`, intocado: o que deixou de existir é
+// a conversão dele em lançamento, não o dado de origem.
 
 // --------------------------------------------------------------- SpinCare
 
@@ -609,20 +489,6 @@ async function principal() {
 
   const despesas = await carregarDespesas(amb);
 
-  // Base do rateio da folha: gasto de TI por empresa e competência.
-  const gastoPorEmpresaMes = new Map<string, number>();
-  for (const [empresa, ctx] of amb.contextos) {
-    for (const linha of db()
-      .prepare(
-        `SELECT competencia, SUM(valor_centavos) AS total FROM lancamentos
-          WHERE empresa_id = ? AND excluido_em IS NULL GROUP BY competencia`,
-      )
-      .all(ctx.empresaId) as Array<{ competencia: string; total: number }>) {
-      gastoPorEmpresaMes.set(`${empresa}::${linha.competencia}`, linha.total);
-    }
-  }
-
-  const folha = await carregarFolhaTI(amb, gastoPorEmpresaMes);
   const spincare = carregarSpinCare(amb);
 
   // ------------------------------------------------------------- relatório
@@ -638,19 +504,18 @@ async function principal() {
   console.log(
     `\nDespesas de TI ... ${despesas.inseridos} lançamentos, ${brl(despesas.centavos)} (${despesas.ignorados} ignorados)`,
   );
-  console.log(`Folha de TI ...... ${folha.inseridos} lançamentos, ${brl(folha.centavos)}`);
   console.log(`SpinCare ......... ${spincare.inseridos} lançamentos projetados, ${brl(spincare.centavos)}`);
 
-  console.log('\nRealizado por competência (despesas + folha):');
+  console.log('\nRealizado por competência:');
   const mensal = new Map<string, number>();
-  for (const fonte of [despesas, folha]) {
+  for (const fonte of [despesas]) {
     for (const [mes, v] of fonte.porCompetencia) mensal.set(mes, (mensal.get(mes) ?? 0) + v);
   }
   [...mensal.entries()]
     .sort((a, b) => paraInterno(a[0]).localeCompare(paraInterno(b[0])))
     .forEach(([mes, v]) => console.log(`  ${mes}: ${brl(v)}`));
 
-  const avisos = [...despesas.avisos, ...folha.avisos, ...spincare.avisos];
+  const avisos = [...despesas.avisos, ...spincare.avisos];
   if (avisos.length > 0) {
     console.log(`\nAvisos (${avisos.length}):`);
     for (const aviso of [...new Set(avisos)].slice(0, 20)) console.log(`  - ${aviso}`);

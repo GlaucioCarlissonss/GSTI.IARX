@@ -588,18 +588,22 @@ function formCadastro(tipo) {
  * A trilha é do CLIENTE — um documento só, não um por matriz. `empresa` em
  * cada linha é o CONTEXTO do evento: presente para o que pertence a uma
  * matriz, ausente para o que é do cliente inteiro (usuário, perfil). Já foi
- * por matriz; sem o documento novo, promove os antigos na primeira leitura —
- * o mesmo padrão já usado para integrações e para usuários/perfis.
+ * por matriz; os documentos antigos são promovidos na leitura — o mesmo padrão
+ * já usado para integrações e para usuários/perfis.
+ *
+ * A promoção acontece SEMPRE, e não só quando o documento novo está ausente.
+ * Com a condição antiga bastava UM evento auditado — uma edição, uma carga —
+ * para o documento novo passar a existir e o histórico anterior sumir da tela
+ * para sempre. Nada nunca copia o antigo para dentro do novo, então juntar os
+ * dois a cada leitura não duplica nada.
  */
 async function viewAuditoria() {
   const cliente = E.clienteSel;
   const s = await E.db.doc('auditoria/cliente__' + cliente).get();
   let itens = s.exists ? (s.data().itens || []) : [];
-  if (!s.exists) {
-    for (const e of matrizesDoClienteAtivo()) {
-      const antigo = await E.db.doc('auditoria/' + e).get();
-      for (const a of (antigo.exists ? (antigo.data().itens || []) : [])) itens.push({ ...a, empresa: e });
-    }
+  for (const e of matrizesDoClienteAtivo()) {
+    const antigo = await E.db.doc('auditoria/' + e).get();
+    for (const a of (antigo.exists ? (antigo.data().itens || []) : [])) itens.push({ ...a, empresa: e });
   }
   itens.sort((a, b) => String(b.quando || '').localeCompare(String(a.quando || '')));
 

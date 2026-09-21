@@ -51,7 +51,10 @@ const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||''));
   // ---------------------------------------------------------- competências
   console.log('COMPETÊNCIA — somar vários meses');
   const so08 = await kpi();
-  confere('mês único (08/2026)', so08, 1806389);
+  // Era 1806389 até 21/09/2026. A diferença de R$ 2.035,05 é a folha da equipe
+  // de TI deste mês, que o sistema inventava como lançamento e foi removida da
+  // base a pedido do gestor (ver `purgarFolhaTI`).
+  confere('mês único (08/2026)', so08, 1602884);
   await marcar('p-comp', ['2026-07']);
   confere('rótulo do seletor', /^2 selecionados de \d+$/.test(await rotulo('p-comp')), true);
   const doisMeses = await kpi();
@@ -125,7 +128,15 @@ const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||''));
   const cabAud = await pag.$$eval('#pagina thead th', (ts) => ts.map((t) => t.textContent));
   console.log('    colunas da auditoria:', cabAud.join(' | '));
   confere('auditoria ganha coluna de unidade', cabAud.includes('Unidade'), true);
-  confere('auditoria junta as duas trilhas', await pag.$$eval('#pagina tbody tr', (r) => r.length), 2);
+  // As duas sementes acima têm de aparecer — é isso que a promoção do formato
+  // antigo promete. A contagem é >= e não == de propósito: a trilha do cliente
+  // pode ter eventos legítimos de outras operações (a exclusão da folha de TI,
+  // por exemplo), e prender o teste ao total faria qualquer evento novo
+  // quebrá-lo sem que a promoção tivesse parado de funcionar.
+  const linhasAud = await pag.$$eval('#pagina tbody tr', (r) => r.length);
+  confere('auditoria junta as duas trilhas', linhasAud >= 2, true);
+  confere('e as sementes das duas matrizes estão lá',
+    (await pag.$eval('#pagina', (n) => n.textContent)).split('semente do teste').length - 1, 2);
 
   // O filtro de empresa vive na barra DA TELA: em Auditoria ele nem existe.
   // Voltar ao Painel é o que traz o seletor de volta — e é a demonstração de

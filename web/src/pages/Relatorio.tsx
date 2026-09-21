@@ -62,6 +62,7 @@ export interface Lancamento {
   origem_rotulo: string;
   origem_custo: string | null;
   destino_pagamento: string | null;
+  fornecedor: string | null;
   documento: string | null;
   cenario: string;
   filial_nome: string;
@@ -504,6 +505,8 @@ function DetalheLancamento({ lancamento: l, aoFechar }: { lancamento: Lancamento
       <dl className="ficha">
         <dt>Descrição</dt>
         <dd>{l.descricao ?? '—'}</dd>
+        <dt>Fornecedor</dt>
+        <dd>{l.fornecedor ?? 'não informado'}</dd>
         <dt>Origem do custo</dt>
         <dd>{l.origem_custo ?? 'não informada'}</dd>
         <dt>Destino do pagamento</dt>

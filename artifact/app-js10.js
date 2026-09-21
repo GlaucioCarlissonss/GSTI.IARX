@@ -52,7 +52,7 @@ const ABAS_MODELO_BASE = {
   Financeiro: {
     colunas: ['Filial', 'Tipo de Despesa', 'Competência', 'Valor', 'Natureza', 'Classificação',
       'Qtd Parcelas', 'Parcela', 'Grupo', 'Cenário', 'Origem', 'Tipo de Consumo', 'Filiais Beneficiadas',
-      'Descrição', 'Observações'],
+      'Fornecedor', 'Descrição', 'Observações'],
     obrigatorias: ['Tipo de Despesa', 'Competência', 'Valor', 'Natureza', 'Classificação'],
     apelidos: {
       'Tipo de Despesa': ['tipo', 'tipodespesa', 'tipodedespesa', 'centrocusto', 'centrodecusto'],
@@ -68,6 +68,7 @@ const ABAS_MODELO_BASE = {
       'Filiais Beneficiadas': ['filiaisbeneficiadas', 'beneficiadas', 'filiaisbeneficiarias', 'beneficiarias'],
       'Descrição': ['descricao', 'historico'],
       'Observações': ['observacoes', 'obs'],
+      'Fornecedor': ['fornecedor', 'favorecido', 'credor', 'beneficiario', 'razaosocial'],
       Filial: ['filial', 'unidade'],
     },
   },
@@ -231,6 +232,7 @@ function linhasFinanceiro(empresa) {
       // pessoa registrou, e reexportar a lista congelada como se fosse a
       // escolha original apagaria essa diferença.
       'Filiais Beneficiadas': l.beneficiaTodas ? 'Todas' : beneficiadasDe(l).join('|'),
+      'Fornecedor': l.fornecedor || '',
       'Descrição': l.descricao || '', 'Observações': l.obs || '',
     }));
 }
@@ -576,6 +578,7 @@ async function importarFinanceiro(empresa, aba, opcoes, rel) {
 
     const registro = { filial, tipo, competencia, valor, natureza, classificacao,
       parcela, qtdParcelas, cenario, origem, tipoConsumo, beneficiadas, beneficiaTodas,
+      fornecedor: ler(linha, 'Fornecedor') || null,
       descricao: ler(linha, 'Descrição') || null, obs: ler(linha, 'Observações') || null,
       grupo: ler(linha, 'Grupo') || null };
 
@@ -608,7 +611,7 @@ async function importarFinanceiro(empresa, aba, opcoes, rel) {
       const id = novoId();
       itens.push({ id, grupo: r.grupo || 'g' + id, filial:r.filial, tipo:r.tipo, valor:r.valor,
         natureza:r.natureza, classificacao:r.classificacao, qtdParcelas:r.qtdParcelas, parcela:r.parcela,
-        cenario:r.cenario, origem:r.origem, descricao:r.descricao, obs:r.obs,
+        cenario:r.cenario, origem:r.origem, fornecedor:r.fornecedor, descricao:r.descricao, obs:r.obs,
         tipoConsumo:r.tipoConsumo, beneficiadas:r.beneficiadas, beneficiaTodas:r.beneficiaTodas });
     }
     await Loja.gravarMes(empresa, comp, itens);

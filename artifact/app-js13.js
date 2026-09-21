@@ -91,7 +91,8 @@ function montarPivot(lancamentos) {
 function resumoDoLancamento(l) {
   return [
     l.descricao || l.tipo,
-    '\n\nOrigem do custo: ' + (l.origemCusto || 'não informada'),
+    '\n\nFornecedor: ' + (l.fornecedor || 'não informado'),
+    '\nOrigem do custo: ' + (l.origemCusto || 'não informada'),
     '\nDestino do pagamento: ' + (l.destinoPagamento || 'não informado'),
     '\nValor: ' + brl(l.valor) + ' · ' + mesExib(l.competencia),
     l.documento ? '\nDocumento: ' + l.documento : '',
@@ -305,7 +306,9 @@ async function viewRelatorio() {
       const detalhe = linha.itens.map((l) => `<tr class="lancamento" data-rlanc="${esc(l.id)}" title="${esc(resumoDoLancamento(l))}"${
           consumoDe(l) === 'compartilhado' ? ` data-compartilhada style="--cor:${corCompartilhada(l.empresa)}"` : ''}>
           <th style="padding-left:54px;font-weight:400"><span style="color:var(--tinta2)">${esc(l.descricao || l.tipo)}</span>
-            ${l.origemCusto ? `<div style="font-size:11px;color:var(--tinta3)">${esc(l.origemCusto)}${
+            ${l.fornecedor || l.origemCusto ? `<div style="font-size:11px;color:var(--tinta3)">${
+              l.fornecedor ? esc(l.fornecedor) : ''}${l.fornecedor && l.origemCusto ? ' · ' : ''}${
+              l.origemCusto ? esc(l.origemCusto) : ''}${
               l.destinoPagamento ? ' → ' + esc(l.destinoPagamento) : ''}</div>` : ''}</th>
           ${meses.map((m) => `<td class="n" style="color:var(--tinta2)">${l.competencia === m ? brl(l.valor) : ''}</td>`).join('')}
           <td class="n" style="color:var(--tinta2)">${brl(l.valor)}</td></tr>`).join('');
@@ -354,6 +357,7 @@ function detalheDoLancamento(l) {
       </div>
       <dl class="ficha">
         ${linha('Descrição', l.descricao || '—')}
+        ${linha('Fornecedor', l.fornecedor || 'não informado')}
         ${linha('Origem do custo', l.origemCusto || 'não informada')}
         ${linha('Destino do pagamento', l.destinoPagamento || 'não informado')}
         ${linha('Consumo', detalheConsumo(l))}
