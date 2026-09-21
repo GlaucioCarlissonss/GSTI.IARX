@@ -8,6 +8,13 @@ import { FichasSelecao, SeletorMulti } from '../components/seletor-multi';
 import { competenciaAtual, competenciaValida, inteiro, moeda, ROTULO_NATUREZA } from '../lib/formato';
 import { BlocosPorUnidade, SeletorModo, useModoVisao, type LinhaVisao } from '../components/visao-financeira';
 import { useExpansao } from '../lib/expansao';
+import {
+  detalheConsumo,
+  resumoConsumo,
+  tipoDe,
+  type FilialBeneficiada,
+  type TipoConsumo,
+} from '../lib/consumo';
 
 interface Lancamento {
   id: number;
@@ -27,6 +34,9 @@ interface Lancamento {
   origem_rotulo: string;
   descricao: string | null;
   observacoes: string | null;
+  tipo_consumo: TipoConsumo;
+  beneficia_todas: boolean;
+  filiais_beneficiadas: FilialBeneficiada[];
 }
 
 interface Pagina {
@@ -328,6 +338,7 @@ export function PaginaLancamentos() {
                 <tr>
                   <th>Competência</th>
                   <th>Filial</th>
+                  <th>Consumo</th>
                   <th>Tipo de despesa</th>
                   <th>Descrição</th>
                   <th>Origem</th>
@@ -342,6 +353,13 @@ export function PaginaLancamentos() {
                   <tr key={l.id}>
                     <td style={{ whiteSpace: 'nowrap' }}>{l.competencia}</td>
                     <td>{l.filial_nome ?? <em style={{ color: 'var(--tinta-fraca)' }}>empresa</em>}</td>
+                    <td title={detalheConsumo(l)} style={{ whiteSpace: 'nowrap' }}>
+                      {tipoDe(l) === 'compartilhado' ? (
+                        <Etiqueta texto={resumoConsumo(l)} tom="atencao" />
+                      ) : (
+                        <span style={{ color: 'var(--tinta-fraca)' }}>—</span>
+                      )}
+                    </td>
                     <td>{l.tipo_despesa}</td>
                     <td style={{ maxWidth: 320 }}>
                       {l.descricao}
@@ -399,7 +417,7 @@ export function PaginaLancamentos() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={7}>Total exibido</td>
+                  <td colSpan={8}>Total exibido</td>
                   <td className="num">{moeda(consulta.dados.itens.reduce((s, l) => s + l.valor, 0))}</td>
                   <td />
                 </tr>
@@ -523,6 +541,7 @@ function FormularioLancamento({
     repetir_ate: '',
     descricao: '',
     observacoes: '',
+    tipo_consumo: 'integral',
     justificativa: '',
   };
   const [form, setForm] = useState(vazio);
@@ -530,6 +549,9 @@ function FormularioLancamento({
   const [enviando, setEnviando] = useState(false);
 
   const alterar = (chave: string, valor: string) => setForm((f) => ({ ...f, [chave]: valor }));
+  // Fora do `form` porque é lista, e `form` é um mapa de strings. O sentinela
+  // 'todas' viaja junto com os ids: é a intenção, e o servidor a expande.
+  const [beneficiadas, setBeneficiadas] = useState<string[]>([]);
 
   // Filial e tipo de despesa são da unidade escolhida no formulário: oferecer
   // os da unidade errada faria o servidor recusar o que a tela ofereceu.
@@ -540,6 +562,16 @@ function FormularioLancamento({
     [unidade],
   );
   const tipos = tiposDaUnidade.dados ?? [];
+
+  // Atravessa as matrizes de propósito: quem consome uma licença centralizada
+  // pode estar em outra matriz do mesmo cliente. A pagadora fica fora — ela não
+  // se beneficia de si mesma.
+  const itensBeneficiadas = [
+    { valor: 'todas', rotulo: 'Todas as filiais do grupo' },
+    ...filiais
+      .filter((f) => String(f.id) !== form.filial_id)
+      .map((f) => ({ valor: String(f.id), rotulo: f.nome })),
+  ];
 
   const submeter = async (evento: FormEvent) => {
     evento.preventDefault();
@@ -562,9 +594,17 @@ function FormularioLancamento({
         repetir_ate: form.natureza === 'fixa' && form.repetir_ate ? form.repetir_ate : null,
         descricao: form.descricao || null,
         observacoes: form.observacoes || null,
+        tipo_consumo: form.tipo_consumo,
+        filiais_beneficiadas:
+          form.tipo_consumo !== 'compartilhado'
+            ? null
+            : beneficiadas.includes('todas')
+              ? 'todas'
+              : beneficiadas.map(Number),
         justificativa: form.justificativa || null,
       });
       setForm(vazio);
+      setBeneficiadas([]);
       aoSalvar();
       aoFechar();
     } catch (e) {
@@ -637,6 +677,29 @@ function FormularioLancamento({
               <option value="investimento">Investimento</option>
             </select>
           </Campo>
+        </div>
+
+        <div className="grade c2">
+          <Campo rotulo="Tipo de consumo" dica="Quem usa o que esta unidade paga.">
+            <select value={form.tipo_consumo} onChange={(e) => alterar('tipo_consumo', e.target.value)}>
+              <option value="integral">100% da filial</option>
+              <option value="compartilhado">Paga pela filial, beneficia outras</option>
+            </select>
+          </Campo>
+          {form.tipo_consumo === 'compartilhado' && (
+            <Campo
+              rotulo="Filiais beneficiadas"
+              dica="Quem consome esta despesa. A lista é gravada como está hoje: uma filial cadastrada depois não entra neste lançamento."
+            >
+              <SeletorMulti
+                rotulo="Filiais beneficiadas"
+                largura={260}
+                itens={itensBeneficiadas}
+                selecionados={beneficiadas}
+                aoMudar={setBeneficiadas}
+              />
+            </Campo>
+          )}
         </div>
 
         {form.natureza === 'pontual_parcelada' && (

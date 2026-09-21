@@ -20,6 +20,7 @@ import { EXPLICACAO, Filtro, FiltroUnidades } from '../components/filtro-escopo'
 import { Aviso, Campo, Carregando, Cartao, Etiqueta, Modal, UltimaAtualizacao } from '../components/base';
 import { SeletorMulti } from '../components/seletor-multi';
 import { competenciaValida, inteiro, moeda } from '../lib/formato';
+import { detalheConsumo, type FilialBeneficiada, type TipoConsumo } from '../lib/consumo';
 import { useExpansao } from '../lib/expansao';
 import { BlocosPorUnidade, SeletorModo, useModoVisao } from '../components/visao-financeira';
 
@@ -62,6 +63,9 @@ export interface Lancamento {
   cenario: string;
   filial_nome: string;
   tipo_despesa: string;
+  tipo_consumo: TipoConsumo;
+  beneficia_todas: boolean;
+  filiais_beneficiadas: FilialBeneficiada[];
 }
 
 interface Detalhe {
@@ -79,6 +83,7 @@ export function resumoDoLancamento(l: Lancamento): string {
     l.descricao || l.tipo_despesa,
     `\n\nOrigem do custo: ${l.origem_custo ?? 'não informada'}`,
     `\nDestino do pagamento: ${l.destino_pagamento ?? 'não informado'}`,
+    `\nConsumo: ${detalheConsumo(l)}`,
     `\nValor: ${dinheiro(l.valor_centavos)} · ${l.competencia}`,
     l.documento ? `\nDocumento: ${l.documento}` : '',
     l.parcela_numero && l.qtd_parcelas ? `\nParcela ${l.parcela_numero} de ${l.qtd_parcelas}` : '',
@@ -465,6 +470,8 @@ function DetalheLancamento({ lancamento: l, aoFechar }: { lancamento: Lancamento
         <dd>{l.origem_custo ?? 'não informada'}</dd>
         <dt>Destino do pagamento</dt>
         <dd>{l.destino_pagamento ?? 'não informado'}</dd>
+        <dt>Consumo</dt>
+        <dd>{detalheConsumo(l)}</dd>
         <dt>Documento vinculado</dt>
         <dd>{l.documento ?? '—'}</dd>
         <dt>Filial</dt>

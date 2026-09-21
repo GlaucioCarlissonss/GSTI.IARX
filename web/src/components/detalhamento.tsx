@@ -13,6 +13,7 @@ import { api } from '../lib/api';
 import { Aviso, Carregando, Etiqueta, Modal } from './base';
 import { inteiro, moeda, ROTULO_STATUS_PROJETO, ROTULO_STATUS_TAREFA } from '../lib/formato';
 import { ligarColunasAjustaveis } from '../lib/colunas';
+import { resumoConsumo, type ComConsumo } from '../lib/consumo';
 
 /** Coluna do detalhamento. `n` alinha à direita, para números. */
 export interface ColunaDetalhe<T> {
@@ -256,6 +257,9 @@ export function detalheDeLancamentos(
       { rotulo: 'Descrição', valor: (l) => (l.descricao as string) ?? '—', texto: true },
       { rotulo: 'Origem do custo', valor: (l) => (l.origem_custo as string) ?? '—', texto: true },
       { rotulo: 'Destino', valor: (l) => (l.destino_pagamento as string) ?? '—', texto: true },
+      // Uma coluna aqui aparece de uma vez em Conferência, Financeiro, Painel
+      // Executivo e Relatório: as quatro abrem os registros por este pedido.
+      { rotulo: 'Consumo', valor: (l) => resumoConsumo(l as ComConsumo), texto: true },
       { rotulo: 'Procedência', valor: (l) => String(l.origem_rotulo) },
       { rotulo: 'Valor', valor: (l) => moeda(Number(l.valor_centavos) / 100), n: true },
     ],
