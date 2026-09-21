@@ -21,6 +21,7 @@ import { criarLancamento } from '../domain/financeiro.js';
 import { comEmpresaEmFoco } from '../domain/escopo.js';
 import { gravarChamado } from '../domain/suporte.js';
 import { criarProjeto, criarTarefa } from '../domain/projetos.js';
+import { criarPlano } from '../domain/reducao.js';
 import { clienteDaEmpresa } from '../domain/clientes.js';
 import { competenciaAtual, paraExibicao, somarMeses } from '../domain/competencia.js';
 import type { Contexto } from '../domain/contexto.js';
@@ -109,6 +110,14 @@ criarTarefa(ctx, projeto.id, {
   mesFimPlanejado: mes,
 });
 
+// Um item no plano de redução: sem ele o indicador do topo abre vazio, e a
+// varredura não teria como distinguir "tela quebrada" de "nada cadastrado".
+criarPlano(ctx, {
+  nome: 'Corte de licenças',
+  tipo_despesa_id: tipo,
+  valor_alvo: 8000,
+});
+
 // 'Infraestrutura' já vem como fila padrão de toda empresa nova.
 gravarChamado(
   holding.id,
@@ -138,5 +147,5 @@ gravarChamado(
 
 console.log(
   `base v2 pronta: usuário gestora · cliente com 2 matrizes (Holding TI, Hospital Norte) · ` +
-    `2 filiais · 2 lançamentos (1 compartilhado) · 1 projeto com 2 tarefas · 1 chamado`,
+    `2 filiais · 2 lançamentos (1 compartilhado) · 1 projeto com 2 tarefas · 1 chamado · 1 item no plano de redução`,
 );

@@ -1,4 +1,4 @@
-// Varredura das telas do app local: 20 páginas × 2 temas × 2 larguras.
+// Varredura das telas do app local: 22 páginas × 2 temas × 2 larguras.
 //
 // Suba o servidor e rode com as credenciais do ambiente:
 //   npm start
@@ -9,14 +9,15 @@
 const { chromium } = require('playwright');
 
 const PAGINAS = [
-  ['/', 'Painel executivo'], ['/financeiro', 'Dashboard financeiro'], ['/lancamentos', 'Lançamentos'],
+  ['/', 'Painel executivo'], ['/indicadores', 'Indicadores Gerais'],
+  ['/financeiro', 'Dashboard financeiro'], ['/lancamentos', 'Lançamentos'],
   ['/fechamentos', 'Fechamento'], ['/conferencia', 'Conferência'], ['/relatorio', 'Relatório'],
   ['/projetos', 'Projetos'],
   ['/projetos/cadastro', 'Cadastro de projetos'], ['/sla', 'Indicadores de SLA'], ['/sla/registros', 'Chamados'],
   ['/suporte/ostick', 'Sistema OStick'], ['/suporte/bitrix24', 'Sistema Bitrix24'],
   ['/suporte/integracoes', 'Integrações'],
   ['/planilhas', 'Planilhas'], ['/clientes', 'Clientes e unidades'], ['/cadastros', 'Cadastros'],
-  ['/metas', 'Metas'], ['/slas', 'SLAs'],
+  ['/metas', 'Metas'], ['/slas', 'SLAs'], ['/reducao', 'Plano de redução'],
   ['/acessos', 'Usuários e acessos'], ['/auditoria', 'Auditoria'],
 ];
 

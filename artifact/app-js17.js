@@ -238,6 +238,17 @@ function ratearPorPeso(centavos, pesos) {
 function calcularRateio(r) {
   const empresas = new Map();
   const compartilhados = [];
+  // O GRUPO inteiro entra na lista, e não só quem tem lançamento: a empresa
+  // que ainda não gastou nada por conta própria é justamente a que mais
+  // depende do que o grupo paga por ela. Peso zero recebe zero, e a linha diz
+  // isso em vez de sumir.
+  for (const e of escopoEmpresas()) {
+    empresas.set(e, {
+      empresa: e, nome: String(nomeEmpresa(e)),
+      cor: corDaMatriz(e), corEscura: corCompartilhada(e),
+      proprio: 0, pago: 0, recebido: 0, segmentos: [],
+    });
+  }
   for (const l of Loja.todosDoEscopo()) {
     if (!passaNoFiltro(E.cenariosSel, l.cenario)) continue;
     if (!naFilialDoBloco(l.filial, r)) continue;
@@ -579,9 +590,9 @@ function blocoIndicador({ chave, titulo, valor, cor, apoio, corpo, nota }) {
 }
 
 /** A barra dupla do comparativo antes → depois. Mesma escala nas duas. */
-function barrasComparativasHtml(antes, depois, corAntes, corDepois, teto) {
+function barrasComparativasHtml(antes, depois, corAntes, corDepois, teto, detalhe) {
   const largura = (v) => (teto > 0 ? Math.max(0, Math.min(100, (v / teto) * 100)) : 0);
-  return `<span class="comparativo">
+  return `<span class="comparativo"${detalhe ? ` data-dica="${esc(JSON.stringify(detalhe))}"` : ''}>
     <span class="comparativo-linha"><b>antes</b>
       <span aria-hidden="true"><i style="width:${largura(antes)}%;background:${corAntes}"></i></span>
       <var>${brl(antes)}</var></span>
@@ -670,7 +681,16 @@ async function viewIndicadores() {
             <td class="n">${brl(i.alvo)}</td>
             <td>${i.semDespesa
               ? '<span class="nota">sem despesa no recorte</span>'
-              : barrasComparativasHtml(i.atual, i.alvo, 'var(--crit)', 'var(--bom)', Math.max(i.atual, i.alvo))}</td>
+              : barrasComparativasHtml(i.atual, i.alvo, 'var(--crit)', 'var(--bom)', Math.max(i.atual, i.alvo),
+                  { titulo: i.nome, linhas: [
+                    { nome: 'Valor atual', valor: brl(i.atual), cor: 'var(--crit)' },
+                    { nome: 'Valor alvo', valor: brl(i.alvo), cor: 'var(--bom)' },
+                    { nome: 'Redução', valor: `${brl(i.reducao)} (${pctTxt(i.pctReducao)})` },
+                    { nome: 'Peso no grupo', valor: pctTxt(i.pctDoGrupo) },
+                    ...i.porFilial.slice(0, 6).map((f) => ({
+                      nome: f.unidade, valor: `${brl(f.valorReais)} · ${pctTxt(f.pctDaFilial)} da unidade`, cor: f.cor,
+                    })),
+                  ] })}</td>
             <td class="n" style="color:${i.reducao > 0 ? 'var(--bomtxt)' : 'var(--tinta2)'}">${
               i.semDespesa ? '—' : pctTxt(i.pctReducao)}</td>
             <td class="n">${pctTxt(i.pctDoGrupo)}</td>
@@ -710,7 +730,19 @@ async function viewIndicadores() {
               ? ` title="${esc(e.segmentos.map((s) => `${s.descricao} (de ${s.origem}): ${brl(s.valor)} — ${pctTxt(s.pct)}`
                   + (s.beneficiadas.length ? ` · beneficia ${s.beneficiadas.join(', ')}` : '')).join('\\n'))}"`
               : ''}>${brl(e.recebidoValor)}</td>
-            <td>${barrasComparativasHtml(e.antes, e.depois, e.cor, e.corEscura, teto)}</td>
+            <td>${barrasComparativasHtml(e.antes, e.depois, e.cor, e.corEscura, teto,
+              { titulo: e.nome, linhas: [
+                { nome: 'Antes (100% na pagadora)', valor: brl(e.antes), cor: e.cor },
+                { nome: 'Depois (rateio proporcional)', valor: brl(e.depois), cor: e.corEscura },
+                { nome: 'Despesa própria', valor: brl(e.proprioValor) },
+                { nome: 'Rateio recebido', valor: brl(e.recebidoValor) },
+                ...(e.pagadora ? [{ nome: 'Rateio pago', valor: brl(e.pagoValor) }] : []),
+                ...e.segmentos.slice(0, 5).map((sg) => ({
+                  nome: `${sg.descricao} (de ${sg.origem})`,
+                  valor: `${brl(sg.valor)} · ${pctTxt(sg.pct)}`,
+                  cor: e.corEscura,
+                })),
+              ] })}</td>
             <td class="n" style="color:${e.variacao < 0 ? 'var(--bomtxt)' : e.variacao > 0 ? 'var(--alerta)' : 'var(--tinta2)'}">${
               e.variacao === 0 ? '—' : (e.variacao > 0 ? '+' : '') + brl(e.variacao)}</td>
           </tr>`;
@@ -1044,6 +1076,7 @@ async function viewIndicadores() {
     },
   });
   ligarArvoresDeUnidade();
+  ligarDicasDaTela();
   el('#pagina').querySelectorAll('tr[data-centro]').forEach((tr) => {
     tr.style.cursor = 'pointer';
     tr.onclick = () => abrirDetalhe({
@@ -1118,11 +1151,39 @@ const ARVORE_REGISTROS = new Map();
  * distingue a cor lê o número, e quem lê rápido vê a proporção. A cor é a da
  * empresa; no que é compartilhado, o tom escurecido dela.
  */
-function barraDeRepresentatividadeHtml(pctValor, cor, dica) {
+function barraDeRepresentatividadeHtml(pctValor, cor, dica, detalhe) {
   const largura = Math.max(0, Math.min(100, Number(pctValor) || 0));
-  return `<span class="barra-rep"${dica ? ` title="${esc(dica)}"` : ''}>`
+  // Dois canais para a mesma explicação: o `title` nativo é o que o leitor de
+  // tela encontra; o balão é o que a pessoa vê, com atraso e sem cortar na
+  // borda. O balão sai de `data-dica`, que `ligarDicasDaTela` lê depois.
+  const balao = detalhe
+    ? ` data-dica="${esc(JSON.stringify(detalhe))}"`
+    : '';
+  return `<span class="barra-rep"${dica ? ` title="${esc(dica)}"` : ''}${balao}>`
     + `<span aria-hidden="true"><i style="width:${largura}%;background:${cor}"></i></span>`
     + `<b>${pctTxt(pctValor)}</b></span>`;
+}
+
+/**
+ * Liga o balão flutuante a tudo que declarou `data-dica` na tela.
+ *
+ * O detalhe granular fica FORA da visão principal e aparece no hover — é o
+ * pedido. Quem navega por teclado alcança o mesmo balão pelo foco, que
+ * `ligarDica` cuida.
+ */
+function ligarDicasDaTela(raiz) {
+  const area = raiz || el('#pagina');
+  if (!area) return;
+  for (const no of area.querySelectorAll('[data-dica]')) {
+    // O nível 3 nasce depois da pintura, e esta função roda de novo para
+    // alcançá-lo. A marca evita pendurar o segundo par de ouvintes no mesmo nó.
+    if (no.dataset.dicaLigada) continue;
+    let d = null;
+    try { d = JSON.parse(no.dataset.dica); } catch (e) { d = null; }
+    if (!d) continue;
+    no.dataset.dicaLigada = '1';
+    ligarDica(no, () => d);
+  }
 }
 
 /**
@@ -1164,7 +1225,12 @@ function arvoreDeUnidadesHtml(id, quebra, formatar, extra) {
           : '<span class="arv-vazio" aria-hidden="true"></span>'}${esc(f.nome)}</td>
         <td class="num">${formatar(f.valor)}</td>
         <td>${barraDeRepresentatividadeHtml(pct(f.valor, m.valor), m.cor,
-          `${f.nome}: ${formatar(f.valor)} · ${pctTxt(pct(f.valor, m.valor))} de ${m.nome}`)}</td>
+          `${f.nome}: ${formatar(f.valor)} · ${pctTxt(pct(f.valor, m.valor))} de ${m.nome}`,
+          { titulo: f.nome, linhas: [
+            { nome: 'Valor', valor: String(formatar(f.valor)) },
+            { nome: 'Peso em ' + m.nome, valor: pctTxt(pct(f.valor, m.valor)), cor: m.cor },
+            { nome: 'Empresa', valor: m.nome },
+          ] })}</td>
         <td>${extra ? extra.filial(f, m) : ''}</td>
       </tr>`;
     }).join('');
@@ -1174,7 +1240,12 @@ function arvoreDeUnidadesHtml(id, quebra, formatar, extra) {
           <i class="ponto-matriz" style="background:${m.cor}" aria-hidden="true"></i>${esc(m.nome)}</td>
         <td class="num">${formatar(m.valor)}</td>
         <td>${barraDeRepresentatividadeHtml(pct(m.valor, total), m.cor,
-          `${m.nome}: ${formatar(m.valor)} · ${pctTxt(pct(m.valor, total))} do recorte`)}</td>
+          `${m.nome}: ${formatar(m.valor)} · ${pctTxt(pct(m.valor, total))} do recorte`,
+          { titulo: m.nome, linhas: [
+            { nome: 'Valor', valor: String(formatar(m.valor)) },
+            { nome: 'Peso no recorte', valor: pctTxt(pct(m.valor, total)), cor: m.cor },
+            { nome: 'Filiais', valor: inteiro(m.filiais.length) },
+          ] })}</td>
         <td>${extra ? extra.matriz(m) : ''}</td>
       </tr>
       ${m.filiais.length === 0
@@ -1351,12 +1422,24 @@ function montarNivelDeLancamentos(tabela, linha, no) {
         <td class="num">${brl(l.valor)}</td>
         <td>${barraDeRepresentatividadeHtml(pct(c, totalFilial), cor,
           `${rotulo}: ${brl(l.valor)} · ${pctTxt(pct(c, totalFilial))} de ${dados.nome} · ${mesExib(l.competencia)}`
-          + (compartilhada ? ' · compartilhada com o grupo' : ''))}</td>
+          + (compartilhada ? ' · compartilhada com o grupo' : ''),
+          { titulo: rotulo, linhas: [
+            { nome: 'Valor', valor: brl(l.valor) },
+            { nome: 'Peso em ' + dados.nome, valor: pctTxt(pct(c, totalFilial)), cor },
+            { nome: 'Competência', valor: mesExib(l.competencia) },
+            { nome: 'Tipo de despesa', valor: String(l.tipo || '—') },
+            ...(l.origemCusto ? [{ nome: 'Origem do custo', valor: String(l.origemCusto) }] : []),
+            ...(l.destinoPagamento ? [{ nome: 'Destino', valor: String(l.destinoPagamento) }] : []),
+            { nome: 'Consumo', valor: compartilhada ? resumoConsumo(l) : '100% da filial' },
+          ] })}</td>
         <td>${compartilhada ? etiquetaConsumoHtml(l) : ''}</td>
       </tr>`;
     })
     .join('');
   linha.insertAdjacentHTML('afterend', html);
+  // As linhas que acabaram de nascer também têm balão: sem esta segunda
+  // passada, o nível 3 seria o único lugar da árvore sem detalhe no hover.
+  ligarDicasDaTela(linha.closest('table'));
   if (dados.registros.length > 200) {
     linha.insertAdjacentHTML(
       'afterend',

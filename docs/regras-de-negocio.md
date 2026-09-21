@@ -508,6 +508,16 @@ categoria, série e a participação no total. Nos elementos que não são SVG (
 barras do Gantt, as linhas do relatório) o mesmo papel cabe ao `title` nativo,
 que ainda funciona com leitor de tela.
 
+**O balão espera 180 ms.** Sem atraso, atravessar uma tabela de vinte barras
+pisca vinte balões pelo caminho; com ele, o balão só aparece onde o cursor
+PAROU — que é onde havia intenção de ler. O **foco do teclado não espera**:
+quem chegou ali por Tab já escolheu o elemento, e um atraso seria só demora.
+
+**Ele não corta na borda.** A posição é contida nas quatro: perto do topo o
+balão cai para baixo do cursor em vez de cobrir o ponto que explica, e a
+largura é medida, não presumida — supor a largura errada faz o balão vazar
+pela direita justamente no caso em que ele tem mais a dizer.
+
 Nos **indicadores** o tooltip diz o que o número mede — de onde ele sai e o que
 entra na conta. Na versão hospedada é o mesmo balão dos gráficos, e não o
 `title` do navegador: o `title` demora a aparecer, não segue o tema e some no
@@ -1052,16 +1062,116 @@ não passa a consumir um lançamento de janeiro. Sem isso, um mês fechado mudar
 de número sozinho a cada cadastro novo. A intenção original fica registrada à
 parte, para a tela reexibir a frase em vez de listar catorze nomes.
 
-**Não há rateio.** O indicador de despesa centralizada conta o lançamento
-compartilhado pelo **valor integral** da pagadora, e o detalhamento lista quem
-se beneficia sem atribuir número por filial. Dividir exigiria um critério que
-não está definido em lugar nenhum, e um número inventado é pior que um número
-ausente. Consequência a saber ao ler a tabela: somar as linhas dá mais que o
-total, porque a mesma despesa serve a várias unidades.
+**Duas leituras da mesma despesa, e as duas ficam na tela.**
+
+A primeira é a **integral**: o indicador de despesa centralizada conta o
+lançamento compartilhado pelo **valor inteiro** da pagadora, e o detalhamento
+lista quem se beneficia sem atribuir número por filial. Consequência a saber ao
+ler a tabela: somar as linhas dá mais que o total, porque a mesma despesa serve
+a várias unidades.
+
+A segunda é o **rateio**, e vive num indicador próprio — *despesas
+compartilhadas regularizadas*. Ali a pagadora deixa de carregar 100% de um
+custo que o grupo usa, e cada empresa mostra só a parcela que lhe cabe.
+
+As duas convivem de propósito. A integral é o **antes** do comparativo que o
+indicador de rateio apresenta; trocar uma pela outra faria todo mês já fechado
+mudar de número. Por isso o rateio não substituiu nada: foi acrescentado.
 
 O **equilíbrio de despesas** é o percentual do gasto de uma unidade consumido
 por outras, lido mês a mês. A variação sai em pontos percentuais — de 10% para
 12% são +2 p.p., e chamar isso de +20% misturaria duas grandezas.
+
+## Rateio: a despesa compartilhada, regularizada
+
+O critério é uma **escolha**, e está escrito porque um rateio sem critério
+declarado é um número que ninguém pode conferir.
+
+**Proporcional à despesa própria de cada empresa no período.** Própria, e não
+total: incluir o compartilhado no divisor tornaria a conta circular — o valor a
+dividir entraria no peso que decide como dividi-lo.
+
+- **O grupo inteiro entra na lista**, e não só quem tem lançamento. A empresa
+  que ainda não gastou nada por conta própria é justamente a que mais depende
+  do que o grupo paga por ela; ela entra com peso zero, recebe zero, e a linha
+  diz isso. Sumir seria fazer ninguém saber que ela existe.
+- **Nenhuma empresa com despesa própria** — um grupo em que só há despesa
+  compartilhada — divide **igualmente**. É o único critério que não inventa
+  desigualdade onde não há dado, e a tela declara que foi isso que aconteceu.
+- **O centavo que sobra vai para o maior peso**, um de cada vez. `Math.floor`
+  em cada parcela sempre deixa resto; sem devolvê-lo, o "antes" e o "depois"
+  divergiriam por arredondamento e a tela acusaria uma diferença que não
+  existe. A soma das parcelas é **exatamente** o valor compartilhado.
+- **O rateio redistribui, não cria.** A soma do grupo antes é a soma do grupo
+  depois.
+
+A leitura é um comparativo por empresa: **antes** é o que é dela mais 100% do
+que ela paga; **depois** é o que é dela mais a parcela que lhe cabe. A pagadora
+original vem marcada.
+
+## Plano de redução: de quanto para quanto
+
+`metas` dá um alvo **percentual** por indicador inteiro ("não crescer mais que
+X%"). Isso não responde à pergunta que o gestor leva para a reunião de corte:
+*esta* despesa custa R$ 50.000 e precisa cair para R$ 35.000 — quanto isso é do
+grupo, e quanto pesa em cada filial?
+
+Daí um cadastro próprio, com alvo em **reais** e **uma linha por despesa**. Um
+alvo único cobrindo cinco categorias não teria como mostrar de quanto para
+quanto cai cada uma, que é exatamente a leitura pedida.
+
+- O valor **atual** sai dos lançamentos do recorte; o **alvo**, do cadastro.
+  Nada é estimado.
+- O item sem despesa no recorte **é dito**, e não escondido: percentual de
+  redução sobre base zero seria 0%, que se lê como "não caiu".
+- A vigência funciona como a das metas: trocar o alvo em janeiro não reescreve
+  a leitura dos meses já fechados.
+- Dois percentuais, e eles medem coisas diferentes: o peso da despesa **no
+  grupo** e o peso dela **dentro de cada filial**. O segundo é o que diz onde
+  o corte dói.
+
+O plano é do **cliente**, como as metas: o corte é negociado para o grupo.
+
+## Cor da despesa compartilhada
+
+Cada empresa tem a sua cor, pela posição na lista ordenada do cliente. A
+despesa que ela **paga e o grupo consome** sai na **mesma cor, em tom
+escurecido**.
+
+Escurecer em vez de trocar de cor é o que mantém a leitura: a unidade continua
+reconhecível, e o tom diz que o custo não é só dela. Duas cores diferentes
+fariam parecer duas empresas.
+
+A regra vale em **todas as telas do módulo financeiro** — Lançamentos,
+Relatório, Conferência, detalhamento e indicadores —, porque uma exceção seria
+uma tela onde compartilhada e própria se parecem.
+
+**A cor nunca é o único canal.** Junto dela vão sempre o texto por extenso
+("Beneficia Unidade Norte") e uma **legenda fixa no bloco** explicando os dois
+tons. A legenda fica no bloco que usa a distinção, e não uma vez no topo da
+tela: quem rola até o meio de uma tela longa precisa da chave de leitura ali.
+
+## Hierarquia de expansão nos indicadores
+
+O indicador continua **consolidado** — é o que o gestor lê primeiro. O que
+mudou é como ele abre.
+
+- **Um indicador por linha, em largura total.** Dois números concorrendo lado a
+  lado é o que tornava a tela ilegível quando cada um passou a ter faixa,
+  legenda e detalhamento. Cada bloco abre **comprimido**, com título e valor no
+  cabeçalho, e lembra o que foi aberto.
+- **Três níveis, mesmo formato:** empresa (nível 1) → filial (nível 2) →
+  lançamentos (nível 3). Cada nó tem o **seu** controle; abrir um não abre os
+  vizinhos, e fechar um pai recolhe filhos e netos juntos — uma árvore que
+  deixasse netos à mostra sob um pai fechado estaria mentindo sobre si.
+- **Barra de representatividade** em cada linha, na cor da empresa, com o
+  **percentual escrito ao lado**. A barra é redundância visual, não o dado.
+- **O nível 3 carrega sob demanda.** Um recorte largo tem milhares de
+  lançamentos, e montá-los na pintura do bloco custaria caro por algo que quase
+  ninguém abre.
+- A soma dos filhos é o número do pai, porque a árvore sai do **mesmo** laço
+  que o cálculo do indicador percorre. Uma quebra vinda de outra janela
+  divergiria, e o gestor não teria como saber qual dos dois está certo.
 
 ## Metas: o alvo ao lado do resultado
 

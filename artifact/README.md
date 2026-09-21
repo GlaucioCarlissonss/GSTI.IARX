@@ -80,6 +80,8 @@ seguintes ficam em TDZ quando ele executa.
 | `app-js16.js` | usuários, perfis e o modo somente leitura |
 | `app-js17.js` | Indicadores Gerais: financeiro, SLA e projetos |
 | `app-js18.js` | clientes: a escolha do contratante, antes de qualquer tela |
+| `app-js19.js` | tela de seleção de cliente e boas-vindas |
+| `app-js20.js` | cadastros de leitura: metas, acordos de SLA, plano de redução, e a reclassificação de prioridade |
 | `app-js7.js` | abas, seletores globais e inicialização |
 
 ## Testar
@@ -326,10 +328,12 @@ Vinte e uma suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-acessos.cjs` | Integrações (contrato do payload, upsert por id externo, evento com erro e reprocessamento) e Acessos (perfis padrão, login separado do e-mail, matriz, pré-visualização de perfil) |
 | `testar-clientes.cjs` | o cliente como recorte externo: árvore de unidades, troca de contratante, nada atravessando |
 | `testar-carga.cjs` | carga inicial × incremental, adaptador de cabeçalho do cliente e o histórico de toda tentativa |
-| `testar-indicadores.cjs` | Indicadores Gerais: drill em todos os cards, cor por matriz e a sanfona do SLA apontando quem puxa o resultado |
+| `testar-indicadores.cjs` | Indicadores Gerais: indicadores empilhados em largura total, drill em todo card com número, cor por matriz e a árvore de três níveis (empresa → filial → lançamentos) com barra de representatividade |
 | `testar-visao.cjs` | blocos que abrem e lembram, os três modos de ver os números e o selo de última atualização |
 | `testar-metas.cjs` | o cadastro de metas e o Meta vs Resultado: base sem meta segue no 80, a meta cadastrada atravessa a tela, desativar volta ao padrão |
 | `testar-reclassificacao.cjs` | a prioridade do chamado: começa indefinida (a extração não traz), exige cargo e nome de quem pediu, e o histórico fica na linha |
+| `testar-rateio.cjs` | o rateio das compartilhadas: a soma das parcelas fecha exatamente, o grupo inteiro entra na tabela, e a leitura integral continua ao lado como o "antes" |
+| `testar-reducao.cjs` | o plano de redução: sem cadastro o indicador diz isso, cadastrar muda o indicador do topo, e desativar devolve ao vazio |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

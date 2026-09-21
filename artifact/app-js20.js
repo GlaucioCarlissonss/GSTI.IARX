@@ -446,8 +446,12 @@ function formPlanoReducao() {
           if (planosDoCliente().some((p) => p.nome.toLowerCase() === nome.toLowerCase())) {
             throw new Error('Já existe um item com este nome no plano deste cliente.');
           }
-          const alvo = Number(String(campo('alvo').value).replace(',', '.'));
-          if (!Number.isFinite(alvo) || alvo < 0) {
+          // Campo vazio vira `Number('') === 0`, que é finito e não-negativo:
+          // sem a conferência do texto, "não informei" entraria como
+          // "a despesa deve cair para zero".
+          const bruto = String(campo('alvo').value).trim();
+          const alvo = Number(bruto.replace(',', '.'));
+          if (!bruto || !Number.isFinite(alvo) || alvo < 0) {
             throw new Error('Informe o valor-alvo em reais.');
           }
           const ponta = (texto, rotulo) => {

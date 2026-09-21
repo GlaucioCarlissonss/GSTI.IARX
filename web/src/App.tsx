@@ -6,6 +6,7 @@ import { Login, PrimeiraEmpresa, RedefinirSenha } from './pages/Login';
 import { PaginaSelecaoCliente } from './pages/SelecaoCliente';
 import { PaginaClientes } from './pages/Clientes';
 import { PaginaPainelExecutivo } from './pages/PainelExecutivo';
+import { PaginaIndicadoresGerais } from './pages/IndicadoresGerais';
 import { PaginaFinanceiro } from './pages/Financeiro';
 import { PaginaLancamentos } from './pages/Lancamentos';
 import { PaginaProjetos } from './pages/Projetos';
@@ -47,6 +48,7 @@ function Rotas() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<PaginaPainelExecutivo />} />
+        <Route path="indicadores" element={<PaginaIndicadoresGerais />} />
         <Route path="financeiro" element={<PaginaFinanceiro />} />
         <Route path="lancamentos" element={<PaginaLancamentos />} />
         <Route path="fechamentos" element={<PaginaFechamentos />} />

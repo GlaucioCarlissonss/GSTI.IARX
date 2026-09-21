@@ -6,7 +6,21 @@
  * legenda sempre presente quando há duas ou mais séries, tooltip no hover e
  * visão em tabela como alternativa acessível ao canal de cor.
  */
-import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+
+import { inteiro } from '../lib/formato';
+import { useExpansao } from '../lib/expansao';
+import type { MatrizComCor } from '../lib/cores';
 
 export interface Serie {
   chave: string;
@@ -19,21 +33,44 @@ export interface PontoCategoria {
   valores: Record<string, number>;
 }
 
-interface DicaEstado {
+export interface DicaEstado {
   x: number;
   y: number;
   titulo: string;
   linhas: Array<{ nome: string; valor: string; cor?: string }>;
 }
 
-function Dica({ estado }: { estado: DicaEstado | null }) {
+/**
+ * O balão flutuante: o detalhe granular fica fora da visão principal e
+ * aparece no hover.
+ *
+ * A contenção era por um número fixo (220 px de largura presumida) e só nas
+ * bordas direita e superior. Agora ela MEDE o balão e cuida das quatro: perto
+ * do topo ele cai para baixo do cursor em vez de cobrir o ponto que explica, e
+ * um balão largo não vaza pela direita porque alguém supôs a largura errada.
+ */
+export function Dica({ estado }: { estado: DicaEstado | null }) {
+  const alvo = useRef<HTMLDivElement | null>(null);
+  const [caixa, setCaixa] = useState({ largura: 220, altura: 60 });
+  useLayoutEffect(() => {
+    if (!alvo.current) return;
+    const r = alvo.current.getBoundingClientRect();
+    // Só grava quando muda de verdade: gravar sempre faria o efeito pedir
+    // outro render, que pediria outro, sem fim.
+    setCaixa((c) =>
+      Math.abs(c.largura - r.width) < 1 && Math.abs(c.altura - r.height) < 1
+        ? c
+        : { largura: r.width, altura: r.height },
+    );
+  }, [estado]);
   if (!estado) return null;
+  const acima = estado.y - caixa.altura - 12;
   const estilo = {
-    left: Math.min(estado.x + 14, window.innerWidth - 220),
-    top: Math.max(estado.y - 12, 8),
+    left: Math.max(8, Math.min(estado.x + 14, window.innerWidth - caixa.largura - 12)),
+    top: acima >= 8 ? acima : Math.min(estado.y + 18, window.innerHeight - caixa.altura - 12),
   };
   return (
-    <div className="dica" style={estilo} role="tooltip">
+    <div className="dica" style={estilo} role="tooltip" ref={alvo}>
       <strong>{estado.titulo}</strong>
       {estado.linhas.map((l) => (
         <div className="linha" key={l.nome}>
@@ -578,11 +615,185 @@ export function GraficoRanking({
   );
 }
 
+/**
+ * Uma linha da quebra por unidade, como o servidor a devolve.
+ *
+ * Vive aqui, e não na página, porque duas telas leem a mesma quebra: o Painel
+ * Executivo e Indicadores Gerais. Uma cópia por tela seria uma chance por tela
+ * de as duas divergirem na primeira correção.
+ */
+export interface LinhaPorUnidade {
+  empresa_id: number;
+  empresa: string;
+  filial_id: number | null;
+  filial: string | null;
+  valor: number;
+  total?: number;
+  dentro?: number;
+}
+
+
+/**
+ * A quebra de um número em matriz → filial.
+ *
+ * O consolidado por matriz é a soma das filiais dela: é o que a sanfona mostra,
+ * e é o que tem de bater com o número do card. Quando não bate, o problema está
+ * na consulta — e é melhor que apareça aqui do que numa reunião.
+ */
+export function porMatriz(linhas: LinhaPorUnidade[], cores: Map<number, MatrizComCor>) {
+  const mapa = new Map<number, { id: number; nome: string; cor: string; valor: number; filiais: LinhaPorUnidade[] }>();
+  for (const l of linhas) {
+    const atual = mapa.get(l.empresa_id) ?? {
+      id: l.empresa_id,
+      nome: l.empresa,
+      cor: cores.get(l.empresa_id)?.cor ?? 'var(--tinta-fraca)',
+      valor: 0,
+      filiais: [] as LinhaPorUnidade[],
+    };
+    atual.valor += l.valor;
+    atual.filiais.push(l);
+    mapa.set(l.empresa_id, atual);
+  }
+  return [...mapa.values()]
+    .map((m) => ({ ...m, filiais: m.filiais.sort((a, b) => b.valor - a.valor) }))
+    .sort((a, b) => b.valor - a.valor);
+}
+
+/**
+ * A tabela da sanfona. `conformidade` é a coluna de ✓/✗, só no SLA.
+ *
+ * O alvo vem de fora: era uma constante copiada aqui, e desde que a meta virou
+ * cadastro a tela não tem como saber qual é sem perguntar ao servidor.
+ */
+export function TabelaPorUnidade({
+  linhas,
+  cores,
+  formatar,
+  rotuloValor,
+  conformidade,
+  alvo,
+}: {
+  linhas: LinhaPorUnidade[];
+  cores: Map<number, MatrizComCor>;
+  formatar: (v: number) => string;
+  rotuloValor: string;
+  conformidade?: boolean;
+  /** O alvo de conformidade vigente. Ausente: a coluna não julga, só mostra. */
+  alvo?: number | null;
+}) {
+  const grupos = porMatriz(linhas, cores);
+  if (!grupos.length) return <p className="vazio">Nada neste recorte.</p>;
+  const situacao = (l: { total?: number; dentro?: number }) => {
+    const total = l.total ?? 0;
+    if (!total) return <span>—</span>;
+    const pct = Math.round(((l.dentro ?? 0) / total) * 1000) / 10;
+    const fora = total - (l.dentro ?? 0);
+    return alvo === null || alvo === undefined || pct >= alvo ? (
+      <span className="dentro">✓ {pct.toLocaleString('pt-BR')}% · dentro</span>
+    ) : (
+      <span className="fora">✗ {pct.toLocaleString('pt-BR')}% · fora ({inteiro(fora)})</span>
+    );
+  };
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Empresa / filial</th>
+          <th className="n">{rotuloValor}</th>
+          {conformidade && <th>Conformidade</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {grupos.map((m) => (
+          <Fragment key={m.id}>
+            <tr className="matriz">
+              <td>
+                <i
+                  style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: m.cor, marginRight: 6 }}
+                  aria-hidden
+                />
+                {m.nome}
+              </td>
+              <td className="n">{formatar(m.valor)}</td>
+              {conformidade && (
+                <td>
+                  {situacao({
+                    total: m.filiais.reduce((s, f) => s + (f.total ?? 0), 0),
+                    dentro: m.filiais.reduce((s, f) => s + (f.dentro ?? 0), 0),
+                  })}
+                </td>
+              )}
+            </tr>
+            {m.filiais.map((f) => (
+              <tr className="filial" key={`${m.id}:${f.filial_id ?? 'matriz'}`}>
+                <td>{f.filial ?? 'Sem filial (nível empresa)'}</td>
+                <td className="n">{formatar(f.valor)}</td>
+                {conformidade && <td>{situacao(f)}</td>}
+              </tr>
+            ))}
+          </Fragment>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 // ==========================================================================
 // Indicador (o número é o gráfico)
 // ==========================================================================
 
 /** Uma fatia do número consolidado: de quem é, quanto, e com que cor. */
+/**
+ * O balão com atraso, para quem passa o cursor de raspão.
+ *
+ * Sem atraso, atravessar uma tabela de vinte barras pisca vinte balões pelo
+ * caminho. Com ele, o balão só aparece onde o cursor PAROU — que é onde havia
+ * intenção de ler. 180 ms é o ponto em que o gesto deliberado já espera algo e
+ * o de passagem ainda não.
+ *
+ * O foco do teclado NÃO espera: quem chegou ali por Tab já escolheu o
+ * elemento, e um atraso seria só demora.
+ */
+export function useDica() {
+  const [dica, setDica] = useState<DicaEstado | null>(null);
+  const relogio = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fechar = useCallback(() => {
+    if (relogio.current) clearTimeout(relogio.current);
+    relogio.current = null;
+    setDica(null);
+  }, []);
+
+  // Um balão pendurado num elemento que saiu da tela ficaria para sempre.
+  useEffect(() => () => { if (relogio.current) clearTimeout(relogio.current); }, []);
+
+  /** Os manipuladores prontos para espalhar num elemento. */
+  const gatilho = useCallback(
+    (montar: () => Omit<DicaEstado, 'x' | 'y'>) => ({
+      onMouseEnter: (ev: { clientX: number; clientY: number }) => {
+        const x = ev.clientX;
+        const y = ev.clientY;
+        if (relogio.current) clearTimeout(relogio.current);
+        relogio.current = setTimeout(() => setDica({ x, y, ...montar() }), 180);
+      },
+      // Seguir o cursor só depois que o balão abriu: mover antes disso
+      // reiniciaria o atraso a cada pixel e ele nunca chegaria ao fim.
+      onMouseMove: (ev: { clientX: number; clientY: number }) =>
+        setDica((atual) => (atual ? { ...atual, x: ev.clientX, y: ev.clientY } : atual)),
+      onMouseLeave: fechar,
+      onFocus: (ev: { currentTarget: Element }) => {
+        const c = ev.currentTarget.getBoundingClientRect();
+        setDica({ x: c.left + c.width / 2, y: c.bottom, ...montar() });
+      },
+      onBlur: fechar,
+      tabIndex: 0,
+    }),
+    [fechar],
+  );
+
+  return { dica, gatilho, fechar };
+}
+
 export interface FatiaIndicador {
   nome: string;
   cor: string;
@@ -654,6 +865,274 @@ function MetaVsResultado({ meta }: { meta: LeituraMeta }) {
         {comparador} {meta.alvo.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%
       </span>
     </span>
+  );
+}
+
+/** Um lançamento na folha da árvore, como `/api/indicadores` o devolve. */
+export interface FolhaDespesa {
+  id: number;
+  competencia: string;
+  descricao: string;
+  tipo_despesa: string;
+  compartilhada: boolean;
+  valor: number;
+  pct_da_filial: number;
+}
+
+export interface NoFilial {
+  filial_id: number | null;
+  filial: string;
+  valor: number;
+  compartilhado: number;
+  pct_da_empresa: number;
+  itens: FolhaDespesa[];
+}
+
+export interface NoEmpresa {
+  empresa_id: number;
+  empresa: string;
+  valor: number;
+  compartilhado: number;
+  pct_do_total: number;
+  filiais: NoFilial[];
+}
+
+/**
+ * A barra de representatividade: o peso de um nó dentro do pai.
+ *
+ * O percentual vai ESCRITO ao lado, e a barra é redundância visual — quem não
+ * distingue a cor lê o número, e quem lê rápido vê a proporção.
+ */
+export function BarraRepresentatividade({
+  pct,
+  cor,
+  dica,
+  gatilho,
+}: {
+  pct: number;
+  cor: string;
+  dica: string;
+  gatilho?: Record<string, unknown>;
+}) {
+  return (
+    <span className="barra-rep" title={dica} {...gatilho}>
+      <span aria-hidden>
+        <i style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: cor }} />
+      </span>
+      <b>{pct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</b>
+    </span>
+  );
+}
+
+/**
+ * A legenda fixa dos dois tons de cada empresa.
+ *
+ * Vai no bloco que usa a distinção, e não uma vez na tela: quem rola até o
+ * meio de uma tela longa precisa da chave de leitura ali.
+ */
+export function LegendaDeMatrizes({ fatias }: { fatias: FatiaIndicador[] }) {
+  const visiveis = fatias.filter((f) => f.valor > 0);
+  if (visiveis.length < 2) return null;
+  return (
+    <div className="legenda" style={{ marginTop: 8, fontSize: 11.5 }}>
+      {visiveis.map((f) => (
+        <span key={f.nome}>
+          <i style={{ background: f.cor }} />
+          {f.nome} · {f.texto ?? f.valor.toLocaleString('pt-BR')}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A árvore de um indicador: empresa (nível 1) → filial (nível 2) →
+ * lançamentos (nível 3), com o MESMO formato nos três níveis.
+ *
+ * `TabelaPorUnidade` continua servindo ao Painel Executivo, que é um resumo de
+ * dois níveis. Aqui a leitura é outra: cada nó tem o seu controle, cada linha
+ * tem a sua barra, e o terceiro nível existe.
+ *
+ * O nível 3 é montado só quando a filial abre — é o `lazy` do enunciado. Os
+ * itens já vieram na resposta, então nada é reconsultado; o que se evita é
+ * criar milhares de linhas no DOM por algo que quase ninguém abre.
+ */
+export function ArvoreDeUnidades({
+  empresas,
+  cores,
+  formatar,
+  rotuloValor,
+  periodo,
+  chaveEstado,
+}: {
+  empresas: NoEmpresa[];
+  cores: Map<number, MatrizComCor>;
+  formatar: (v: number) => string;
+  rotuloValor: string;
+  /** O recorte, para o tooltip dizer de quando é o número. */
+  periodo?: string;
+  /** Onde a expansão fica guardada. Telas diferentes não compartilham estado. */
+  chaveEstado: string;
+}) {
+  const expansao = useExpansao(chaveEstado, 'recolhido');
+  const { dica, gatilho } = useDica();
+  if (!empresas.length) return <p className="vazio">Nada neste recorte.</p>;
+
+  const corDe = (id: number) => cores.get(id)?.cor ?? 'var(--tinta-fraca)';
+  const corEscuraDe = (id: number) => cores.get(id)?.corCompartilhada ?? 'var(--tinta-fraca)';
+  const sufixo = periodo ? ` · ${periodo}` : '';
+
+  return (
+    <>
+      <table className="arvore-unidades">
+        <thead>
+          <tr>
+            <th>Empresa / filial</th>
+            <th className="n">{rotuloValor}</th>
+            <th>Representatividade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {empresas.map((e) => {
+            const chaveE = `e${e.empresa_id}`;
+            const abertaE = expansao.expandido(chaveE);
+            return (
+              <Fragment key={e.empresa_id}>
+                <tr className="nivel-1">
+                  <td>
+                    <button
+                      type="button"
+                      className="arv-abrir"
+                      aria-expanded={abertaE}
+                      aria-label={`${abertaE ? 'Recolher' : 'Expandir'} as filiais de ${e.empresa}`}
+                      onClick={() => expansao.alternar(chaveE)}
+                    >
+                      <span aria-hidden>{abertaE ? '−' : '+'}</span>
+                    </button>
+                    <i className="ponto-matriz" style={{ background: corDe(e.empresa_id) }} aria-hidden />
+                    {e.empresa}
+                  </td>
+                  <td className="n">{formatar(e.valor)}</td>
+                  <td>
+                    <BarraRepresentatividade
+                      pct={e.pct_do_total}
+                      cor={corDe(e.empresa_id)}
+                      dica={`${e.empresa}: ${formatar(e.valor)} · ${e.pct_do_total.toLocaleString('pt-BR')}% do recorte${sufixo}`}
+                      gatilho={gatilho(() => ({
+                        titulo: e.empresa,
+                        linhas: [
+                          { nome: 'Valor', valor: formatar(e.valor) },
+                          { nome: 'Peso no recorte', valor: `${e.pct_do_total.toLocaleString('pt-BR')}%`, cor: corDe(e.empresa_id) },
+                          { nome: 'Compartilhada', valor: formatar(e.compartilhado), cor: corEscuraDe(e.empresa_id) },
+                          { nome: 'Filiais', valor: inteiro(e.filiais.length) },
+                          ...(periodo ? [{ nome: 'Período', valor: periodo }] : []),
+                        ],
+                      }))}
+                    />
+                  </td>
+                </tr>
+                {abertaE && e.filiais.length === 0 && (
+                  <tr className="nivel-2">
+                    <td colSpan={3} className="vazio-no">Esta empresa não tem filial no recorte.</td>
+                  </tr>
+                )}
+                {abertaE &&
+                  e.filiais.map((f) => {
+                    const chaveF = `${chaveE}:f${f.filial_id ?? 'matriz'}`;
+                    const abertaF = expansao.expandido(chaveF);
+                    return (
+                      <Fragment key={chaveF}>
+                        <tr className="nivel-2">
+                          <td>
+                            {f.itens.length > 0 ? (
+                              <button
+                                type="button"
+                                className="arv-abrir"
+                                aria-expanded={abertaF}
+                                aria-label={`${abertaF ? 'Recolher' : 'Expandir'} os lançamentos de ${f.filial}`}
+                                onClick={() => expansao.alternar(chaveF)}
+                              >
+                                <span aria-hidden>{abertaF ? '−' : '+'}</span>
+                              </button>
+                            ) : (
+                              <span className="arv-vazio" aria-hidden />
+                            )}
+                            {f.filial}
+                          </td>
+                          <td className="n">{formatar(f.valor)}</td>
+                          <td>
+                            <BarraRepresentatividade
+                              pct={f.pct_da_empresa}
+                              cor={corDe(e.empresa_id)}
+                              dica={`${f.filial}: ${formatar(f.valor)} · ${f.pct_da_empresa.toLocaleString('pt-BR')}% de ${e.empresa}${sufixo}`}
+                              gatilho={gatilho(() => ({
+                                titulo: f.filial,
+                                linhas: [
+                                  { nome: 'Valor', valor: formatar(f.valor) },
+                                  { nome: `Peso em ${e.empresa}`, valor: `${f.pct_da_empresa.toLocaleString('pt-BR')}%`, cor: corDe(e.empresa_id) },
+                                  { nome: 'Compartilhada', valor: formatar(f.compartilhado), cor: corEscuraDe(e.empresa_id) },
+                                  { nome: 'Empresa', valor: e.empresa },
+                                  ...(periodo ? [{ nome: 'Período', valor: periodo }] : []),
+                                ],
+                              }))}
+                            />
+                          </td>
+                        </tr>
+                        {/* Carga sob demanda: as folhas só entram no DOM quando
+                            a filial abre. Montá-las na pintura custaria
+                            milhares de linhas por algo que quase ninguém abre. */}
+                        {abertaF &&
+                          f.itens.slice(0, 200).map((i) => (
+                            <tr className="nivel-3" key={i.id}>
+                              <td>
+                                <span className="arv-vazio" aria-hidden />
+                                <span className="arv-vazio" aria-hidden />
+                                {i.descricao}
+                                <span className="arv-comp">{i.competencia}</span>
+                              </td>
+                              <td className="n">{formatar(i.valor)}</td>
+                              <td>
+                                <BarraRepresentatividade
+                                  pct={i.pct_da_filial}
+                                  cor={i.compartilhada ? corEscuraDe(e.empresa_id) : corDe(e.empresa_id)}
+                                  dica={`${i.descricao}: ${formatar(i.valor)} · ${i.pct_da_filial.toLocaleString('pt-BR')}% de ${f.filial} · ${i.competencia}${
+                                    i.compartilhada ? ' · compartilhada com o grupo' : ''
+                                  }`}
+                                  gatilho={gatilho(() => ({
+                                    titulo: i.descricao,
+                                    linhas: [
+                                      { nome: 'Valor', valor: formatar(i.valor) },
+                                      { nome: `Peso em ${f.filial}`, valor: `${i.pct_da_filial.toLocaleString('pt-BR')}%` },
+                                      { nome: 'Competência', valor: i.competencia },
+                                      { nome: 'Tipo de despesa', valor: i.tipo_despesa },
+                                      {
+                                        nome: 'Consumo',
+                                        valor: i.compartilhada ? 'Compartilhada no grupo' : '100% da filial',
+                                        cor: i.compartilhada ? corEscuraDe(e.empresa_id) : corDe(e.empresa_id),
+                                      },
+                                    ],
+                                  }))}
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        {abertaF && f.itens.length > 200 && (
+                          <tr className="nivel-3">
+                            <td colSpan={3} className="vazio-no">
+                              Exibindo os 200 maiores de {inteiro(f.itens.length)}. Estreite o recorte para ver o resto.
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+      <Dica estado={dica} />
+    </>
   );
 }
 

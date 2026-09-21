@@ -273,6 +273,52 @@ test('o rateio de um cliente não alcança o outro', () => {
   ) as { id: number };
   const deFora = contextoDe(ctx, outra.id);
   const r = rateioDeCompartilhadas(deFora, { competencias: [mes] });
-  assert.equal(r.lancamentos, 0);
-  assert.equal(r.por_empresa.length, 0);
+  assert.equal(r.lancamentos, 0, 'nenhuma despesa do outro contratante entra');
+  assert.equal(r.compartilhado, 0);
+  // Ele enxerga o próprio grupo — e só ele. A lista sai do escopo de leitura,
+  // então uma empresa do primeiro cliente aparecendo aqui seria vazamento.
+  assert.deepEqual(r.por_empresa.map((e) => e.empresa), ['Empresa de fora']);
+  assert.equal(r.por_empresa[0]!.antes, 0);
+  assert.equal(r.por_empresa[0]!.depois, 0);
+});
+
+test('a empresa do grupo sem despesa própria continua na tabela, com zero', () => {
+  const { ctx, primeira, segunda, sede, norte } = grupoComDuasMatrizes();
+  const mes = mesRelativo(0);
+  // Só a primeira matriz tem lançamento; a segunda não gastou nada ainda.
+  // Uma despesa própria (que dá peso) e uma compartilhada (que é o que se
+  // distribui): com peso 1.000 contra 0, tudo cabe à primeira.
+  criarLancamento(ctx, {
+    empresaId: primeira,
+    filialId: sede,
+    tipoDespesaId: idTipoDespesa(ctx),
+    competencia: mes,
+    valor: 500,
+    natureza: 'fixa',
+    classificacao: 'despesa',
+    descricao: 'Telefonia da sede',
+  });
+  criarLancamento(ctx, {
+    empresaId: primeira,
+    filialId: sede,
+    tipoDespesaId: idTipoDespesa(ctx),
+    competencia: mes,
+    valor: 1000,
+    natureza: 'fixa',
+    classificacao: 'despesa',
+    tipoConsumo: 'compartilhado',
+    beneficiadas: [norte],
+  });
+
+  const r = rateioDeCompartilhadas(ctx, { competencias: [mes] });
+  assert.equal(r.divisao_igual, false, 'a primeira tem peso, então a divisão não é a igualitária');
+  const ids = r.por_empresa.map((e) => e.empresa_id).sort((a, b) => a - b);
+  assert.deepEqual(ids, [primeira, segunda].sort((a, b) => a - b),
+    'a empresa que ainda não gastou é justamente a que mais depende do que o grupo paga por ela');
+  const sem = r.por_empresa.find((e) => e.empresa_id === segunda)!;
+  assert.equal(sem.proprio, 0);
+  assert.equal(sem.antes, 0);
+  // Peso zero recebe zero: é a conta, e a linha diz isso em vez de sumir.
+  assert.equal(sem.rateado_recebido, 0);
+  assert.equal(r.sanidade_centavos, 100000, 'a soma das parcelas continua fechando');
 });

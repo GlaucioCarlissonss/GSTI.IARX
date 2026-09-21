@@ -16,6 +16,10 @@ const NAVEGACAO = [
       { para: '/fechamentos', glifo: '⊘', rotulo: 'Fechamento mensal', modulo: 'financeiro' },
       { para: '/conferencia', glifo: '⚖', rotulo: 'Conferência de origem', modulo: 'financeiro' },
       { para: '/relatorio', glifo: '▦', rotulo: 'Relatório detalhado', modulo: 'relatorios' },
+      // A leitura estratégica atravessa os três módulos, mas o menu é por
+      // módulo de negócio: ela fica no financeiro, que é de onde vem a maior
+      // parte do que ela lê, com a permissão de relatórios que a rota exige.
+      { para: '/indicadores', glifo: '◈', rotulo: 'Indicadores Gerais', modulo: 'relatorios', escopo: 'cliente' as const },
     ],
   },
   {

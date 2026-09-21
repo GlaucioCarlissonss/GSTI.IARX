@@ -12,10 +12,54 @@ function mostrarDica(ev, titulo, linhas) {
     esc(l.nome) + '</span><var>' + esc(l.valor) + '</var></div>').join('');
   d.classList.add('on');
   const c = d.getBoundingClientRect();
-  d.style.left = Math.min(ev.clientX + 14, innerWidth - c.width - 12) + 'px';
-  d.style.top = Math.max(ev.clientY - c.height - 12, 8) + 'px';
+  // Contenção nas quatro bordas. A de cima faltava: perto do topo da tela o
+  // balão era empurrado para y=8 e cobria o próprio ponto que explicava.
+  d.style.left = Math.max(8, Math.min(ev.clientX + 14, innerWidth - c.width - 12)) + 'px';
+  const acima = ev.clientY - c.height - 12;
+  d.style.top = (acima >= 8 ? acima : Math.min(ev.clientY + 18, innerHeight - c.height - 12)) + 'px';
 }
-const sumirDica = () => dica().classList.remove('on');
+const sumirDica = () => { clearTimeout(ATRASO_DICA); dica().classList.remove('on'); };
+
+/**
+ * O balão com atraso, para quem passa o cursor de raspão.
+ *
+ * Sem atraso, atravessar uma tabela de vinte barras pisca vinte balões pelo
+ * caminho. Com ele, o balão só aparece onde o cursor PAROU — que é onde havia
+ * intenção de ler. 180 ms é o ponto em que o gesto deliberado já espera algo e
+ * o de passagem ainda não.
+ *
+ * O foco do teclado NÃO espera: quem chegou ali por Tab já escolheu o
+ * elemento, e um atraso seria só demora.
+ */
+let ATRASO_DICA = null;
+
+function ligarDica(elemento, montar) {
+  if (!elemento) return;
+  const abrir = (ev) => {
+    const d = montar();
+    if (d) mostrarDica(ev, d.titulo, d.linhas);
+  };
+  elemento.addEventListener('mouseenter', (ev) => {
+    clearTimeout(ATRASO_DICA);
+    ATRASO_DICA = setTimeout(() => abrir(ev), 180);
+  });
+  // Seguir o cursor só depois que o balão abriu: mover antes disso
+  // reiniciaria o atraso a cada pixel e ele nunca chegaria ao fim.
+  elemento.addEventListener('mousemove', (ev) => {
+    if (dica().classList.contains('on')) abrir(ev);
+  });
+  elemento.addEventListener('mouseleave', sumirDica);
+  elemento.addEventListener('focus', () => {
+    const c = elemento.getBoundingClientRect();
+    abrir({ clientX: c.left + c.width / 2, clientY: c.bottom });
+  });
+  elemento.addEventListener('blur', sumirDica);
+  // Quem navega por teclado precisa alcançar o elemento para focá-lo. Um nó
+  // que já é botão ou link não recebe `tabindex` — teria foco duas vezes.
+  if (!elemento.matches('a, button, input, select, textarea, [tabindex]')) {
+    elemento.setAttribute('tabindex', '0');
+  }
+}
 
 function escalaBoa(max, div = 4) {
   if (max <= 0) return { teto: 1, marcas: [0, 1] };

@@ -15,7 +15,7 @@ import { db } from '../db/index.js';
 import { clausulaEm, clausulaEmComNulo } from '../lib/consulta.js';
 import { intervalo, paraExibicao, paraInterno } from './competencia.js';
 import type { Contexto } from './contexto.js';
-import { escopoSql } from './escopo.js';
+import { escopoDeLeitura, escopoSql } from './escopo.js';
 import { paraReais } from './dinheiro.js';
 import { CENARIO_OFICIAL } from './financeiro.js';
 import { percentual } from './sla.js';
@@ -557,20 +557,41 @@ export interface SegmentoRateio {
 export function rateioDeCompartilhadas(ctx: Contexto, recorte: RecorteIndicadores = {}) {
   const { where, params } = filtroDeLancamentos(ctx, recorte);
 
-  // As empresas do recorte, com o que cada uma paga de próprio e de
-  // compartilhado. Sai daqui tanto o peso quanto o "antes" de cada uma.
-  const empresas = db()
+  // O GRUPO inteiro, e não só quem tem lançamento.
+  //
+  // A distribuição é "entre cada empresa do grupo". Montar a lista a partir
+  // dos lançamentos faria sumir do rateio a empresa que ainda não gastou nada
+  // por conta própria — justamente a que mais depende do que o grupo paga por
+  // ela. Ela entra com peso zero, recebe zero, e aparece na tabela dizendo
+  // isso; some, ninguém saberia que ela existe.
+  const doEscopo = escopoDeLeitura(ctx, recorte.empresas);
+  const nomes = doEscopo.length
+    ? (db()
+        .prepare(
+          `SELECT id, nome FROM empresas WHERE id IN (${doEscopo.map(() => '?').join(', ')}) ORDER BY nome`,
+        )
+        .all(...doEscopo) as Array<{ id: number; nome: string }>)
+    : [];
+
+  // O que cada uma paga de próprio e de compartilhado — o peso e o "antes".
+  const somas = db()
     .prepare(
-      `SELECT l.empresa_id, e.nome AS empresa,
+      `SELECT l.empresa_id,
               COALESCE(SUM(CASE WHEN l.tipo_consumo = 'compartilhado' THEN 0 ELSE l.valor_centavos END), 0) AS proprio,
               COALESCE(SUM(CASE WHEN l.tipo_consumo = 'compartilhado' THEN l.valor_centavos ELSE 0 END), 0) AS pago
          FROM lancamentos l
-         JOIN empresas e ON e.id = l.empresa_id
         WHERE ${where}
-        GROUP BY l.empresa_id
-        ORDER BY e.nome`,
+        GROUP BY l.empresa_id`,
     )
-    .all(...params) as Array<{ empresa_id: number; empresa: string; proprio: number; pago: number }>;
+    .all(...params) as Array<{ empresa_id: number; proprio: number; pago: number }>;
+  const porEmpresaId = new Map(somas.map((x) => [x.empresa_id, x]));
+
+  const empresas = nomes.map((e) => ({
+    empresa_id: e.id,
+    empresa: e.nome,
+    proprio: porEmpresaId.get(e.id)?.proprio ?? 0,
+    pago: porEmpresaId.get(e.id)?.pago ?? 0,
+  }));
 
   const compartilhados = db()
     .prepare(
@@ -639,7 +660,7 @@ export function rateioDeCompartilhadas(ctx: Contexto, recorte: RecorteIndicadore
   }
 
   const totalCompartilhado = compartilhados.reduce((s, l) => s + l.valor_centavos, 0);
-  const totalGeral = empresas.reduce((s, e) => s + e.proprio + e.pago, 0);
+  const totalGeral = somas.reduce((s, e) => s + e.proprio + e.pago, 0);
 
   const porEmpresa = empresas.map((e, i) => {
     const antes = e.proprio + e.pago;

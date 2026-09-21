@@ -5,7 +5,14 @@ import { useDados, useSessao } from '../lib/sessao';
 import { useFiltroEscopo } from '../lib/filtros';
 import { FichasUnidades, FiltroUnidades } from '../components/filtro-escopo';
 import { Aviso, Carregando, Cartao, UltimaAtualizacao } from '../components/base';
-import { GraficoBarras, Indicador, type LeituraMeta } from '../components/graficos';
+import {
+  GraficoBarras,
+  Indicador,
+  TabelaPorUnidade,
+  porMatriz,
+  type LeituraMeta,
+  type LinhaPorUnidade,
+} from '../components/graficos';
 import {
   Detalhamento,
   detalheDeLancamentos,
@@ -15,18 +22,8 @@ import {
 } from '../components/detalhamento';
 import { inteiro, mesCurto, moeda, moedaCurta, percentual } from '../lib/formato';
 import { coresDasMatrizes, fatiasPorMatriz, type MatrizComCor } from '../lib/cores';
+import { LegendaDeConsumo } from '../components/consumo';
 import type { DashboardFinanceiro } from './Financeiro';
-
-/** Uma linha da quebra por unidade, como o servidor a devolve. */
-interface LinhaPorUnidade {
-  empresa_id: number;
-  empresa: string;
-  filial_id: number | null;
-  filial: string | null;
-  valor: number;
-  total?: number;
-  dentro?: number;
-}
 
 interface VisaoExecutiva {
   escopo: { competencia: string; consolidado: boolean };
@@ -74,6 +71,42 @@ interface VisaoExecutiva {
     meta: LeituraMeta | null;
     serie: Array<{ competencia: string; pct: number; centralizado: number; total: number }>;
   };
+  /** A mesma despesa compartilhada, distribuída entre as empresas do grupo. */
+  rateio: {
+    compartilhado: number;
+    pct_compartilhado: number;
+    lancamentos: number;
+    criterio: string;
+    divisao_igual: boolean;
+    por_empresa: Array<{
+      empresa_id: number;
+      empresa: string;
+      proprio: number;
+      rateado_pago: number;
+      rateado_recebido: number;
+      antes: number;
+      depois: number;
+      variacao: number;
+      pagadora: boolean;
+    }>;
+  };
+  plano_reducao: {
+    itens: Array<{
+      plano_id: number;
+      nome: string;
+      tipo_despesa: string | null;
+      atual: number;
+      alvo: number;
+      reducao: number;
+      pct_reducao: number;
+      pct_do_grupo: number;
+      sem_despesa_no_recorte: boolean;
+    }>;
+    total_atual: number;
+    total_alvo: number;
+    pct_reducao: number;
+    pct_do_grupo: number;
+  };
   por_unidade: {
     gasto_mes: LinhaPorUnidade[];
     compromisso_proximos_12_meses: LinhaPorUnidade[];
@@ -83,110 +116,6 @@ interface VisaoExecutiva {
 }
 
 
-/**
- * A quebra de um número em matriz → filial.
- *
- * O consolidado por matriz é a soma das filiais dela: é o que a sanfona mostra,
- * e é o que tem de bater com o número do card. Quando não bate, o problema está
- * na consulta — e é melhor que apareça aqui do que numa reunião.
- */
-function porMatriz(linhas: LinhaPorUnidade[], cores: Map<number, MatrizComCor>) {
-  const mapa = new Map<number, { id: number; nome: string; cor: string; valor: number; filiais: LinhaPorUnidade[] }>();
-  for (const l of linhas) {
-    const atual = mapa.get(l.empresa_id) ?? {
-      id: l.empresa_id,
-      nome: l.empresa,
-      cor: cores.get(l.empresa_id)?.cor ?? 'var(--tinta-fraca)',
-      valor: 0,
-      filiais: [] as LinhaPorUnidade[],
-    };
-    atual.valor += l.valor;
-    atual.filiais.push(l);
-    mapa.set(l.empresa_id, atual);
-  }
-  return [...mapa.values()]
-    .map((m) => ({ ...m, filiais: m.filiais.sort((a, b) => b.valor - a.valor) }))
-    .sort((a, b) => b.valor - a.valor);
-}
-
-/**
- * A tabela da sanfona. `conformidade` é a coluna de ✓/✗, só no SLA.
- *
- * O alvo vem de fora: era uma constante copiada aqui, e desde que a meta virou
- * cadastro a tela não tem como saber qual é sem perguntar ao servidor.
- */
-function TabelaPorUnidade({
-  linhas,
-  cores,
-  formatar,
-  rotuloValor,
-  conformidade,
-  alvo,
-}: {
-  linhas: LinhaPorUnidade[];
-  cores: Map<number, MatrizComCor>;
-  formatar: (v: number) => string;
-  rotuloValor: string;
-  conformidade?: boolean;
-  /** O alvo de conformidade vigente. Ausente: a coluna não julga, só mostra. */
-  alvo?: number | null;
-}) {
-  const grupos = porMatriz(linhas, cores);
-  if (!grupos.length) return <p className="vazio">Nada neste recorte.</p>;
-  const situacao = (l: { total?: number; dentro?: number }) => {
-    const total = l.total ?? 0;
-    if (!total) return <span>—</span>;
-    const pct = Math.round(((l.dentro ?? 0) / total) * 1000) / 10;
-    const fora = total - (l.dentro ?? 0);
-    return alvo === null || alvo === undefined || pct >= alvo ? (
-      <span className="dentro">✓ {pct.toLocaleString('pt-BR')}% · dentro</span>
-    ) : (
-      <span className="fora">✗ {pct.toLocaleString('pt-BR')}% · fora ({inteiro(fora)})</span>
-    );
-  };
-  return (
-    <table>
-      <thead>
-        <tr>
-          <th>Empresa / filial</th>
-          <th className="n">{rotuloValor}</th>
-          {conformidade && <th>Conformidade</th>}
-        </tr>
-      </thead>
-      <tbody>
-        {grupos.map((m) => (
-          <Fragment key={m.id}>
-            <tr className="matriz">
-              <td>
-                <i
-                  style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: m.cor, marginRight: 6 }}
-                  aria-hidden
-                />
-                {m.nome}
-              </td>
-              <td className="n">{formatar(m.valor)}</td>
-              {conformidade && (
-                <td>
-                  {situacao({
-                    total: m.filiais.reduce((s, f) => s + (f.total ?? 0), 0),
-                    dentro: m.filiais.reduce((s, f) => s + (f.dentro ?? 0), 0),
-                  })}
-                </td>
-              )}
-            </tr>
-            {m.filiais.map((f) => (
-              <tr className="filial" key={`${m.id}:${f.filial_id ?? 'matriz'}`}>
-                <td>{f.filial ?? 'Sem filial (nível empresa)'}</td>
-                <td className="n">{formatar(f.valor)}</td>
-                {conformidade && <td>{situacao(f)}</td>}
-              </tr>
-            ))}
-          </Fragment>
-        ))}
-      </tbody>
-    </table>
-  );
-}
 
 const SERIES = [
   { chave: 'despesa', nome: 'Despesa', cor: 'var(--serie-1)' },
@@ -403,6 +332,129 @@ export function PaginaPainelExecutivo() {
           }
         />
       </div>
+
+      {/* Os dois indicadores estratégicos da fase 4. Vêm antes do bloco de
+          consumo integral de propósito: o rateio é a leitura regularizada da
+          MESMA despesa, e o integral logo abaixo é o "antes" dele. A tela de
+          Indicadores Gerais traz os dois abertos por empresa; aqui é o
+          resumo, com o caminho para lá. */}
+      {v.plano_reducao.itens.length > 0 && (
+        <Cartao
+          titulo="Plano de redução de despesas"
+          descricao={`${moeda(v.plano_reducao.total_atual)} → ${moeda(v.plano_reducao.total_alvo)} · ${percentual(
+            v.plano_reducao.pct_reducao,
+          )} de redução · ${percentual(v.plano_reducao.pct_do_grupo)} da despesa do grupo`}
+          acoes={<Link to="/indicadores">Ver por empresa →</Link>}
+        >
+          <div className="tabela-envolucro">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th className="num">Atual</th>
+                  <th className="num">Alvo</th>
+                  <th className="num">Redução</th>
+                  <th className="num">% do grupo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {v.plano_reducao.itens.map((i) => (
+                  <tr key={i.plano_id}>
+                    <td>
+                      {i.nome}
+                      {i.tipo_despesa && (
+                        <div style={{ fontSize: 11, color: 'var(--tinta-fraca)' }}>{i.tipo_despesa}</div>
+                      )}
+                    </td>
+                    <td className="num">{moeda(i.atual)}</td>
+                    <td className="num">{moeda(i.alvo)}</td>
+                    <td
+                      className="num"
+                      style={{ color: i.reducao > 0 ? 'var(--positivo-texto)' : 'var(--tinta-2)' }}
+                    >
+                      {i.sem_despesa_no_recorte ? '—' : percentual(i.pct_reducao)}
+                    </td>
+                    <td className="num">{percentual(i.pct_do_grupo)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Cartao>
+      )}
+
+      {v.rateio.lancamentos > 0 && (
+        <Cartao
+          titulo="Despesas compartilhadas regularizadas"
+          descricao={`${moeda(v.rateio.compartilhado)} distribuídos entre ${inteiro(
+            v.rateio.por_empresa.length,
+          )} empresa(s) — ${v.rateio.criterio}`}
+          acoes={<Link to="/indicadores">Ver o comparativo →</Link>}
+        >
+          <div className="tabela-envolucro">
+            <table>
+              <thead>
+                <tr>
+                  <th>Empresa</th>
+                  <th className="num">Própria</th>
+                  <th className="num">Rateio recebido</th>
+                  <th className="num">Antes</th>
+                  <th className="num">Depois</th>
+                  <th className="num">Variação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {v.rateio.por_empresa.map((e) => (
+                  <tr key={e.empresa_id}>
+                    <td>
+                      <i
+                        className="ponto-matriz"
+                        style={{ background: cores.get(e.empresa_id)?.cor }}
+                        aria-hidden
+                      />
+                      {e.empresa}
+                      {e.pagadora && (
+                        <span
+                          className="etiqueta"
+                          style={{ marginLeft: 6 }}
+                          title="Esta empresa paga ao menos uma despesa compartilhada do grupo"
+                        >
+                          pagadora
+                        </span>
+                      )}
+                    </td>
+                    <td className="num">{moeda(e.proprio)}</td>
+                    <td className="num" style={{ color: cores.get(e.empresa_id)?.corCompartilhada }}>
+                      {moeda(e.rateado_recebido)}
+                    </td>
+                    <td className="num">{moeda(e.antes)}</td>
+                    <td className="num">{moeda(e.depois)}</td>
+                    <td
+                      className="num"
+                      style={{
+                        color:
+                          e.variacao < 0
+                            ? 'var(--positivo-texto)'
+                            : e.variacao > 0
+                              ? 'var(--atencao)'
+                              : 'var(--tinta-2)',
+                      }}
+                    >
+                      {e.variacao === 0 ? '—' : `${e.variacao > 0 ? '+' : ''}${moeda(e.variacao)}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <LegendaDeConsumo cor={cores.get(v.rateio.por_empresa[0]!.empresa_id)?.cor} />
+          <p className="dica-filtro" style={{ marginTop: 10 }}>
+            O <strong>antes</strong> é como a unidade aparece hoje: o que é dela mais 100% do que ela
+            paga. O <strong>depois</strong> é o que é dela mais a parcela que lhe cabe. O bloco
+            abaixo mostra a leitura integral, que é o antes deste comparativo.
+          </p>
+        </Cartao>
+      )}
 
       {v.consumo.lancamentos > 0 && (
         <Cartao
