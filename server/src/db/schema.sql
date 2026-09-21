@@ -196,7 +196,9 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   -- rodou a importação, e a tela diria "gestora reconheceu 600 lançamentos"
   -- quando ninguém olhou lançamento nenhum — foi uma regra que decidiu. Quem
   -- audita precisa poder separar as duas coisas.
-  reconhecido_via     TEXT CHECK (reconhecido_via IS NULL OR reconhecido_via IN ('manual','cadastro_origem')),
+  -- 'planilha' é a terceira: a coluna "Reconhecido" do modelo 1.6 afirmou, e
+  -- quem importou não é quem conferiu.
+  reconhecido_via     TEXT CHECK (reconhecido_via IS NULL OR reconhecido_via IN ('manual','cadastro_origem','planilha')),
   excluido_em         TEXT,
   criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
   atualizado_em       TEXT NOT NULL DEFAULT (datetime('now')),

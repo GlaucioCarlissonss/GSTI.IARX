@@ -140,6 +140,28 @@ test('o criador na origem chega limpo, para o cadastro de reconhecimento ler', (
   const { linhas } = ler();
   assert.deepEqual(
     [...new Set(linhas.map((l) => l.usuarioOrigem))].sort(),
-    ['CELICEALVES', 'DAYVSONSILVA', 'JOSÉ BARBOSA', 'KAUAROCHA', 'MARIELITONBARBOSA', 'MIQUEIASSILVA'],
+    // A string vazia está na lista de propósito: uma linha da amostra chega sem
+    // CREATIONUSER. Ela ENTRA na base — o que falta é o reconhecimento, não o
+    // lançamento —, e nasce por reconhecer, que é o estado certo de uma despesa
+    // que ninguém conferiu.
+    ['', 'CELICEALVES', 'DAYVSONSILVA', 'JOSÉ BARBOSA', 'KAUAROCHA', 'MARIELITONBARBOSA', 'MIQUEIASSILVA'],
   );
+});
+
+test('DOCISSUBSTITUTE é lida e contada, mas não decide o reconhecimento', () => {
+  const r = ler();
+  // Na base real esta coluna vem "0" nas 1.148 linhas: sempre preenchida e
+  // sempre igual, portanto incapaz de separar o que quer que seja. A amostra
+  // repete esse valor e guarda UMA linha com ela vazia.
+  assert.deepEqual(
+    [...new Set(r.linhas.map((l) => l.docSubstituto))].sort(),
+    ['', '0'],
+  );
+  assert.equal(r.semDocSubstituto, 1, 'a linha sem a coluna é contada');
+  assert.equal(r.semCriador, 1, 'e a linha sem criador também');
+
+  // A linha sem DOCISSUBSTITUTE não perde o criador: é o nome que decide, e
+  // ela continua elegível ao reconhecimento.
+  const semColuna = r.linhas.find((l) => !l.docSubstituto)!;
+  assert.equal(semColuna.usuarioOrigem, 'MARIELITONBARBOSA');
 });

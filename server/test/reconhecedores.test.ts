@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ambienteLimpo, contextoDe, idTipoDespesa, mesRelativo } from './apoio.js';
-import { db } from '../src/db/index.js';
+import { CLIENTE_HISTORICO, db, migrar, RECONHECEDORES_INICIAIS } from '../src/db/index.js';
 import { criarEmpresa } from '../src/domain/empresas.js';
 import { criarLancamento, listarLancamentos } from '../src/domain/financeiro.js';
 import { listarAuditoria } from '../src/domain/auditoria.js';
@@ -144,4 +144,88 @@ test('o cadastro de um cliente não reconhece a despesa de outro', () => {
   const deFora = contextoDe(ctx, outra.id);
   assert.equal(reconhecePorOrigem(deFora.clienteId!, 'MIQUEIASSILVA'), false);
   assert.equal(listarReconhecedores(deFora).length, 0);
+});
+
+// ===========================================================================
+// A lista com que o cadastro nasce
+// ===========================================================================
+//
+// Semear é conveniência, e conveniência que apaga decisão é defeito. O que
+// estas provas guardam é a diferença entre as duas.
+
+test('a equipe de TI já nasce na lista do cliente histórico', () => {
+  ambienteLimpo();
+  const conn = db();
+  conn.prepare('INSERT INTO clientes (nome) VALUES (?)').run(CLIENTE_HISTORICO);
+  migrar(conn as never);
+
+  const nomes = (
+    conn
+      .prepare(
+        `SELECT r.chave FROM reconhecedores_origem r
+           JOIN clientes c ON c.id = r.cliente_id
+          WHERE c.nome = ? AND r.ativo = 1 ORDER BY r.chave`,
+      )
+      .all(CLIENTE_HISTORICO) as Array<{ chave: string }>
+  ).map((l) => l.chave);
+
+  assert.deepEqual(nomes, [...RECONHECEDORES_INICIAIS].map(chaveDoUsuario).sort());
+});
+
+test('semear roda a cada abertura do banco e não duplica', () => {
+  ambienteLimpo();
+  const conn = db();
+  conn.prepare('INSERT INTO clientes (nome) VALUES (?)').run(CLIENTE_HISTORICO);
+
+  migrar(conn as never);
+  migrar(conn as never);
+  migrar(conn as never);
+
+  const { n } = conn.prepare('SELECT COUNT(*) AS n FROM reconhecedores_origem').get() as { n: number };
+  assert.equal(n, RECONHECEDORES_INICIAIS.length);
+});
+
+test('quem foi desativado NÃO volta ativo na próxima abertura do banco', () => {
+  ambienteLimpo();
+  const conn = db();
+  conn.prepare('INSERT INTO clientes (nome) VALUES (?)').run(CLIENTE_HISTORICO);
+  migrar(conn as never);
+
+  // É o estrago que o `INSERT OR IGNORE` existe para evitar: quem saiu do time
+  // voltaria a reconhecer sozinho, e ninguém perceberia.
+  conn.prepare("UPDATE reconhecedores_origem SET ativo = 0 WHERE chave = 'KAUAROCHA'").run();
+  migrar(conn as never);
+
+  const linha = conn
+    .prepare("SELECT ativo FROM reconhecedores_origem WHERE chave = 'KAUAROCHA'")
+    .get() as { ativo: number };
+  assert.equal(linha.ativo, 0);
+});
+
+test('a lista é de UM contratante: o cliente vizinho começa vazio', () => {
+  ambienteLimpo();
+  const conn = db();
+  conn.prepare('INSERT INTO clientes (nome) VALUES (?)').run(CLIENTE_HISTORICO);
+  conn.prepare('INSERT INTO clientes (nome) VALUES (?)').run('Limas IT');
+  migrar(conn as never);
+
+  const { n } = conn
+    .prepare(
+      `SELECT COUNT(*) AS n FROM reconhecedores_origem r
+         JOIN clientes c ON c.id = r.cliente_id WHERE c.nome = ?`,
+    )
+    .get('Limas IT') as { n: number };
+  assert.equal(n, 0, 'a equipe de um cliente não reconhece despesa de outro');
+});
+
+test('sem o cliente histórico na base, semear não inventa contratante', () => {
+  const { ctx } = ambienteLimpo();
+  const conn = db();
+  migrar(conn as never);
+
+  const { n } = conn.prepare('SELECT COUNT(*) AS n FROM clientes WHERE nome = ?').get(CLIENTE_HISTORICO) as {
+    n: number;
+  };
+  assert.equal(n, 0);
+  assert.equal(listarReconhecedores(ctx, true).length, 0);
 });

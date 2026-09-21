@@ -1426,6 +1426,70 @@ normalizar o cadastro nunca alcançaria a carga.
 Não há exclusão, só desativação — quem saiu do time para de reconhecer na próxima
 carga, sem que nada do que já entrou seja apagado.
 
+### A lista com que o cadastro nasce
+
+Um cadastro vazio faria a carga inteira nascer por reconhecer. Medido no arquivo
+de Contas a Pagar de jan–out de 2026, **1.147 das 1.148 linhas** vêm de seis
+pessoas da equipe de TI — só um documento é de outro usuário. Mil cento e
+quarenta e sete conferências à mão ninguém faz, e o campo perderia o sentido na
+primeira semana.
+
+Por isso essas seis entram **semeadas** (`RECONHECEDORES_INICIAIS`, em
+`db/index.ts`), e a semeadura roda a cada abertura do banco. Três limites, cada
+um evitando um estrago diferente:
+
+- **Só o cliente histórico.** É a equipe de UM contratante; semear em todos
+  colocaria essas pessoas reconhecendo despesa de outro cliente.
+- **Não cria contratante.** Se o cliente não existe nesta base, não há o que
+  semear — criar cliente numa migração é escrever na base de todo mundo.
+- **Não ressuscita quem foi desativado.** É `INSERT OR IGNORE` sobre o
+  `UNIQUE (cliente_id, chave)`: sem isso, quem você tirasse da lista voltaria
+  ativo na próxima abertura do banco, que é o jeito mais silencioso possível de
+  um cadastro deixar de valer.
+
+A lista é ponto de partida, não regra fixa: acrescentar e desativar na tela
+continua valendo, e continua auditado. A semeadura em si não entra na trilha —
+uma linha de auditoria a cada abertura do banco afogaria a trilha de verdade.
+
+### O que `DOCISSUBSTITUTE` faz — e o que não faz
+
+As regras de classificação que acompanharam a base pediam para considerar só os
+registros com `DOCISSUBSTITUTE` e `CREATIONUSER` preenchidos. Medidas as duas
+colunas no arquivo real: `DOCISSUBSTITUTE` vem **`"0"` nas 1.148 linhas** e
+`CREATIONUSER` **nunca falta**. Sempre preenchida e sempre igual, a primeira não
+separa nada — como porteiro seria inócua, e lida como "só os marcados `Sim`"
+reprovaria o arquivo inteiro.
+
+**Quem decide o reconhecimento é o NOME do criador.** `DOCISSUBSTITUTE` continua
+sendo lida e **contada**: a análise da carga informa quantas linhas chegaram sem
+ela e quantas sem criador. Se um arquivo futuro vier diferente, isso aparece no
+relatório em vez de passar despercebido.
+
+### A coluna `Reconhecido` na planilha (modelo 1.6)
+
+O template promete backup, migração e reimportação sem perda, e o estado de
+conferência ficava de fora: exportar a base e reimportá-la noutro lugar devolvia
+tudo por reconhecer. A aba `Financeiro` ganhou a coluna **Reconhecido**, fora das
+obrigatórias — arquivo 1.5 continua entrando.
+
+São **três** estados, e o terceiro é o que protege trabalho feito:
+
+| célula | efeito |
+| --- | --- |
+| `Sim` | a despesa entra reconhecida, com `reconhecido_via = 'planilha'` |
+| `Não` | entra por reconhecer |
+| **vazia, ou coluna ausente** | **não afirma nada** — o lançamento nasce como sempre nasceu |
+
+`reconhecido_via` ganha o valor `'planilha'` porque nem `'manual'` (ninguém
+clicou) nem `'cadastro_origem'` (nenhuma regra decidiu) descreveriam o que
+aconteceu — e é essa distinção que a auditoria procura.
+
+A coluna vale na **criação**. Linha que já existe na base sai por `duplicadas`
+antes de qualquer campo ser tocado, como acontece com todo campo fora da chave
+de conteúdo. É o que faz exportar e reimportar numa base nova preservar a
+conferência, sem que reimportar um arquivo velho por cima da base viva desfaça a
+de ninguém.
+
 **O cadastro decide na ENTRADA da carga.** Alcançar os meses já carregados é um
 ATO, com recorte, prévia e contagem, como a reaplicação do acordo de SLA: um
 número apresentado numa reunião não pode mudar porque alguém mexeu numa lista. A

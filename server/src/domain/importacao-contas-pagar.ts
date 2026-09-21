@@ -91,6 +91,16 @@ export interface AnaliseContasPagar {
   invalidas: number;
   /** Linhas que chegaram com campo omitido e foram recolocadas na coluna certa. */
   realinhadas: number;
+  /**
+   * Linhas válidas sem `DOCISSUBSTITUTE` e sem `CREATIONUSER`.
+   *
+   * Nenhuma das duas derruba a linha: quem decide o reconhecimento é o NOME do
+   * criador. São contadas para que um arquivo diferente do de hoje — em que
+   * `DOCISSUBSTITUTE` vem `"0"` nas 1.148 linhas e nenhum criador falta —
+   * apareça no relatório em vez de passar despercebido.
+   */
+  sem_doc_substituto: number;
+  sem_criador: number;
   pendentes: number;
   blocos: BlocoConciliacao[];
   /** O de-para que já estava guardado e foi aplicado sozinho. */
@@ -348,7 +358,8 @@ export function analisarContasPagar(
   const escopo = opcoes.escopo ?? escopoDoCliente(ctx);
   const decisoes = opcoes.decisoes ?? [];
   const hash = hashArquivo(buffer);
-  const { totalLinhas, linhas, erros, avisos, realinhadas } = lerArquivo(buffer);
+  const { totalLinhas, linhas, erros, avisos, realinhadas, semDocSubstituto, semCriador } =
+    lerArquivo(buffer);
 
   const vinculos = vinculosDoCliente(clienteId);
   const { blocos, aplicados } = conciliarDimensoes(ctx, linhas, vinculos, escopo.empresas);
@@ -385,6 +396,8 @@ export function analisarContasPagar(
     validas: linhas.length,
     invalidas: totalLinhas - linhas.length,
     realinhadas,
+    sem_doc_substituto: semDocSubstituto,
+    sem_criador: semCriador,
     pendentes: faltando.length,
     blocos,
     vinculos_aplicados: aplicados,

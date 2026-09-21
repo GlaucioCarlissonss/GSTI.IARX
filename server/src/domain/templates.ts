@@ -16,7 +16,12 @@
 //     para a planilha poder dizer quem CONSOME o que a filial paga. As duas
 //     ficam fora das obrigatórias: um arquivo 1.4 continua entrando, e a
 //     ausência da coluna preserva a classificação feita na tela.
-export const TEMPLATE_VERSAO_ATUAL = '1.5';
+// 1.6 acrescentou "Reconhecido" ao Financeiro, para o estado de conferência
+//     sair e voltar na planilha. Fora das obrigatórias pela mesma razão — e
+//     com uma regra a mais, que a importação respeita: coluna AUSENTE OU
+//     VAZIA não mexe em nada. Reimportar uma exportação antiga não pode
+//     desfazer a conferência de ninguém.
+export const TEMPLATE_VERSAO_ATUAL = '1.6';
 
 export type NomeAba =
   | 'Filiais'
@@ -75,6 +80,7 @@ const ABAS_BASE: Record<NomeAba, DefinicaoAba> = {
       'Filiais Beneficiadas',
       'Descrição',
       'Observações',
+      'Reconhecido',
     ],
     apelidos: {
       'Tipo de Despesa': ['tipo', 'tipodespesa', 'tipodedespesa'],
@@ -90,6 +96,7 @@ const ABAS_BASE: Record<NomeAba, DefinicaoAba> = {
       Origem: ['origem', 'origemdodado', 'procedencia'],
       Descrição: ['descricao'],
       Observações: ['observacoes', 'obs'],
+      Reconhecido: ['reconhecido', 'conferido', 'reconhecidosn', 'despesareconhecida'],
     },
     obrigatorias: ['Tipo de Despesa', 'Competência', 'Valor', 'Natureza', 'Classificação'],
   },
@@ -243,6 +250,9 @@ const NOTAS: Partial<Record<NomeAba, Record<string, string>>> = {
     'Filiais Beneficiadas':
       'Só para "beneficia outras": nomes das filiais separados por | (ex.: Filial Norte|Filial Oeste), '
       + 'ou a palavra Todas para todas as filiais do grupo do cliente. A lista é congelada na importação.',
+    Reconhecido:
+      'Sim | Não — a despesa já foi conferida. EM BRANCO não altera nada: reimportar um arquivo antigo '
+      + 'não desfaz conferência. Escrever "Não" numa despesa já reconhecida a devolve para a fila.',
   },
   Projetos: {
     'Mês Início': 'MM/AAAA.',

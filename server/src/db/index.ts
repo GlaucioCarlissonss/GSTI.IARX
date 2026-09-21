@@ -3,6 +3,7 @@ import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { caminhoDoProjeto } from '../lib/ambiente.js';
+import { chaveDoUsuario } from '../lib/texto.js';
 
 const aquiDir = dirname(fileURLToPath(import.meta.url));
 const CAMINHO_SCHEMA = resolve(aquiDir, 'schema.sql');
@@ -33,6 +34,28 @@ export function abrirBanco(caminho: string): Conexao {
  * Milagres, Moove, Residencial e Union Care — são as matrizes deste grupo.
  */
 export const CLIENTE_HISTORICO = 'Grupo Brasil Home Care';
+
+/**
+ * A equipe que lança, no ERP, despesa que já nasce conferida.
+ *
+ * Medido no arquivo de Contas a Pagar de jan–out/2026: destas seis pessoas
+ * saem **1.147 das 1.148 linhas** — só um documento vem de outro usuário. Um
+ * cadastro que começasse vazio faria a carga inteira nascer por reconhecer, e
+ * mil cento e quarenta e sete conferências à mão ninguém vai fazer: o campo
+ * perderia o sentido na primeira semana.
+ *
+ * Fica ao lado de `CLIENTE_HISTORICO` pela mesma razão que ele: é fato de UM
+ * contratante, conhecido na abertura do banco, e `db/` é folha — importar o
+ * domínio daqui criaria ciclo.
+ */
+export const RECONHECEDORES_INICIAIS = [
+  'MIQUEIASSILVA',
+  'DAYVSONSILVA',
+  'CELICEALVES',
+  'KAUAROCHA',
+  'JONADABFILHO',
+  'MARIELITONBARBOSA',
+] as const;
 
 /**
  * Exportada para o teste: a promessa de que ela roda duas vezes sem quebrar é
@@ -502,6 +525,40 @@ CREATE INDEX IF NOT EXISTS ix_auditoria_empresa ON auditoria(empresa_id, criado_
     if (colunasSla.size > 0 && !colunasSla.has(coluna)) {
       db.exec(`ALTER TABLE slas ADD COLUMN ${coluna} TEXT`);
     }
+  }
+
+  semearReconhecedores(db);
+}
+
+/**
+ * Põe a equipe de TI na lista de quem reconhece despesa do cliente histórico.
+ *
+ * Roda a CADA abertura do banco, e é por isso que os três cuidados abaixo
+ * existem — cada um evita um estrago diferente:
+ *
+ * 1. **`INSERT OR IGNORE` sobre o `UNIQUE (cliente_id, chave)`.** Sem ele,
+ *    quem você desativasse na tela voltaria ativo no próximo `abrirBanco` — o
+ *    jeito mais silencioso possível de um cadastro deixar de valer.
+ * 2. **Não cria o cliente.** Se "Grupo Brasil Home Care" não existe nesta base,
+ *    não há o que semear: criar contratante numa migração é escrever na base de
+ *    todo mundo. Pela mesma razão, nenhum OUTRO cliente é semeado — esta é a
+ *    equipe de um contratante, e Limas IT e SoulCoop têm as suas.
+ * 3. **Sem auditoria.** A trilha é de ato de gente; isto é estado inicial, e
+ *    uma linha a cada abertura do banco afogaria a trilha de verdade.
+ *    Acrescentar ou desativar alguém na tela continua auditado.
+ */
+function semearReconhecedores(db: Conexao): void {
+  const dono = db.prepare('SELECT id FROM clientes WHERE nome = ?').get(CLIENTE_HISTORICO) as
+    | { id: number }
+    | undefined;
+  if (!dono) return;
+
+  const inserir = db.prepare(
+    `INSERT OR IGNORE INTO reconhecedores_origem (cliente_id, usuario_origem, chave, nome_exibicao)
+     VALUES (?, ?, ?, NULL)`,
+  );
+  for (const usuario of RECONHECEDORES_INICIAIS) {
+    inserir.run(dono.id, usuario, chaveDoUsuario(usuario));
   }
 }
 

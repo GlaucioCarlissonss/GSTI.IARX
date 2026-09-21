@@ -136,6 +136,21 @@ export interface LinhaContasPagar {
   dataPagamento: string | null;
   /** Quem criou o documento no ERP — é o que o cadastro de reconhecimento lê. */
   usuarioOrigem: string;
+  /**
+   * `DOCISSUBSTITUTE` como o ERP manda — hoje `"0"` em todas as linhas.
+   *
+   * As regras de classificação que acompanharam a base pediam para considerar
+   * só os registros com esta coluna preenchida. Medida no arquivo de jan–out
+   * de 2026, ela vem `"0"` nas 1.148 linhas: sempre preenchida e sempre igual,
+   * portanto sem poder de separar nada. Usá-la como porteiro seria inócuo na
+   * melhor hipótese e, lida como "só os marcados `Sim`", reprovaria o arquivo
+   * inteiro. Quem decide o reconhecimento é o NOME do criador.
+   *
+   * Continua sendo lida e CONTADA: se um arquivo futuro trouxer a coluna vazia
+   * ou com outro valor, o relatório da carga diz quantas linhas — em vez de a
+   * diferença passar despercebida.
+   */
+  docSubstituto: string;
 }
 
 export interface LeituraContasPagar {
@@ -144,6 +159,10 @@ export interface LeituraContasPagar {
   avisos: ProblemaLinha[];
   /** Quantas linhas chegaram com campo omitido e precisaram ser realinhadas. */
   realinhadas: number;
+  /** Quantas linhas VÁLIDAS chegaram sem `DOCISSUBSTITUTE`. Ver `docSubstituto`. */
+  semDocSubstituto: number;
+  /** Quantas linhas VÁLIDAS chegaram sem `CREATIONUSER` — nunca reconhecidas. */
+  semCriador: number;
 }
 
 /** `260826000000-0300` → `2026-08-26`. Vazio e lixo viram nulo. */
@@ -207,6 +226,8 @@ export function lerLinhasContasPagar(linhasBrutas: string[][], primeiraLinha = 2
   const erros: ProblemaLinha[] = [];
   const avisos: ProblemaLinha[] = [];
   let realinhadas = 0;
+  let semDocSubstituto = 0;
+  let semCriador = 0;
 
   const cabecalho = (linhasBrutas[0] ?? []).map((c) => c.replace(/^"|"$/g, '').trim());
   const a = ancorasDoCabecalho(cabecalho);
@@ -270,6 +291,15 @@ export function lerLinhasContasPagar(linhasBrutas: string[][], primeiraLinha = 2
       avisos.push({ linha: numero, campo: 'MOTIVE', mensagem: 'Sem descrição.' });
     }
 
+    // As duas colunas que as regras de classificação nomeiam. Contadas quando
+    // faltam — nenhuma das duas DERRUBA a linha: o que decide o reconhecimento
+    // é o nome do criador, e sem ele a linha entra por reconhecer, que é o
+    // estado certo para uma despesa que ninguém conferiu.
+    const docSubstituto = em(linha, 'DOCISSUBSTITUTE').trim();
+    const usuarioOrigem = em(linha, 'CREATIONUSER');
+    if (!docSubstituto) semDocSubstituto += 1;
+    if (!usuarioOrigem.trim()) semCriador += 1;
+
     linhas.push({
       linha: numero,
       idOrigem: em(linha, 'ID'),
@@ -285,11 +315,12 @@ export function lerLinhasContasPagar(linhasBrutas: string[][], primeiraLinha = 2
       dataEmissao: dataDoCarimbo(em(linha, 'DOCEMISSIONDATE')) ?? '',
       dataVencimento: vencimento,
       dataPagamento: dataDoCarimbo(em(linha, 'DOCPAIDDATE')),
-      usuarioOrigem: em(linha, 'CREATIONUSER'),
+      usuarioOrigem,
+      docSubstituto,
     });
   });
 
-  return { linhas, erros, avisos, realinhadas };
+  return { linhas, erros, avisos, realinhadas, semDocSubstituto, semCriador };
 }
 
 /**

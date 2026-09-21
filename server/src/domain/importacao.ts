@@ -13,6 +13,7 @@ import {
   gravarBeneficiadas,
   interpretarOrigem,
   interpretarTipoConsumo,
+  interpretarReconhecido,
   resolverBeneficiadas,
   type Origem,
   type TipoConsumo,
@@ -883,6 +884,15 @@ function importarLancamento(
     throw new Error('Tipo de consumo "beneficia outras" exige a coluna "Filiais Beneficiadas" preenchida.');
   }
 
+  // Reconhecimento (modelo 1.6). Três estados, e o terceiro é o que protege
+  // trabalho feito: `null` (coluna ausente ou célula vazia) NÃO afirma nada, e
+  // o lançamento nasce por reconhecer como sempre nasceu. Só vale na CRIAÇÃO —
+  // linha que já existe na base sai por `duplicadas` antes daqui, como
+  // acontece com todo campo fora da chave de conteúdo. É o que faz exportar e
+  // reimportar numa base nova preservar a conferência, sem que reimportar um
+  // arquivo velho por cima da base viva desfaça a de ninguém.
+  const reconhecido = interpretarReconhecido(ler(linha, 'Reconhecido')) === true;
+
   if (natureza === 'pontual_parcelada' && parcelaNumero === null && (qtdParcelas === null || qtdParcelas < 2)) {
     throw new Error('Despesa pontual parcelada exige "Qtd Parcelas" maior ou igual a 2.');
   }
@@ -965,8 +975,8 @@ function importarLancamento(
       `INSERT INTO lancamentos
          (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
           qtd_parcelas, parcela_numero, lancamento_origem_id, cenario, origem, descricao, observacoes, dedup_hash,
-          tipo_consumo, beneficia_todas)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          tipo_consumo, beneficia_todas, reconhecido, reconhecido_em, reconhecido_via)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       ctx.empresaId,
@@ -986,6 +996,12 @@ function importarLancamento(
       dedup,
       tipoConsumo,
       beneficiadasArquivo === 'todas' ? 1 : 0,
+      reconhecido ? 1 : 0,
+      reconhecido ? new Date().toISOString() : null,
+      // Nem 'manual' (ninguém clicou) nem 'cadastro_origem' (nenhuma regra
+      // decidiu): foi a planilha que afirmou. É essa diferença que a auditoria
+      // procura quando alguém pergunta quem conferiu.
+      reconhecido ? 'planilha' : null,
     );
   const idNovo = Number(info.lastInsertRowid);
   if (tipoConsumo === 'compartilhado') {

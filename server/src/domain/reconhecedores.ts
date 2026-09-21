@@ -23,6 +23,7 @@
  */
 import { db } from '../db/index.js';
 import { erroConflito, erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
+import { chaveDoUsuario } from '../lib/texto.js';
 import { auditar } from './auditoria.js';
 import type { Contexto } from './contexto.js';
 import { reconhecerLancamentos } from './financeiro.js';
@@ -43,16 +44,11 @@ function clienteDo(ctx: Contexto): number {
 /**
  * A forma comparável do nome: maiúsculas, sem acento, sem espaço.
  *
- * O ERP escreve `MIQUEIASSILVA`; a pessoa cadastra `Miqueias Silva`. São o
- * mesmo usuário, e sem normalizar o cadastro nunca alcançaria a carga.
+ * Mora em `lib/texto.ts` porque a semeadura da lista inicial acontece em
+ * `db/index.ts`, que é folha e não pode importar o domínio. Reexportada aqui
+ * para quem já a conhecia por este caminho.
  */
-export function chaveDoUsuario(valor: unknown): string {
-  return String(valor ?? '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/\s+/g, '')
-    .toUpperCase();
-}
+export { chaveDoUsuario };
 
 const SELECT_RECONHECEDOR = `SELECT id, usuario_origem, chave, nome_exibicao, ativo
      FROM reconhecedores_origem`;

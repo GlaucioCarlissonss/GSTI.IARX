@@ -82,6 +82,25 @@ export function interpretarTipoConsumo(texto: string | null | undefined): TipoCo
   return null;
 }
 
+/**
+ * A coluna "Reconhecido" da planilha: `true`, `false` ou `null` para "não disse".
+ *
+ * A distinção entre `false` e `null` é o ponto todo. "Não" escrito de propósito
+ * é uma afirmação; célula vazia é ausência de afirmação, e tratá-las igual
+ * faria reimportar um arquivo antigo desfazer a conferência de quem trabalhou.
+ */
+export function interpretarReconhecido(texto: string | null | undefined): boolean | null {
+  const bruto = String(texto ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+  if (!bruto) return null;
+  if (bruto === 'sim' || bruto === 's' || bruto === '1' || bruto === 'true' || bruto === 'x') return true;
+  if (bruto === 'nao' || bruto === 'n' || bruto === '0' || bruto === 'false') return false;
+  return null;
+}
+
 /** Uma filial que consome o que outra pagou. A matriz vem junto: nomes repetem entre matrizes. */
 export interface FilialBeneficiada {
   id: number;
