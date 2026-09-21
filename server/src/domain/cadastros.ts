@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { erroConflito, erroNaoEncontrado, erroValidacao } from '../lib/erros.js';
+import { erroConflito, erroNaoEncontrado, erroSemPermissao, erroValidacao } from '../lib/erros.js';
 import { auditar } from './auditoria.js';
 import type { Contexto } from './contexto.js';
 import { escopoSql } from './escopo.js';
@@ -86,6 +86,40 @@ export function validarFilial(empresaId: number, filialId: number | null | undef
   const linha = db().prepare('SELECT id FROM filiais WHERE id = ? AND empresa_id = ?').get(filialId, empresaId);
   if (!linha) throw erroValidacao(`Filial ${filialId} não pertence à empresa em contexto.`);
   return filialId;
+}
+
+/**
+ * Todas as filiais do CLIENTE, atravessando as matrizes.
+ *
+ * `validarFilial` acima responde outra pergunta — "esta filial é desta
+ * matriz?" —, que é a certa para dizer onde um lançamento nasce. Mas quem se
+ * BENEFICIA de uma despesa centralizada pode estar em outra matriz do mesmo
+ * contratante: é o caso da licença comprada pela holding e usada pelos
+ * hospitais. Recortar por matriz aqui deixaria metade do grupo de fora.
+ */
+export function filiaisDoCliente(ctx: Contexto): number[] {
+  const alcance = escopoSql(ctx, null, 'f.empresa_id');
+  return (
+    db()
+      .prepare(`SELECT f.id FROM filiais f WHERE ${alcance.sql} ORDER BY f.id`)
+      .all(...alcance.params) as Array<{ id: number }>
+  ).map((f) => f.id);
+}
+
+/**
+ * Confere que cada filial informada é do cliente da sessão.
+ *
+ * A recusa é a mesma para filial de outro cliente e para filial inexistente:
+ * distinguir as duas contaria a quem tenta qual id existe.
+ */
+export function validarFiliaisDoCliente(ctx: Contexto, ids: number[]): number[] {
+  const unicos = [...new Set(ids.filter((n) => Number.isInteger(n) && n > 0))];
+  if (!unicos.length) return [];
+  const doCliente = new Set(filiaisDoCliente(ctx));
+  for (const id of unicos) {
+    if (!doCliente.has(id)) throw erroSemPermissao('Você não tem acesso a uma das filiais informadas.');
+  }
+  return unicos;
 }
 
 // ------------------------------------------------------- Tipos de despesa

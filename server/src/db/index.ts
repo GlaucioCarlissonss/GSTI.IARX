@@ -70,6 +70,12 @@ function migrar(db: Conexao): void {
     // meta_mes). São controle, NÃO valor: entram como JSON para não serem
     // somadas por engano a nenhum total.
     ['planejamento', 'TEXT'],
+    // Quem consome o que esta filial paga. O lançamento que já existia nasce
+    // 'integral', que é a leitura que o sistema fazia antes de a pergunta
+    // existir — nenhum número muda ao migrar. Sem CHECK: o SQLite não aceita
+    // restrição em ADD COLUMN, e a validação fica no domínio.
+    ['tipo_consumo', "TEXT NOT NULL DEFAULT 'integral'"],
+    ['beneficia_todas', 'INTEGER NOT NULL DEFAULT 0'],
   ] as Array<[string, string]>) {
     if (!colunas.has(nome)) db.exec(`ALTER TABLE lancamentos ADD COLUMN ${nome} ${tipo}`);
   }

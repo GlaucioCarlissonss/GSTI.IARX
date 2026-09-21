@@ -7,7 +7,16 @@ import type { Contexto } from './contexto.js';
 import { escopoSql, clausulaEmpresas, comEmpresaEmFoco } from './escopo.js';
 import { escopoDoCliente, escopoParaLog, type EscopoOperacao } from './escopo-operacao.js';
 import { paraCentavos } from './dinheiro.js';
-import { criarLancamento, garantirCenario, interpretarOrigem, type Origem } from './financeiro.js';
+import {
+  criarLancamento,
+  garantirCenario,
+  gravarBeneficiadas,
+  interpretarOrigem,
+  interpretarTipoConsumo,
+  resolverBeneficiadas,
+  type Origem,
+  type TipoConsumo,
+} from './financeiro.js';
 import { criarFilial, resolverFila, resolverTipoDespesa, resolverTopicoAjuda } from './cadastros.js';
 import { apelidosDoCliente } from './mapeamentos.js';
 import { atualizarTarefa } from './projetos.js';
@@ -686,6 +695,56 @@ function resolverFilialPorNome(
   return nova.id;
 }
 
+/**
+ * As filiais beneficiadas nomeadas na planilha.
+ *
+ * Separadas por `|`, `;` ou `/`, ou a palavra "Todas" para o grupo inteiro.
+ * A busca atravessa as matrizes do cliente — quem consome uma licença
+ * centralizada pode estar em outra matriz —, e por isso o nome pode vir
+ * qualificado como "Matriz Sul > Filial Oeste" quando duas filiais de matrizes
+ * diferentes se chamam igual.
+ *
+ * Diferente de `resolverFilialPorNome`, aqui NUNCA se cria cadastro: uma
+ * beneficiada é sempre uma unidade que já existe, e criar filial a partir de um
+ * erro de digitação nesta coluna encheria o cadastro de fantasmas.
+ */
+function resolverBeneficiadasPorNome(ctx: Contexto, texto: string): number[] | 'todas' | null {
+  const bruto = texto.trim();
+  if (!bruto) return null;
+  const semAcento = (t: string) =>
+    t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  if (semAcento(bruto) === 'todas' || semAcento(bruto) === 'todas as filiais') return 'todas';
+
+  const alcance = escopoSql(ctx, null, 'f.empresa_id');
+  const conhecidas = db()
+    .prepare(
+      `SELECT f.id, f.nome, e.nome AS empresa_nome
+         FROM filiais f JOIN empresas e ON e.id = f.empresa_id
+        WHERE ${alcance.sql}`,
+    )
+    .all(...alcance.params) as Array<{ id: number; nome: string; empresa_nome: string }>;
+
+  const ids: number[] = [];
+  for (const parte of bruto.split(/[|;/]/)) {
+    const nome = parte.trim();
+    if (!nome) continue;
+    const alvo = semAcento(nome);
+    const achadas = conhecidas.filter(
+      (f) => semAcento(f.nome) === alvo || semAcento(`${f.empresa_nome} > ${f.nome}`) === alvo,
+    );
+    if (!achadas.length) {
+      throw new Error(`Filial beneficiada "${nome}" não encontrada neste cliente.`);
+    }
+    if (achadas.length > 1) {
+      throw new Error(
+        `Filial beneficiada "${nome}" existe em mais de uma matriz. Qualifique como "Matriz > Filial".`,
+      );
+    }
+    ids.push(achadas[0]!.id);
+  }
+  return ids;
+}
+
 function importarFilial(ctx: Contexto, ler: Leitor, linha: Record<string, unknown>, resultado: ResultadoImportacao) {
   const nome = ler(linha, 'Filial');
   if (!nome) throw new Error('Nome da filial é obrigatório.');
@@ -813,6 +872,17 @@ function importarLancamento(
   // planilha por definição: veio de fora, não foi lançado aqui.
   const origem = interpretarOrigem(ler(linha, 'Origem')) ?? 'planilha';
 
+  // Consumo (modelo 1.5). Coluna ausente vale 'integral', que é a leitura que o
+  // sistema fazia antes de a pergunta existir — o arquivo 1.4 entra igual.
+  // Nomear beneficiadas sem dizer o tipo já diz o tipo: exigir as duas colunas
+  // rejeitaria um arquivo cuja intenção é inequívoca.
+  const beneficiadasArquivo = resolverBeneficiadasPorNome(ctx, ler(linha, 'Filiais Beneficiadas'));
+  const tipoConsumo: TipoConsumo =
+    interpretarTipoConsumo(ler(linha, 'Tipo de Consumo')) ?? (beneficiadasArquivo ? 'compartilhado' : 'integral');
+  if (tipoConsumo === 'compartilhado' && !beneficiadasArquivo) {
+    throw new Error('Tipo de consumo "beneficia outras" exige a coluna "Filiais Beneficiadas" preenchida.');
+  }
+
   if (natureza === 'pontual_parcelada' && parcelaNumero === null && (qtdParcelas === null || qtdParcelas < 2)) {
     throw new Error('Despesa pontual parcelada exige "Qtd Parcelas" maior ou igual a 2.');
   }
@@ -880,6 +950,8 @@ function importarLancamento(
       descricao,
       observacoes,
       dedup,
+      tipoConsumo,
+      beneficiadas: beneficiadasArquivo,
     });
     resultado.importadas += criado;
     return;
@@ -892,8 +964,9 @@ function importarLancamento(
     .prepare(
       `INSERT INTO lancamentos
          (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
-          qtd_parcelas, parcela_numero, lancamento_origem_id, cenario, origem, descricao, observacoes, dedup_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          qtd_parcelas, parcela_numero, lancamento_origem_id, cenario, origem, descricao, observacoes, dedup_hash,
+          tipo_consumo, beneficia_todas)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       ctx.empresaId,
@@ -911,9 +984,17 @@ function importarLancamento(
       descricao,
       observacoes,
       dedup,
+      tipoConsumo,
+      beneficiadasArquivo === 'todas' ? 1 : 0,
     );
+  const idNovo = Number(info.lastInsertRowid);
+  if (tipoConsumo === 'compartilhado') {
+    // A lista é congelada aqui, na carga: reimportar o mesmo arquivo depois de
+    // cadastrar uma filial nova não pode mudar quem consumia um mês fechado.
+    gravarBeneficiadas([idNovo], resolverBeneficiadas(ctx, tipoConsumo, beneficiadasArquivo, filialId));
+  }
   if (chaveGrupo && (parcelaNumero === null || parcelaNumero === 1)) {
-    grupos.set(chaveGrupo, Number(info.lastInsertRowid));
+    grupos.set(chaveGrupo, idNovo);
   }
   resultado.importadas += 1;
 }
@@ -934,6 +1015,8 @@ function criarLancamentoImportado(
     descricao: string | null;
     observacoes: string | null;
     dedup: string;
+    tipoConsumo: TipoConsumo;
+    beneficiadas: number[] | 'todas' | null;
   },
 ): number {
   const criado = criarLancamento(ctx, {
@@ -950,6 +1033,8 @@ function criarLancamentoImportado(
     observacoes: entrada.observacoes,
     origem: entrada.origem,
     dedupHash: entrada.dedup,
+    tipoConsumo: entrada.tipoConsumo,
+    beneficiadas: entrada.beneficiadas,
   });
   return criado.ocorrencias;
 }

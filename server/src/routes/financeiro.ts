@@ -71,6 +71,21 @@ rotasFinanceiro.get('/:id/serie', (req, res) => {
   res.json(listarSerie(ctx(req), Number(req.params.id)));
 });
 
+/**
+ * As filiais beneficiadas como a tela as manda.
+ *
+ * `'todas'` atravessa como intenção — o domínio é que a expande, na gravação,
+ * para a lista congelada. `undefined` mantém o que está gravado (é o contrato
+ * do PATCH); `null` e lista vazia limpam.
+ */
+function beneficiadasDoCorpo(valor: unknown): number[] | 'todas' | null | undefined {
+  if (valor === undefined) return undefined;
+  if (valor === null) return null;
+  if (valor === 'todas') return 'todas';
+  if (Array.isArray(valor)) return valor.map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  return undefined;
+}
+
 rotasFinanceiro.post('/', exigir('financeiro', 'create'), (req, res) => {
   const corpo = req.body ?? {};
   res.status(201).json(
@@ -91,6 +106,8 @@ rotasFinanceiro.post('/', exigir('financeiro', 'create'), (req, res) => {
       origemCusto: corpo.origem_custo ?? null,
       destinoPagamento: corpo.destino_pagamento ?? null,
       documento: corpo.documento ?? null,
+      tipoConsumo: corpo.tipo_consumo ?? null,
+      beneficiadas: beneficiadasDoCorpo(corpo.filiais_beneficiadas) ?? null,
       cenario: corpo.cenario ?? null,
       justificativa: corpo.justificativa ?? null,
     }),
@@ -125,6 +142,8 @@ rotasFinanceiro.patch('/:id', exigir('financeiro', 'edit'), (req, res) => {
       origemCusto: corpo.origem_custo,
       destinoPagamento: corpo.destino_pagamento,
       documento: corpo.documento,
+      tipoConsumo: corpo.tipo_consumo,
+      beneficiadas: beneficiadasDoCorpo(corpo.filiais_beneficiadas),
       justificativa: corpo.justificativa ?? null,
     }),
   );

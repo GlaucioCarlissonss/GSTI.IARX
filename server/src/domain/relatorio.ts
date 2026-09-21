@@ -20,7 +20,14 @@ import { paraExibicao, paraInterno } from './competencia.js';
 import { paraReais } from './dinheiro.js';
 import type { Contexto } from './contexto.js';
 import { escopoSql } from './escopo.js';
-import { CENARIO_OFICIAL, ROTULO_ORIGEM, type Origem } from './financeiro.js';
+import {
+  beneficiadasPorLancamento,
+  CENARIO_OFICIAL,
+  ROTULO_CONSUMO,
+  ROTULO_ORIGEM,
+  type Origem,
+  type TipoConsumo,
+} from './financeiro.js';
 import { clausulaEm } from '../lib/consulta.js';
 
 export interface FiltroRelatorio {
@@ -238,6 +245,7 @@ export function lancamentosDoRelatorio(
       `SELECT l.id, l.competencia, l.valor_centavos, l.natureza, l.classificacao,
               l.parcela_numero, l.qtd_parcelas, l.descricao, l.observacoes,
               l.origem, l.origem_custo, l.destino_pagamento, l.documento, l.cenario,
+              l.tipo_consumo, l.beneficia_todas,
               l.filial_id, fi.nome AS filial_nome, l.tipo_despesa_id, td.nome AS tipo_despesa
          FROM lancamentos l
          LEFT JOIN filiais fi ON fi.id = l.filial_id
@@ -247,6 +255,11 @@ export function lancamentosDoRelatorio(
     )
     .all(...params) as Array<Record<string, unknown>>;
 
+  // Este detalhe alimenta o drill-down de Conferência, Financeiro, Painel
+  // Executivo e Relatório: a classificação de consumo aparece nas quatro telas
+  // por sair daqui.
+  const beneficiadas = beneficiadasPorLancamento(itens.map((l) => Number(l.id)));
+
   return {
     itens: itens.map((l) => ({
       ...l,
@@ -254,6 +267,10 @@ export function lancamentosDoRelatorio(
       valor: paraReais(Number(l.valor_centavos)),
       origem_rotulo: ROTULO_ORIGEM[l.origem as Origem] ?? l.origem,
       filial_nome: (l.filial_nome as string | null) ?? 'Nível empresa',
+      tipo_consumo: (l.tipo_consumo as TipoConsumo) ?? 'integral',
+      tipo_consumo_rotulo: ROTULO_CONSUMO[(l.tipo_consumo as TipoConsumo) ?? 'integral'],
+      beneficia_todas: Number(l.beneficia_todas ?? 0) === 1,
+      filiais_beneficiadas: beneficiadas.get(Number(l.id)) ?? [],
     })),
     // O total do detalhe vem da mesma consulta que o listou: se divergisse do
     // macro, a divergência apareceria aqui e não num lugar qualquer.

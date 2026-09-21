@@ -11,8 +11,12 @@
 // 1.2 acrescentou à aba SLA o detalhe do chamado (Ticket, Número, Assunto…);
 // 1.3 acrescentou "Tarefa Principal" à aba Tarefas;
 // 1.4 acrescentou "Empresa" a todas as abas, para que um arquivo só atenda
-//     várias matrizes do mesmo cliente (ver COLUNA_EMPRESA, abaixo).
-export const TEMPLATE_VERSAO_ATUAL = '1.4';
+//     várias matrizes do mesmo cliente (ver COLUNA_EMPRESA, abaixo);
+// 1.5 acrescentou "Tipo de Consumo" e "Filiais Beneficiadas" ao Financeiro,
+//     para a planilha poder dizer quem CONSOME o que a filial paga. As duas
+//     ficam fora das obrigatórias: um arquivo 1.4 continua entrando, e a
+//     ausência da coluna preserva a classificação feita na tela.
+export const TEMPLATE_VERSAO_ATUAL = '1.5';
 
 export type NomeAba =
   | 'Filiais'
@@ -67,11 +71,15 @@ const ABAS_BASE: Record<NomeAba, DefinicaoAba> = {
       'Grupo',
       'Cenário',
       'Origem',
+      'Tipo de Consumo',
+      'Filiais Beneficiadas',
       'Descrição',
       'Observações',
     ],
     apelidos: {
       'Tipo de Despesa': ['tipo', 'tipodespesa', 'tipodedespesa'],
+      'Tipo de Consumo': ['tipoconsumo', 'consumo', 'tipodeconsumo', 'rateio'],
+      'Filiais Beneficiadas': ['filiaisbeneficiadas', 'beneficiadas', 'filiaisbeneficiarias', 'beneficiarias'],
       Competência: ['competencia', 'mes', 'mesdecompetencia', 'mescompetencia', 'mesreferencia'],
       Valor: ['valor', 'valorrs', 'valorreais'],
       Classificação: ['classificacao', 'classificacaocontabil'],
@@ -229,6 +237,12 @@ const NOTAS: Partial<Record<NomeAba, Record<string, string>>> = {
     'Cenário': 'Em branco entra no cenário "oficial".',
     Origem: 'Procedência do dado (planilha, folha de TI, projeção). Não confundir com a origem do custo.',
     Filial: 'Em branco, o lançamento fica no nível empresa (consolidado).',
+    'Tipo de Consumo':
+      '100% da filial | Paga pela filial, beneficia outras. Em branco entra como 100% da filial. '
+      + 'Coluna ausente no arquivo NÃO apaga a classificação já feita na tela.',
+    'Filiais Beneficiadas':
+      'Só para "beneficia outras": nomes das filiais separados por | (ex.: Filial Norte|Filial Oeste), '
+      + 'ou a palavra Todas para todas as filiais do grupo do cliente. A lista é congelada na importação.',
   },
   Projetos: {
     'Mês Início': 'MM/AAAA.',

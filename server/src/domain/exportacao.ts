@@ -11,7 +11,13 @@ import {
   resumoEscopo,
   type EscopoOperacao,
 } from './escopo-operacao.js';
-import { ROTULO_ORIGEM, type Origem } from './financeiro.js';
+import {
+  beneficiadasPorLancamento,
+  ROTULO_CONSUMO,
+  ROTULO_ORIGEM,
+  type Origem,
+  type TipoConsumo,
+} from './financeiro.js';
 import { escreverCsv, escreverXlsx, type Aba } from '../lib/planilha.js';
 import {
   ABA_INSTRUCOES,
@@ -103,12 +109,12 @@ function linhasCenarios(_ctx: Contexto, escopo: EscopoOperacao) {
 
 function linhasFinanceiro(_ctx: Contexto, escopo: EscopoOperacao) {
   const { sql, params } = filtroSql(escopo, 'l.empresa_id', 'l.filial_id');
-  return (
+  const linhas = (
     db()
       .prepare(
         `SELECT l.id, e.nome AS empresa, f.nome AS filial, t.nome AS tipo, l.competencia, l.valor_centavos,
                 l.natureza, l.classificacao, l.qtd_parcelas, l.parcela_numero, l.lancamento_origem_id,
-                l.cenario, l.origem, l.descricao, l.observacoes
+                l.cenario, l.origem, l.descricao, l.observacoes, l.tipo_consumo, l.beneficia_todas
            FROM lancamentos l
            JOIN empresas e ON e.id = l.empresa_id
            JOIN tipos_despesa t ON t.id = l.tipo_despesa_id
@@ -132,8 +138,16 @@ function linhasFinanceiro(_ctx: Contexto, escopo: EscopoOperacao) {
       origem: Origem;
       descricao: string | null;
       observacoes: string | null;
+      tipo_consumo: TipoConsumo | null;
+      beneficia_todas: number | null;
     }>
-  ).map((l) => ({
+  );
+
+  // As beneficiadas saem pelo NOME, qualificado pela matriz: o arquivo viaja
+  // entre bases, e um id não significa nada do outro lado.
+  const beneficiadas = beneficiadasPorLancamento(linhas.map((l) => l.id));
+
+  return linhas.map((l) => ({
     [COLUNA_EMPRESA]: l.empresa,
     Filial: l.filial ?? '',
     'Tipo de Despesa': l.tipo,
@@ -147,6 +161,13 @@ function linhasFinanceiro(_ctx: Contexto, escopo: EscopoOperacao) {
     Grupo: l.lancamento_origem_id ?? l.id,
     Cenário: l.cenario,
     Origem: ROTULO_ORIGEM[l.origem] ?? l.origem,
+    'Tipo de Consumo': ROTULO_CONSUMO[l.tipo_consumo ?? 'integral'],
+    // "Todas" volta como a palavra, e não como a lista: é a intenção que a
+    // pessoa registrou, e reimportar a lista congelada de hoje como se fosse a
+    // escolha original apagaria essa diferença.
+    'Filiais Beneficiadas': Number(l.beneficia_todas ?? 0) === 1
+      ? 'Todas'
+      : (beneficiadas.get(l.id) ?? []).map((f) => `${f.empresa_nome} > ${f.nome}`).join('|'),
     Descrição: l.descricao ?? '',
     Observações: l.observacoes ?? '',
   }));

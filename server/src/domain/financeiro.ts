@@ -10,7 +10,7 @@ import {
   somarMeses,
 } from './competencia.js';
 import type { Contexto } from './contexto.js';
-import { validarFilial } from './cadastros.js';
+import { filiaisDoCliente, validarFilial, validarFiliaisDoCliente } from './cadastros.js';
 import { garantirCompetenciaEditavel } from './fechamento.js';
 import { paraCentavos, paraReais, ratear } from './dinheiro.js';
 import { clausulaEm, clausulaEmComNulo } from '../lib/consulta.js';
@@ -52,6 +52,109 @@ export function interpretarOrigem(texto: string | null | undefined): Origem | nu
     if (bruto === rotulo) return chave;
   }
   return null;
+}
+
+/**
+ * Quem CONSOME o que esta filial PAGA.
+ *
+ * O lançamento sempre soube quem pagou; nunca soube quem usou. Uma matriz que
+ * centraliza licenças para seis filiais aparecia como a unidade cara, e as
+ * filiais que consomem, como baratas — o número certo contando a história
+ * errada. `compartilhado` é o que desfaz isso.
+ */
+export type TipoConsumo = 'integral' | 'compartilhado';
+
+export const ROTULO_CONSUMO: Record<TipoConsumo, string> = {
+  integral: '100% da filial',
+  compartilhado: 'Paga pela filial, beneficia outras',
+};
+
+/** Aceita a chave interna, o rótulo exibido ou a grafia da planilha. */
+export function interpretarTipoConsumo(texto: string | null | undefined): TipoConsumo | null {
+  const bruto = String(texto ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+  if (!bruto) return null;
+  if (bruto === 'integral' || /100\s*%|somente|so\s+a\s+filial|exclusiv/.test(bruto)) return 'integral';
+  if (bruto === 'compartilhado' || /beneficia|comparilh|compartilh|rate|central/.test(bruto)) return 'compartilhado';
+  return null;
+}
+
+/** Uma filial que consome o que outra pagou. A matriz vem junto: nomes repetem entre matrizes. */
+export interface FilialBeneficiada {
+  id: number;
+  nome: string;
+  empresa_nome: string;
+}
+
+/**
+ * As beneficiadas de vários lançamentos numa consulta só.
+ *
+ * A lista tem 200 linhas por página; perguntar as beneficiadas de cada uma
+ * separadamente seriam 200 consultas para responder uma pergunta.
+ */
+export function beneficiadasPorLancamento(ids: number[]): Map<number, FilialBeneficiada[]> {
+  const mapa = new Map<number, FilialBeneficiada[]>();
+  if (!ids.length) return mapa;
+  const marcas = ids.map(() => '?').join(', ');
+  const linhas = db()
+    .prepare(
+      `SELECT b.lancamento_id, f.id, f.nome, e.nome AS empresa_nome
+         FROM lancamento_beneficiadas b
+         JOIN filiais f ON f.id = b.filial_id
+         JOIN empresas e ON e.id = f.empresa_id
+        WHERE b.lancamento_id IN (${marcas})
+        ORDER BY e.nome, f.nome`,
+    )
+    .all(...ids) as Array<{ lancamento_id: number; id: number; nome: string; empresa_nome: string }>;
+  for (const l of linhas) {
+    const lista = mapa.get(l.lancamento_id) ?? [];
+    lista.push({ id: l.id, nome: l.nome, empresa_nome: l.empresa_nome });
+    mapa.set(l.lancamento_id, lista);
+  }
+  return mapa;
+}
+
+/**
+ * A lista definitiva de beneficiadas — já conferida e já congelada.
+ *
+ * "Todas as filiais do grupo" é resolvido AQUI, na gravação, e não na leitura:
+ * uma filial cadastrada em março não pode passar a se beneficiar de um
+ * lançamento de janeiro, senão o mês fechado muda de número sozinho.
+ *
+ * A filial pagadora sai da lista: ela não "se beneficia de outra", ela é a
+ * outra. Deixá-la dentro faria o indicador de consumo cruzado contá-la como
+ * destino do próprio dinheiro.
+ */
+export function resolverBeneficiadas(
+  ctx: Contexto,
+  tipoConsumo: TipoConsumo,
+  beneficiadas: number[] | 'todas' | null | undefined,
+  filialPagadora: number | null,
+): number[] {
+  if (tipoConsumo === 'integral') return [];
+  const ids =
+    beneficiadas === 'todas' ? filiaisDoCliente(ctx) : validarFiliaisDoCliente(ctx, beneficiadas ?? []);
+  const semPagadora = ids.filter((id) => id !== filialPagadora);
+  if (!semPagadora.length) {
+    throw erroValidacao(
+      'Um lançamento que beneficia outras filiais precisa de ao menos uma filial beneficiada além da que paga.',
+    );
+  }
+  return semPagadora;
+}
+
+export function gravarBeneficiadas(lancamentoIds: number[], filiais: number[]): void {
+  const apagar = db().prepare('DELETE FROM lancamento_beneficiadas WHERE lancamento_id = ?');
+  const inserir = db().prepare(
+    'INSERT OR IGNORE INTO lancamento_beneficiadas (lancamento_id, filial_id) VALUES (?, ?)',
+  );
+  for (const id of lancamentoIds) {
+    apagar.run(id);
+    for (const filial of filiais) inserir.run(id, filial);
+  }
 }
 
 export interface EntradaLancamento {
@@ -98,6 +201,15 @@ export interface EntradaLancamento {
   dataPagamento?: string | null;
   /** Meta e projeções da carga: controle, nunca valor. Gravado como JSON. */
   planejamento?: Record<string, number> | null;
+  /** Quem consome o que esta filial paga. Padrão: `integral`. */
+  tipoConsumo?: TipoConsumo | null;
+  /**
+   * As filiais que consomem, quando o consumo é compartilhado.
+   *
+   * `'todas'` é a intenção "todas as filiais do grupo do cliente", expandida
+   * na gravação para a lista que existe naquele momento.
+   */
+  beneficiadas?: number[] | 'todas' | null;
 }
 
 interface LinhaLancamento extends Record<string, unknown> {
@@ -124,7 +236,8 @@ interface LinhaLancamento extends Record<string, unknown> {
 /** Limite de segurança para geração automática de séries (parcelas/recorrência). */
 const MAX_OCORRENCIAS = 240;
 
-function apresentar(linha: LinhaLancamento & Record<string, unknown>) {
+function apresentar(linha: LinhaLancamento & Record<string, unknown>, beneficiadas: FilialBeneficiada[] = []) {
+  const tipoConsumo = ((linha.tipo_consumo as TipoConsumo) ?? 'integral') as TipoConsumo;
   return {
     id: linha.id,
     // A matriz vem junto: a lista mostra o cliente inteiro, e sem a unidade na
@@ -152,6 +265,12 @@ function apresentar(linha: LinhaLancamento & Record<string, unknown>) {
     origem_custo: (linha.origem_custo as string | null) ?? null,
     destino_pagamento: (linha.destino_pagamento as string | null) ?? null,
     documento: (linha.documento as string | null) ?? null,
+    tipo_consumo: tipoConsumo,
+    tipo_consumo_rotulo: ROTULO_CONSUMO[tipoConsumo] ?? tipoConsumo,
+    // A intenção original, para a tela dizer "Todas as filiais do grupo" em vez
+    // de listar catorze nomes. Quem responde de quem é o consumo é a lista.
+    beneficia_todas: Number(linha.beneficia_todas ?? 0) === 1,
+    filiais_beneficiadas: beneficiadas,
     // O reconhecimento é do gestor, não da carga: tudo que entrou por planilha
     // ou projeção nasce por reconhecer, e a tela destaca isso.
     reconhecido: Number(linha.reconhecido ?? 0) === 1,
@@ -202,6 +321,8 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
   const valorCentavos = paraCentavos(entrada.valor);
   if (valorCentavos < 0) throw erroValidacao('O valor do lançamento não pode ser negativo.');
   const cenario = garantirCenario(empresaId, entrada.cenario);
+  const tipoConsumo: TipoConsumo = entrada.tipoConsumo ?? 'integral';
+  const beneficiadas = resolverBeneficiadas(ctx, tipoConsumo, entrada.beneficiadas, filialId);
 
   const valores: Array<{ competencia: string; centavos: number; parcela: number | null }> = [];
   let qtdParcelas: number | null = null;
@@ -247,8 +368,9 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
       `INSERT INTO lancamentos
          (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
           qtd_parcelas, parcela_numero, lancamento_origem_id, descricao, observacoes, cenario, origem, dedup_hash,
-          origem_custo, destino_pagamento, documento, fornecedor, grupo_gasto, data_pagamento, planejamento)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          origem_custo, destino_pagamento, documento, fornecedor, grupo_gasto, data_pagamento, planejamento,
+          tipo_consumo, beneficia_todas)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const extras = [
       entrada.fornecedor ?? null,
@@ -257,6 +379,10 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
       entrada.planejamento && Object.keys(entrada.planejamento).length
         ? JSON.stringify(entrada.planejamento)
         : null,
+      // A classificação de consumo é do contrato, não da parcela: as duas
+      // pontas do INSERT usam os mesmos extras, e por isso ela é herdada.
+      tipoConsumo,
+      entrada.beneficiadas === 'todas' ? 1 : 0,
     ];
 
     const primeiro = valores[0]!;
@@ -311,6 +437,10 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
       ids.push(Number(info.lastInsertRowid));
     }
 
+    // Toda a série compartilha as mesmas beneficiadas: parcelar um contrato não
+    // muda quem o consome.
+    if (beneficiadas.length) gravarBeneficiadas(ids, beneficiadas);
+
     auditar(ctx, {
       entidade: 'lancamento',
       entidadeId: origemId,
@@ -342,7 +472,7 @@ export function obterLancamento(ctx: Contexto, id: number) {
     )
     .get(id, ...escopo.params) as (LinhaLancamento & Record<string, unknown>) | undefined;
   if (!linha) throw erroNaoEncontrado(`Lançamento ${id} não encontrado neste cliente.`);
-  return apresentar(linha);
+  return apresentar(linha, beneficiadasPorLancamento([linha.id]).get(linha.id) ?? []);
 }
 
 /**
@@ -458,13 +588,14 @@ export function listarLancamentos(ctx: Contexto, filtro: FiltroLancamentos = {})
         LIMIT ? OFFSET ?`,
     )
     .all(...params, limite, offset) as Array<LinhaLancamento & Record<string, unknown>>;
+  const beneficiadas = beneficiadasPorLancamento(itens.map((l) => l.id));
 
   return {
     total: total.n,
     total_valor: paraReais(total.soma),
     limite,
     offset,
-    itens: itens.map(apresentar),
+    itens: itens.map((l) => apresentar(l, beneficiadas.get(l.id) ?? [])),
   };
 }
 
@@ -502,11 +633,25 @@ export interface AtualizacaoLancamento {
   origemCusto?: string | null;
   destinoPagamento?: string | null;
   documento?: string | null;
+  tipoConsumo?: TipoConsumo | null;
+  beneficiadas?: number[] | 'todas' | null;
   justificativa?: string | null;
+}
+
+/** As beneficiadas gravadas hoje para este lançamento. */
+function beneficiadasAtuais(lancamentoId: number): number[] {
+  return (
+    db()
+      .prepare('SELECT filial_id FROM lancamento_beneficiadas WHERE lancamento_id = ?')
+      .all(lancamentoId) as Array<{ filial_id: number }>
+  ).map((b) => b.filial_id);
 }
 
 export function atualizarLancamento(ctx: Contexto, id: number, dados: AtualizacaoLancamento) {
   const antes = buscarLinha(ctx, id);
+  // Lidas antes do UPDATE: depois dele, a trilha mostraria o estado novo nos
+  // dois lados e o "antes" não diria nada.
+  const beneficiadasAntes = beneficiadasPorLancamento([id]).get(id) ?? [];
   // A matriz é a DO REGISTRO: filial, tipo de despesa e mês fechado são dela,
   // não da que por acaso está em foco.
   const empresaDoRegistro = antes.empresa_id;
@@ -528,11 +673,28 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
   const valorCentavos = dados.valor !== undefined ? paraCentavos(dados.valor) : antes.valor_centavos;
   if (valorCentavos < 0) throw erroValidacao('O valor do lançamento não pode ser negativo.');
 
+  // Campo não enviado permanece. Só se mexe na lista de beneficiadas quando o
+  // pedido fala dela — corrigir um valor não pode apagar quem consome a despesa.
+  const tipoConsumo: TipoConsumo =
+    dados.tipoConsumo ?? ((antes.tipo_consumo as TipoConsumo | undefined) ?? 'integral');
+  const mexeNoConsumo = dados.tipoConsumo !== undefined || dados.beneficiadas !== undefined;
+  const beneficiadas = mexeNoConsumo
+    ? resolverBeneficiadas(
+        ctx,
+        tipoConsumo,
+        dados.beneficiadas !== undefined
+          ? dados.beneficiadas
+          : beneficiadasAtuais(id),
+        filialId,
+      )
+    : null;
+
   db()
     .prepare(
       `UPDATE lancamentos
           SET filial_id = ?, tipo_despesa_id = ?, competencia = ?, valor_centavos = ?, classificacao = ?,
               descricao = ?, observacoes = ?, origem_custo = ?, destino_pagamento = ?, documento = ?,
+              tipo_consumo = ?, beneficia_todas = ?,
               atualizado_em = datetime('now')
         WHERE id = ? AND empresa_id = ?`,
     )
@@ -549,9 +711,13 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
       dados.origemCusto !== undefined ? dados.origemCusto : antes.origem_custo,
       dados.destinoPagamento !== undefined ? dados.destinoPagamento : antes.destino_pagamento,
       dados.documento !== undefined ? dados.documento : antes.documento,
+      tipoConsumo,
+      dados.beneficiadas === 'todas' ? 1 : mexeNoConsumo ? 0 : Number(antes.beneficia_todas ?? 0),
       id,
       empresaDoRegistro,
     );
+
+  if (beneficiadas !== null) gravarBeneficiadas([id], beneficiadas);
 
   const depois = obterLancamento(ctx, id);
   auditar(ctx, {
@@ -559,7 +725,7 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
     entidadeId: id,
     acao: 'atualizar',
     justificativa: dados.justificativa ?? null,
-    antes: apresentar(antes),
+    antes: apresentar(antes, beneficiadasAntes),
     depois,
   });
   return depois;
@@ -744,7 +910,8 @@ export function listarSerie(ctx: Contexto, id: number) {
         ORDER BY l.competencia`,
     )
     .all(alvo.empresa_id, grupoId, grupoId) as Array<LinhaLancamento & Record<string, unknown>>;
-  return linhas.map(apresentar);
+  const beneficiadas = beneficiadasPorLancamento(linhas.map((l) => l.id));
+  return linhas.map((l) => apresentar(l, beneficiadas.get(l.id) ?? []));
 }
 
 

@@ -140,6 +140,21 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   -- registro entrou no sistema, não de onde o dinheiro saiu.
   origem_custo        TEXT,
   destino_pagamento   TEXT,
+  -- Quem CONSOME o que esta filial PAGA.
+  --
+  -- 'integral'      o custo é todo da filial pagadora
+  -- 'compartilhado' a filial paga, mas o benefício se estende a outras
+  --
+  -- Sem este campo, uma matriz que centraliza licenças para seis filiais
+  -- aparece como a unidade cara e as filiais que consomem aparecem baratas —
+  -- o número está certo e a leitura, errada.
+  tipo_consumo        TEXT NOT NULL DEFAULT 'integral'
+                        CHECK (tipo_consumo IN ('integral','compartilhado')),
+  -- Só a INTENÇÃO "todas as filiais do grupo", para a tela reexibir a frase em
+  -- vez de listar catorze nomes. Nenhuma conta usa esta coluna: quem responde
+  -- "quem se beneficia" é sempre `lancamento_beneficiadas`, que é a lista
+  -- congelada no momento da gravação.
+  beneficia_todas     INTEGER NOT NULL DEFAULT 0 CHECK (beneficia_todas IN (0,1)),
   documento           TEXT,
   -- A quem se pagou, separado de `origem_custo` (que mistura setor e centro de
   -- custo): é o que permite conciliar o fornecedor da planilha contra os que o
@@ -183,6 +198,23 @@ CREATE INDEX IF NOT EXISTS ix_lanc_filial ON lancamentos(filial_id);
 CREATE INDEX IF NOT EXISTS ix_lanc_origem ON lancamentos(lancamento_origem_id);
 -- Idempotência de importação: a mesma linha não entra duas vezes
 CREATE UNIQUE INDEX IF NOT EXISTS ux_lanc_dedup ON lancamentos(dedup_hash) WHERE dedup_hash IS NOT NULL;
+
+-- As filiais que CONSOMEM um lançamento pago por outra unidade.
+--
+-- É tabela e não lista em JSON porque a pergunta do indicador — "o que desta
+-- filial é pago por outra?" — se responde filtrando por filial, e filtro em
+-- JSON não usa índice.
+--
+-- A lista é CONGELADA na gravação: escolher "todas as filiais do grupo" grava
+-- as que existiam naquele momento. Uma filial cadastrada em março não passa a
+-- se beneficiar de um lançamento de janeiro, e o mês fechado não muda de
+-- número sozinho.
+CREATE TABLE IF NOT EXISTS lancamento_beneficiadas (
+  lancamento_id INTEGER NOT NULL REFERENCES lancamentos(id) ON DELETE CASCADE,
+  filial_id     INTEGER NOT NULL REFERENCES filiais(id) ON DELETE CASCADE,
+  PRIMARY KEY (lancamento_id, filial_id)
+);
+CREATE INDEX IF NOT EXISTS ix_beneficiada_filial ON lancamento_beneficiadas(filial_id);
 -- Índices compostos do recorte por cliente: é por eles que a tela de
 -- indicadores deixa de varrer a base inteira.
 
