@@ -34,7 +34,12 @@ export function abrirBanco(caminho: string): Conexao {
  */
 export const CLIENTE_HISTORICO = 'Grupo Brasil Home Care';
 
-function migrar(db: Conexao): void {
+/**
+ * Exportada para o teste: a promessa de que ela roda duas vezes sem quebrar é
+ * parte do contrato (`abrirBanco` a executa a cada abertura), e uma promessa
+ * dessas precisa de prova.
+ */
+export function migrar(db: Conexao): void {
   const colunas = new Set(
     (db.prepare('PRAGMA table_info(lancamentos)').all() as Array<{ name: string }>).map((c) => c.name),
   );

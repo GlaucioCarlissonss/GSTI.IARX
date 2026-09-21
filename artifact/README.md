@@ -305,7 +305,7 @@ vindos do Excel chegam comprimidos. Não há CDN envolvido.
 
 ### Verificação
 
-Quinze suítes, todas contra um `window.claude` simulado num Chromium real:
+Vinte e uma suítes, todas contra um `window.claude` simulado num Chromium real:
 
 | script | o que cobre |
 |---|---|
@@ -324,6 +324,12 @@ Quinze suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-drill.cjs` | tooltip em todo gráfico e drill-down em todo indicador: acessibilidade, teclado, e a soma do detalhe conferindo com o número clicado |
 | `testar-modais.cjs` | telas flutuantes: alças de redimensionar, tela cheia, cabeçalho e rodapé presos, coluna ajustável e tamanho que persiste |
 | `testar-acessos.cjs` | Integrações (contrato do payload, upsert por id externo, evento com erro e reprocessamento) e Acessos (perfis padrão, login separado do e-mail, matriz, pré-visualização de perfil) |
+| `testar-clientes.cjs` | o cliente como recorte externo: árvore de unidades, troca de contratante, nada atravessando |
+| `testar-carga.cjs` | carga inicial × incremental, adaptador de cabeçalho do cliente e o histórico de toda tentativa |
+| `testar-indicadores.cjs` | Indicadores Gerais: drill em todos os cards, cor por matriz e a sanfona do SLA apontando quem puxa o resultado |
+| `testar-visao.cjs` | blocos que abrem e lembram, os três modos de ver os números e o selo de última atualização |
+| `testar-metas.cjs` | o cadastro de metas e o Meta vs Resultado: base sem meta segue no 80, a meta cadastrada atravessa a tela, desativar volta ao padrão |
+| `testar-reclassificacao.cjs` | a prioridade do chamado: começa indefinida (a extração não traz), exige cargo e nome de quem pediu, e o histórico fica na linha |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

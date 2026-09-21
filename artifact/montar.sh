@@ -16,5 +16,12 @@ node -e '
   // conferir é o último do arquivo.
   const js=h.slice(h.lastIndexOf("<script>")+8, h.lastIndexOf("</script>"));
   fs.writeFileSync("_chk.js", js);'
-node --check _chk.js && rm -f _chk.js
+# `set -e` NÃO alcança um comando no meio de uma lista `&&` — era assim que um
+# erro de sintaxe saía daqui com status 0 e um sistema.html quebrado no disco.
+if ! node --check _chk.js; then
+  rm -f _chk.js
+  echo 'ERRO: o pacote saiu com erro de sintaxe. sistema.html NÃO é confiável.' >&2
+  exit 1
+fi
+rm -f _chk.js
 wc -c sistema.html

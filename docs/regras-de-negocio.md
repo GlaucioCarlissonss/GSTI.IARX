@@ -1026,6 +1026,107 @@ sugerindo pedir a um gestor. Dizer que enviou sem ter enviado é pior do que nã
 enviar. O corpo do e-mail **não entra no log**: ele carrega o link. Para ligar
 o envio de verdade, defina `SMTP_URL` e `SMTP_DE`.
 
+## Consumo da despesa: quem paga e quem usa
+
+O lançamento sempre soube quem **pagou**; até a versão 2 não sabia quem
+**consumiu**. Uma matriz que centraliza licenças para seis filiais aparecia
+como a unidade cara, e as filiais que consomem apareciam baratas — o número
+estava certo, e a leitura, errada.
+
+Cada lançamento tem um **tipo de consumo**:
+
+- **100% da filial** — o custo é todo da unidade que paga. É o padrão, e é o
+  que vale para todo lançamento anterior a esta regra: nenhum número mudou na
+  migração.
+- **Paga pela filial, beneficia outras** — a unidade paga, e o benefício se
+  estende às filiais marcadas.
+
+As beneficiadas atravessam as matrizes do mesmo cliente: a licença comprada
+pela holding e usada pelo hospital é o caso que motivou o campo. A fronteira é
+o cliente, e pedir filial de outro recebe a mesma recusa dada a uma filial
+inexistente.
+
+**"Todas as filiais do grupo" é congelada na gravação.** A escolha vira, ali, a
+lista de filiais que existem naquele momento; uma filial cadastrada em março
+não passa a consumir um lançamento de janeiro. Sem isso, um mês fechado mudaria
+de número sozinho a cada cadastro novo. A intenção original fica registrada à
+parte, para a tela reexibir a frase em vez de listar catorze nomes.
+
+**Não há rateio.** O indicador de despesa centralizada conta o lançamento
+compartilhado pelo **valor integral** da pagadora, e o detalhamento lista quem
+se beneficia sem atribuir número por filial. Dividir exigiria um critério que
+não está definido em lugar nenhum, e um número inventado é pior que um número
+ausente. Consequência a saber ao ler a tabela: somar as linhas dá mais que o
+total, porque a mesma despesa serve a várias unidades.
+
+O **equilíbrio de despesas** é o percentual do gasto de uma unidade consumido
+por outras, lido mês a mês. A variação sai em pontos percentuais — de 10% para
+12% são +2 p.p., e chamar isso de +20% misturaria duas grandezas.
+
+## Metas: o alvo ao lado do resultado
+
+Um indicador que mostra só o resultado obriga quem lê a saber de cabeça o que
+era esperado. Até a versão 2 o sistema tinha um alvo só, os 80% de SLA,
+escritos à mão em três arquivos e não configuráveis.
+
+A meta é do **cliente**, tem um módulo (Financeiro, SLA, Projetos ou Equilíbrio
+de despesas) e uma vigência por competência com as duas pontas anuláveis.
+Trocar o alvo em janeiro não reescreve a leitura dos meses já fechados: entre
+duas metas vigentes ganha a de início mais recente, e a meta sem início é o
+alvo genérico, que vale onde nenhum específico alcança.
+
+A **direção** é propriedade do módulo, e não escolha de quem cadastra: SLA e
+entrega no prazo são piso (quanto maior, melhor); variação de custo e
+equilíbrio são teto (passar do alvo é o problema). Sem essa distinção, um custo
+acima da meta sairia pintado de verde.
+
+Sem meta cadastrada valem os padrões de base — 80% para SLA e para entrega no
+prazo —, que são exatamente os números que o sistema usava antes de a tabela
+existir. Sem resultado no período (nenhum chamado, nenhuma entrega) a
+comparação não aparece: nenhum atendimento no mês não é 0% de conformidade.
+
+## Acordos de SLA: quantas horas o chamado tem
+
+Antes deste cadastro o prazo vinha pronto da origem. Quando o helpdesk não
+informava prazo, o chamado fechado contava como dentro e o aberto como fora —
+que não é um acordo, é a ausência de um.
+
+O acordo é da **unidade**, por (tópico de ajuda, prioridade). O tópico nulo é a
+**regra geral** daquela prioridade: a integração cria tópico sozinha, e exigir
+uma linha por tópico deixaria chamados sem acordo sem ninguém perceber. O
+acordo do tópico ganha do geral.
+
+**O prazo da origem continua tendo a palavra final.** É o que o helpdesk
+prometeu ao solicitante, e sobrescrevê-lo faria o sistema discordar da tela que
+a pessoa viu ao abrir o chamado. O cadastro entra onde não havia prazo nenhum.
+
+São **horas corridas**, e não horas úteis: não há calendário de expediente
+cadastrado, e inventar um (segunda a sexta, 9 às 18) criaria um prazo que
+nenhum contrato assinou.
+
+O cadastro **não reescreve o passado**: ele decide o prazo do chamado na hora
+em que o chamado entra.
+
+## Reclassificação de prioridade
+
+A prioridade mudava sem deixar rastro: o upsert da integração sobrescrevia o
+campo, e uma elevação de Baixa para Alta "a pedido de alguém" virava um estado
+sem história.
+
+Toda mudança fica registrada com a prioridade anterior, a nova, quando, o
+motivo e **quem pediu — cargo e nome, em campo aberto**. Quem pede a elevação
+costuma ser de fora do sistema ("Coordenador de Enfermagem — Maria Souza"), e
+exigir um usuário cadastrado faria a operação registrar o nome errado ou não
+registrar nada. Mudança vinda da origem entra como tal, sem solicitante: a
+origem não diz quem pediu, e não se inventa.
+
+O histórico vive na tela do chamado, porque é lá que a pergunta "por que este
+está como Alta?" se faz. A trilha de auditoria também registra o evento, para
+quem audita — são leituras diferentes da mesma mudança.
+
+A prioridade vigente passa a valer para o cálculo do SLA, e o prazo é refeito a
+partir do acordo da prioridade nova — **só quando o prazo era nosso**.
+
 ## Expansões previstas
 
 O modelo já acomoda novos tipos de despesa, filiais, empresas, filas e tópicos
