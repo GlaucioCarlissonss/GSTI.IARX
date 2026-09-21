@@ -19,9 +19,15 @@ import { escopoSql } from './escopo.js';
 import { paraReais } from './dinheiro.js';
 import { CENARIO_OFICIAL } from './financeiro.js';
 import { percentual } from './sla.js';
+import { ALVO_PADRAO, alvoDe } from './metas.js';
 
-/** Meta de conformidade de SLA, em pontos percentuais. */
-export const META_SLA = 80;
+/**
+ * Meta de conformidade de SLA quando o cliente não cadastrou nenhuma.
+ *
+ * Deriva de `ALVO_PADRAO` em vez de repetir o número: o 80 tem um dono só, e
+ * quem quiser outro alvo cadastra a meta em vez de editar código.
+ */
+export const META_SLA = ALVO_PADRAO.sla ?? 80;
 
 /**
  * Recorte de um bloco. Cada bloco manda o seu — os filtros da tela são por
@@ -57,6 +63,21 @@ function janela(recorte: RecorteIndicadores, coluna: string) {
     params.push(paraInterno(recorte.competenciaFim));
   }
   return { condicoes, params };
+}
+
+/**
+ * A competência que decide QUAL meta vale para este recorte.
+ *
+ * É a ponta mais recente da janela: uma meta que passou a valer em março não
+ * pode reger a leitura de janeiro, mas um recorte que termina em junho é lido
+ * contra o alvo de junho. Sem janela, `undefined` — e aí vale a meta vigente
+ * mais recente do cadastro.
+ */
+function competenciaDoRecorte(recorte: RecorteIndicadores): string | undefined {
+  if (recorte.competenciaFim) return paraInterno(recorte.competenciaFim);
+  const comps = recorte.competencias?.map(paraInterno);
+  if (comps?.length) return comps.slice().sort().at(-1);
+  return undefined;
 }
 
 // =========================================================== bloco financeiro
@@ -267,15 +288,16 @@ export function conformidadeSla(ctx: Contexto, recorte: RecorteIndicadores = {})
   };
 
   const pct = percentual(totais.dentro, totais.total);
+  const meta = alvoDe(ctx, 'sla', competenciaDoRecorte(recorte)) ?? META_SLA;
   return {
     total: totais.total,
     dentro: totais.dentro,
     fora: totais.total - totais.dentro,
     pct_dentro: pct,
-    meta: META_SLA,
-    atinge_meta: totais.total > 0 && pct >= META_SLA,
+    meta,
+    atinge_meta: totais.total > 0 && pct >= meta,
     // Distância até a meta em pontos percentuais: é o que o termômetro mostra.
-    distancia_meta: totais.total > 0 ? Math.round((pct - META_SLA) * 10) / 10 : null,
+    distancia_meta: totais.total > 0 ? Math.round((pct - meta) * 10) / 10 : null,
     situacao: {
       abertos: situacao.abertos ?? 0,
       em_andamento: situacao.em_andamento ?? 0,
@@ -339,6 +361,8 @@ export function entregaDeTarefas(ctx: Contexto, recorte: RecorteIndicadores = {}
 
   const entregues = linha.entregues ?? 0;
   const noPrazo = linha.no_prazo ?? 0;
+  const pct = percentual(noPrazo, entregues);
+  const meta = alvoDe(ctx, 'projetos', competenciaDoRecorte(recorte));
   return {
     total: linha.total,
     canceladas: linha.canceladas ?? 0,
@@ -347,7 +371,10 @@ export function entregaDeTarefas(ctx: Contexto, recorte: RecorteIndicadores = {}
     fora_do_prazo: entregues - noPrazo,
     // O denominador é o que foi entregue: uma tarefa ainda em aberto não é
     // "fora do prazo" enquanto o mês planejado não passou.
-    pct_no_prazo: percentual(noPrazo, entregues),
+    pct_no_prazo: pct,
+    meta,
+    atinge_meta: meta !== null && entregues > 0 && pct >= meta,
+    distancia_meta: meta !== null && entregues > 0 ? Math.round((pct - meta) * 10) / 10 : null,
     pendentes: linha.pendentes ?? 0,
     pendentes_atrasadas: linha.atrasadas ?? 0,
   };

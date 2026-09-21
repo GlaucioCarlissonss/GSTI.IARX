@@ -12,6 +12,7 @@ import {
   listarTiposDespesa,
   listarTopicosAjuda,
 } from '../domain/cadastros.js';
+import { atualizarMeta, criarMeta, listarMetas } from '../domain/metas.js';
 import { atualizarEmpresa } from '../domain/empresas.js';
 import { listarAuditoria } from '../domain/auditoria.js';
 import { fecharCompetencia, listarFechamentos, reabrirCompetencia } from '../domain/fechamento.js';
@@ -92,6 +93,22 @@ rotasCadastros.post('/fechamentos', exigir('configuracoes', 'create'), (req, res
 rotasCadastros.post('/fechamentos/reabrir', exigir('configuracoes', 'create'), (req, res) => {
   const { competencia, justificativa } = req.body ?? {};
   res.json(reabrirCompetencia(ctx(req), paraInterno(competencia), String(justificativa ?? '')));
+});
+
+// ------------------------------------------------------------------ Metas
+// A meta é do CLIENTE, e não da unidade em foco: por isso `ctx(req)` direto,
+// sem `unidade(req)` — o alvo de SLA de um contratante não muda de matriz
+// para matriz.
+rotasCadastros.get('/metas', (req, res) => {
+  res.json(listarMetas(ctx(req), req.query.incluir_inativos === 'true'));
+});
+
+rotasCadastros.post('/metas', exigir('configuracoes', 'create'), (req, res) => {
+  res.status(201).json(criarMeta(ctx(req), req.body ?? {}));
+});
+
+rotasCadastros.patch('/metas/:id', exigir('configuracoes', 'edit'), (req, res) => {
+  res.json(atualizarMeta(ctx(req), Number(req.params.id), req.body ?? {}));
 });
 
 // -------------------------------------------------------------- Auditoria

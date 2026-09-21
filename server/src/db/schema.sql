@@ -582,3 +582,30 @@ CREATE TABLE IF NOT EXISTS emails_enviados (
   erro        TEXT,
   criado_em   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Meta de um indicador: o alvo contra o qual o resultado é lido.
+--
+-- Antes desta tabela, o único alvo do sistema era `META_SLA = 80` escrito à
+-- mão em três arquivos (servidor, web e artifact). Três cópias de um número
+-- que o cliente pode querer mudar são três chances de divergirem.
+--
+-- É do CLIENTE, e não da matriz: o enunciado fala em meta por contratante, e
+-- uma meta de SLA que valesse só para uma matriz não responderia "como vai o
+-- atendimento deste cliente". O precedente é `mapeamentos_importacao`.
+--
+-- A vigência é por competência e as duas pontas são anuláveis: sem início vale
+-- desde sempre, sem fim vale até mudar. É o que permite trocar a meta em
+-- janeiro sem reescrever a história dos meses já fechados.
+CREATE TABLE IF NOT EXISTS metas (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id      INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  nome            TEXT NOT NULL,
+  modulo          TEXT NOT NULL CHECK (modulo IN ('financeiro','sla','projetos','equilibrio')),
+  alvo_pct        REAL NOT NULL,
+  vigencia_inicio TEXT,
+  vigencia_fim    TEXT,
+  ativo           INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0,1)),
+  criado_em       TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (cliente_id, nome)
+);
+CREATE INDEX IF NOT EXISTS ix_meta_cliente ON metas(cliente_id, modulo, ativo);
