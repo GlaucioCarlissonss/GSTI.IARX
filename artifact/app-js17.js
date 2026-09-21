@@ -237,6 +237,50 @@ function calcularConsumo(r) {
 }
 
 /**
+ * Equilíbrio de despesas, mês a mês.
+ *
+ * O percentual do gasto que uma unidade paga e outras consomem. A meta é TETO:
+ * passar dela é o problema, ao contrário do SLA, onde subir é bom.
+ *
+ * A série vem completa: um mês sem lançamento entra como zero explícito. Uma
+ * linha que pula de março para maio faz parecer que abril não existiu, quando
+ * o que houve foi abril sem despesa centralizada — que é informação.
+ */
+function calcularEquilibrio(r) {
+  const porMes = new Map();
+  for (const l of Loja.todosDoEscopo()) {
+    if (!passaNoFiltro(E.cenariosSel, l.cenario)) continue;
+    if (!naFilialDoBloco(l.filial, r)) continue;
+    if (!naJanela(l.competencia, r)) continue;
+    const atual = porMes.get(l.competencia) || { total: 0, centralizado: 0 };
+    const c = cent(l.valor);
+    atual.total += c;
+    if (consumoDe(l) === 'compartilhado') atual.centralizado += c;
+    porMes.set(l.competencia, atual);
+  }
+  const meses = ordenado([...porMes.keys()]);
+  const cheia = meses.length ? intervalo(meses[0], meses[meses.length - 1]) : [];
+  const serie = cheia.map((m) => {
+    const x = porMes.get(m) || { total: 0, centralizado: 0 };
+    return {
+      comp: m, rot: mesExib(m),
+      total: reais(x.total), centralizado: reais(x.centralizado),
+      pct: x.total ? Math.round((x.centralizado / x.total) * 1000) / 10 : 0,
+    };
+  });
+  const atual = serie.length ? serie[serie.length - 1] : null;
+  const anterior = serie.length > 1 ? serie[serie.length - 2] : null;
+  const meta = alvoDe('equilibrio', atual ? atual.comp : null);
+  return {
+    serie, atual, anterior,
+    // Pontos percentuais: de 10% para 12% são +2 p.p., e chamar isso de +20%
+    // confundiria duas grandezas diferentes.
+    variacaoPp: atual && anterior ? Math.round((atual.pct - anterior.pct) * 10) / 10 : null,
+    leitura: leituraDeMeta(meta, atual ? atual.pct : null, 'equilibrio'),
+  };
+}
+
+/**
  * Entrega de tarefas na competência.
  *
  * O denominador do "no prazo" é o que foi ENTREGUE: uma tarefa ainda em aberto
@@ -341,6 +385,7 @@ async function viewIndicadores() {
   const rp = recorteDoBloco('projetos');
   const reducao = calcularReducao(rf);
   const consumo = calcularConsumo(rf);
+  const equilibrio = calcularEquilibrio(rf);
   const pendente = calcularPorReconhecer(rf);
   const sla = calcularSla(rs);
   const proj = calcularProjetos(rp);
@@ -455,6 +500,30 @@ async function viewIndicadores() {
         <p class="nota" style="margin-top:10px">O valor é o que a unidade pagadora desembolsa por inteiro.
           Não há divisão por filial beneficiada: somar as linhas daria mais que o total, porque a mesma
           despesa serve a várias.</p>
+
+        ${!equilibrio.atual ? '' : `
+        <div style="margin-top:14px;border-top:1px solid var(--linha);padding-top:12px">
+          <strong>Equilíbrio de despesas, mês a mês</strong>
+          <p style="margin:4px 0 0;font-size:13px">
+            ${equilibrio.atual.pct.toLocaleString('pt-BR')}% em ${esc(equilibrio.atual.rot)}${
+              equilibrio.anterior
+                ? ` · ${equilibrio.anterior.pct.toLocaleString('pt-BR')}% em ${esc(equilibrio.anterior.rot)}${
+                    equilibrio.variacaoPp === null ? '' :
+                    ` <span style="color:${equilibrio.variacaoPp > 0 ? 'var(--crit)' : 'var(--bomtxt)'}">(${
+                      equilibrio.variacaoPp > 0 ? '+' : ''}${equilibrio.variacaoPp.toLocaleString('pt-BR')} p.p.)</span>`}`
+                : ''}
+          </p>
+          ${equilibrio.anterior ? '' :
+            '<p class="nota" style="margin:4px 0 0">Sem mês anterior com movimento neste recorte — não há contra o que comparar.</p>'}
+          ${metaHtml(equilibrio.leitura)}
+          <div class="rol rol-fixo" style="margin-top:10px;max-height:200px;min-height:0"><table>
+            <thead><tr><th>Competência</th><th class="n">Centralizado</th><th class="n">Total</th><th class="n">%</th></tr></thead>
+            <tbody>${equilibrio.serie.map((m) => `<tr>
+              <td>${esc(m.rot)}</td><td class="n">${brl(m.centralizado)}</td>
+              <td class="n">${brl(m.total)}</td><td class="n">${m.pct.toLocaleString('pt-BR')}%</td>
+            </tr>`).join('')}</tbody>
+          </table></div>
+        </div>`}
       </section>`}
     </section>
 

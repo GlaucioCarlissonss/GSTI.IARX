@@ -10,6 +10,7 @@ import {
   conformidadeSla,
   despesaCentralizada,
   despesasPorReconhecer,
+  equilibrioDeDespesas,
   entregaDeTarefas,
   indicadoresGerais,
   reducaoDeCusto,
@@ -62,7 +63,11 @@ rotasIndicadores.get('/financeiro', exigir('financeiro', 'view'), (req, res) => 
 });
 
 rotasIndicadores.get('/consumo', exigir('financeiro', 'view'), (req, res) => {
-  res.json(despesaCentralizada(ctx(req), recorteDaQuery(req.query as Record<string, unknown>)));
+  const recorte = recorteDaQuery(req.query as Record<string, unknown>);
+  res.json({
+    ...despesaCentralizada(ctx(req), recorte),
+    equilibrio: equilibrioDeDespesas(ctx(req), recorte),
+  });
 });
 
 rotasIndicadores.get('/sla', exigir('suporte_ostick', 'view'), (req, res) => {

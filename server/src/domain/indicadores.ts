@@ -13,13 +13,13 @@
  */
 import { db } from '../db/index.js';
 import { clausulaEm, clausulaEmComNulo } from '../lib/consulta.js';
-import { paraExibicao, paraInterno } from './competencia.js';
+import { intervalo, paraExibicao, paraInterno } from './competencia.js';
 import type { Contexto } from './contexto.js';
 import { escopoSql } from './escopo.js';
 import { paraReais } from './dinheiro.js';
 import { CENARIO_OFICIAL } from './financeiro.js';
 import { percentual } from './sla.js';
-import { ALVO_PADRAO, alvoDe } from './metas.js';
+import { ALVO_PADRAO, alvoDe, leituraDeMeta } from './metas.js';
 
 /**
  * Meta de conformidade de SLA quando o cliente não cadastrou nenhuma.
@@ -327,7 +327,7 @@ export function conformidadeSla(ctx: Contexto, recorte: RecorteIndicadores = {})
  * como NOMES: um valor ao lado de cada uma seria exatamente o rateio que esta
  * decisão recusa.
  */
-export function despesaCentralizada(ctx: Contexto, recorte: RecorteIndicadores = {}) {
+function filtroDeLancamentos(ctx: Contexto, recorte: RecorteIndicadores) {
   const alcance = escopoSql(ctx, recorte.empresas, 'l.empresa_id');
   const condicoes = [alcance.sql, 'l.excluido_em IS NULL'];
   const params: unknown[] = [...alcance.params];
@@ -341,7 +341,11 @@ export function despesaCentralizada(ctx: Contexto, recorte: RecorteIndicadores =
   const j = janela(recorte, 'l.competencia');
   condicoes.push(...j.condicoes);
   params.push(...j.params);
-  const where = condicoes.join(' AND ');
+  return { where: condicoes.join(' AND '), params };
+}
+
+export function despesaCentralizada(ctx: Contexto, recorte: RecorteIndicadores = {}) {
+  const { where, params } = filtroDeLancamentos(ctx, recorte);
 
   const porPagadora = db()
     .prepare(
@@ -420,6 +424,65 @@ export function despesaCentralizada(ctx: Contexto, recorte: RecorteIndicadores =
       lancamentos: p.lancamentos,
       beneficiadas: porUnidade.get(`${p.empresa_id}|${p.filial_id ?? ''}`) ?? [],
     })),
+  };
+}
+
+/**
+ * Equilíbrio de despesas, mês a mês.
+ *
+ * O indicador é o percentual do gasto que uma unidade paga e outras consomem.
+ * A meta é TETO — passar dela é o problema —, e é isso que a torna diferente
+ * do SLA, onde subir é bom.
+ *
+ * A série vem completa com `intervalo()`: um mês sem lançamento entra como
+ * zero explícito, e não como buraco. Uma linha que pula de março para maio faz
+ * parecer que abril não existiu, quando o que houve foi abril sem despesa
+ * centralizada — que é informação, e das boas.
+ */
+export function equilibrioDeDespesas(ctx: Contexto, recorte: RecorteIndicadores = {}) {
+  const { where, params } = filtroDeLancamentos(ctx, recorte);
+
+  const linhas = db()
+    .prepare(
+      `SELECT l.competencia,
+              COALESCE(SUM(l.valor_centavos), 0) AS total,
+              COALESCE(SUM(CASE WHEN l.tipo_consumo = 'compartilhado' THEN l.valor_centavos ELSE 0 END), 0) AS centralizado
+         FROM lancamentos l
+        WHERE ${where}
+        GROUP BY l.competencia
+        ORDER BY l.competencia`,
+    )
+    .all(...params) as Array<{ competencia: string; total: number; centralizado: number }>;
+
+  const porMes = new Map(linhas.map((l) => [l.competencia, l]));
+  const meses = linhas.length ? intervalo(linhas[0]!.competencia, linhas[linhas.length - 1]!.competencia) : [];
+
+  const serie = meses.map((m) => {
+    const l = porMes.get(m);
+    const total = l?.total ?? 0;
+    const centralizado = l?.centralizado ?? 0;
+    return {
+      competencia: paraExibicao(m),
+      competencia_interna: m,
+      total: paraReais(total),
+      centralizado: paraReais(centralizado),
+      pct: percentual(centralizado, total),
+    };
+  });
+
+  const atual = serie.length ? serie[serie.length - 1]! : null;
+  const anterior = serie.length > 1 ? serie[serie.length - 2]! : null;
+  const meta = alvoDe(ctx, 'equilibrio', atual?.competencia_interna);
+
+  return {
+    serie,
+    meses: serie.length,
+    atual,
+    anterior,
+    // A variação é em PONTOS PERCENTUAIS, e não em percentual de percentual:
+    // dizer que 10% virou 12% é "+2 p.p.", não "+20%".
+    variacao_pp: atual && anterior ? Math.round((atual.pct - anterior.pct) * 10) / 10 : null,
+    meta: leituraDeMeta(meta, atual ? atual.pct : null, 'equilibrio'),
   };
 }
 
@@ -506,5 +569,6 @@ export function indicadoresGerais(
     sla: conformidadeSla(ctx, recortes.sla),
     projetos: entregaDeTarefas(ctx, recortes.projetos),
     consumo: despesaCentralizada(ctx, recortes.financeiro),
+    equilibrio: equilibrioDeDespesas(ctx, recortes.financeiro),
   };
 }

@@ -15,7 +15,7 @@ import { calcularAtraso } from './projetos.js';
 import { montarFiltroSla, percentual, type FiltroSla } from './sla.js';
 import { escopoSql } from './escopo.js';
 import { alvoDe, leituraDeMeta } from './metas.js';
-import { despesaCentralizada, entregaDeTarefas } from './indicadores.js';
+import { despesaCentralizada, entregaDeTarefas, equilibrioDeDespesas } from './indicadores.js';
 
 /**
  * Recorte de um painel.
@@ -890,6 +890,15 @@ export function visaoExecutiva(ctx: Contexto, escopo: EscopoDashboard = {}) {
       filiais: escopo.filiais,
       cenarios: escopo.cenario ? [escopo.cenario] : undefined,
       competencias: [mes],
+    }),
+    // O equilíbrio mês a mês NÃO se prende ao mês em foco: a pergunta é "como
+    // estava no mês anterior e como ficou neste", e um recorte de um mês só
+    // não teria contra o que comparar.
+    equilibrio: equilibrioDeDespesas(ctx, {
+      empresas: escopo.empresas,
+      filiais: escopo.filiais,
+      cenarios: escopo.cenario ? [escopo.cenario] : undefined,
+      competenciaFim: mes,
     }),
     // De quem é cada pedaço: alimenta a faixa de cores e a sanfona por unidade.
     por_unidade: quebraPorUnidade(ctx, escopo),

@@ -66,6 +66,14 @@ interface VisaoExecutiva {
       beneficiadas: string[];
     }>;
   };
+  equilibrio: {
+    meses: number;
+    atual: { competencia: string; pct: number; total: number; centralizado: number } | null;
+    anterior: { competencia: string; pct: number } | null;
+    variacao_pp: number | null;
+    meta: LeituraMeta | null;
+    serie: Array<{ competencia: string; pct: number; centralizado: number; total: number }>;
+  };
   por_unidade: {
     gasto_mes: LinhaPorUnidade[];
     compromisso_proximos_12_meses: LinhaPorUnidade[];
@@ -437,6 +445,38 @@ export function PaginaPainelExecutivo() {
             O valor é o que a unidade pagadora desembolsa por inteiro. Não há divisão por filial
             beneficiada: somar as linhas daria mais que o total, porque a mesma despesa serve a várias.
           </p>
+
+          {v.equilibrio.atual && (
+            <div style={{ marginTop: 14, borderTop: '1px solid var(--borda)', paddingTop: 12 }}>
+              <strong>Equilíbrio de despesas, mês a mês</strong>
+              <p style={{ margin: '4px 0 0', fontSize: 13 }}>
+                {percentual(v.equilibrio.atual.pct)} em {v.equilibrio.atual.competencia}
+                {v.equilibrio.anterior && (
+                  <>
+                    {' '}· {percentual(v.equilibrio.anterior.pct)} em {v.equilibrio.anterior.competencia}
+                    {v.equilibrio.variacao_pp !== null && (
+                      // Pontos percentuais, e não percentual de percentual: de 10%
+                      // para 12% são +2 p.p., e chamar isso de +20% confundiria.
+                      <span className={v.equilibrio.variacao_pp > 0 ? 'fora' : 'dentro'}>
+                        {' '}({v.equilibrio.variacao_pp > 0 ? '+' : ''}
+                        {v.equilibrio.variacao_pp.toLocaleString('pt-BR')} p.p.)
+                      </span>
+                    )}
+                  </>
+                )}
+              </p>
+              {!v.equilibrio.anterior && (
+                <p className="dica-filtro" style={{ margin: '4px 0 0' }}>
+                  Sem mês anterior com movimento neste recorte — não há contra o que comparar.
+                </p>
+              )}
+              {v.equilibrio.meta && (
+                <p style={{ margin: '6px 0 0', fontSize: 13 }} className={v.equilibrio.meta.atinge ? 'dentro' : 'fora'}>
+                  {v.equilibrio.meta.atinge ? '✓' : '✗'} teto de {percentual(v.equilibrio.meta.alvo)} por mês
+                </p>
+              )}
+            </div>
+          )}
         </Cartao>
       )}
 

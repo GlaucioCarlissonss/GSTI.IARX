@@ -18,7 +18,8 @@ import { escopoDoCliente } from '../src/domain/escopo-operacao.js';
 import { exportarXlsx } from '../src/domain/exportacao.js';
 import { importarPlanilha } from '../src/domain/importacao.js';
 import { lerXlsx } from '../src/lib/planilha.js';
-import { despesaCentralizada } from '../src/domain/indicadores.js';
+import { despesaCentralizada, equilibrioDeDespesas } from '../src/domain/indicadores.js';
+import { criarMeta } from '../src/domain/metas.js';
 import type { Contexto } from '../src/domain/contexto.js';
 
 /** Um cliente com duas matrizes e uma filial em cada — o caso da licença centralizada. */
@@ -263,4 +264,93 @@ test('o indicador não atravessa para outro cliente', () => {
   lancar(ctx, { filialId: filialA.id, tipoConsumo: 'compartilhado', beneficiadas: [filialB.id] });
   const alheia = criarEmpresa(ctx.usuarioId, { nome: 'Outra contratante' });
   assert.equal(despesaCentralizada(contextoDe(ctx, alheia.id), {}).centralizado, 0);
+});
+
+// ------------------------- equilíbrio de despesas, mês a mês (2.3)
+
+test('o equilíbrio compara o mês anterior com o atual, em pontos percentuais', () => {
+  const { ctx, filialA, filialB } = grupoComDuasMatrizes();
+  const compartilhado = (mes: string, valor: number) =>
+    criarLancamento(ctx, {
+      filialId: filialA.id,
+      tipoDespesaId: idTipoDespesa(ctx),
+      competencia: mes,
+      valor,
+      natureza: 'fixa',
+      classificacao: 'despesa',
+      tipoConsumo: 'compartilhado',
+      beneficiadas: [filialB.id],
+      justificativa: 'série de teste',
+    });
+  const proprio = (mes: string, valor: number) =>
+    criarLancamento(ctx, {
+      filialId: filialA.id,
+      tipoDespesaId: idTipoDespesa(ctx),
+      competencia: mes,
+      valor,
+      natureza: 'fixa',
+      classificacao: 'despesa',
+      justificativa: 'série de teste',
+    });
+
+  // Mês anterior: 1.000 de 4.000 são centralizados = 25%.
+  compartilhado(mesRelativo(-1), 1000);
+  proprio(mesRelativo(-1), 3000);
+  // Mês atual: 2.000 de 4.000 = 50%.
+  compartilhado(mesRelativo(0), 2000);
+  proprio(mesRelativo(0), 2000);
+
+  const r = equilibrioDeDespesas(ctx, {});
+  assert.equal(r.meses, 2);
+  assert.equal(r.anterior?.pct, 25);
+  assert.equal(r.atual?.pct, 50);
+  assert.equal(r.variacao_pp, 25, '25% para 50% é +25 pontos percentuais, não +100%');
+});
+
+test('mês sem despesa entra na série como zero, e não como buraco', () => {
+  const { ctx, filialA, filialB } = grupoComDuasMatrizes();
+  const lancarEm = (mes: string) =>
+    criarLancamento(ctx, {
+      filialId: filialA.id,
+      tipoDespesaId: idTipoDespesa(ctx),
+      competencia: mes,
+      valor: 1000,
+      natureza: 'fixa',
+      classificacao: 'despesa',
+      tipoConsumo: 'compartilhado',
+      beneficiadas: [filialB.id],
+      justificativa: 'série de teste',
+    });
+  lancarEm(mesRelativo(-2));
+  lancarEm(mesRelativo(0));
+
+  const r = equilibrioDeDespesas(ctx, {});
+  assert.equal(r.meses, 3, 'o mês do meio existe na série mesmo sem lançamento');
+  assert.equal(r.serie[1]!.pct, 0);
+  assert.equal(r.serie[1]!.total, 0);
+});
+
+test('a meta de equilíbrio é TETO: ficar abaixo é atingir', () => {
+  const { ctx, filialA, filialB } = grupoComDuasMatrizes();
+  criarLancamento(ctx, {
+    filialId: filialA.id,
+    tipoDespesaId: idTipoDespesa(ctx),
+    competencia: mesRelativo(0),
+    valor: 1000,
+    natureza: 'fixa',
+    classificacao: 'despesa',
+    tipoConsumo: 'compartilhado',
+    beneficiadas: [filialB.id],
+  });
+  // 100% centralizado, contra um teto de 30%: não atinge.
+  criarMeta(ctx, { nome: 'Equilíbrio', modulo: 'equilibrio', alvo_pct: 30 });
+  const r = equilibrioDeDespesas(ctx, {});
+  assert.equal(r.atual?.pct, 100);
+  assert.equal(r.meta?.direcao, 'maximo');
+  assert.equal(r.meta?.atinge, false);
+});
+
+test('sem meta de equilíbrio cadastrada, o indicador mostra o número e nenhuma comparação', () => {
+  const { ctx } = grupoComDuasMatrizes();
+  assert.equal(equilibrioDeDespesas(ctx, {}).meta, null);
 });
