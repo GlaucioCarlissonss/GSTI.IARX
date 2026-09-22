@@ -1209,6 +1209,46 @@ uma tela onde compartilhada e própria se parecem.
 tons. A legenda fica no bloco que usa a distinção, e não uma vez no topo da
 tela: quem rola até o meio de uma tela longa precisa da chave de leitura ali.
 
+## Indicadores Gerais: ordem, janela padrão e categorização do custo
+
+A tela é leitura de **diretoria**, e a ordem dela é a da conversa: primeiro o
+dinheiro, depois o que se entregou, por último o atendimento.
+
+- **A ordem das pilhas é Financeiro → Projetos → SLA.** É ordem de leitura, não
+  de importância técnica: quem abre a tela quer saber quanto custou antes de
+  saber quantos chamados fecharam no prazo.
+- **O bloco Financeiro abre numa JANELA, e não no período livre:** de
+  `DE` = a competência mais antiga com lançamento na base até `ATÉ` = **o mês
+  anterior ao corrente**. As duas pontas têm razão própria:
+  - a primeira competência da base é o começo da história que existe — fixar
+    uma data no código envelheceria na primeira carga nova;
+  - o mês corrente fica **de fora** porque está pela metade. Lido junto com os
+    fechados, ele faz a série terminar num degrau para baixo que não é queda de
+    custo, é mês incompleto — e é exatamente esse degrau que alguém leria como
+    resultado.
+  Competências **futuras** (projeções já lançadas) também ficam fora do padrão
+  pela mesma ponta, e continuam a um campo de distância para quem as quiser.
+- **O botão do bloco Financeiro VOLTA AO PADRÃO, não esvazia.** Esvaziar traria
+  de volta o mês corrente e as projeções — justamente o que o padrão existe para
+  deixar de fora. Nos outros dois blocos o padrão é o período livre, e ali
+  "limpar" continua sendo limpar.
+- **O período é memória de SESSÃO.** Recarregar devolve o padrão; um filtro de
+  leitura que sobrevive ao F5 faria o gestor voltar dias depois a um recorte que
+  ele não escolheu.
+- **Toda expansão ordena por valor DECRESCENTE** — árvore de unidades, itens do
+  plano de redução, empresas do rateio, centros de custo, lançamentos do nível 3.
+  Quem lê um indicador quer saber quem pesa mais, e uma lista alfabética esconde
+  isso atrás do acaso do nome. Uma exceção declarada: no **rateio**, a ordem
+  interna do cálculo continua alfabética, porque é ela que indexa a distribuição
+  dos centavos de resto — só a EXIBIÇÃO é reordenada. As **séries mês a mês**
+  também não são reordenadas: linha do tempo é cronológica por definição.
+- **A classificação do custo fica escrita no topo do bloco**, acima dos
+  indicadores: custos com despesas **fixas** (mensais), com despesas
+  **variáveis** (pontuais) e com **investimentos**, com link para a explicação
+  contábil. Sem essa régua, "variação do custo recorrente" é um número sem
+  unidade — a legenda é pré-requisito de leitura, não enfeite, e por isso não
+  fica recolhida.
+
 ## Hierarquia de expansão nos indicadores
 
 O indicador continua **consolidado** — é o que o gestor lê primeiro. O que

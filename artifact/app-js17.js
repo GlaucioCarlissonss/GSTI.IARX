@@ -11,7 +11,12 @@
  * Por isso o recorte vive em `E.filtrosInd`, que é memória de sessão: não vai
  * para o `localStorage` nem toca em `E.competencias`, que é o filtro global.
  */
-const BLOCOS_IND = ['financeiro', 'sla', 'projetos'];
+/**
+ * A ordem é a da leitura de diretoria: o dinheiro primeiro, depois o que se
+ * entregou, por último o atendimento. A lista manda na fiação dos filtros; a
+ * ordem visual dos blocos está no template de `viewIndicadores` e segue esta.
+ */
+const BLOCOS_IND = ['financeiro', 'projetos', 'sla'];
 
 /**
  * Meta de conformidade de SLA quando o cliente não cadastrou nenhuma.
@@ -114,10 +119,56 @@ function metaDoCustoRecorrente(r, reducao) {
 /** Recorte em branco de um bloco: período livre, todas as filiais, tudo. */
 const recorteVazio = () => ({ de: '', ate: '', filiais: new Set(), somenteReconhecidas: false });
 
+/**
+ * O mês mais ANTIGO com lançamento no escopo — '' se a base ainda não chegou.
+ *
+ * A competência é `AAAA-MM`, então a comparação de texto já é cronológica.
+ */
+function competenciaMaisAntigaDaBase() {
+  let menor = '';
+  for (const l of Loja.todosDoEscopo()) {
+    if (l.competencia && (!menor || l.competencia < menor)) menor = l.competencia;
+  }
+  return menor;
+}
+
+/**
+ * O último mês FECHADO: o anterior ao corrente.
+ *
+ * O mês em curso está pela metade — lê-lo junto com os fechados faz a série
+ * terminar num degrau para baixo que não é queda de custo, é mês incompleto.
+ */
+const mesFechadoMaisRecente = () => mesSoma(mesHoje(), -1);
+
+/**
+ * O recorte com que um bloco ABRE.
+ *
+ * O Financeiro abre da primeira competência da base até o último mês fechado;
+ * os outros dois abrem livres. A janela é o padrão de leitura da diretoria, e
+ * por isso ela também é o destino do botão de restaurar — "limpar" para o
+ * Financeiro não é deixar em branco, é voltar a esta janela.
+ *
+ * `padraoPendente` cobre o caso de o bloco nascer antes de a base chegar: sem
+ * ele, um `de` vazio ficaria vazio para sempre e o padrão nunca valeria.
+ */
+function recorteInicial(bloco) {
+  const r = recorteVazio();
+  if (bloco !== 'financeiro') return r;
+  r.de = competenciaMaisAntigaDaBase();
+  r.ate = mesFechadoMaisRecente();
+  r.padraoPendente = !r.de;
+  return r;
+}
+
 function recorteDoBloco(bloco) {
   if (!E.filtrosInd) E.filtrosInd = {};
-  if (!E.filtrosInd[bloco]) E.filtrosInd[bloco] = recorteVazio();
-  return E.filtrosInd[bloco];
+  if (!E.filtrosInd[bloco]) E.filtrosInd[bloco] = recorteInicial(bloco);
+  const r = E.filtrosInd[bloco];
+  if (r.padraoPendente) {
+    const de = competenciaMaisAntigaDaBase();
+    if (de) { r.de = de; r.padraoPendente = false; }
+  }
+  return r;
 }
 
 /** A competência está na janela do bloco? Ponta em branco não limita. */
@@ -354,6 +405,9 @@ function calcularRateio(r) {
     lancamentos: compartilhados.length,
     divisaoIgual: lista.length > 0 && lista.every((e) => e.proprio === 0),
     sanidade: reais(lista.reduce((s, e) => s + e.recebido, 0)),
+    // A EXIBIÇÃO sai por valor decrescente; `lista` continua alfabética porque
+    // é ela que indexa `ratearPorPeso`, e mudar essa ordem mudaria para quem
+    // vai o centavo de resto — o total fecharia igual, as parcelas não.
     porEmpresa: lista.map((e) => ({
       ...e,
       proprioValor: reais(e.proprio),
@@ -363,7 +417,7 @@ function calcularRateio(r) {
       depois: reais(e.proprio + e.recebido),
       variacao: reais((e.proprio + e.recebido) - (e.proprio + e.pago)),
       pagadora: e.pago > 0,
-    })),
+    })).sort((a, b) => b.antes - a.antes),
   };
 }
 
@@ -421,6 +475,9 @@ function calcularPlanoReducao(r) {
 
   const totalAtual = itens.reduce((s, i) => s + cent(i.atual), 0);
   const totalAlvo = itens.reduce((s, i) => s + cent(i.alvo), 0);
+  // Por valor atual decrescente, e não pela ordem do cadastro: a despesa que
+  // mais pesa é a que decide se o plano vale alguma coisa.
+  itens.sort((a, b) => b.atual - a.atual);
   return {
     itens,
     totalAtual: reais(totalAtual), totalAlvo: reais(totalAlvo),
@@ -627,8 +684,29 @@ function filtrosDoBloco(bloco, r) {
           <option value="tudo"${r.somenteReconhecidas ? '' : ' selected'}>Ver tudo</option>
           <option value="rec"${r.somenteReconhecidas ? ' selected' : ''}>Apenas reconhecidas</option>
         </select></div>` : ''}
-      <button class="bt fant" data-limpar="${bloco}">Limpar filtros do bloco</button>
+      <button class="bt fant" data-limpar="${bloco}">${bloco === 'financeiro'
+        ? 'Voltar ao período padrão' : 'Limpar filtros do bloco'}</button>
     </div>`;
+}
+
+/**
+ * Como os custos são classificados — a legenda fixa do bloco Financeiro.
+ *
+ * Fica ACIMA dos indicadores porque é a chave de leitura de todos eles: sem
+ * saber o que conta como fixa, variável e investimento, "variação do custo
+ * recorrente" é um número sem régua. O link abre em aba nova, com `noopener`.
+ */
+function caixaDeCategorizacaoHtml() {
+  const fonte = 'https://razonet.com.br/contabilidade-digital/diferenca-custo-despesa-investimento';
+  return `<div class="msg caixa-categorias" style="margin-bottom:14px">
+    <strong>Como classificamos os custos:</strong>
+    <ol class="lista-categorias">
+      <li>Custos com <strong>Despesas Fixas</strong> (Mensais)</li>
+      <li>Custos com <strong>Despesas Variáveis</strong> (Pontuais)</li>
+      <li>Custos com <strong>Investimentos</strong></li>
+    </ol>
+    <a href="${fonte}" target="_blank" rel="noopener noreferrer">Saiba mais sobre custo, despesa e investimento</a>
+  </div>`;
 }
 
 /**
@@ -733,6 +811,7 @@ async function viewIndicadores() {
         ].filter(Boolean).join(' · ')}</span>
       </header>
       ${filtrosDoBloco('financeiro', rf)}
+      ${caixaDeCategorizacaoHtml()}
 
     ${blocoIndicador({
       chave: 'plano-reducao',
@@ -938,6 +1017,47 @@ async function viewIndicadores() {
 
     <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
       <header>
+        <h2>Projetos</h2>
+        <span class="nota">${[
+          resumoMetaDoModulo(proj.leitura),
+          'por competência de entrega planejada',
+        ].filter(Boolean).join(' · ')}</span>
+      </header>
+      ${filtrosDoBloco('projetos', rp)}
+
+    ${blocoIndicador({
+      chave: 'projetos-prazo',
+      titulo: 'Tarefas entregues no prazo',
+      valor: proj.entregues ? proj.pct.toLocaleString('pt-BR') + '%' : '—',
+      cor: proj.entregues === 0 ? null : proj.leitura ? (proj.leitura.atinge ? 'var(--bomtxt)' : 'var(--crit)') : null,
+      apoio: proj.entregues
+        ? `${inteiro(proj.noPrazo)} de ${inteiro(proj.entregues)} entregues`
+        : 'nenhuma tarefa entregue no recorte',
+      corpo: `${metaHtml(proj.leitura)}
+        ${faixaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
+        ${legendaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
+        ${arvoreDeUnidadesHtml('ind-entregues', q.entregues, inteiro, semExtra)}`,
+      nota: `O denominador do percentual é o que foi <strong>entregue</strong>: tarefa ainda em aberto não
+        está fora do prazo enquanto o mês planejado não passa.${
+          proj.canceladas ? ` ${inteiro(proj.canceladas)} cancelada(s) ficam fora das duas contas.` : ''}`,
+    })}
+
+    ${blocoIndicador({
+      chave: 'projetos-pendentes',
+      titulo: 'Tarefas pendentes',
+      valor: inteiro(proj.pendentes),
+      cor: proj.atrasadas ? 'var(--alerta)' : null,
+      apoio: proj.atrasadas
+        ? `${inteiro(proj.atrasadas)} com o mês planejado já vencido`
+        : 'nenhuma com o mês planejado vencido',
+      corpo: `${faixaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
+        ${legendaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
+        ${arvoreDeUnidadesHtml('ind-tarefas-pendentes', q.tarefasPendentes, inteiro, semExtra)}`,
+    })}
+    </section>
+
+    <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
+      <header>
         <h2>SLA</h2>
         <span class="nota">${resumoMetaDoModulo(sla.leitura) || `meta de ${sla.meta}%`}</span>
       </header>
@@ -979,48 +1099,6 @@ async function viewIndicadores() {
         resolveu. Por isso não soma com os outros três.${sla.semStatus > 0
           ? ` ${inteiro(sla.semStatus)} atendimento(s) vêm de registro agregado do mês, que não tem situação.` : ''}`,
     })}
-
-    </section>
-
-    <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
-      <header>
-        <h2>Projetos</h2>
-        <span class="nota">${[
-          resumoMetaDoModulo(proj.leitura),
-          'por competência de entrega planejada',
-        ].filter(Boolean).join(' · ')}</span>
-      </header>
-      ${filtrosDoBloco('projetos', rp)}
-
-    ${blocoIndicador({
-      chave: 'projetos-prazo',
-      titulo: 'Tarefas entregues no prazo',
-      valor: proj.entregues ? proj.pct.toLocaleString('pt-BR') + '%' : '—',
-      cor: proj.entregues === 0 ? null : proj.leitura ? (proj.leitura.atinge ? 'var(--bomtxt)' : 'var(--crit)') : null,
-      apoio: proj.entregues
-        ? `${inteiro(proj.noPrazo)} de ${inteiro(proj.entregues)} entregues`
-        : 'nenhuma tarefa entregue no recorte',
-      corpo: `${metaHtml(proj.leitura)}
-        ${faixaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
-        ${legendaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
-        ${arvoreDeUnidadesHtml('ind-entregues', q.entregues, inteiro, semExtra)}`,
-      nota: `O denominador do percentual é o que foi <strong>entregue</strong>: tarefa ainda em aberto não
-        está fora do prazo enquanto o mês planejado não passa.${
-          proj.canceladas ? ` ${inteiro(proj.canceladas)} cancelada(s) ficam fora das duas contas.` : ''}`,
-    })}
-
-    ${blocoIndicador({
-      chave: 'projetos-pendentes',
-      titulo: 'Tarefas pendentes',
-      valor: inteiro(proj.pendentes),
-      cor: proj.atrasadas ? 'var(--alerta)' : null,
-      apoio: proj.atrasadas
-        ? `${inteiro(proj.atrasadas)} com o mês planejado já vencido`
-        : 'nenhuma com o mês planejado vencido',
-      corpo: `${faixaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
-        ${legendaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
-        ${arvoreDeUnidadesHtml('ind-tarefas-pendentes', q.tarefasPendentes, inteiro, semExtra)}`,
-    })}
     </section>`;
 
   // ----------------------------------------------------------- desenho
@@ -1050,8 +1128,11 @@ async function viewIndicadores() {
       aoMudar: (novo) => { r.filiais = novo; render(); },
     });
   }
+  // Voltar ao PADRÃO, não ao vazio: no Financeiro o padrão é uma janela
+  // (primeira competência → último mês fechado), e esvaziá-la traria de volta
+  // os meses futuros que o padrão existe para deixar de fora.
   el('#pagina').querySelectorAll('[data-limpar]').forEach((b) => b.onclick = () => {
-    E.filtrosInd[b.dataset.limpar] = recorteVazio();
+    E.filtrosInd[b.dataset.limpar] = recorteInicial(b.dataset.limpar);
     render();
   });
   // O switch recalcula o BLOCO inteiro: indicadores, série e tabela. Filtrar só

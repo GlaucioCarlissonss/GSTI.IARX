@@ -70,9 +70,30 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   ok('o traço da meta existe', term.traco >= 1);
   ok('e o leitor de tela recebe o número', /\d+% contra a meta de 80%/.test(term.rotulo || ''), term.rotulo);
 
+  console.log('\n--- o bloco financeiro abre no período padrão ---');
+  // O padrão é a janela de leitura da diretoria: da primeira competência da
+  // base até o último mês FECHADO. O mês corrente fica de fora de propósito —
+  // ele está pela metade, e lê-lo junto com os fechados faz a série terminar
+  // num degrau para baixo que é mês incompleto, não queda de custo.
+  const mesAnterior = (() => {
+    const d = new Date();
+    const i = d.getFullYear() * 12 + d.getMonth() - 1;
+    return String(Math.floor(i / 12)) + '-' + String((i % 12) + 1).padStart(2, '0');
+  })();
+  const padrao = await pag.evaluate(() => ({
+    de: E.filtrosInd.financeiro.de,
+    ate: E.filtrosInd.financeiro.ate,
+    slaDe: E.filtrosInd.sla.de,
+    slaAte: E.filtrosInd.sla.ate,
+  }));
+  ok('DE nasce no mês mais antigo da base', padrao.de === '2026-01', padrao.de);
+  ok('ATÉ nasce no mês anterior ao corrente', padrao.ate === mesAnterior, `${padrao.ate} (esperado ${mesAnterior})`);
+  ok('e só o bloco financeiro tem período padrão',
+    padrao.slaDe === '' && padrao.slaAte === '', `sla: "${padrao.slaDe}".."${padrao.slaAte}"`);
+
   console.log('\n--- os filtros são do bloco, e não do sistema ---');
   const antesGlobal = await pag.evaluate(() => [...E.competencias].join(','));
-  await pag.fill('#i-financeiro-de', '01/2026');
+  await pag.fill('#i-financeiro-de', '03/2026');
   await pag.dispatchEvent('#i-financeiro-de', 'change');
   await pag.waitForTimeout(900);
   const depois = await pag.evaluate(() => ({
@@ -80,17 +101,32 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
     doBloco: E.filtrosInd.financeiro.de,
     slaIntacto: E.filtrosInd.sla.de,
   }));
-  ok('o recorte fica no bloco', depois.doBloco === '2026-01', depois.doBloco);
+  ok('o recorte fica no bloco', depois.doBloco === '2026-03', depois.doBloco);
   ok('o filtro global do sistema não é tocado', depois.global === antesGlobal, `${antesGlobal} → ${depois.global}`);
   ok('e o bloco vizinho tampouco', depois.slaIntacto === '', `"${depois.slaIntacto}"`);
 
-  // Memória de sessão: recarregar limpa. Um filtro de leitura que sobrevive ao
-  // F5 faria o gestor voltar dias depois a um recorte que não escolheu.
+  // O botão do bloco financeiro VOLTA AO PADRÃO — não esvazia. Esvaziar
+  // traria de volta as competências futuras que o padrão existe para excluir.
+  await pag.click('[data-limpar="financeiro"]');
+  await pag.waitForTimeout(900);
+  const restaurado = await pag.evaluate(() => ({
+    de: E.filtrosInd.financeiro.de, ate: E.filtrosInd.financeiro.ate,
+  }));
+  ok('restaurar devolve a janela padrão, e não o vazio',
+    restaurado.de === '2026-01' && restaurado.ate === mesAnterior,
+    `${restaurado.de}..${restaurado.ate}`);
+
+  // Memória de sessão: recarregar esquece a escolha. Um filtro de leitura que
+  // sobrevive ao F5 faria o gestor voltar dias depois a um recorte que não
+  // escolheu — ele volta ao PADRÃO, que é escolha do sistema e é declarada.
+  await pag.fill('#i-financeiro-de', '05/2026');
+  await pag.dispatchEvent('#i-financeiro-de', 'change');
+  await pag.waitForTimeout(600);
   await pag.reload();
   await pag.waitForSelector('#modulos button', { timeout: 20000 });
   await irPara(pag, 'Indicadores Gerais', 1200);
   const aposRecarregar = await pag.evaluate(() => E.filtrosInd.financeiro.de);
-  ok('recarregar devolve o bloco ao período livre', aposRecarregar === '', `"${aposRecarregar}"`);
+  ok('recarregar devolve o bloco ao período padrão', aposRecarregar === '2026-01', `"${aposRecarregar}"`);
 
   console.log('\n--- o switch de reconhecimento recalcula o bloco inteiro ---');
   const comTudo = await pag.evaluate(() => ({

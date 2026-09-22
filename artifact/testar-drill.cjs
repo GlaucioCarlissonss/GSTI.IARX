@@ -138,11 +138,15 @@ const TELAS = ['Painel', 'Conferência', 'Projetos', 'Indicadores', 'Indicadores
   // conferir num percentual, então o que se exige deles é outra coisa: que a
   // lista traga registros e diga o que está sendo mostrado.
   console.log('\nPERCENTUAL — o indicador que não soma também abre os registros');
-  const conferirPercentual = async (indice, nome, esperado) => {
+  // Endereçado pela CHAVE do indicador, e não pela posição: a ordem dos blocos
+  // muda a cada rodada de reestruturação, e um índice ligaria em silêncio a
+  // conferência de um indicador ao detalhamento de outro — foi exatamente isso
+  // que `ligarKpis` deixou de fazer quando trocou o mapa posicional por chave.
+  const conferirPercentual = async (chave, nome, esperado) => {
     await irPara(pag, 'Indicadores Gerais', 900);
-    const kpis = await pag.$$('.kpi.drill');
-    if (!kpis[indice]) { console.log(`  · ${nome}: indicador ausente`); return; }
-    await kpis[indice].focus();
+    const kpi = await pag.$(`.kpi.drill[data-kpi="${chave}"]`);
+    if (!kpi) { console.log(`  · ${nome}: indicador ausente`); return; }
+    await kpi.focus();
     await pag.keyboard.press('Enter');
     await pag.waitForTimeout(700);
     const modal = await pag.$eval('.modal, [role="dialog"]', (m) => m.textContent.replace(/\s+/g, ' ')).catch(() => '');
@@ -151,9 +155,9 @@ const TELAS = ['Painel', 'Conferência', 'Projetos', 'Indicadores', 'Indicadores
     confere(`${nome}: nenhuma divergência falsa`, /Diverge:/.test(modal), false);
     await fecharModal();
   };
-  await conferirPercentual(0, 'Custo recorrente (variação)', /despesas fixas do recorte/i);
-  await conferirPercentual(2, 'Atendidos dentro do SLA', /chamados do recorte|Prioridade/i);
-  await conferirPercentual(4, 'Tarefas entregues no prazo', /Tarefas entregues|Planejado/i);
+  await conferirPercentual('custo-recorrente', 'Custo recorrente (variação)', /despesas fixas do recorte/i);
+  await conferirPercentual('sla-conformidade', 'Atendidos dentro do SLA', /chamados do recorte|Prioridade/i);
+  await conferirPercentual('projetos-prazo', 'Tarefas entregues no prazo', /Tarefas entregues|Planejado/i);
 
   // ------------------------------------------------------ clique no gráfico
   console.log('\nGRÁFICO — clicar numa barra abre os registros daquele ponto');
