@@ -95,7 +95,10 @@ function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = c
   }
   pontos.forEach((p, i) => {
     const cx = m.e + passo*(i+.5), g = svgEl('g', {});
-    g.appendChild(svgEl('rect', { x:cx-passo/2, y:m.t, width:passo, height:ap, fill:'transparent' }));
+    // A área de captura da coluna, montada só no fim para ficar POR CIMA dos
+    // segmentos: embaixo deles, uma barra alta a cobre inteira e o ponteiro
+    // nunca a alcança — o balão só aparecia no vão acima da barra.
+    const captura = svgEl('rect', { x:cx-passo/2, y:m.t, width:passo, height:ap, fill:'transparent' });
     if (modo === 'empilhado') {
       let acc = 0;
       for (const s of series) {
@@ -108,6 +111,7 @@ function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = c
       series.forEach((s, j) => g.appendChild(svgEl('path', {
         d: pathBarra(cx-larg/2 + j*(lb+2), y(p.v[s.k]||0), lb, y(0)-y(p.v[s.k]||0)), fill:s.cor })));
     }
+    g.appendChild(captura);
     g.addEventListener('mousemove', (ev) => mostrarDica(ev, p.rot, [
       ...series.map((s) => ({ nome:s.nome, cor:s.cor, valor: fmt(p.v[s.k]||0) })),
       ...(series.length>1 && modo==='empilhado' ? [{ nome:'Total', valor: fmt(series.reduce((a,s)=>a+(p.v[s.k]||0),0)) }] : []),

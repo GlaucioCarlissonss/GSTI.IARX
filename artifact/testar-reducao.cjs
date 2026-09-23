@@ -198,6 +198,53 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
   ok('o farol nunca fia só na cor: traz símbolo e palavra',
     /alcançada/.test(comPlano.semaforos[0].aria) && /alcançada/.test(comPlano.semaforos[1].aria));
   ok('a linha do tempo é desenhada', comPlano.serie === 1, `${comPlano.serie} gráfico(s)`);
+
+  // ------------------------------------------- barras por tipo de despesa
+  console.log('\nCOMPOSIÇÃO — uma barra por mês, empilhada por tipo de despesa fixa');
+  const comp = await pag.evaluate(() => {
+    const sec = document.querySelector('[data-kpi="plano-reducao"]').closest('section.bloco-indicador');
+    const p = calcularPlanoReducao(recorteDoBloco('financeiro'));
+    const svg = sec.querySelector('#i-plano-serie svg');
+    const colunas = [...svg.querySelectorAll('g')];
+    // A barra inteira é o CUSTO FIXO do mês, e não só as despesas do plano.
+    const fecha = p.composicao.pontos.every((pt) =>
+      p.composicao.series.reduce((s, sr) => s + Math.round((pt.v[sr.k] || 0) * 100), 0) === pt.centavos);
+    const naRef = p.composicao.pontos.find((pt) => pt.comp === p.referencia);
+    // O empilhamento vai na ordem das VAGAS da paleta, que é a ordem em que a
+    // paleta foi validada para vizinhança de cores — e não por valor.
+    const vagas = p.composicao.series
+      .filter((s) => s.cor.startsWith('var(--t'))
+      .map((s) => Number(/--t(\d)/.exec(s.cor)[1]));
+    return {
+      colunas: colunas.length, meses: p.composicao.pontos.length,
+      series: p.composicao.series.length,
+      coresUnicas: new Set(p.composicao.series.map((s) => s.cor)).size,
+      fecha,
+      totalDaRef: naRef ? naRef.total : null, fixasDoMes: p.fixasDoMes,
+      vagasCrescentes: vagas.every((v, i) => i === 0 || v > vagas[i - 1]),
+      legenda: [...sec.querySelectorAll('.legenda-tipos span')].length,
+      legendaDizOMes: /VALORES DE|Valores de/.test(
+        (sec.querySelector('.legenda-tipos .legenda-titulo') || {}).textContent || ''),
+      semZero: ![...sec.querySelectorAll('.legenda-tipos span')]
+        .some((x) => /R\$ 0,00/.test(x.textContent)),
+      // Resto de gráfico de linhas não pode ter sobrado.
+      linhasDeSerie: svg.querySelectorAll('path[stroke]:not([stroke="none"])').length,
+    };
+  });
+  ok('uma barra por mês da janela', comp.colunas === comp.meses && comp.meses > 0,
+    `${comp.colunas} coluna(s) para ${comp.meses} mês(es)`);
+  ok('segmentada por tipo de despesa, uma cor por tipo',
+    comp.series > 1 && comp.coresUnicas === comp.series, `${comp.series} tipo(s), ${comp.coresUnicas} cor(es)`);
+  ok('a soma dos segmentos é o custo fixo do mês', comp.fecha);
+  ok('e a barra do mês de referência bate com o número do card',
+    Math.abs(comp.totalDaRef - comp.fixasDoMes) < 0.02, `${comp.totalDaRef} × ${comp.fixasDoMes}`);
+  ok('o empilhamento segue a ordem das vagas da paleta, não o valor', comp.vagasCrescentes);
+  ok('com legenda, uma entrada por tipo', comp.legenda === comp.series + 1,
+    `${comp.legenda} entrada(s) para ${comp.series} tipo(s)`);
+  ok('a legenda diz de que mês são os valores', comp.legendaDizOMes);
+  ok('e não escreve "R$ 0,00" para tipo ausente no mês', comp.semZero);
+  ok('não sobrou linha do gráfico anterior', comp.linhasDeSerie === 0,
+    `${comp.linhasDeSerie} linha(s)`);
   // A janela do objetivo é a da META (02/2026 a 06/2026), e não a do filtro do
   // bloco (01/2026 a 08/2026) — é a promessa central desta entrega.
   ok('a janela é a da meta cadastrada, e não a do filtro',

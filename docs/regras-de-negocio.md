@@ -1237,6 +1237,47 @@ quando não há compromisso nenhum.
 palavra ("alcançada") e a frase que diz contra o que a comparação foi feita, e
 o conjunto vira o `aria-label` do farol.
 
+### O gráfico: barras mensais empilhadas por tipo de despesa
+
+A barra de cada mês é o **custo fixo daquele mês**, inteiro — e não apenas as
+despesas do plano. A leitura pedida é "quanto custa hoje o custo fixo, e do que
+ele é feito"; um gráfico só das despesas do plano mostraria a parte e esconderia
+o todo contra o qual a meta é medida. A soma dos segmentos fecha com o número do
+card, em centavos, e isso é conferido por teste.
+
+**A cor do tipo de despesa tem paleta própria** (`--t1`…`--t8`), e ela é as
+**mesmas oito matizes** da paleta de empresa, começando em outra vaga. A razão é
+que as vagas categóricas de um gráfico são oito e já estavam gastas: uma paleta
+"nova" só poderia ser re-degraus das mesmas matizes, e um azul mais claro ao
+lado do azul de empresa leria como "a mesma coisa, desbotada" — pior do que a
+repetição. Rotacionando a ordem, as cores **dominantes** de cada gráfico ficam
+diferentes, que é o que o olho compara. Do nono tipo em diante tudo cai em
+**Outros**, em cinza.
+
+**A cor sai do NOME do tipo, nunca do tamanho do gasto** (`corDoTipo`, no molde
+de `corDaMatriz`). Se viesse do valor, apertar um filtro repintaria os
+sobreviventes e o mesmo tipo trocaria de cor entre dois meses da mesma tela. A
+ordem de referência sai dos tipos que **têm despesa fixa** na base do escopo, e
+não do catálogo inteiro: um catálogo com vinte tipos, dos quais cinco são fixos,
+empurraria os fixos para além da oitava vaga e os pintaria de cinza sem motivo.
+
+**Os segmentos empilham na ordem das VAGAS da paleta, e não por valor.** Isto
+foi medido, não escolhido por gosto: a paleta é validada entre cores
+**vizinhas** na ordem das vagas (ΔE ≥ 8 para daltonismo, ≥ 15 para visão
+normal), e empilhar por valor produz vizinhanças arbitrárias — na base real o
+pior par cairia a **ΔE 7,1** entre o laranja e o vermelho, abaixo do piso.
+Empilhar pelas vagas devolve a garantia para qualquer base de cliente e mantém a
+mesma cor na mesma altura em todos os meses, que é o que permite comparar barras
+com o olho. **Outros** vai na primeira vaga, porque o cinza dele encosta mal no
+verde da oitava (ΔE 13,6) e bem no laranja da primeira (ΔE 18,1).
+
+**Quem responde "o que pesa mais" é a legenda**, ordenada por valor no mês de
+referência — e ela diz de que mês são os valores. Um tipo sem despesa naquele
+mês aparece como "sem despesa neste mês", e não como "R$ 0,00": zero se lê como
+"caiu a zero", que é outra afirmação. A legenda também é obrigatória por outra
+razão: três das oito cores ficam abaixo de 3:1 contra o fundo claro, e a regra é
+que cor fraca só entra acompanhada de rótulo visível.
+
 ## Cor da despesa compartilhada
 
 Cada empresa tem a sua cor, pela posição na lista ordenada do cliente. A

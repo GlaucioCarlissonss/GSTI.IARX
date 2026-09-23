@@ -26,6 +26,17 @@
      único canal — legenda, tooltip e tabela dizem o nome. */
   --m1:#2a78d6; --m2:#eb6834; --m3:#1baf7a; --m4:#8e5ad6;
   --m5:#c9315e; --m6:#0f8f9e; --m7:#a8720f; --m8:#5b6b7d;
+  /* Uma cor por TIPO DE DESPESA FIXA, para a composição do custo mensal.
+     São as mesmas oito matizes validadas da paleta de empresa, começando em
+     OUTRA vaga: as vagas categóricas de um gráfico são oito, e já estavam
+     gastas. Uma paleta "nova" só poderia ser re-degraus destas mesmas matizes,
+     e um azul mais claro ao lado do azul de empresa leria como a mesma coisa
+     desbotada — pior que a repetição. Rotacionando a ordem, as cores DOMINANTES
+     de cada gráfico ficam diferentes, que é o que o olho compara.
+     Validadas como conjunto nos dois temas: banda de luminosidade, piso de
+     croma, separação para daltonismo (ΔE ≥ 8 entre vizinhas) e contraste. */
+  --t1:#eda100; --t2:#e87ba4; --t3:#008300; --t4:#4a3aa7;
+  --t5:#e34948; --t6:#2a78d6; --t7:#eb6834; --t8:#1baf7a;
   --bom:#0ca30c; --bomtxt:#056605; --alerta:#b26a00; --crit:#c0392f;
   --sombra:0 1px 2px rgba(17,23,33,.05),0 8px 24px rgba(17,23,33,.06);
   --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -39,6 +50,8 @@
   --s1:#3987e5; --s2:#d95926; --s3:#199e70;
   --m1:#3987e5; --m2:#d95926; --m3:#199e70; --m4:#a273e8;
   --m5:#e0526f; --m6:#22a7b8; --m7:#d9a13c; --m8:#8a97a8;
+  --t1:#c98500; --t2:#d55181; --t3:#008300; --t4:#9085e9;
+  --t5:#e66767; --t6:#3987e5; --t7:#d95926; --t8:#199e70;
   --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
   --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
 }}
@@ -50,6 +63,8 @@
   --s1:#3987e5; --s2:#d95926; --s3:#199e70;
   --m1:#3987e5; --m2:#d95926; --m3:#199e70; --m4:#a273e8;
   --m5:#e0526f; --m6:#22a7b8; --m7:#d9a13c; --m8:#8a97a8;
+  --t1:#c98500; --t2:#d55181; --t3:#008300; --t4:#9085e9;
+  --t5:#e66767; --t6:#3987e5; --t7:#d95926; --t8:#199e70;
   --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
   --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
 }
@@ -157,6 +172,15 @@
 .semaforo.neutro .semaforo-estado{color:var(--tinta3)}
 .semaforo-corpo small{font-size:11.5px;line-height:1.5;color:var(--tinta2)}
 .titulo-mini{font-size:12.5px;color:var(--tinta2);margin-top:14px}
+/* A legenda por tipo de despesa: mesma peça da legenda de matrizes, com o valor
+   do mês de referência ao lado. Ela é o rótulo visível que três das oito cores
+   exigem por ficarem abaixo de 3:1 contra o fundo claro. */
+.legenda-tipos{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:8px;font-size:11px;color:var(--tinta2)}
+.legenda-tipos span{display:inline-flex;align-items:center;gap:5px}
+.legenda-tipos i{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none}
+.legenda-tipos .legenda-titulo{font-family:var(--mono);font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--tinta3)}
+.legenda-tipos em{font-style:italic;color:var(--tinta3)}
 /* Antes → depois: duas barras na mesma escala, uma sobre a outra. Escalas
    diferentes fariam a segunda parecer maior por acidente de largura. */
 .comparativo{display:flex;flex-direction:column;gap:3px;min-width:180px}

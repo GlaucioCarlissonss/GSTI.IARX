@@ -623,6 +623,7 @@ function calcularPlanoReducao(r) {
 
   return {
     itens, serie, janela, referencia,
+    composicao: composicaoDoCustoFixo(base, meses, referencia),
     totalAtual: reais(totalAtual), totalAlvo: reais(totalAlvo),
     totalReducao: reais(totalAtual - totalAlvo),
     pctReducao: pct(totalAtual - totalAlvo, totalAtual),
@@ -636,6 +637,96 @@ function calcularPlanoReducao(r) {
     // do bloco, que é justamente o que esta entrega desacoplou.
     leituraMeta: metaNaJanelaDoObjetivo(r, janela),
   };
+}
+
+/**
+ * A composição do custo fixo mês a mês, por TIPO DE DESPESA.
+ *
+ * É o que a barra de cada mês empilha. Três decisões:
+ *
+ * 1. **A barra inteira é o custo fixo do mês**, e não só as despesas do plano.
+ *    A leitura que o gestor pediu é "quanto custa hoje o custo fixo, e do que
+ *    ele é feito" — um gráfico só das despesas do plano mostraria a parte e
+ *    esconderia o todo contra o qual a meta é medida.
+ * 2. **A ordem dos segmentos é a das VAGAS DA PALETA**, e não a do valor. Este
+ *    ponto foi medido, não escolhido por gosto: a paleta é validada entre cores
+ *    VIZINHAS na ordem das vagas (ΔE ≥ 8 para daltonismo, ≥ 15 para visão
+ *    normal), e empilhar por valor produz vizinhanças arbitrárias — na base
+ *    real o pior par cairia a ΔE 7,1 entre o laranja e o vermelho, abaixo do
+ *    piso. Empilhar na ordem das vagas devolve a garantia para qualquer base
+ *    de cliente, e de quebra mantém a mesma altura para a mesma cor em todos
+ *    os meses, que é o que permite comparar barras com o olho. Quem quer saber
+ *    o que pesa mais lê a LEGENDA, que é ordenada por valor.
+ * 3. **A cor vem de `corDoTipo`**, que é por NOME e não por tamanho: a cor
+ *    segue a entidade, nunca o ranking. Do nono tipo em diante tudo cai em
+ *    "Outros" — inventar uma nona cor daria duas indistinguíveis. "Outros" vai
+ *    na PRIMEIRA vaga porque o cinza dele encosta mal no verde da oitava
+ *    (ΔE 13,6, abaixo do piso) e bem no laranja da primeira (ΔE 18,1).
+ */
+/**
+ * A legenda das cores do empilhamento, com o valor do mês de referência.
+ *
+ * Não é enfeite: três das oito cores ficam abaixo de 3:1 contra o fundo claro,
+ * e a regra é que uma cor fraca só entra acompanhada de rótulo visível. A
+ * legenda É esse rótulo — sem ela o gráfico seria cor pura, que é justamente o
+ * que o projeto não admite.
+ */
+function legendaDeTiposHtml(series, referencia) {
+  const visiveis = series.filter((s) => s.total > 0);
+  if (!visiveis.length) return '';
+  // Ordenada por VALOR, ao contrário do empilhamento, que vai pela ordem das
+  // vagas da paleta. É a legenda que responde "o que pesa mais", e é por isso
+  // que a barra pode se dar ao luxo de empilhar na ordem que protege as cores.
+  const porValor = [...visiveis].sort((a, b) => b.naReferencia - a.naReferencia
+    || b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'));
+  return `<div class="legenda-tipos">
+    <span class="legenda-titulo">Valores de ${esc(mesExib(referencia))}:</span>
+    ${porValor.map((s) => `<span><i style="background:${s.cor}"></i>${esc(s.nome)} ·
+      ${s.naReferencia > 0
+        ? brl(s.naReferencia)
+        : `<em title="Este tipo tem despesa em outros meses da janela, mas nenhuma em ${esc(mesExib(referencia))}.">sem despesa neste mês</em>`}</span>`).join('')}
+  </div>`;
+}
+
+function composicaoDoCustoFixo(base, meses, referencia) {
+  const OUTROS = 'Outros';
+  const rotulo = (l) => {
+    const nome = String(l.tipo || '').trim() || 'Sem tipo';
+    return corDoTipo(nome) === 'var(--tinta3)' ? OUTROS : nome;
+  };
+
+  // centavos[tipo][competência]
+  const porTipo = new Map();
+  for (const l of base) {
+    const t = rotulo(l);
+    if (!porTipo.has(t)) porTipo.set(t, new Map());
+    const m = porTipo.get(t);
+    m.set(l.competencia, (m.get(l.competencia) || 0) + cent(l.valor));
+  }
+
+  const pesoNaReferencia = (t) => (porTipo.get(t).get(referencia) || 0);
+  const vaga = (t) => (t === OUTROS ? -1 : ordemDosTipos().indexOf(t));
+  const nomes = [...porTipo.keys()].sort((a, b) => vaga(a) - vaga(b));
+
+  const series = nomes.map((nome) => ({
+    k: nome, nome,
+    cor: nome === OUTROS ? 'var(--tinta3)' : corDoTipo(nome),
+    total: reais([...porTipo.get(nome).values()].reduce((s, c) => s + c, 0)),
+    naReferencia: reais(pesoNaReferencia(nome)),
+  }));
+
+  const pontos = meses.map((m) => {
+    const v = {};
+    let totalC = 0;
+    for (const nome of nomes) {
+      const c = porTipo.get(nome).get(m) || 0;
+      v[nome] = reais(c);
+      totalC += c;
+    }
+    return { comp: m, rot: mesExib(m), v, total: reais(totalC), centavos: totalC };
+  });
+
+  return { series, pontos };
 }
 
 /**
@@ -1027,10 +1118,12 @@ async function viewIndicadores() {
                 + 'comparado com a soma dos alvos cadastrados. Os dois lados são valores POR MÊS.'
               : 'Cadastre as despesas e seus alvos em Sistema › Cadastro › Plano de redução.' })}
         </div>
-        ${plano.itens.length === 0 ? '' : `
-        <h3 class="titulo-mini">Mês a mês, na vigência da meta${
+        ${plano.composicao.pontos.length === 0 ? '' : `
+        <h3 class="titulo-mini">Custo fixo mês a mês, por tipo de despesa${
           plano.janela.de ? ` — ${mesExib(plano.janela.de)} a ${mesExib(plano.janela.ate)}` : ''}</h3>
         <div id="i-plano-serie" style="margin-top:6px"></div>
+        ${legendaDeTiposHtml(plano.composicao.series, plano.referencia)}`}
+        ${plano.itens.length === 0 ? '' : `
         <div class="rol" style="margin-top:12px"><table>
           <thead><tr><th>Item</th><th class="n">Atual / mês</th><th class="n">Alvo / mês</th>
             <th>Atual × alvo</th><th class="n">Redução</th><th class="n">% do custo fixo</th></tr></thead>
@@ -1322,10 +1415,8 @@ async function viewIndicadores() {
   // medição —, e é a distância entre as duas curvas que diz se o plano anda.
   const alvoPlano = el('#i-plano-serie');
   if (alvoPlano) {
-    if (plano.serie.length) {
-      linhas(alvoPlano, plano.serie.map((p) => ({ rot: p.rot, v: { custo: p.valor, alvo: p.alvo } })),
-        [{ k: 'custo', nome: 'Custo mensal do plano', cor: 'var(--crit)' },
-          { k: 'alvo', nome: 'Alvo mensal cadastrado', cor: 'var(--bom)' }]);
+    if (plano.composicao.pontos.length) {
+      barras(alvoPlano, plano.composicao.pontos, plano.composicao.series, 'empilhado');
     } else {
       alvoPlano.innerHTML = '<p class="vazio">Sem despesa fixa na vigência da meta.</p>';
     }

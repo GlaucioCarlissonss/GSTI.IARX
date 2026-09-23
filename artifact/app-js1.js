@@ -886,6 +886,30 @@ function corDaMatriz(empresaId) {
   return i >= 0 && i < CORES_MATRIZ ? `var(--m${i + 1})` : 'var(--tinta3)';
 }
 
+// A cor de um TIPO DE DESPESA, no mesmo molde de `corDaMatriz`: ordem fixa pelo
+// NOME, e não pelo tamanho do gasto. A cor segue a entidade, nunca o ranking —
+// se ela viesse do valor, apertar um filtro repintaria os sobreviventes e o
+// mesmo tipo trocaria de cor entre dois meses da mesma tela.
+const CORES_TIPO = 8;
+
+// A ordem sai dos tipos que TÊM despesa fixa na base do escopo, e não do
+// catálogo inteiro: um catálogo com vinte tipos, dos quais cinco são fixos,
+// empurraria os fixos para além da oitava vaga e os pintaria de cinza sem
+// necessidade. E não consulta filtro nenhum — é por isso que a cor não se mexe
+// quando alguém aperta o período ou escolhe uma filial.
+function ordemDosTipos() {
+  const comFixa = new Set(Loja.todosDoEscopo()
+    .filter((l) => l.natureza === 'fixa' && l.tipo)
+    .map((l) => String(l.tipo)));
+  return [...comFixa].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/** A cor deste tipo de despesa. Fora dos oito primeiros, a cor de "Outros". */
+function corDoTipo(nome) {
+  const i = ordemDosTipos().indexOf(String(nome));
+  return i >= 0 && i < CORES_TIPO ? `var(--t${i + 1})` : 'var(--tinta3)';
+}
+
 /**
  * A mesma cor da matriz, em tom mais ESCURO: a despesa que ela paga e o grupo
  * consome.
