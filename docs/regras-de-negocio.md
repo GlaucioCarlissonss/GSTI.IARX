@@ -1178,17 +1178,64 @@ Daí um cadastro próprio, com alvo em **reais** e **uma linha por despesa**. Um
 alvo único cobrindo cinco categorias não teria como mostrar de quanto para
 quanto cai cada uma, que é exatamente a leitura pedida.
 
-- O valor **atual** sai dos lançamentos do recorte; o **alvo**, do cadastro.
-  Nada é estimado.
-- O item sem despesa no recorte **é dito**, e não escondido: percentual de
-  redução sobre base zero seria 0%, que se lê como "não caiu".
+- O valor **atual** sai dos lançamentos; o **alvo**, do cadastro. Nada é
+  estimado.
+- O item sem despesa **é dito**, e não escondido: percentual de redução sobre
+  base zero seria 0%, que se lê como "não caiu".
 - A vigência funciona como a das metas: trocar o alvo em janeiro não reescreve
   a leitura dos meses já fechados.
 - Dois percentuais, e eles medem coisas diferentes: o peso da despesa **no
-  grupo** e o peso dela **dentro de cada filial**. O segundo é o que diz onde
-  o corte dói.
+  custo fixo do mês** e o peso dela **dentro de cada filial**. O segundo é o
+  que diz onde o corte dói.
 
 O plano é do **cliente**, como as metas: o corte é negociado para o grupo.
+
+### Objetivo 01: Redução de Custo — o indicador
+
+O primeiro indicador do bloco Financeiro apresenta o plano, e ele segue três
+regras que mudam o número em relação a uma leitura ingênua:
+
+**1. Só despesa de natureza fixa (mensal) entra.** O objetivo é sobre custo
+recorrente. Uma compra pontual do mesmo tipo de despesa fazia o "atual" subir
+num mês sem que nada recorrente tivesse mudado, e o corte seguinte aparecia
+como conquista quando foi só o fim da compra.
+
+**2. Os dois lados são valores POR MÊS.** O alvo cadastrado é o que aquela
+despesa deve passar a custar **por mês**. Comparar com a soma do período —
+que é o que o indicador fazia — punha os dois lados em unidades diferentes:
+oito meses de custo contra um alvo de um mês davam uma "redução" de 80% que
+não significava nada. O **atual** é o custo no **mês de referência**, que é o
+último mês com despesa fixa dentro da janela; é ele que a tela nomeia ao lado
+do número ("valores de 06/2026").
+
+**3. A janela é a da meta cadastrada, e não a do filtro de período do bloco.**
+Este indicador é declaradamente **independente do filtro**. A linha do tempo
+dele é a do compromisso, e recortá-la pelo filtro faria "a meta foi
+alcançada?" mudar de resposta conforme o mês que alguém escolheu olhar para
+conferir outra coisa. Meta sem início (ou sem fim) estica aquela ponta até
+onde existe despesa fixa na base — é o máximo que se pode afirmar sem
+inventar mês. O filtro de **filial** continua valendo: ele diz de quem é a
+leitura, não de quando.
+
+**Dois faróis, lado a lado, porque são dois compromissos distintos:**
+
+| farol | verde quando | do que ele fala |
+| --- | --- | --- |
+| **Meta cadastrada** | a variação do custo fixo na vigência respeita o teto | o percentual de `metas`, medido na janela da própria meta |
+| **Alvo do plano** | o custo mensal das despesas do plano já caiu até a soma dos alvos | os reais de `planos_reducao` |
+
+Um número só não daria conta: um é percentual de variação, o outro é valor em
+reais, e eles podem discordar — o custo cair abaixo do alvo do plano enquanto
+o custo fixo **total** ainda cresce acima do teto é uma situação real, e a
+tela precisa conseguir dizê-la.
+
+**Cinza não é vermelho.** Sem meta cadastrada, ou sem plano, o farol fica
+neutro: "não alcançada" afirmaria que existe um compromisso descumprido
+quando não há compromisso nenhum.
+
+**A cor nunca decide sozinha.** Junto dela vão o símbolo (✓ / ✗ / ·), a
+palavra ("alcançada") e a frase que diz contra o que a comparação foi feita, e
+o conjunto vira o `aria-label` do farol.
 
 ## Cor da despesa compartilhada
 
@@ -1235,6 +1282,10 @@ dinheiro, depois o que se entregou, por último o atendimento.
 - **O período é memória de SESSÃO.** Recarregar devolve o padrão; um filtro de
   leitura que sobrevive ao F5 faria o gestor voltar dias depois a um recorte que
   ele não escolheu.
+- **Um indicador ignora o filtro de período de propósito:** o *Objetivo 01:
+  Redução de Custo*, que percorre a vigência da meta cadastrada. A razão está em
+  "Objetivo 01 — o indicador", acima; o que importa aqui é que a exceção é
+  declarada na tela, junto ao número, e não silenciosa.
 - **Toda expansão ordena por valor DECRESCENTE** — árvore de unidades, itens do
   plano de redução, empresas do rateio, centros de custo, lançamentos do nível 3.
   Quem lê um indicador quer saber quem pesa mais, e uma lista alfabética esconde

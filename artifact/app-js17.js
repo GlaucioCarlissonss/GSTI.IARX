@@ -82,6 +82,68 @@ function metaHtml(leitura) {
 }
 
 /**
+ * O semáforo da META cadastrada, a partir da leitura que `leituraMensalDeMeta`
+ * devolve — que tem duas formas: um alvo só, ou um placar de meses quando a
+ * janela atravessa vigências.
+ *
+ * Sem meta cadastrada o semáforo é CINZA, e não vermelho: "não alcançada"
+ * afirmaria que existe um compromisso descumprido, quando não existe
+ * compromisso nenhum.
+ */
+function semaforoDaMeta(leitura) {
+  if (!leitura) {
+    return { estado: null, texto: 'nenhuma meta de Financeiro cadastrada para este período',
+      detalhe: 'Cadastre em Sistema › Cadastro › Metas para que o objetivo tenha contra o que comparar.' };
+  }
+  if (leitura.varias) {
+    const lista = leitura.metas
+      .map((m) => `${m.nome} ${Number(m.alvoPct).toLocaleString('pt-BR')}% (${vigenciaEmTexto(m)})`).join(' · ');
+    if (!leitura.total) {
+      return { estado: null, texto: `${leitura.metas.length} metas no período, sem resultado mensal para comparar`,
+        detalhe: lista };
+    }
+    return { estado: !!leitura.atinge,
+      texto: `${leitura.dentro} de ${leitura.total} ${leitura.total === 1 ? 'mês dentro' : 'meses dentro'} da meta`,
+      detalhe: `Cada mês é medido contra a meta que rege aquele mês: ${lista}.` };
+  }
+  if (leitura.atingido === null || leitura.atingido === undefined) {
+    return { estado: null, texto: `meta de ${Number(leitura.alvo).toLocaleString('pt-BR')}% · sem resultado no período`,
+      detalhe: 'Não há dois meses com despesa fixa na janela da meta: sem variação, não há o que comparar.' };
+  }
+  const comparador = leitura.direcao === 'minimo' ? 'mínimo' : 'teto';
+  return { estado: !!leitura.atinge,
+    texto: `variação de ${leitura.atingido.toLocaleString('pt-BR')}% contra ${comparador} de `
+      + `${Number(leitura.alvo).toLocaleString('pt-BR')}%`,
+    detalhe: `A variação do custo fixo entre o primeiro e o último mês da vigência da meta, `
+      + `medida contra o ${comparador} cadastrado.` };
+}
+
+/**
+ * Semáforo: verde alcançou, vermelho não alcançou, cinza não dá para dizer.
+ *
+ * A cor NUNCA decide sozinha — é regra do projeto. Junto dela vão sempre o
+ * símbolo (✓ / ✗ / ·), a palavra ("alcançada") e a frase que explica contra o
+ * que a comparação foi feita, e o conjunto vira o `aria-label` do bloco para
+ * quem lê por leitor de tela.
+ *
+ * `estado`: `true` verde, `false` vermelho, `null` sem base para dizer.
+ */
+function semaforoHtml({ rotulo, estado, texto, detalhe }) {
+  const classe = estado === null ? 'neutro' : estado ? 'verde' : 'vermelho';
+  const simbolo = estado === null ? '·' : estado ? '✓' : '✗';
+  const palavra = estado === null ? 'sem base para dizer' : estado ? 'alcançada' : 'não alcançada';
+  return `<div class="semaforo ${classe}" role="group"
+      aria-label="${esc(`${rotulo}: ${palavra}. ${texto}`)}"${detalhe ? ` title="${esc(detalhe)}"` : ''}>
+    <span class="semaforo-luz" aria-hidden="true">${simbolo}</span>
+    <span class="semaforo-corpo">
+      <b>${esc(rotulo)}</b>
+      <span class="semaforo-estado">${esc(palavra)}</span>
+      <small>${esc(texto)}</small>
+    </span>
+  </div>`;
+}
+
+/**
  * A meta em uma frase curta, para o cabeçalho do módulo.
  *
  * Existe porque só o bloco de SLA citava a meta: quem cadastrava um alvo de
@@ -429,27 +491,97 @@ function calcularRateio(r) {
  * guarda o lançamento. O valor ATUAL sai dos lançamentos; o ALVO, do cadastro.
  * Nada aqui é estimado.
  */
-function calcularPlanoReducao(r) {
-  const doRecorte = Loja.todosDoEscopo().filter((l) =>
-    passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, r) && naJanela(l.competencia, r));
-  const totalRecorte = doRecorte.reduce((s, l) => s + cent(l.valor), 0);
+/**
+ * A janela que o OBJETIVO 01 percorre — a vigência da meta de Financeiro.
+ *
+ * O indicador é declaradamente INDEPENDENTE do filtro de período do bloco: a
+ * linha do tempo dele é a do compromisso cadastrado, e não a do recorte que
+ * alguém escolheu para olhar outra coisa. Recortar o objetivo pelo filtro faria
+ * "a meta foi alcançada?" mudar de resposta conforme o mês em que se olha.
+ *
+ * Ponta em aberto (meta sem início, ou sem fim) se estica até onde existe
+ * despesa fixa na base: é o máximo que se pode afirmar sem inventar mês.
+ */
+function janelaDoObjetivo() {
+  const fixas = Loja.todosDoEscopo().filter((l) => l.natureza === 'fixa' && passaNoFiltro(E.cenariosSel, l.cenario));
+  const comps = ordenado([...new Set(fixas.map((l) => l.competencia).filter(Boolean))]);
+  const primeira = comps[0] || null;
+  const ultima = comps[comps.length - 1] || null;
 
-  // Gasto de cada filial no recorte: o denominador do "quanto pesa NESTA
-  // filial", que é a segunda leitura que o plano pede.
+  const metas = (E.metas || []).filter((m) =>
+    m && m.modulo === 'financeiro' && m.ativo !== false && (!m.cliente || m.cliente === E.clienteSel));
+  if (!metas.length) return { de: primeira, ate: ultima, metas: [], semMeta: true };
+
+  // `vigenciaInicio` vazio é "desde sempre": a ponta abre, e o `null` vence
+  // qualquer data. O mesmo vale para o fim.
+  const abreNoInicio = metas.some((m) => !m.vigenciaInicio);
+  const abreNoFim = metas.some((m) => !m.vigenciaFim);
+  const de = abreNoInicio ? primeira
+    : ordenado(metas.map((m) => m.vigenciaInicio))[0];
+  const ate = abreNoFim ? ultima
+    : ordenado(metas.map((m) => m.vigenciaFim)).pop();
+  return { de: de || primeira, ate: ate || ultima, metas, semMeta: false };
+}
+
+/**
+ * OBJETIVO 01 — Redução de custo sobre a despesa FIXA (mensal).
+ *
+ * Três decisões que mudam o número, e cada uma tem razão própria:
+ *
+ * 1. **Só despesa fixa entra.** O objetivo é sobre custo recorrente: uma compra
+ *    pontual daquele mesmo tipo de despesa entrava na conta e fazia o "atual"
+ *    subir num mês sem que nada recorrente tivesse mudado.
+ * 2. **Tudo é MENSAL.** O alvo cadastrado é o valor que aquela despesa deve
+ *    passar a custar POR MÊS. Comparar com a soma de oito meses — que é o que
+ *    o indicador fazia — punha os dois lados em unidades diferentes, e a
+ *    "redução" resultante não significava nada. O `atual` passa a ser o nível
+ *    do ÚLTIMO mês com despesa na janela: quanto custa hoje.
+ * 3. **A janela é a da meta, não a do filtro.** Ver `janelaDoObjetivo`.
+ */
+function calcularPlanoReducao(r) {
+  const janela = janelaDoObjetivo();
+  const naJanelaDoObjetivo = (comp) =>
+    (!janela.de || comp >= janela.de) && (!janela.ate || comp <= janela.ate);
+
+  // O filtro de FILIAL do bloco continua valendo — ele diz de quem é a leitura,
+  // e não de quando. Só o período é ignorado.
+  const base = Loja.todosDoEscopo().filter((l) =>
+    l.natureza === 'fixa' && passaNoFiltro(E.cenariosSel, l.cenario) &&
+    naFilialDoBloco(l.filial, r) && naJanelaDoObjetivo(l.competencia));
+
+  const meses = ordenado([...new Set(base.map((l) => l.competencia).filter(Boolean))]);
+  // O mês de REFERÊNCIA: o último com despesa fixa na janela. É contra ele que
+  // o alvo mensal é comparado, e é dele que sai o percentual.
+  const referencia = meses[meses.length - 1] || null;
+  const doMesRef = base.filter((l) => l.competencia === referencia);
+  const totalFixasMes = doMesRef.reduce((s, l) => s + cent(l.valor), 0);
+
   const gastoDaFilial = new Map();
-  for (const l of doRecorte) {
+  for (const l of doMesRef) {
     const chave = l.empresa + '|' + (l.filial || '');
     gastoDaFilial.set(chave, (gastoDaFilial.get(chave) || 0) + cent(l.valor));
   }
 
-  const itens = planosVigentes(mesDoRecorte(r)).map((p) => {
-    const casam = doRecorte.filter((l) =>
+  // Os planos que valem em ALGUM mês da janela — e não só no mês corrente: um
+  // alvo que vigorou de março a junho é parte da história que a linha conta.
+  const doCliente = planosDoCliente().filter((p) => p.ativo !== false);
+  const vigentes = doCliente.filter((p) =>
+    (!p.vigenciaFim || !janela.de || p.vigenciaFim >= janela.de) &&
+    (!p.vigenciaInicio || !janela.ate || p.vigenciaInicio <= janela.ate));
+
+  const itens = vigentes.map((p) => {
+    const casam = base.filter((l) =>
       (!p.tipo || l.tipo === p.tipo) && (!p.filial || l.filial === p.filial));
-    const atual = casam.reduce((s, l) => s + cent(l.valor), 0);
+    const noMes = casam.filter((l) => l.competencia === referencia);
+    const atual = noMes.reduce((s, l) => s + cent(l.valor), 0);
     const alvo = cent(p.valorAlvo);
 
+    // A série do item: quanto aquela despesa custou em cada mês da janela.
+    const porMes = new Map();
+    for (const l of casam) porMes.set(l.competencia, (porMes.get(l.competencia) || 0) + cent(l.valor));
+
     const porFilial = new Map();
-    for (const l of casam) {
+    for (const l of noMes) {
       const chave = l.empresa + '|' + (l.filial || '');
       const no = porFilial.get(chave) || {
         unidade: l.filial || String(nomeEmpresa(l.empresa)),
@@ -464,8 +596,10 @@ function calcularPlanoReducao(r) {
       atual: reais(atual), alvo: reais(alvo),
       reducao: reais(atual - alvo),
       pctReducao: pct(atual - alvo, atual),
+      atinge: atual > 0 && atual <= alvo,
       semDespesa: atual === 0,
-      pctDoGrupo: pct(atual, totalRecorte),
+      pctDoGrupo: pct(atual, totalFixasMes),
+      porMes,
       porFilial: [...porFilial.entries()]
         .map(([chave, f]) => ({ ...f, valorReais: reais(f.valor), pctDaFilial: pct(f.valor, gastoDaFilial.get(chave) || 0) }))
         .sort((a, b) => b.valor - a.valor),
@@ -478,14 +612,62 @@ function calcularPlanoReducao(r) {
   // Por valor atual decrescente, e não pela ordem do cadastro: a despesa que
   // mais pesa é a que decide se o plano vale alguma coisa.
   itens.sort((a, b) => b.atual - a.atual);
+
+  // A linha do tempo: mês a mês, o custo das despesas do plano contra o alvo
+  // mensal somado. O alvo é uma reta — é um compromisso, não uma medição.
+  const serie = meses.map((m) => {
+    const c = itens.reduce((s, i) => s + (i.porMes.get(m) || 0), 0);
+    return { comp: m, rot: mesExib(m), valor: reais(c), centavos: c,
+      alvo: reais(totalAlvo), atinge: totalAlvo > 0 && c > 0 && c <= totalAlvo };
+  });
+
   return {
-    itens,
+    itens, serie, janela, referencia,
     totalAtual: reais(totalAtual), totalAlvo: reais(totalAlvo),
     totalReducao: reais(totalAtual - totalAlvo),
     pctReducao: pct(totalAtual - totalAlvo, totalAtual),
-    pctDoGrupo: pct(totalAtual, totalRecorte),
-    despesaTotal: reais(totalRecorte),
+    // O percentual que o enunciado pede: quanto o plano representa sobre o
+    // TOTAL do custo fixo mensal — os dois no mesmo mês de referência.
+    pctDasFixas: pct(totalAtual, totalFixasMes),
+    fixasDoMes: reais(totalFixasMes),
+    // O semáforo do PLANO: o custo já caiu até o alvo?
+    atinge: totalAtual > 0 && totalAlvo > 0 && totalAtual <= totalAlvo,
+    // O semáforo da META cadastrada, medida na janela dela — e não no recorte
+    // do bloco, que é justamente o que esta entrega desacoplou.
+    leituraMeta: metaNaJanelaDoObjetivo(r, janela),
   };
+}
+
+/**
+ * A meta de Financeiro medida na janela do objetivo.
+ *
+ * Mesma conta de `metaDoCustoRecorrente` — a variação do custo recorrente mês a
+ * mês contra o teto cadastrado —, só que sobre a janela da meta em vez da do
+ * filtro. Sem isso, o semáforo do objetivo mudaria de cor quando alguém mexesse
+ * no período para olhar outro indicador.
+ */
+function metaNaJanelaDoObjetivo(r, janela) {
+  const porMes = new Map();
+  for (const l of Loja.todosDoEscopo()) {
+    if (l.natureza !== 'fixa') continue;
+    if (!passaNoFiltro(E.cenariosSel, l.cenario)) continue;
+    if (!naFilialDoBloco(l.filial, r)) continue;
+    if (janela.de && l.competencia < janela.de) continue;
+    if (janela.ate && l.competencia > janela.ate) continue;
+    porMes.set(l.competencia, (porMes.get(l.competencia) || 0) + cent(l.valor));
+  }
+  const meses = ordenado([...porMes.keys()]);
+  const pontos = meses.map((m, i) => {
+    const anterior = i > 0 ? porMes.get(meses[i - 1]) : null;
+    const c = porMes.get(m);
+    return { comp: m,
+      valor: anterior === null || anterior === 0 ? null : Math.round(((c - anterior) / anterior) * 1000) / 10 };
+  });
+  const primeiro = meses.length ? porMes.get(meses[0]) : 0;
+  const ultimo = meses.length ? porMes.get(meses[meses.length - 1]) : 0;
+  const total = meses.length < 2 || primeiro === 0
+    ? null : Math.round(((ultimo - primeiro) / primeiro) * 1000) / 10;
+  return leituraMensalDeMeta('financeiro', pontos, total);
 }
 
 /**
@@ -723,11 +905,12 @@ function caixaDeCategorizacaoHtml() {
  * `+/−` e memória entre visitas. O valor vai no cabeçalho — é o que o
  * enunciado chama de "cabeçalho fixo: título, valor principal e estado".
  */
-function blocoIndicador({ chave, titulo, valor, cor, apoio, corpo, nota }) {
+function blocoIndicador({ chave, titulo, descricao, valor, cor, apoio, corpo, nota }) {
   return `
     <section class="bloco bloco-indicador" style="margin-top:14px">
       <header><h2>${esc(titulo)}</h2>
-        <span class="nota valor-cabecalho"${cor ? ` style="color:${cor}"` : ''}>${valor}</span></header>
+        <span class="nota valor-cabecalho"${cor ? ` style="color:${cor}"` : ''}>${valor}</span>
+        ${descricao ? `<p class="descricao-indicador">${esc(descricao)}</p>` : ''}</header>
       <div class="kpi kpi-largo" data-kpi="${esc(chave)}">
         <span class="r">${esc(titulo)}</span>
         <span class="n"${cor ? ` style="color:${cor}"` : ''}>${valor}</span>
@@ -815,31 +998,54 @@ async function viewIndicadores() {
 
     ${blocoIndicador({
       chave: 'plano-reducao',
-      titulo: 'Plano de redução de despesas',
+      titulo: 'Objetivo 01: Redução de Custo',
+      descricao: 'Plano de Redução de Custos sobre Despesas Fixas(Mensais)',
       valor: plano.itens.length
         ? `${brl(plano.totalAtual)} → ${brl(plano.totalAlvo)}`
         : '—',
-      cor: plano.itens.length && plano.pctReducao > 0 ? 'var(--bomtxt)' : null,
+      // A cor do cabeçalho segue o SEMÁFORO, e não o tamanho da redução: verde
+      // porque "sobrou redução a fazer" pintaria de bom exatamente o caso em
+      // que o alvo ainda não foi alcançado — o oposto do que os faróis dizem
+      // dois centímetros abaixo.
+      cor: !plano.itens.length || plano.totalAlvo === 0 ? null
+        : plano.atinge ? 'var(--bomtxt)' : 'var(--crit)',
       apoio: plano.itens.length
         ? `${inteiro(plano.itens.length)} despesa(s) no plano · ${pctTxt(plano.pctReducao)} de redução · `
-          + `${pctTxt(plano.pctDoGrupo)} da despesa do grupo`
+          + `${pctTxt(plano.pctDasFixas)} do custo fixo mensal`
+          + `${plano.referencia ? ` · valores de ${mesExib(plano.referencia)}` : ''}`
         : 'nenhuma despesa no plano — cadastre em Sistema › Cadastro › Plano de redução',
-      corpo: plano.itens.length === 0 ? '' : `
-        <div class="rol" style="margin-top:10px"><table>
-          <thead><tr><th>Item</th><th class="n">Atual</th><th class="n">Alvo</th>
-            <th>Atual × alvo</th><th class="n">Redução</th><th class="n">% do grupo</th></tr></thead>
+      corpo: `
+        <div class="semaforos">
+          ${semaforoHtml({ rotulo: 'Meta cadastrada', ...semaforoDaMeta(plano.leituraMeta) })}
+          ${semaforoHtml({ rotulo: 'Alvo do plano',
+            estado: plano.itens.length === 0 || plano.totalAlvo === 0 ? null : plano.atinge,
+            texto: plano.itens.length === 0
+              ? 'nenhuma despesa no plano de redução'
+              : `${brl(plano.totalAtual)} por mês contra o alvo de ${brl(plano.totalAlvo)}`,
+            detalhe: plano.itens.length
+              ? `O custo mensal das despesas do plano em ${plano.referencia ? mesExib(plano.referencia) : 'nenhum mês'}, `
+                + 'comparado com a soma dos alvos cadastrados. Os dois lados são valores POR MÊS.'
+              : 'Cadastre as despesas e seus alvos em Sistema › Cadastro › Plano de redução.' })}
+        </div>
+        ${plano.itens.length === 0 ? '' : `
+        <h3 class="titulo-mini">Mês a mês, na vigência da meta${
+          plano.janela.de ? ` — ${mesExib(plano.janela.de)} a ${mesExib(plano.janela.ate)}` : ''}</h3>
+        <div id="i-plano-serie" style="margin-top:6px"></div>
+        <div class="rol" style="margin-top:12px"><table>
+          <thead><tr><th>Item</th><th class="n">Atual / mês</th><th class="n">Alvo / mês</th>
+            <th>Atual × alvo</th><th class="n">Redução</th><th class="n">% do custo fixo</th></tr></thead>
           <tbody>${plano.itens.map((i) => `<tr data-plano="${esc(i.nome)}">
             <td>${esc(i.nome)}${i.tipo ? `<div class="arv-comp">${esc(i.tipo)}${i.filial ? ' · ' + esc(i.filial) : ''}</div>` : ''}</td>
             <td class="n">${brl(i.atual)}</td>
             <td class="n">${brl(i.alvo)}</td>
             <td>${i.semDespesa
-              ? '<span class="nota">sem despesa no recorte</span>'
+              ? '<span class="nota">sem despesa fixa no mês de referência</span>'
               : barrasComparativasHtml(i.atual, i.alvo, 'var(--crit)', 'var(--bom)', Math.max(i.atual, i.alvo),
                   { titulo: i.nome, linhas: [
-                    { nome: 'Valor atual', valor: brl(i.atual), cor: 'var(--crit)' },
-                    { nome: 'Valor alvo', valor: brl(i.alvo), cor: 'var(--bom)' },
+                    { nome: 'Custo mensal atual', valor: brl(i.atual), cor: 'var(--crit)' },
+                    { nome: 'Alvo mensal', valor: brl(i.alvo), cor: 'var(--bom)' },
                     { nome: 'Redução', valor: `${brl(i.reducao)} (${pctTxt(i.pctReducao)})` },
-                    { nome: 'Peso no grupo', valor: pctTxt(i.pctDoGrupo) },
+                    { nome: 'Peso no custo fixo do mês', valor: pctTxt(i.pctDoGrupo) },
                     ...i.porFilial.slice(0, 6).map((f) => ({
                       nome: f.unidade, valor: `${brl(f.valorReais)} · ${pctTxt(f.pctDaFilial)} da unidade`, cor: f.cor,
                     })),
@@ -851,12 +1057,15 @@ async function viewIndicadores() {
           ${i.porFilial.length === 0 ? '' : `<tr class="plano-filiais"><td colspan="6">
             <div class="plano-filiais-lista">${i.porFilial.map((f) => `<span>
               <i style="background:${f.cor}" aria-hidden="true"></i>${esc(f.unidade)}
-              <b title="${esc(`${f.unidade}: ${brl(f.valorReais)} — ${pctTxt(f.pctDaFilial)} da despesa desta unidade`)}">${pctTxt(f.pctDaFilial)}</b>
+              <b title="${esc(`${f.unidade}: ${brl(f.valorReais)} — ${pctTxt(f.pctDaFilial)} da despesa fixa desta unidade`)}">${pctTxt(f.pctDaFilial)}</b>
             </span>`).join('')}</div></td></tr>`}`).join('')}</tbody>
-        </table></div>`,
+        </table></div>`}`,
       nota: plano.itens.length
-        ? 'O valor atual sai dos lançamentos do recorte; o alvo, do cadastro. O percentual ao lado de '
-          + 'cada filial é o peso da despesa <strong>dentro daquela unidade</strong>, e não no grupo.'
+        ? 'Só despesa de natureza <strong>fixa (mensal)</strong> entra, e tudo é <strong>por mês</strong>: o '
+          + `atual é o que as despesas do plano custaram em ${plano.referencia ? mesExib(plano.referencia) : 'nenhum mês'}, `
+          + 'contra o alvo mensal do cadastro. A janela é a da <strong>meta cadastrada</strong> — o filtro de '
+          + 'período do bloco não alcança este objetivo, para que "a meta foi alcançada?" não mude de resposta '
+          + 'conforme o mês que alguém escolheu olhar.'
         : 'Sem alvo cadastrado não há de quanto para quanto — e um alvo inventado seria pior que a ausência dele.',
     })}
 
@@ -1108,6 +1317,19 @@ async function viewIndicadores() {
   } else {
     el('#i-reducao').innerHTML = '<p class="vazio">Sem despesa recorrente neste recorte.</p>';
   }
+  // A linha do tempo do Objetivo 01: o custo mensal das despesas do plano
+  // contra o alvo. O alvo é uma RETA — é um compromisso cadastrado, não uma
+  // medição —, e é a distância entre as duas curvas que diz se o plano anda.
+  const alvoPlano = el('#i-plano-serie');
+  if (alvoPlano) {
+    if (plano.serie.length) {
+      linhas(alvoPlano, plano.serie.map((p) => ({ rot: p.rot, v: { custo: p.valor, alvo: p.alvo } })),
+        [{ k: 'custo', nome: 'Custo mensal do plano', cor: 'var(--crit)' },
+          { k: 'alvo', nome: 'Alvo mensal cadastrado', cor: 'var(--bom)' }]);
+    } else {
+      alvoPlano.innerHTML = '<p class="vazio">Sem despesa fixa na vigência da meta.</p>';
+    }
+  }
   // O termômetro mora dentro do bloco de SLA, que abre fechado: desenhar num
   // elemento escondido é legítimo — o SVG tem `viewBox`, e aparece pronto
   // quando o bloco abre.
@@ -1149,15 +1371,18 @@ async function viewIndicadores() {
   // tooltip de um indicador ao detalhamento de outro.
   ligarKpis({
     'plano-reducao': {
-      dica: 'As despesas escolhidas para cair, com o valor atual do recorte e o alvo cadastrado. '
-        + 'O percentual de redução é (atual − alvo) / atual. Clique para ver os lançamentos que '
-        + 'compõem o valor atual.',
+      dica: 'As despesas FIXAS (mensais) escolhidas para cair, com o custo mensal de hoje e o alvo '
+        + 'mensal cadastrado. O percentual de redução é (atual − alvo) / atual, com os dois lados '
+        + 'medidos por mês. A janela é a da meta cadastrada, e não a do filtro de período do bloco. '
+        + 'Clique para ver os lançamentos que compõem o valor atual.',
       abrir: plano.itens.length
         ? () => abrirRegistros({
-            titulo: 'Plano de redução — lançamentos do recorte', tipo: 'indicadores',
+            titulo: 'Objetivo 01 — despesas fixas do plano', tipo: 'indicadores',
             colunas: COLUNAS_LANCAMENTO_SIMPLES, itens: lancamentosDoPlano(), contagem: null,
-            nota: `Valor atual ${brl(plano.totalAtual)}, alvo ${brl(plano.totalAlvo)} — `
-              + `${pctTxt(plano.pctReducao)} de redução.`,
+            nota: `Custo mensal atual ${brl(plano.totalAtual)}, alvo ${brl(plano.totalAlvo)} — `
+              + `${pctTxt(plano.pctReducao)} de redução, medidos em `
+              + `${plano.referencia ? mesExib(plano.referencia) : 'nenhum mês'}. `
+              + 'A lista traz as despesas fixas de toda a vigência da meta, que é o que a linha do tempo mostra.',
           })
         : null,
     },
