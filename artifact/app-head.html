@@ -194,6 +194,20 @@
    demanda. O símbolo e o nome do tipo vão dentro dela — a cor da borda é
    reforço, nunca o canal único. */
 .rot-meta{font-family:var(--sans);font-size:9.5px;font-weight:600}
+.rot-meta-nums{font-family:var(--mono);font-size:9px;fill:var(--tinta2)}
+/* Os três números do plano em cards, com os operadores entre eles: a conta
+   fecha na tela. O gestor confere a subtração com o olho antes de acreditar no
+   verde ou no vermelho — é o que um número solto nunca deixa fazer. */
+.cards-plano{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;margin-top:12px}
+.card-plano{flex:1 1 150px;display:flex;flex-direction:column;gap:2px;padding:10px 12px;
+  border:1px solid var(--linha);border-radius:10px;background:var(--sup2)}
+.card-plano.forte{border-color:var(--linha2);background:var(--sup3)}
+.card-plano .card-rot{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--tinta3)}
+.card-plano strong{font-size:17px;font-weight:600;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;color:var(--tinta)}
+.card-op{flex:none;align-self:center;font-size:17px;font-weight:600;color:var(--tinta3)}
+@media (max-width:620px){.cards-plano{flex-direction:column}.card-op{align-self:flex-start;padding-left:12px}}
 .caixa-meta{pointer-events:auto}
 /* A amostra de "projeção" na legenda: o mesmo tracejado da barra, para a marca
    ser reconhecível. Fica separada por uma barra vertical — ela não é um tipo

@@ -1282,18 +1282,27 @@ que cor fraca só entra acompanhada de rótulo visível.
 
 ### O alvo do plano: o valor cadastrado é QUANTO CORTAR
 
-O campo do cadastro é a **redução pactuada**, e não o patamar a atingir. O alvo
-sai de uma subtração:
+O campo do cadastro é a **redução pactuada**, e não o patamar a atingir. Daí os
+**três números** que o card mostra em sequência, com os operadores entre eles:
 
-> **alvo = base − corte**, onde a **base** é o custo daquele tipo de despesa no
-> **primeiro mês da janela** do objetivo — o que ele custava quando o plano
-> começou a valer.
+> **custo fixo total − meta total = resultado esperado**
 
-A base tem de ser fixa, e é por isso que ela **não** sai do mês de referência:
-um alvo derivado do mês corrente desceria junto com o custo, e "alcançou a meta"
-nunca seria verdade nem mentira. Com a base no começo da janela, a leitura fica
-a que o gestor leva para a reunião: *"custava X, combinamos cortar Y, então tem
-de chegar em X−Y — e hoje está em Z"*.
+Os três saem do **mês de referência** e a conta **fecha na tela** — o gestor
+confere a subtração com o olho antes de acreditar no verde ou no vermelho, o que
+um número solto nunca deixa fazer. Por item, vale a mesma regra: o alvo é o que
+a despesa custa hoje menos o corte pactuado.
+
+> Uma versão anterior tirava a base do **primeiro mês da janela**, e isso quebrou
+> na base real: um tipo de despesa que só passa a existir no meio do período
+> tinha base zero, o alvo virava R$ 0,00 e a tela anunciava "100% de redução".
+> O mês de referência é o único que sempre existe para um item vigente.
+
+**O veredicto é do agregado, e contra um mês fixo.** Ele compara o custo fixo do
+mês de referência com o do **primeiro mês da janela em que algum plano já
+vigorava**, e pergunta se a diferença já cobre a meta: *"o custo fixo caiu R$ X
+desde MM/AAAA, contra a meta de cortar R$ Y"*. Julgar item a item não daria: o
+alvo do item é derivado do custo dele, e comparar os dois seria comparar um
+número consigo mesmo.
 
 ### O mês de referência é o último REALIZADO
 
@@ -1341,8 +1350,12 @@ Pintar de verde um mês futuro afirmaria um resultado inventado.
 
 **A caixa fixa sai do PLANO DE REDUÇÃO, não da meta.** É o plano que sabe qual
 tipo de despesa deve cair e para quanto; `metas` guarda um percentual de
-variação do custo fixo inteiro e não nomeia despesa nenhuma. Uma caixa por plano
-vigente, então **um mês pode ter várias** — é o caso que o enunciado cita.
+variação do custo fixo inteiro e não nomeia despesa nenhuma.
+
+É **uma caixa por MÊS**, não uma por meta — uma por meta enchia a faixa
+repetindo o mesmo mês —, e dentro dela vão os mesmos **três números** dos cards
+do topo, na mesma subtração. Os planos daquele mês aparecem no balão e na tela
+que o ponto abre.
 
 As caixas ficam numa faixa no topo, cada uma no nível mais alto em que não
 encosta numa vizinha, com uma haste tracejada até o ponto do mês dela. **Mês
@@ -1356,8 +1369,14 @@ O ponto cinza continua anunciando o compromisso, e a caixa aparece no balão.
 total, mais as metas daquele mês. Tipo zerado não vira linha — procurar-se-ia
 uma despesa que não existe.
 
-**O clique — na barra ou no ponto da linha — abre os lançamentos do mês numa
-ÁRVORE de quatro níveis:** tipo de despesa → empresa → filial → lançamento. É a
+**O ponto de um mês COM PLANO abre a meta cadastrada**, e não os lançamentos:
+quem clica no marcador do compromisso quer ver o compromisso. A tela traz os três
+números daquele mês e a tabela dos planos vigentes — nome, tipo, vigência, custo
+no mês, quanto cortar e onde deve chegar. Os lançamentos continuam a um clique,
+na barra logo abaixo.
+
+**O clique na barra — e no ponto de um mês sem plano — abre os lançamentos do
+mês numa ÁRVORE de quatro níveis:** tipo de despesa → empresa → filial → lançamento. É a
 mesma peça da árvore "por unidade" do card, com um nível a mais no topo, e cada
 nível abre e fecha em sanfona, ordenado por valor decrescente e com a
 representatividade dentro do nível de cima.

@@ -583,18 +583,15 @@ function calcularPlanoReducao(r) {
     const noMes = casam.filter((l) => l.competencia === referencia);
     const atual = noMes.reduce((s, l) => s + cent(l.valor), 0);
 
-    // O VALOR CADASTRADO É QUANTO CORTAR, não o patamar a atingir: o alvo é a
-    // base menos a redução pactuada. E a base é o custo daquele tipo no
-    // PRIMEIRO mês da janela — "o que custava quando o plano começou".
+    // O VALOR CADASTRADO É QUANTO CORTAR: o alvo do item é o que ele custa
+    // hoje menos a redução pactuada.
     //
-    // A base tem de ser fixa, e é por isso que ela não sai do mês de
-    // referência: um alvo derivado do mês corrente desceria junto com o custo,
-    // e "alcançou a meta" nunca seria verdade nem mentira.
+    // A versão anterior tirava a base do PRIMEIRO mês da janela, e isso quebrou
+    // na base real: um tipo que só passa a existir no meio do período tinha
+    // base zero, o alvo virava R$ 0,00 e a tela anunciava "100% de redução".
+    // O mês de referência é o único que sempre existe para um item vigente.
     const corte = cent(p.valorAlvo);
-    const primeiroMes = meses[0] || referencia;
-    const base0 = casam.filter((l) => l.competencia === primeiroMes)
-      .reduce((s, l) => s + cent(l.valor), 0);
-    const alvo = Math.max(0, base0 - corte);
+    const alvo = Math.max(0, atual - corte);
 
     // A série do item: quanto aquela despesa custou em cada mês da janela.
     const porMes = new Map();
@@ -613,13 +610,13 @@ function calcularPlanoReducao(r) {
 
     return {
       nome: p.nome, tipo: p.tipo, filial: p.filial,
-      atual: reais(atual), alvo: reais(alvo),
-      corte: reais(corte), base: reais(base0), mesBase: primeiroMes,
-      // O que FALTA cortar: a distância entre onde o custo está e onde ele
-      // deveria estar. Negativo quer dizer que passou do alvo, para melhor.
-      reducao: reais(atual - alvo),
-      pctReducao: pct(atual - alvo, atual),
-      atinge: atual > 0 && alvo > 0 && atual <= alvo,
+      atual: reais(atual), alvo: reais(alvo), corte: reais(corte),
+      reducao: reais(corte),
+      pctReducao: pct(corte, atual),
+      // O veredicto NÃO é por item: o alvo do item é derivado do próprio custo
+      // dele, e comparar um com o outro seria comparar um número consigo
+      // mesmo. Quem julga é o agregado, contra o mês em que o plano começou.
+      atinge: null,
       semDespesa: atual === 0,
       pctDoGrupo: pct(atual, totalFixasMes),
       porMes,
@@ -640,22 +637,41 @@ function calcularPlanoReducao(r) {
   // mensal somado. O alvo é uma reta — é um compromisso, não uma medição.
   const serie = meses.map((m) => {
     const c = itens.reduce((s, i) => s + (i.porMes.get(m) || 0), 0);
-    return { comp: m, rot: mesExib(m), valor: reais(c), centavos: c,
-      alvo: reais(totalAlvo), atinge: totalAlvo > 0 && c > 0 && c <= totalAlvo };
+    return { comp: m, rot: mesExib(m), valor: reais(c), centavos: c, alvo: reais(totalAlvo) };
   });
+
+  // OS TRÊS NÚMEROS DO PLANO, todos sobre o mês de referência e fechando a
+  // conta na tela: custo fixo total − meta total = resultado esperado.
+  const metaTotal = itens.reduce((s, i) => s + cent(i.corte), 0);
+  const resultadoEsperado = Math.max(0, totalFixasMes - metaTotal);
+
+  // O VEREDICTO é do agregado, e contra um mês fixo: o primeiro da janela em
+  // que algum plano já vigorava. Comparar o custo de hoje com um alvo derivado
+  // do custo de hoje seria comparar um número consigo mesmo — foi o que a
+  // versão anterior fazia, e por isso o alvo nunca podia ser alcançado.
+  const vigenteEm = (p, m) =>
+    (!p.vigenciaInicio || p.vigenciaInicio <= m) && (!p.vigenciaFim || p.vigenciaFim >= m);
+  const mesBase = meses.find((m) => vigentes.some((p) => vigenteEm(p, m))) || meses[0] || referencia;
+  const custoFixoBase = base.filter((l) => l.competencia === mesBase)
+    .reduce((s, l) => s + cent(l.valor), 0);
+  const jaCortado = custoFixoBase - totalFixasMes;
 
   return {
     itens, serie, janela, referencia,
     composicao: composicaoDoCustoFixo(base, meses, referencia, vigentes),
     totalAtual: reais(totalAtual), totalAlvo: reais(totalAlvo),
-    totalReducao: reais(totalAtual - totalAlvo),
-    pctReducao: pct(totalAtual - totalAlvo, totalAtual),
+    metaTotal: reais(metaTotal),
+    resultadoEsperado: reais(resultadoEsperado),
+    mesBase, custoFixoBase: reais(custoFixoBase), jaCortado: reais(jaCortado),
+    totalReducao: reais(metaTotal),
+    pctReducao: pct(metaTotal, totalAtual),
     // O percentual que o enunciado pede: quanto o plano representa sobre o
     // TOTAL do custo fixo mensal — os dois no mesmo mês de referência.
     pctDasFixas: pct(totalAtual, totalFixasMes),
     fixasDoMes: reais(totalFixasMes),
-    // O semáforo do PLANO: o custo já caiu até o alvo?
-    atinge: totalAtual > 0 && totalAlvo > 0 && totalAtual <= totalAlvo,
+    // Alcançado quando o custo fixo já caiu, desde o mês base, pelo menos o
+    // que se combinou cortar.
+    atinge: metaTotal > 0 && jaCortado >= metaTotal,
     // O semáforo da META cadastrada, medida na janela dela — e não no recorte
     // do bloco, que é justamente o que esta entrega desacoplou.
     leituraMeta: metaNaJanelaDoObjetivo(r, janela),
@@ -726,6 +742,66 @@ function legendaDeTiposHtml(composicao) {
  *
  * `aoClicar(ponto)` recebe o mês; quem liga o detalhamento é o chamador.
  */
+/**
+ * Os três números do plano, em cards: custo fixo total − meta total = o
+ * resultado esperado. A conta fecha na tela, que é o ponto: o gestor confere a
+ * subtração com o olho antes de acreditar no verde ou no vermelho.
+ */
+function cardsDoPlanoHtml({ custo, meta, esperado, atinge, rotulo }) {
+  const corFim = atinge === null ? 'var(--tinta3)' : atinge ? 'var(--bomtxt)' : 'var(--crit)';
+  const card = (r, v, cor, forte) => `<div class="card-plano${forte ? ' forte' : ''}">
+    <span class="card-rot">${esc(r)}</span>
+    <strong${cor ? ` style="color:${cor}"` : ''}>${v}</strong></div>`;
+  return `<div class="cards-plano"${rotulo ? ` aria-label="${esc(rotulo)}"` : ''}>
+    ${card('Custo fixo total', brl(custo))}
+    <span class="card-op" aria-hidden="true">−</span>
+    ${card('Meta total', brl(meta))}
+    <span class="card-op" aria-hidden="true">=</span>
+    ${card('Resultado esperado', brl(esperado), corFim, true)}
+  </div>`;
+}
+
+/**
+ * A META CADASTRADA de um mês, aberta pelo ponto cinza do gráfico.
+ *
+ * O ponto marca o compromisso; clicar nele tem de mostrar o compromisso, e não
+ * as despesas do mês — essas continuam a um clique, na barra logo abaixo.
+ */
+function abrirMetasDoMes(rot, mc) {
+  abrirModal({
+    titulo: `Meta de redução — ${rot}`,
+    tipo: 'meta-do-mes',
+    corpo: `
+      ${cardsDoPlanoHtml({ ...mc, rotulo: `Custo fixo menos a meta, em ${rot}` })}
+      <div class="msg${mc.atinge === null ? '' : mc.atinge ? ' bom' : ' erro'}" style="margin-top:12px">
+        <strong>${mc.atinge === null ? 'Mês ainda não apurado.'
+          : mc.atinge ? 'Meta alcançada.' : 'Meta não alcançada.'}</strong>
+        ${mc.atinge === null
+          ? ' É um mês projetado: o custo dele repete o último mês realizado, então não há resultado para julgar.'
+          : ` O custo fixo de ${esc(rot)} é ${brl(mc.custo)}, contra o patamar de ${brl(mc.alvoFixo !== undefined ? mc.alvoFixo : mc.esperado)} que o plano pede.`}
+      </div>
+      <div class="rol" style="margin-top:12px"><table>
+        <thead><tr><th>Plano cadastrado</th><th>Tipo de despesa</th><th>Vigência</th>
+          <th class="n">Custo no mês</th><th class="n">Meta (cortar)</th><th class="n">Deve chegar a</th></tr></thead>
+        <tbody>${mc.metas.map((x) => `<tr>
+          <td>${esc(x.nome)}${x.filial ? `<div class="arv-comp">${esc(x.filial)}</div>` : ''}</td>
+          <td><i class="ponto-matriz" style="background:${x.cor}" aria-hidden="true"></i>${esc(x.tipo)}</td>
+          <td>${esc(x.vigencia)}</td>
+          <td class="n">${brl(x.realizado)}</td>
+          <td class="n">${brl(x.corte)}</td>
+          <td class="n">${brl(x.alvo)}</td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="4">Total</td><td class="n">${brl(mc.meta)}</td>
+          <td class="n">${brl(mc.esperado)}</td></tr></tfoot>
+      </table></div>
+      <p class="nota" style="margin-top:10px">O valor cadastrado é <strong>quanto cortar</strong>:
+        o patamar a atingir é o custo de hoje menos ele. Cadastro em
+        Sistema › Cadastro › Plano de redução.</p>`,
+    acoes: '<button type="button" class="bt" data-c>Fechar</button>',
+    aoMontar({ raiz, fechar }) { raiz.querySelector('[data-c]').onclick = fechar; },
+  });
+}
+
 /**
  * O detalhamento em árvore: TIPO → EMPRESA → FILIAL → LANÇAMENTO.
  *
@@ -859,7 +935,7 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
   if (!pontos.length) { alvo.innerHTML = '<p class="vazio">Sem despesa fixa na vigência da meta.</p>'; return; }
 
   const marcos = dados.marcos || new Map();
-  const L = 700, ALT = 15, LARG_CAIXA = 134, VAO = 3;
+  const L = 700, ALT = 30, LARG_CAIXA = 176, VAO = 4;
   const mE = 80, mD = 12, lp = L - mE - mD;
   const passo = lp / Math.max(pontos.length, 1);
   const cx = (i) => mE + passo * (i + 0.5);
@@ -875,10 +951,9 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
   // não informar nada. O ponto cinza continua lá, e o balão traz a meta.
   const planejadas = [];
   pontos.forEach((p, i) => {
-    if (p.projetado) return;
-    for (const mc of (marcos.get(p.comp) || [])) {
-      planejadas.push({ i, p, mc, x: Math.max(0, Math.min(L - mD - LARG_CAIXA, cx(i) - LARG_CAIXA / 2)) });
-    }
+    if (p.projetado || !marcos.has(p.comp)) return;
+    planejadas.push({ i, p, mc: marcos.get(p.comp),
+      x: Math.max(0, Math.min(L - mD - LARG_CAIXA, cx(i) - LARG_CAIXA / 2)) });
   });
   planejadas.sort((a, b) => a.x - b.x);
   const niveis = [];
@@ -926,11 +1001,17 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
       .sort((a, b) => (p.v[b.k] || 0) - (p.v[a.k] || 0))
       .map((s) => ({ nome: s.nome, cor: s.cor, valor: brl(p.v[s.k] || 0) })),
     { nome: p.projetado ? 'Total projetado' : 'Total do mês', valor: brl(p.total) },
-    ...(marcos.get(p.comp) || []).map((mc) => ({
-      nome: `Meta: ${mc.tipo}`,
-      valor: `alvo ${brl(mc.alvo)} · ${mc.atinge === null ? 'a apurar' : mc.atinge ? 'alcançada' : 'não alcançada'}`,
-      cor: mc.atinge === null ? 'var(--tinta3)' : mc.atinge ? 'var(--bom)' : 'var(--crit)',
-    })),
+    ...(!marcos.has(p.comp) ? [] : (() => {
+      const mc = marcos.get(p.comp);
+      return [
+        { nome: 'Meta total do plano', valor: brl(mc.meta) },
+        { nome: 'Resultado esperado', valor: brl(mc.esperado),
+          cor: mc.atinge === null ? 'var(--tinta3)' : mc.atinge ? 'var(--bom)' : 'var(--crit)' },
+        ...mc.metas.map((x) => ({ nome: `· ${x.tipo}`, cor: x.cor,
+          valor: `cortar ${brl(x.corte)}` })),
+        { nome: 'Clique no ponto', valor: 'ver a meta cadastrada' },
+      ];
+    })()),
   ];
 
   pontos.forEach((p, i) => {
@@ -1010,24 +1091,22 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
     alturaPonto.set(p.comp, py);
     // O ponto: AZUL quando o mês não tem compromisso; CINZA quando tem e ainda
     // não dá para julgar (mês projetado); VERDE ou VERMELHO quando dá.
-    let cor = 'var(--s1)';
-    if (lista) {
-      const julgaveis = lista.filter((x) => x.atinge !== null);
-      cor = !julgaveis.length ? 'var(--tinta3)'
-        : julgaveis.every((x) => x.atinge) ? 'var(--bom)' : 'var(--crit)';
-    }
-    // O ponto abre o MESMO detalhamento da barra. Ele fica por cima dela, e
-    // sem gatilho próprio um clique no ponto não fazia nada — a área de
-    // captura da coluna está embaixo dele.
-    const ponto = svgEl('circle', { cx: cx(i), cy: py, r: lista ? 4.5 : 3,
+    const cor = !lista ? 'var(--s1)'
+      : lista.atinge === null ? 'var(--tinta3)'
+        : lista.atinge ? 'var(--bom)' : 'var(--crit)';
+    // O PONTO DE UM MÊS COM META abre a META CADASTRADA, e não os lançamentos
+    // do mês: quem clica no marcador do compromisso quer ver o compromisso.
+    // Os lançamentos continuam a um clique — na barra, logo abaixo.
+    const ponto = svgEl('circle', { cx: cx(i), cy: py, r: lista ? 5 : 3,
       fill: cor, stroke: 'var(--sup)', 'stroke-width': 1.5 });
     if (aoClicar && p.total > 0) {
       ponto.style.cursor = 'pointer';
       ponto.setAttribute('role', 'button');
       ponto.setAttribute('tabindex', '0');
-      ponto.setAttribute('aria-label',
-        `${p.rot}${p.projetado ? ' (projetado)' : ''}: ${brl(p.total)} — abrir os lançamentos deste mês`);
-      const abrir = (ev) => { ev.stopPropagation(); sumirDica(); aoClicar(p); };
+      ponto.setAttribute('aria-label', lista
+        ? `${p.rot}: abrir a meta cadastrada deste mês`
+        : `${p.rot}${p.projetado ? ' (projetado)' : ''}: ${brl(p.total)} — abrir os lançamentos deste mês`);
+      const abrir = (ev) => { ev.stopPropagation(); sumirDica(); aoClicar(p, lista ? 'meta' : 'lancamentos'); };
       ponto.addEventListener('click', abrir);
       ponto.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrir(ev); }
@@ -1037,33 +1116,46 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
   });
 
   // As caixas fixas, na faixa reservada no topo, cada uma no nível calculado
-  // lá em cima. A haste tracejada liga a caixa ao ponto do mês dela — com
-  // várias na tela, sem a haste não se sabe de que mês cada uma fala.
+  // lá em cima. Uma por MÊS com plano — e não uma por meta, que é o que antes
+  // enchia a faixa de caixas repetindo o mesmo mês. A haste tracejada liga a
+  // caixa ao ponto dela: com várias na tela, sem a haste não se sabe de que
+  // mês cada uma fala.
+  //
+  // Dentro dela vão os TRÊS NÚMEROS — custo fixo, meta e resultado esperado —,
+  // os mesmos dos cards do topo do card. É o balão fixo que o gestor pediu.
   for (const c of planejadas) {
     const mc = c.mc;
     const yy = 6 + c.nivel * (ALT + VAO);
     const corC = mc.atinge === null ? 'var(--tinta3)' : mc.atinge ? 'var(--bom)' : 'var(--crit)';
-    const simbolo = mc.atinge === null ? '·' : mc.atinge ? '\u2713' : '\u2717';
-    const dica = `${mc.nome} \u2014 reduzir ${mc.tipo} para ${brl(mc.alvo)} por m\u00eas. `
-      + `Realizado em ${c.p.rot}: ${brl(mc.realizado)}. `
+    const simbolo = mc.atinge === null ? '\u00b7' : mc.atinge ? '\u2713' : '\u2717';
+    const tipos = mc.metas.map((x) => x.tipo).join(', ');
+    const dica = `${c.p.rot} \u2014 custo fixo ${brl(mc.custo)} menos a meta de ${brl(mc.meta)} `
+      + `d\u00e1 o resultado esperado de ${brl(mc.esperado)}. A reduzir: ${tipos}. `
       + (mc.atinge === null ? 'M\u00eas ainda n\u00e3o apurado.'
-        : mc.atinge ? 'Meta alcan\u00e7ada.' : 'Meta n\u00e3o alcan\u00e7ada.');
+        : mc.atinge ? 'Meta alcan\u00e7ada.' : 'Meta n\u00e3o alcan\u00e7ada.')
+      + ' Clique no ponto para ver a meta cadastrada.';
 
     const gc = svgEl('g', { class: 'caixa-meta' });
     gc.appendChild(svgEl('line', { x1: cx(c.i), x2: cx(c.i), y1: yy + ALT,
-      y2: alturaPonto.get(c.p.comp) - 5,
+      y2: alturaPonto.get(c.p.comp) - 6,
       stroke: corC, 'stroke-width': 1, 'stroke-dasharray': '2 2', opacity: 0.55 }));
-    gc.appendChild(svgEl('rect', { x: c.x, y: yy, width: LARG_CAIXA, height: ALT, rx: 4,
+    gc.appendChild(svgEl('rect', { x: c.x, y: yy, width: LARG_CAIXA, height: ALT, rx: 5,
       fill: 'var(--sup)', stroke: corC, 'stroke-width': 1.2 }));
-    const t = svgEl('text', { x: c.x + 6, y: yy + ALT - 4.5, class: 'rot-meta', fill: corC });
-    // O rótulo é o TIPO de despesa a reduzir, como pedido, com o mês na frente
-    // porque há várias caixas na mesma faixa. Truncar é melhor que transbordar:
-    // o nome inteiro e os números estão no `title` e no balão. O corte sai da
-    // largura da caixa — 9,5px em negrito dão cerca de 5,4px por caractere.
-    const MAX = Math.floor((LARG_CAIXA - 12) / 5.4);
-    const rot = `${simbolo} ${c.p.rot.replace(/\/\d\d/, '/')} ${mc.tipo}`;
-    t.textContent = rot.length > MAX ? rot.slice(0, MAX - 1) + '\u2026' : rot;
-    gc.appendChild(t);
+    // Faixa de cor à esquerda: o estado se lê antes de a pessoa ler o texto.
+    gc.appendChild(svgEl('rect', { x: c.x, y: yy, width: 3, height: ALT,
+      fill: corC, rx: 1.5 }));
+
+    const l1 = svgEl('text', { x: c.x + 9, y: yy + 12, class: 'rot-meta', fill: corC });
+    l1.textContent = `${simbolo} ${c.p.rot}`;
+    gc.appendChild(l1);
+    // Sem o "R$" repetido três vezes: ele não cabe na caixa e não acrescenta
+    // nada — a coluna toda é dinheiro, e o balão e a tela da meta trazem o
+    // valor por extenso.
+    const semMoeda = (v) => curto(v).replace('R$ ', '');
+    const l2 = svgEl('text', { x: c.x + 9, y: yy + 24, class: 'rot-meta-nums' });
+    l2.textContent = `${semMoeda(mc.custo)} \u2212 ${semMoeda(mc.meta)} = ${semMoeda(mc.esperado)}`;
+    gc.appendChild(l2);
+
     gc.appendChild(svgEl('title', {})).textContent = dica;
     gc.setAttribute('aria-label', dica);
     svg.appendChild(gc);
@@ -1147,25 +1239,55 @@ function marcosDeMeta(pontos, porTipo, planos, referencia) {
   for (const pt of pontos) {
     const doMes = (planos || []).filter((p) => vigenteEm(p, pt.comp));
     if (!doMes.length) continue;
-    marcos.set(pt.comp, doMes.map((p) => {
+    // Num mês projetado o realizado é o do mês de referência, repetido — é a
+    // mesma barra, então tem de ser o mesmo número.
+    const chave = pt.projetado ? referencia : pt.comp;
+
+    const metas = doMes.map((p) => {
       const tipo = String(p.tipo || '').trim();
       const serie = tipo ? porTipo.get(tipo) : null;
-      // Num mês projetado o realizado é o do mês de referência, repetido —
-      // é a mesma barra, então tem de ser o mesmo número.
-      const chave = pt.projetado ? referencia : pt.comp;
       const realizadoC = tipo
         ? (serie ? (serie.get(chave) || 0) : 0)
         : Math.round(pt.total * 100);
-      const alvoC = cent(p.valorAlvo);
+      const corteC = cent(p.valorAlvo);
       return {
         nome: p.nome, tipo: tipo || 'todo o custo fixo',
         cor: tipo ? corDoTipo(tipo) : 'var(--tinta3)',
-        alvo: reais(alvoC), realizado: reais(realizadoC),
-        // `null` = a apurar. É o estado dos meses que ainda não aconteceram.
-        atinge: pt.projetado ? null : realizadoC > 0 && realizadoC <= alvoC,
-        projetado: pt.projetado,
+        corte: reais(corteC), realizado: reais(realizadoC),
+        alvo: reais(Math.max(0, realizadoC - corteC)),
+        vigencia: vigenciaEmTexto(p),
+        filial: p.filial || null,
       };
-    }));
+    });
+
+    // OS TRÊS NÚMEROS DO MÊS, os mesmos dos cards do topo: custo fixo total,
+    // meta total e o resultado esperado. É isso que a caixa fixa anuncia.
+    const custoC = Math.round(pt.total * 100);
+    const metaC = metas.reduce((s, x) => s + cent(x.corte), 0);
+    marcos.set(pt.comp, {
+      metas,
+      custo: pt.total,
+      meta: reais(metaC),
+      esperado: reais(Math.max(0, custoC - metaC)),
+      projetado: pt.projetado,
+      // `null` = a apurar. É o estado dos meses que ainda não aconteceram.
+      atinge: pt.projetado ? null : custoC > 0 && metaC > 0 && custoC <= Math.max(0, custoC - metaC),
+    });
+  }
+
+  // O VEREDICTO de cada mês realizado: o custo fixo dele já está no patamar que
+  // o plano pede? O patamar de referência é o do PRIMEIRO mês com plano — um
+  // alvo tirado do próprio mês seria o número comparado consigo mesmo.
+  const realizados = pontos.filter((x) => !x.projetado && marcos.has(x.comp));
+  if (realizados.length) {
+    const primeiro = realizados[0];
+    const alvoFixo = Math.max(0, Math.round(primeiro.total * 100) - cent(marcos.get(primeiro.comp).meta));
+    for (const pt of pontos) {
+      const m = marcos.get(pt.comp);
+      if (!m) continue;
+      m.alvoFixo = reais(alvoFixo);
+      m.atinge = pt.projetado ? null : Math.round(pt.total * 100) <= alvoFixo;
+    }
   }
   return marcos;
 }
@@ -1533,7 +1655,7 @@ async function viewIndicadores() {
       titulo: 'Objetivo 01: Redução de Custo',
       descricao: 'Plano de Redução de Custos sobre Despesas Fixas(Mensais)',
       valor: plano.itens.length
-        ? `${brl(plano.totalAtual)} → ${brl(plano.totalAlvo)}`
+        ? `${brl(plano.fixasDoMes)} → ${brl(plano.resultadoEsperado)}`
         : '—',
       // A cor do cabeçalho segue o SEMÁFORO, e não o tamanho da redução: verde
       // porque "sobrou redução a fazer" pintaria de bom exatamente o caso em
@@ -1542,22 +1664,30 @@ async function viewIndicadores() {
       cor: !plano.itens.length || plano.totalAlvo === 0 ? null
         : plano.atinge ? 'var(--bomtxt)' : 'var(--crit)',
       apoio: plano.itens.length
-        ? `${inteiro(plano.itens.length)} despesa(s) no plano · ${pctTxt(plano.pctReducao)} de redução · `
-          + `${pctTxt(plano.pctDasFixas)} do custo fixo mensal`
+        ? `${inteiro(plano.itens.length)} despesa(s) no plano · meta de cortar ${brl(plano.metaTotal)} `
+          + `(${pctTxt(pct(cent(plano.metaTotal), cent(plano.fixasDoMes)))} do custo fixo)`
           + `${plano.referencia ? ` · valores de ${mesExib(plano.referencia)}` : ''}`
         : 'nenhuma despesa no plano — cadastre em Sistema › Cadastro › Plano de redução',
       corpo: `
+        ${plano.itens.length === 0 ? '' : cardsDoPlanoHtml({
+          custo: plano.fixasDoMes, meta: plano.metaTotal, esperado: plano.resultadoEsperado,
+          atinge: plano.atinge, rotulo: `Custo fixo menos a meta, em ${mesExib(plano.referencia)}` })}
         <div class="semaforos">
           ${semaforoHtml({ rotulo: 'Meta cadastrada', ...semaforoDaMeta(plano.leituraMeta) })}
           ${semaforoHtml({ rotulo: 'Alvo do plano',
-            estado: plano.itens.length === 0 || plano.totalAlvo === 0 ? null : plano.atinge,
+            estado: plano.itens.length === 0 || plano.metaTotal === 0 ? null : plano.atinge,
             texto: plano.itens.length === 0
               ? 'nenhuma despesa no plano de redução'
-              : `${brl(plano.totalAtual)} por mês contra o alvo de ${brl(plano.totalAlvo)}`,
+              : plano.jaCortado > 0
+                ? `o custo fixo caiu ${brl(plano.jaCortado)} desde ${mesExib(plano.mesBase)}, `
+                  + `contra a meta de cortar ${brl(plano.metaTotal)}`
+                : `o custo fixo subiu ${brl(-plano.jaCortado)} desde ${mesExib(plano.mesBase)}, `
+                  + `e a meta é cortar ${brl(plano.metaTotal)}`,
             detalhe: plano.itens.length
-              ? `O custo mensal das despesas do plano em ${plano.referencia ? mesExib(plano.referencia) : 'nenhum mês'}, `
-                + 'comparado com a soma dos alvos cadastrados. Os dois lados são valores POR MÊS.'
-              : 'Cadastre as despesas e seus alvos em Sistema › Cadastro › Plano de redução.' })}
+              ? `Compara o custo fixo de ${mesExib(plano.referencia)} com o de ${mesExib(plano.mesBase)}, `
+                + 'que é o primeiro mês em que algum plano já vigorava. O alvo tem de sair de um mês '
+                + 'FIXO: derivado do mês corrente, ele desceria junto com o custo e nunca seria alcançado.'
+              : 'Cadastre as despesas e quanto cortar em Sistema › Cadastro › Plano de redução.' })}
         </div>
         ${plano.composicao.pontos.length === 0 ? '' : `
         <h3 class="titulo-mini">Custo fixo mês a mês, por tipo de despesa${
@@ -1567,7 +1697,7 @@ async function viewIndicadores() {
         ${plano.itens.length === 0 ? '' : `
         <div class="rol" style="margin-top:12px"><table>
           <thead><tr><th>Item</th><th class="n">Atual / mês</th><th class="n">Alvo / mês</th>
-            <th>Atual × alvo</th><th class="n">Redução</th><th class="n">% do custo fixo</th></tr></thead>
+            <th>Atual × alvo</th><th class="n">Meta (cortar)</th><th class="n">% do custo fixo</th></tr></thead>
           <tbody>${plano.itens.map((i) => `<tr data-plano="${esc(i.nome)}">
             <td>${esc(i.nome)}${i.tipo ? `<div class="arv-comp">${esc(i.tipo)}${i.filial ? ' · ' + esc(i.filial) : ''}</div>` : ''}</td>
             <td class="n">${brl(i.atual)}</td>
@@ -1584,8 +1714,8 @@ async function viewIndicadores() {
                       nome: f.unidade, valor: `${brl(f.valorReais)} · ${pctTxt(f.pctDaFilial)} da unidade`, cor: f.cor,
                     })),
                   ] })}</td>
-            <td class="n" style="color:${i.reducao > 0 ? 'var(--bomtxt)' : 'var(--tinta2)'}">${
-              i.semDespesa ? '—' : pctTxt(i.pctReducao)}</td>
+            <td class="n" style="color:${i.corte > 0 ? 'var(--bomtxt)' : 'var(--tinta2)'}">${
+              i.semDespesa ? '—' : brl(i.corte)}</td>
             <td class="n">${pctTxt(i.pctDoGrupo)}</td>
           </tr>
           ${i.porFilial.length === 0 ? '' : `<tr class="plano-filiais"><td colspan="6">
@@ -1856,7 +1986,13 @@ async function viewIndicadores() {
   // medição —, e é a distância entre as duas curvas que diz se o plano anda.
   const alvoPlano = el('#i-plano-serie');
   if (alvoPlano) {
-    barrasDoObjetivo(alvoPlano, plano.composicao, (ponto) => {
+    barrasDoObjetivo(alvoPlano, plano.composicao, (ponto, oQue) => {
+      // O ponto de um mês com plano abre a META; a barra e os demais pontos
+      // abrem os lançamentos.
+      if (oQue === 'meta' && plano.composicao.marcos.has(ponto.comp)) {
+        abrirMetasDoMes(ponto.rot, plano.composicao.marcos.get(ponto.comp));
+        return;
+      }
       // Mês projetado não tem lançamento próprio: o que o compõe é o mês de
       // referência, repetido. Abrir a lista do mês futuro devolveria vazio, e
       // um detalhamento vazio faz duvidar do número em vez de esclarecê-lo.

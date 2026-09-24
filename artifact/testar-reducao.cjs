@@ -177,9 +177,12 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
       janela: dados.janela && { de: dados.janela.de, ate: dados.janela.ate },
       pontos: dados.serie.length,
       mesesDaJanela: dados.composicao.pontos.length,
-      // O alvo conferido POR FORA: soma de (base do item − corte cadastrado).
-      alvoConferido: dados.itens.reduce((s, i) => s + Math.max(0, i.base - i.corte), 0),
-      base: dados.itens.reduce((s, i) => s + i.base, 0),
+      // O alvo conferido POR FORA: soma de (custo de hoje − corte cadastrado).
+      alvoConferido: dados.itens.reduce((s, i) => s + Math.max(0, i.atual - i.corte), 0),
+      base: dados.itens.reduce((s, i) => s + i.atual, 0),
+      // Os três números do plano têm de fechar a conta na tela.
+      custoFixo: dados.fixasDoMes, metaTotal: dados.metaTotal,
+      esperado: dados.resultadoEsperado,
       pctReducao: dados.pctReducao,
       pctDasFixas: dados.pctDasFixas,
       fixasDoMes: dados.fixasDoMes,
@@ -191,11 +194,15 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
   // O valor cadastrado é QUANTO CORTAR, não o patamar a atingir: o alvo de
   // cada item é o custo dele no primeiro mês da janela menos a redução
   // pactuada, e o total é a soma desses alvos.
-  ok('o alvo é a base menos o corte pactuado',
-    comPlano.alvoConferido !== null && Math.abs(comPlano.alvo - comPlano.alvoConferido) < 0.02,
+  ok('o alvo do item é o custo de hoje menos o corte pactuado',
+    Math.abs(comPlano.alvo - comPlano.alvoConferido) < 0.02,
     `${comPlano.alvo} × ${comPlano.alvoConferido}`);
   ok('e cortar mais deixa o alvo menor', comPlano.alvo < comPlano.base,
-    `alvo ${comPlano.alvo} contra base ${comPlano.base}`);
+    `alvo ${comPlano.alvo} contra custo ${comPlano.base}`);
+  // A conta que o gestor confere com o olho: custo − meta = esperado.
+  ok('custo fixo total − meta total = resultado esperado',
+    Math.abs((comPlano.custoFixo - comPlano.metaTotal) - comPlano.esperado) < 0.02,
+    `${comPlano.custoFixo} − ${comPlano.metaTotal} = ${comPlano.esperado}`);
   ok('o valor atual sai dos lançamentos, e não do cadastro', comPlano.atual > 0, String(comPlano.atual));
   // A conta ficou MENSAL nesta entrega: somar oito meses contra um alvo de um
   // mês punha os dois lados em unidades diferentes.
@@ -208,9 +215,8 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
   ok('o percentual de redução é (atual − alvo) / atual',
     Math.abs(comPlano.pctReducao - Math.round(((comPlano.atual - comPlano.alvo) / comPlano.atual) * 1000) / 10) < 0.05,
     `${comPlano.pctReducao}%`);
-  ok('e a tela diz quanto o plano é do custo FIXO mensal',
-    comPlano.pctDasFixas > 0 && new RegExp(String(comPlano.pctDasFixas).replace('.', ',')).test(comPlano.apoio)
-      && /custo fixo mensal/.test(comPlano.apoio),
+  ok('e a tela diz quanto é a meta e quanto ela pesa no custo fixo',
+    /meta de cortar/.test(comPlano.apoio) && /do custo fixo/.test(comPlano.apoio),
     comPlano.apoio);
   ok('os itens aparecem na tabela do bloco', comPlano.linhas === 2, `${comPlano.linhas} linha(s)`);
   ok('com as colunas por mês', comPlano.colunas.includes('Atual / mês') && comPlano.colunas.includes('Alvo / mês'),
@@ -298,7 +304,10 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
       semSobreposicao: (() => {
         const r = [...svg.querySelectorAll('g.caixa-meta rect')]
           .map((x) => ({ x: +x.getAttribute('x'), y: +x.getAttribute('y'),
-            w: +x.getAttribute('width'), h: +x.getAttribute('height') }));
+            w: +x.getAttribute('width'), h: +x.getAttribute('height') }))
+          // Só as MOLDURAS: a faixa de cor de 3px mora dentro da moldura da
+          // própria caixa, e contá-la acusaria sobreposição onde há desenho.
+          .filter((x) => x.w > 20);
         for (let a = 0; a < r.length; a++) for (let b = a + 1; b < r.length; b++) {
           const i = r[a], j = r[b];
           if (i.x < j.x + j.w && j.x < i.x + i.w && i.y < j.y + j.h && j.y < i.y + i.h) return false;
@@ -307,7 +316,10 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
       })(),
       marcosPorMes: [...p.composicao.marcos.entries()]
         .filter(([mm]) => mm <= fechado)
-        .map(([mm, l]) => `${mm}:${l.length}`),
+        .map(([mm, l]) => `${mm}:${l.metas.length}`),
+      // Cada mês com plano fecha a mesma conta dos cards do topo.
+      marcosFecham: [...p.composicao.marcos.values()]
+        .every((l) => Math.abs((l.custo - l.meta) - l.esperado) < 0.02),
       corDosPontos: [...svg.querySelectorAll('circle')].map((c) => c.getAttribute('fill'))
         .reduce((a, c) => (a[c] = (a[c] || 0) + 1, a), {}),
     };
@@ -327,6 +339,7 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
   ok('mês projetado NÃO ganha caixa fixa', fut.caixasEmMesFuturo === 0, `${fut.caixasEmMesFuturo}`);
   ok('e mais de uma meta no mesmo mês aparecem juntas',
     fut.marcosPorMes.some((x) => Number(x.split(':')[1]) > 1), fut.marcosPorMes.join(' '));
+  ok('a caixa de cada mês fecha a mesma conta dos cards', fut.marcosFecham);
 
   // ------------------------------------------------ hover e clique na barra
   console.log('\nBARRA — o balão é do mês, e o clique abre os lançamentos dele');
@@ -374,6 +387,43 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
       det && det.decrescente, det && `${det.linhas} tipo(s)`);
     await pag.click('.modal [data-x]');
     await pag.waitForTimeout(400);
+
+    // O PONTO de um mês com plano abre a META, e não os lançamentos: quem
+    // clica no marcador do compromisso quer ver o compromisso.
+    const pontos = await pag.$$('#i-plano-serie circle[role="button"]');
+    let comMeta = null;
+    for (const c of pontos) if (await c.getAttribute('r') === '5') { comMeta = c; break; }
+    ok('o mês com plano tem um ponto maior, e ele é clicável', !!comMeta);
+    if (comMeta) {
+      await comMeta.click();
+      await pag.waitForTimeout(800);
+      const meta = await pag.evaluate(() => {
+        const md = document.querySelector('.modal');
+        if (!md) return null;
+        const cards = [...md.querySelectorAll('.card-plano')].map((c) => ({
+          rot: (c.querySelector('.card-rot') || {}).textContent.trim(),
+          val: (c.querySelector('strong') || {}).textContent.trim() }));
+        return {
+          titulo: md.querySelector('h2').textContent.trim(),
+          cards: cards.map((c) => c.rot),
+          colunas: [...md.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
+          linhas: md.querySelectorAll('tbody tr').length,
+          // A tela da meta NÃO lista lançamento: isso é o detalhamento da barra.
+          temArvore: !!md.querySelector('[data-arvore-det]'),
+        };
+      });
+      ok('e abre a META CADASTRADA, não as despesas do mês',
+        meta && /Meta de redução/.test(meta.titulo) && !meta.temArvore, meta && meta.titulo);
+      ok('com os três cards: custo fixo, meta e resultado esperado',
+        meta && meta.cards.length === 3 && /CUSTO FIXO/i.test(meta.cards[0])
+          && /META TOTAL/i.test(meta.cards[1]) && /RESULTADO ESPERADO/i.test(meta.cards[2]),
+        meta && meta.cards.join(' | '));
+      ok('e o plano cadastrado, com o que cortar e onde chegar',
+        meta && meta.linhas > 0 && meta.colunas.includes('Meta (cortar)')
+          && meta.colunas.includes('Deve chegar a'), meta && `${meta.linhas} plano(s)`);
+      await pag.click('.modal [data-x]');
+      await pag.waitForTimeout(400);
+    }
   }
   // O título da legenda e a marca de projeção entram na contagem: uma entrada
   // por tipo, mais as duas.
