@@ -38,6 +38,11 @@
   --t1:#4f46e5; --t2:#d97706; --t3:#0d9488; --t4:#e11d48;
   --t5:#0284c7; --t6:#ea580c; --t7:#059669; --t8:#7c3aed;
   --bom:#0ca30c; --bomtxt:#056605; --alerta:#b26a00; --crit:#c0392f;
+  /* O tom da PROJEÇÃO: o azul do custo fixo, clareado. É o mesmo dado visto
+     adiante, então tem de ser reconhecível como parente da linha realizada —
+     uma cor de outra família leria como uma quarta série. O tracejado é o
+     segundo canal, para não depender do tom. */
+  --proj:#8fb8e8;
   --sombra:0 1px 2px rgba(17,23,33,.05),0 8px 24px rgba(17,23,33,.06);
   --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
@@ -53,6 +58,7 @@
   --t1:#6366f1; --t2:#cc7a05; --t3:#0d9e8f; --t4:#f0355a;
   --t5:#0b90cc; --t6:#e35f12; --t7:#0ca176; --t8:#8b5cf6;
   --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
+  --proj:#6d93c4;
   --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
 }}
 :root[data-theme="dark"]{
@@ -66,6 +72,7 @@
   --t1:#6366f1; --t2:#cc7a05; --t3:#0d9e8f; --t4:#f0355a;
   --t5:#0b90cc; --t6:#e35f12; --t7:#0ca176; --t8:#8b5cf6;
   --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
+  --proj:#6d93c4;
   --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
 }
 /* A divisão do número por empresa matriz. Fina de propósito: informa a
@@ -139,6 +146,18 @@
   background:none;border:0;border-radius:0;box-shadow:none;padding:14px 0 0;
   border-top:1px solid var(--linha);margin-top:14px}
 .bloco-modulo>.bloco-corpo>.bloco:first-child{border-top:0;margin-top:0}
+/* GRUPO dentro do módulo — Objetivos e Faróis. É um terceiro nível de dobra, e
+   precisa se distinguir do módulo acima sem virar mais uma moldura: ganha um
+   filete à esquerda e um título menor, e os indicadores dentro dele seguem
+   sem fundo nem borda, como já seguiam soltos no módulo. */
+.bloco-grupo>header h2{font-size:14px;color:var(--tinta2)}
+.bloco-modulo>.bloco-corpo>.bloco-grupo{
+  border-top:0;border-left:2px solid var(--linha2);padding:12px 0 0 14px;margin-top:16px}
+.bloco-grupo>.bloco-corpo>.bloco{
+  background:none;border:0;border-radius:0;box-shadow:none;padding:14px 0 0;
+  border-top:1px solid var(--linha);margin-top:14px}
+.bloco-grupo>.bloco-corpo>.bloco:first-child{border-top:0;margin-top:0}
+@media (max-width:640px){.bloco-modulo>.bloco-corpo>.bloco-grupo{padding-left:9px}}
 /* Indicador de largura inteira: um por linha, sem vizinho lateral. O `.kpi`
    dentro dele perde a borda e o padding da faixa de cartões — aqui o cartão é
    o bloco, e uma borda dentro de outra viraria moldura dupla. */
@@ -192,6 +211,15 @@
 /* A amostra hachurada da legenda: a mesma marca que a barra usa para
    investimento. Sem ela, a legenda prometeria uma cor lisa e o gráfico
    entregaria outra coisa. */
+/* A amostra tracejada da legenda: a mesma marca da linha de projeção. */
+.legenda-tipos i.amostra-tracejada{
+  height:3px;border-radius:0;
+  background-image:repeating-linear-gradient(90deg,
+    transparent 0 5px, color-mix(in srgb,var(--sup) 92%,transparent) 5px 8px)}
+/* A linha projetada no racional: mesma informação da cor da coluna, mas para a
+   linha inteira, porque é a linha inteira que não aconteceu ainda. */
+.linha-projetada>td{color:var(--tinta3);font-style:italic}
+.linha-projetada>td:first-child{font-style:normal}
 .legenda-tipos i.amostra-hachura{
   background-image:repeating-linear-gradient(45deg,
     color-mix(in srgb,var(--sup) 90%,transparent) 0 2px, transparent 2px 6px)}

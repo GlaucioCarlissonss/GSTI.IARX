@@ -1167,6 +1167,54 @@ A leitura é um comparativo por empresa: **antes** é o que é dela mais 100% do
 que ela paga; **depois** é o que é dela mais a parcela que lhe cabe. A pagadora
 original vem marcada.
 
+## Objetivos e Faróis: o terceiro nível de agrupamento
+
+Dentro do módulo Financeiro, os indicadores passaram a viver em dois grupos que
+abrem e fecham: **Objetivos** e **Faróis**. Eles respondem a perguntas
+diferentes — um objetivo tem **alvo cadastrado** e diz se ele foi alcançado; um
+farol **mede e sinaliza**, sem alvo —, e misturá-los numa pilha só obrigava a
+ler o título de cada um para descobrir de que tipo era.
+
+O agrupamento é só hierarquia: dentro do grupo, cada indicador continua abrindo
+por empresa e, dentro dela, por filial, com os mesmos filtros do módulo.
+
+## Farol 3: custo mês a mês, com projeção do que é fixo
+
+Evolução do antigo *Custo recorrente mês a mês*, que era uma seção solta e
+passou a ser um indicador como os outros — cartão, número, drill-down e dobra.
+
+**Três séries realizadas, e só o fixo é projetado.** Total (laranja), variáveis
+(pontuais) e fixas (azul) descrevem o que aconteceu. Projetar total ou variáveis
+exigiria adivinhar compras pontuais que ninguém decidiu ainda; o fixo é o único
+que se pode afirmar, porque é o que continua acontecendo se nada mudar.
+
+**Realizado é até o último mês fechado.** O mês corrente está pela metade, e
+tomá-lo como realizado faria o custo parecer ter despencado no dia 3.
+
+**A projeção é uma série à parte**, em tom claro e **tracejada** — dois canais,
+porque a cor sozinha não distingue realizado de projetado para quem não separa
+tons. Ela repete o nível fixo do último mês fechado pelos doze seguintes, e é
+uma regra só: misturá-la ao que já está lançado no futuro faria o significado da
+linha mudar de mês para mês, e ninguém saberia qual das duas está lendo. O
+último mês realizado entra nas duas séries, senão a linha clara nasceria solta
+no ar.
+
+**A projeção não obedece ao filtro de período**, que termina no passado por
+padrão. Ela existe para olhar adiante; recortá-la pelo filtro a apagaria
+justamente quando interessa.
+
+**O balão traz mês, natureza e composição** — quantos lançamentos, quantos fixos
+e quantos pontuais, a variação do fixo e os três tipos que mais pesam. **O
+clique** abre os lançamentos **do maior para o menor valor**: quem clica num mês
+quer saber o que pesa, e a ordem de cadastro faz procurar o peso linha a linha.
+Um mês projetado abre os lançamentos da **base**, dizendo que são dela — abrir a
+lista do mês futuro devolveria vazio, e um detalhamento vazio faz duvidar do
+número.
+
+**O cartão abre só o custo fixo** do último mês realizado, que é o número que
+ele anuncia. Abrir o mês inteiro mostraria uma lista cuja soma não é o valor
+clicado.
+
 ## Farol 2: o que o financeiro lançou e ninguém reconheceu
 
 O indicador **Despesas por reconhecer** saiu de Indicadores Gerais e passou para

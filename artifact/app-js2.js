@@ -168,10 +168,28 @@ function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '', a
     svg.appendChild(svgEl('line', { x1:m.e, x2:L-m.d, y1:y(mk), y2:y(mk), stroke: mk===0?'var(--linha2)':'var(--linha)', 'stroke-width':1 }));
     const t = svgEl('text', { x:m.e-8, y:y(mk)+3.5, 'text-anchor':'end', class:'eixo' }); t.textContent = fmtEixo(mk)+sufixo; svg.appendChild(t);
   }
+  // Valor AUSENTE (null/undefined) abre lacuna; zero continua sendo zero.
+  //
+  // Sem a distinção, uma série que só existe em parte dos meses — a projeção do
+  // custo fixo, por exemplo — desceria até a linha do zero nos meses em que ela
+  // não se aplica, desenhando uma queda que não aconteceu.
+  const temValor = (p, k) => p.v[k] !== null && p.v[k] !== undefined;
   for (const s of series) {
-    svg.appendChild(svgEl('path', { d: pontos.map((p,i)=>`${i?'L':'M'}${x(i)},${y(p.v[s.k]||0)}`).join(' '),
-      fill:'none', stroke:s.cor, 'stroke-width':2, 'stroke-linejoin':'round', 'stroke-linecap':'round' }));
-    pontos.forEach((p,i) => svg.appendChild(svgEl('circle', { cx:x(i), cy:y(p.v[s.k]||0), r:3.5, fill:s.cor, stroke:'var(--sup)', 'stroke-width':2 })));
+    let comando = 'M';
+    const d = pontos.map((p,i) => {
+      if (!temValor(p, s.k)) { comando = 'M'; return ''; }
+      const pedaco = `${comando}${x(i)},${y(p.v[s.k])}`;
+      comando = 'L';
+      return pedaco;
+    }).filter(Boolean).join(' ');
+    svg.appendChild(svgEl('path', { d, fill:'none', stroke:s.cor,
+      'stroke-width':2, 'stroke-linejoin':'round', 'stroke-linecap':'round',
+      // O tracejado é o segundo canal da projeção: a cor mais clara sozinha não
+      // distingue realizado de projetado para quem não separa tons.
+      ...(s.tracejada ? { 'stroke-dasharray': '6 4' } : {}) }));
+    pontos.forEach((p,i) => { if (temValor(p, s.k)) {
+      svg.appendChild(svgEl('circle', { cx:x(i), cy:y(p.v[s.k]), r:3.5, fill:s.cor, stroke:'var(--sup)', 'stroke-width':2 }));
+    } });
   }
   const captura = svgEl('rect', { x:m.e, y:m.t, width:lp, height:ap, fill:'transparent' });
   const maisProximo = (ev) => {
@@ -181,7 +199,16 @@ function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '', a
   };
   captura.addEventListener('mousemove', (ev) => {
     const i = maisProximo(ev);
-    mostrarDica(ev, pontos[i].rot, series.map((s)=>({ nome:s.nome, cor:s.cor, valor: fmt(pontos[i].v[s.k]||0) })));
+    const p = pontos[i];
+    mostrarDica(ev, p.rot, [
+      // Série sem valor no mês fica FORA do balão: mostrá-la como "R$ 0,00"
+      // afirmaria um zero onde o que há é ausência.
+      ...series.filter((s) => temValor(p, s.k))
+        .map((s)=>({ nome:s.nome, cor:s.cor, valor: fmt(p.v[s.k]) })),
+      // O ponto pode trazer linhas próprias — composição, natureza, a origem de
+      // uma projeção. É o detalhamento que o balão de um número solto não tem.
+      ...(Array.isArray(p.extra) ? p.extra : []),
+    ]);
   });
   captura.addEventListener('mouseleave', sumirDica);
   if (aoClicar) {

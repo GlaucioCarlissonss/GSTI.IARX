@@ -346,6 +346,16 @@ const rotuloVariacao = (g) =>
     + g.variacaoTotal.toLocaleString('pt-BR') + '% ponta a ponta')
   + ` (tendência ${SETA_TENDENCIA[g.tendencia]} ${PALAVRA_TENDENCIA[g.tendencia]})`;
 
+/** A chave de leitura do Farol 3. A projeção traz o tracejado da amostra, que
+ *  é o mesmo canal que a linha usa no gráfico. */
+const legendaDoFarol3Html = () => `<div class="legenda-tipos" style="margin-top:10px">
+  <span class="legenda-titulo">Séries</span>
+  <span><i style="background:${COR_TOTAL}" aria-hidden="true"></i>total (todos os custos)</span>
+  <span><i style="background:${COR_VARIAVEL}" aria-hidden="true"></i>variáveis (pontuais)</span>
+  <span><i style="background:${COR_FIXA}" aria-hidden="true"></i>fixas (recorrentes)</span>
+  <span class="legenda-proj"><i class="amostra-tracejada" style="background:${COR_PROJECAO}" aria-hidden="true"></i>projeção do fixo</span>
+</div>`;
+
 /** As duas classificações. Cor E hachura: dois canais, nunca um só. */
 const COR_DESPESA = 'var(--s1)';
 const COR_INVESTIMENTO = 'var(--m4)';
@@ -409,6 +419,102 @@ function grupoDoFarolHtml(id, titulo, g) {
           p.variacao === null ? '—' : (p.variacao > 0 ? '+' : '') + p.variacao.toLocaleString('pt-BR') + '%'}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
+}
+
+/** As cores das três séries do Farol 3, mais o tom claro da projeção. */
+const COR_TOTAL = 'var(--s2)';
+const COR_VARIAVEL = 'var(--m4)';
+const COR_FIXA = 'var(--s1)';
+const COR_PROJECAO = 'var(--proj)';
+
+/** Quantos meses o farol projeta à frente. O mesmo horizonte do "Compromisso —
+ *  12 meses" do Painel: dois horizontes diferentes na mesma base fariam duas
+ *  respostas para "quanto isto compromete". */
+const MESES_PROJETADOS = 12;
+
+/**
+ * FAROL 3 — custo recorrente mês a mês, com projeção do que é fixo.
+ *
+ * Quatro decisões:
+ *
+ * 1. **Três séries, e só o FIXO é projetado.** Total e variáveis descrevem o
+ *    que aconteceu; projetá-los exigiria adivinhar compras pontuais que
+ *    ninguém decidiu ainda. O fixo é o único que se pode afirmar: é o que
+ *    continua acontecendo se nada mudar.
+ * 2. **Realizado é até o último mês FECHADO.** O mês corrente está pela
+ *    metade, e tomá-lo como realizado faria o custo parecer ter despencado no
+ *    dia 3.
+ * 3. **A projeção repete o nível fixo do último mês realizado**, e é uma regra
+ *    só. Misturar "o que já está lançado no futuro" com "o nível de hoje
+ *    repetido" faria o significado da linha mudar de mês para mês, e ninguém
+ *    saberia qual dos dois está lendo.
+ * 4. **A projeção não obedece ao filtro de período**, que termina no passado
+ *    por padrão. Ela existe para olhar adiante; recortá-la pelo filtro a
+ *    apagaria justamente quando ela interessa.
+ */
+function calcularFarol3(r) {
+  const base = Loja.todosDoEscopo().filter((l) =>
+    passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, r) &&
+    naJanela(l.competencia, r) && (!r.somenteReconhecidas || reconhecidoDe(l)));
+
+  const fechado = mesSoma(mesHoje(), -1);
+  const meses = ordenado([...new Set(base.map((l) => l.competencia).filter(Boolean))])
+    .filter((m) => m <= fechado);
+
+  const somaC2 = (itens) => itens.reduce((s, l) => s + cent(l.valor), 0);
+  const realizados = meses.map((m, i) => {
+    const doMes = base.filter((l) => l.competencia === m);
+    const fixas = doMes.filter((l) => l.natureza === 'fixa');
+    const variaveis = doMes.filter((l) => l.natureza !== 'fixa');
+    const fixaC = somaC2(fixas);
+    void i;
+    // A composição que o balão mostra: os três tipos que mais pesam no mês.
+    const porTipo = new Map();
+    for (const l of doMes) porTipo.set(l.tipo || '—', (porTipo.get(l.tipo || '—') || 0) + cent(l.valor));
+    return {
+      comp: m, rot: mesExib(m), projetado: false,
+      total: reais(somaC2(doMes)), variavel: reais(somaC2(variaveis)), fixa: reais(fixaC),
+      lancamentos: doMes.length, fixasN: fixas.length, variaveisN: variaveis.length,
+      composicao: [...porTipo.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+        .map(([tipo, c]) => ({ tipo, valor: reais(c) })),
+      itens: doMes,
+    };
+  });
+  // A variação do custo FIXO de um mês para o outro — é a leitura que o bloco
+  // sempre teve, e continua sendo a do patamar recorrente.
+  realizados.forEach((p, i) => {
+    const ant = i > 0 ? cent(realizados[i - 1].fixa) : null;
+    p.variacao = ant === null || ant === 0
+      ? null : Math.round(((cent(p.fixa) - ant) / ant) * 1000) / 10;
+  });
+
+  const ultimo = realizados[realizados.length - 1] || null;
+  const projetados = !ultimo ? [] : intervalo(mesSoma(ultimo.comp, 1), mesSoma(ultimo.comp, MESES_PROJETADOS))
+    .map((m) => ({
+      comp: m, rot: mesExib(m), projetado: true,
+      total: null, variavel: null, fixa: null,
+      // A projeção é uma série à parte: é ela que ganha o tom claro e o
+      // tracejado, e é por isso que o realizado fica `null` aqui.
+      fixaProjetada: ultimo.fixa,
+      baseDaProjecao: ultimo.comp, lancamentos: ultimo.fixasN,
+      composicao: ultimo.composicao, itens: ultimo.itens.filter((l) => l.natureza === 'fixa'),
+      variacao: null,
+    }));
+
+  // O último realizado entra TAMBÉM na série projetada, senão a linha clara
+  // nasceria solta no ar, sem ligação com o ponto de onde ela parte.
+  if (ultimo) ultimo.fixaProjetada = ultimo.fixa;
+
+  return {
+    realizados, projetados,
+    pontos: [...realizados, ...projetados],
+    ultimoRealizado: ultimo ? ultimo.comp : null,
+    nivelFixo: ultimo ? ultimo.fixa : 0,
+    // O que o nível fixo de hoje compromete nos doze meses à frente, se nada
+    // mudar. É a leitura que a projeção existe para dar.
+    compromisso: reais(cent(ultimo ? ultimo.fixa : 0) * projetados.length),
+    mesesProjetados: projetados.length,
+  };
 }
 
 function calcularReducao(r) {
@@ -1994,6 +2100,7 @@ async function viewIndicadores() {
   const rateio = calcularRateio(rf);
   const adequacao = calcularAdequacao(rf);
   const farol = calcularFarolCustos(rf);
+  const farol3 = calcularFarol3(rf);
   const plano = calcularPlanoReducao(rf);
 
   // As quebras por unidade saem dos MESMOS registros que os cálculos acima
@@ -2042,6 +2149,16 @@ async function viewIndicadores() {
       </header>
       ${filtrosDoBloco('financeiro', rf)}
       ${caixaDeCategorizacaoHtml()}
+
+    <!-- OBJETIVOS e FARÓIS: um nível a mais de agrupamento dentro do módulo.
+         Os dois grupos respondem a perguntas diferentes — um objetivo tem alvo
+         cadastrado e diz se ele foi alcançado; um farol só mede e sinaliza —, e
+         misturá-los numa pilha só obrigava a ler o título de cada um para
+         descobrir de qual tipo era. Cada grupo abre e fecha, e dentro dele cada
+         indicador continua abrindo por empresa e, dentro dela, por filial. -->
+    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:14px">
+      <header><h2>Objetivos</h2>
+        <span class="nota">alvo cadastrado, com veredicto</span></header>
 
     ${blocoIndicador({
       chave: 'plano-reducao',
@@ -2243,6 +2360,12 @@ async function viewIndicadores() {
         : '',
     })}
 
+    </section>
+
+    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:14px">
+      <header><h2>Faróis</h2>
+        <span class="nota">medem e sinalizam, sem alvo cadastrado</span></header>
+
     ${blocoIndicador({
       chave: 'custo-recorrente',
       titulo: 'Farol 1 - Variação dos custos Fixos(Mensais) e Variação dos custos Variáveis(pontuais)',
@@ -2297,18 +2420,51 @@ async function viewIndicadores() {
         ${porCentroDeCustoHtml(pendente)}`,
     })}
 
-    <section class="bloco" style="margin-top:14px">
-      <header><h2>Custo recorrente mês a mês</h2>
-        <span class="nota">${inteiro(reducao.serie.length)} competência(s)</span></header>
-      <div id="i-reducao"></div>
-      ${reducao.serie.length ? `<div class="rol rol-fixo" style="margin-top:12px;max-height:280px;min-height:0"><table>
-        <thead><tr><th>Competência</th><th class="n">Custo recorrente</th><th class="n">Variação</th></tr></thead>
-        <tbody>${reducao.serie.map((p) => `<tr>
-          <td>${esc(p.rot)}</td><td class="n">${brl(p.valor)}</td>
-          <td class="n"${p.variacao === null ? '' : ` style="color:${p.variacao < 0 ? 'var(--bomtxt)' : p.variacao > 0 ? 'var(--crit)' : 'var(--tinta2)'}"`}>${
-            p.variacao === null ? '—' : (p.variacao > 0 ? '+' : '') + p.variacao.toLocaleString('pt-BR') + '%'}</td>
-        </tr>`).join('')}</tbody></table></div>` : ''}
-      ${rf.somenteReconhecidas ? '<p class="nota" style="margin-top:10px">Exibindo apenas despesas reconhecidas.</p>' : ''}
+    ${blocoIndicador({
+      chave: 'custo-mes-a-mes',
+      titulo: 'Farol 3 - Custo recorrente Mês a Mês',
+      valor: farol3.ultimoRealizado ? brl(farol3.nivelFixo) : '—',
+      apoio: farol3.ultimoRealizado
+        ? `nível fixo de ${mesExib(farol3.ultimoRealizado)} · ${inteiro(farol3.realizados.length)} mês(es) realizado(s)`
+          + ` · projeção de ${inteiro(farol3.mesesProjetados)} meses compromete ${brl(farol3.compromisso)}`
+        : 'nenhum mês realizado neste recorte',
+      corpo: farol3.realizados.length === 0 ? '' : `
+        ${legendaDoFarol3Html()}
+        <div id="i-reducao" style="margin-top:2px"></div>
+        <div class="rol rol-fixo" style="margin-top:12px;max-height:300px;min-height:0"><table>
+          <thead><tr><th>Competência</th>
+            <th class="n" style="color:${COR_TOTAL}">Total</th>
+            <th class="n" style="color:${COR_VARIAVEL}">Variáveis</th>
+            <th class="n" style="color:${COR_FIXA}">Fixas</th>
+            <th class="n">Variação do fixo</th></tr></thead>
+          <tbody>${farol3.pontos.map((p) => `<tr data-mes-farol3="${esc(p.comp)}"${
+            p.projetado ? ' class="linha-projetada"' : ''}>
+            <td>${esc(p.rot)}${p.projetado
+              ? `<div class="arv-comp">projeção · base ${esc(mesExib(p.baseDaProjecao))}</div>` : ''}</td>
+            <td class="n">${p.total === null ? '—' : brl(p.total)}</td>
+            <td class="n">${p.variavel === null ? '—' : brl(p.variavel)}</td>
+            <td class="n"${p.projetado ? ` style="color:${COR_PROJECAO}"` : ''}>${
+              brl(p.projetado ? p.fixaProjetada : p.fixa)}</td>
+            <td class="n"${p.variacao === null ? '' : ` style="color:${
+              p.variacao < 0 ? 'var(--bomtxt)' : p.variacao > 0 ? 'var(--crit)' : 'var(--tinta2)'}"`}>${
+              p.variacao === null ? '—' : (p.variacao > 0 ? '+' : '') + p.variacao.toLocaleString('pt-BR') + '%'}</td>
+          </tr>`).join('')}</tbody></table></div>`,
+      // O aviso do filtro vem PRIMEIRO e é incondicional: é quando o recorte
+      // esvazia o bloco que a pessoa mais precisa saber por quê, e prendê-lo à
+      // existência de dado o fazia sumir exatamente nessa hora.
+      nota: `${rf.somenteReconhecidas
+        ? '<strong>Exibindo apenas despesas reconhecidas.</strong> ' : ''}`
+        + (farol3.realizados.length === 0
+          ? 'Nenhum mês fechado neste recorte — sem realizado não há o que projetar.'
+          : 'Só o <strong>custo fixo</strong> é projetado: total e variáveis descrevem o que aconteceu, e '
+        + 'projetá-los exigiria adivinhar compras pontuais que ninguém decidiu ainda. A projeção '
+        + `repete o nível fixo de ${farol3.ultimoRealizado ? mesExib(farol3.ultimoRealizado) : '—'} — o `
+        + 'último mês <strong>fechado</strong> — pelos doze meses seguintes, e é uma regra só: misturá-la '
+        + 'ao que já está lançado no futuro faria o significado da linha mudar de mês para mês. Ela não '
+        + 'obedece ao filtro de período, que termina no passado por padrão; recortá-la o apagaria '
+        + 'justamente quando ela interessa.'),
+    })}
+
     </section>
 
     ${consumo.lancamentos === 0 ? '' : `
@@ -2445,12 +2601,55 @@ async function viewIndicadores() {
     </section>`;
 
   // ----------------------------------------------------------- desenho
-  if (reducao.serie.length) {
-    linhas(el('#i-reducao'), reducao.serie.map((p) => ({ rot: p.rot, v: { custo: p.valor } })),
-      [{ k: 'custo', nome: 'Custo recorrente', cor: 'var(--s1)' }]);
-  } else {
-    el('#i-reducao').innerHTML = '<p class="vazio">Sem despesa recorrente neste recorte.</p>';
+  // FAROL 3 — três séries realizadas mais a projeção do fixo.
+  //
+  // A projeção é uma SÉRIE à parte, e não a mesma linha pintada de outra cor:
+  // é isso que lhe dá tom claro e tracejado sem mentir sobre onde o realizado
+  // termina. O último mês realizado entra nas duas, senão a linha clara
+  // nasceria solta no ar.
+  const alvoFarol3 = el('#i-reducao');
+  if (alvoFarol3 && farol3.pontos.length) {
+    linhas(alvoFarol3,
+      farol3.pontos.map((p) => ({
+        rot: p.rot, comp: p.comp, projetado: p.projetado,
+        v: {
+          total: p.total, variavel: p.variavel, fixa: p.fixa,
+          fixaProj: p.fixaProjetada === undefined ? null : p.fixaProjetada,
+        },
+        // O detalhamento que o enunciado pede: mês, natureza e composição, além
+        // do valor que as séries já dão.
+        extra: p.projetado
+          ? [{ nome: 'Projeção', valor: `repete ${mesExib(p.baseDaProjecao)}` },
+            { nome: 'Despesas fixas', valor: `${inteiro(p.lancamentos)} lançamento(s)` },
+            ...p.composicao.map((c) => ({ nome: c.tipo, valor: brl(c.valor), cor: COR_PROJECAO }))]
+          : [{ nome: 'Lançamentos', valor: `${inteiro(p.lancamentos)} · ${inteiro(p.fixasN)} fixo(s), `
+              + `${inteiro(p.variaveisN)} pontual(is)` },
+            ...(p.variacao === null ? []
+              : [{ nome: 'Variação do fixo', valor: (p.variacao > 0 ? '+' : '')
+                  + p.variacao.toLocaleString('pt-BR') + '%' }]),
+            ...p.composicao.map((c) => ({ nome: c.tipo, valor: brl(c.valor), cor: COR_TOTAL }))],
+      })),
+      [{ k: 'total', nome: 'Total (todos os custos)', cor: COR_TOTAL },
+        { k: 'variavel', nome: 'Variáveis (pontuais)', cor: COR_VARIAVEL },
+        { k: 'fixa', nome: 'Fixas (recorrentes)', cor: COR_FIXA },
+        { k: 'fixaProj', nome: 'Projeção do fixo', cor: COR_PROJECAO, tracejada: true }],
+      brl, curto, '',
+      (ponto) => abrirMesDoFarol3(farol3, ponto.comp));
+  } else if (alvoFarol3) {
+    alvoFarol3.innerHTML = '<p class="vazio">Sem despesa recorrente neste recorte.</p>';
   }
+  // A mesma tela pelo racional: a linha da tabela abre o mesmo mês que o ponto
+  // do gráfico. Dois caminhos para o mesmo número não podem levar a telas
+  // diferentes.
+  el('#pagina').querySelectorAll('tr[data-mes-farol3]').forEach((tr) => {
+    tr.style.cursor = 'pointer';
+    tr.onclick = (ev) => {
+      // A tabela mora dentro do cartão, que é gatilho: sem barrar, abririam
+      // duas telas empilhadas.
+      ev.stopPropagation();
+      abrirMesDoFarol3(farol3, tr.dataset.mesFarol3);
+    };
+  });
   // A linha do tempo do Objetivo 01: o custo mensal das despesas do plano
   // contra o alvo. O alvo é uma RETA — é um compromisso cadastrado, não uma
   // medição —, e é a distância entre as duas curvas que diz se o plano anda.
@@ -2631,6 +2830,17 @@ async function viewIndicadores() {
         itens: fixosDoRecorte(rf), contagem: null,
         nota: 'A variação compara o primeiro e o último mês; a lista traz as despesas que formam a série.',
       }),
+    },
+    'custo-mes-a-mes': {
+      dica: 'O custo mês a mês em três séries: o TOTAL, os pontuais e o fixo. Só o fixo é projetado '
+        + 'para a frente — projetar compras pontuais seria adivinhar decisões que ninguém tomou. '
+        + 'A projeção repete o nível fixo do último mês fechado e aparece em tom claro e tracejada. '
+        + 'Clique para ver as despesas fixas que formam esse nível.',
+      // O número do cartão é o NÍVEL FIXO do último mês realizado, então é ele
+      // que o clique tem de abrir. Abrir a janela inteira mostraria uma lista
+      // cuja soma não é o número clicado.
+      abrir: farol3.ultimoRealizado
+        ? () => abrirMesDoFarol3(farol3, farol3.ultimoRealizado, true) : null,
     },
     'por-reconhecer': {
       dica: 'Soma e contagem das despesas que ninguém reconheceu ainda, no recorte do bloco. '
@@ -3395,6 +3605,42 @@ function abrirClassificacaoCompartilhada(r) {
         }
       };
     },
+  });
+}
+
+/**
+ * Os lançamentos de um mês do Farol 3, do maior valor para o menor.
+ *
+ * A ordem decrescente é o pedido, e ela é a certa: quem clica num mês quer
+ * saber o que pesa, e uma lista por ordem de cadastro faz procurar o peso
+ * linha a linha.
+ *
+ * Mês projetado não tem lançamento próprio — o que o compõe é o mês base,
+ * repetido. Abrir a lista do mês futuro devolveria vazio, e um detalhamento
+ * vazio faz duvidar do número em vez de esclarecê-lo.
+ */
+function abrirMesDoFarol3(farol3, comp, soFixas = false) {
+  const ponto = farol3.pontos.find((p) => p.comp === comp);
+  if (!ponto) return;
+  // O cartão anuncia o NÍVEL FIXO, e o clique nele tem de abrir só o que forma
+  // esse número: uma lista com os pontuais junto somaria mais do que o valor
+  // clicado, que é a divergência que o detalhamento existe para não ter.
+  const fonte = soFixas && !ponto.projetado
+    ? ponto.itens.filter((l) => l.natureza === 'fixa') : ponto.itens;
+  const itens = [...fonte].sort((a, b) => cent(b.valor) - cent(a.valor));
+  abrirRegistros({
+    titulo: ponto.projetado
+      ? `Custo fixo projetado para ${ponto.rot} — base: ${mesExib(ponto.baseDaProjecao)}`
+      : soFixas ? `Custo fixo de ${ponto.rot}` : `Custos de ${ponto.rot}`,
+    tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
+    itens, contagem: null,
+    nota: ponto.projetado
+      ? `${inteiro(itens.length)} despesa(s) fixa(s) de ${mesExib(ponto.baseDaProjecao)}, que é a base da `
+        + 'projeção. Meses futuros repetem o nível fixo do último mês fechado; eles não têm lançamento próprio.'
+      : soFixas
+        ? `${inteiro(itens.length)} despesa(s) fixa(s), somando ${brl(ponto.fixa)}. Do maior para o menor valor.`
+        : `${inteiro(itens.length)} lançamento(s): ${brl(ponto.fixa)} em despesa fixa e `
+          + `${brl(ponto.variavel)} em pontual, somando ${brl(ponto.total)}. Do maior para o menor valor.`,
   });
 }
 
