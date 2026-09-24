@@ -891,7 +891,11 @@ function janelaDoObjetivo() {
   const ultima = comps[comps.length - 1] || null;
 
   const metas = (E.metas || []).filter((m) =>
-    m && m.modulo === 'financeiro' && m.ativo !== false && (!m.cliente || m.cliente === E.clienteSel));
+    m && m.modulo === 'financeiro' && m.ativo !== false && (!m.cliente || m.cliente === E.clienteSel)
+    // O teto de gasto é do Objetivo 03 e não define a janela do Objetivo 01:
+    // são compromissos distintos, e um teto cadastrado não pode esticar nem
+    // encolher a linha do tempo do outro.
+    && m.tipoMeta !== 'objetivo-03');
   if (!metas.length) return { de: primeira, ate: ultima, metas: [], semMeta: true };
 
   // `vigenciaInicio` vazio é "desde sempre": a ponta abre, e o `null` vence
@@ -2092,8 +2096,10 @@ async function viewIndicadores() {
   const rs = recorteDoBloco('sla');
   const rp = recorteDoBloco('projetos');
   const reducao = calcularReducao(rf);
-  const consumo = calcularConsumo(rf);
-  const equilibrio = calcularEquilibrio(rf);
+  // `calcularConsumo` e `calcularEquilibrio` continuam existindo — a suíte de
+  // rateio confere a leitura integral por elas, e é essa leitura que o
+  // Objetivo 02 usa como "antes" do comparativo. O que saiu da tela foi o
+  // bloco que as exibia soltas.
   const pendente = calcularPorReconhecer(rf);
   const sla = calcularSla(rs);
   const proj = calcularProjetos(rp);
@@ -2467,50 +2473,12 @@ async function viewIndicadores() {
 
     </section>
 
-    ${consumo.lancamentos === 0 ? '' : `
-    <section class="bloco" style="margin-top:14px">
-      <header><h2>Despesa paga por uma unidade, consumida por outras</h2>
-        <span class="nota">${brl(consumo.centralizado)} de ${brl(consumo.total)} · ${
-          consumo.pct.toLocaleString('pt-BR')}%</span></header>
-      <div class="rol"><table>
-        <thead><tr><th>Unidade pagadora</th><th class="n">Centralizado</th>
-          <th class="n">Do que ela paga</th><th>Beneficia</th></tr></thead>
-        <tbody>${consumo.linhas.map((u) => `<tr>
-          <td>${esc(u.unidade)}${u.filial ? '' : ' <span style="color:var(--tinta3)">· nível empresa</span>'}</td>
-          <td class="n">${brl(u.valor)}</td>
-          <td class="n">${u.pctDaUnidade.toLocaleString('pt-BR')}%</td>
-          <td>${u.beneficiadas.length ? esc(u.beneficiadas.join(', ')) : '—'}</td>
-        </tr>`).join('')}</tbody>
-      </table></div>
-      <p class="nota" style="margin-top:10px">O valor é o que a unidade pagadora desembolsa por inteiro.
-        Não há divisão por filial beneficiada: somar as linhas daria mais que o total, porque a mesma
-        despesa serve a várias. A leitura <strong>rateada</strong> dessa mesma despesa está no indicador
-        de despesas compartilhadas regularizadas, acima.</p>
-
-      ${!equilibrio.atual ? '' : `
-      <div style="margin-top:14px;border-top:1px solid var(--linha);padding-top:12px">
-        <strong>Equilíbrio de despesas, mês a mês</strong>
-        <p style="margin:4px 0 0;font-size:13px">
-          ${equilibrio.atual.pct.toLocaleString('pt-BR')}% em ${esc(equilibrio.atual.rot)}${
-            equilibrio.anterior
-              ? ` · ${equilibrio.anterior.pct.toLocaleString('pt-BR')}% em ${esc(equilibrio.anterior.rot)}${
-                  equilibrio.variacaoPp === null ? '' :
-                  ` <span style="color:${equilibrio.variacaoPp > 0 ? 'var(--crit)' : 'var(--bomtxt)'}">(${
-                    equilibrio.variacaoPp > 0 ? '+' : ''}${equilibrio.variacaoPp.toLocaleString('pt-BR')} p.p.)</span>`}`
-              : ''}
-        </p>
-        ${equilibrio.anterior ? '' :
-          '<p class="nota" style="margin:4px 0 0">Sem mês anterior com movimento neste recorte — não há contra o que comparar.</p>'}
-        ${metaHtml(equilibrio.leitura)}
-        <div class="rol rol-fixo" style="margin-top:10px;max-height:200px;min-height:0"><table>
-          <thead><tr><th>Competência</th><th class="n">Centralizado</th><th class="n">Total</th><th class="n">%</th></tr></thead>
-          <tbody>${equilibrio.serie.map((m) => `<tr>
-            <td>${esc(m.rot)}</td><td class="n">${brl(m.centralizado)}</td>
-            <td class="n">${brl(m.total)}</td><td class="n">${m.pct.toLocaleString('pt-BR')}%</td>
-          </tr>`).join('')}</tbody>
-        </table></div>
-      </div>`}
-    </section>`}
+    <!-- O bloco "Despesa paga por uma unidade, consumida por outras" saiu da
+         tela a pedido do gestor. A leitura INTEGRAL dessa despesa não se
+         perdeu: ela é o "antes" do comparativo dentro do Objetivo 02, que
+         mostra a mesma despesa sem rateio e com rateio lado a lado. O
+         equilíbrio mês a mês vinha pendurado aqui e sai junto — ele descrevia
+         o mesmo consumo compartilhado, por outro ângulo. -->
 
     </section>
 

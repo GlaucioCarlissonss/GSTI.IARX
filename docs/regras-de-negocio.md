@@ -1167,6 +1167,50 @@ A leitura é um comparativo por empresa: **antes** é o que é dela mais 100% do
 que ela paga; **depois** é o que é dela mais a parcela que lhe cabe. A pagadora
 original vem marcada.
 
+## Tipo de meta no Financeiro, e o teto de gasto
+
+O módulo Financeiro passou a ter **três objetivos**, e uma meta precisa dizer a
+qual deles pertence. Antes havia um alvo percentual só, lido por todo indicador
+financeiro: cadastrar um teto mexeria na leitura do Objetivo 01, que fala de
+outra coisa.
+
+| tipo | compromisso |
+| --- | --- |
+| Objetivo 01 — Redução de Custo | percentual |
+| Objetivo 02 — Adequação dos Custos Compartilhados | percentual |
+| Objetivo 03 — Teto de Gasto Mensal | **valor em R$** |
+
+**Meta antiga vale como Objetivo 01.** Era o único que lia a meta financeira até
+aqui, e nenhum número muda na migração.
+
+**O teto tem contexto, e são três independentes** — fixas, variáveis e
+investimentos —, cada um com a própria vigência: mudar o de investimentos não
+pode obrigar a recadastrar os outros dois. O **teto geral é a soma dos
+vigentes**, calculado e nunca digitado; um valor geral digitado à parte poderia
+divergir das partes que ele diz somar.
+
+**`null` é "sem meta", e não zero.** Zero seria um teto de gasto nenhum, que
+reprovaria todo mês — e a diferença entre "não cadastrado" e "limite zero" é
+justamente o que a tela precisa dizer.
+
+**Dois tetos vigentes no mesmo contexto são recusados**, nomeando o que já
+existe: dois limites ao mesmo tempo dariam duas respostas para "qual é o limite
+deste mês".
+
+**O teto não entra em `metaVigente`.** Ele é do módulo Financeiro como os
+demais, mas guarda `alvoPct: 0` junto da linha; lido pela porta dos percentuais,
+reprovaria todo mês do Objetivo 01 com um "0%" que ninguém cadastrou. Quem lê o
+teto é `tetosVigentes`, que devolve reais.
+
+## O bloco "Despesa paga por uma unidade, consumida por outras" saiu
+
+A pedido do gestor. A leitura **integral** dessa despesa não se perdeu: ela
+continua sendo o **"antes"** do comparativo dentro do Objetivo 02, ao lado do
+"depois" rateado — que é justamente onde as duas deixam de poder ser somadas por
+engano. `calcularConsumo` continua existindo e é a fonte desse "antes". O
+equilíbrio mês a mês vinha pendurado no mesmo bloco e saiu junto: descrevia o
+mesmo consumo compartilhado, por outro ângulo.
+
 ## Objetivos e Faróis: o terceiro nível de agrupamento
 
 Dentro do módulo Financeiro, os indicadores passaram a viver em dois grupos que

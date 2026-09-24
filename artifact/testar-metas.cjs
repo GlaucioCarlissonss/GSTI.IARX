@@ -95,7 +95,9 @@ const { irPara } = require('./ajuda-testes.cjs');
   const desativada = await pag.evaluate(() => ({
     alvo: alvoDe('sla'),
     guardadas: (E.metas || []).length,
-    situacao: (document.querySelector('#pagina tbody tr td:nth-child(5)') || {}).textContent || '',
+    // A 6ª coluna desde que a listagem ganhou "Tipo": Meta | Módulo | Tipo |
+    // Alvo | Vigência | Situação.
+    situacao: (document.querySelector('#pagina tbody tr td:nth-child(6)') || {}).textContent || '',
   }));
   conferir('o alvo volta a 80', desativada.alvo === 80, String(desativada.alvo));
   conferir('a meta continua cadastrada, só inativa', desativada.guardadas === 1 && /Inativa/.test(desativada.situacao),

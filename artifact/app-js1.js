@@ -214,7 +214,13 @@ const DIRECAO_META = { sla:'minimo', projetos:'minimo', financeiro:'maximo', equ
 /** As metas do cliente aberto. Entre duas vigentes ganha a de início mais recente. */
 function metaVigente(modulo, competencia) {
   const doCliente = (E.metas || []).filter((m) =>
-    m && m.modulo === modulo && m.ativo !== false && (!m.cliente || m.cliente === E.clienteSel));
+    m && m.modulo === modulo && m.ativo !== false && (!m.cliente || m.cliente === E.clienteSel)
+    // O TETO DE GASTO não entra aqui. Ele é do módulo Financeiro como os
+    // demais, mas o compromisso dele é um valor em REAIS, e o `alvoPct` que
+    // acompanha a linha é zero: lido como alvo percentual, ele reprovaria todo
+    // mês do Objetivo 01 com um "0%" que ninguém cadastrou. Quem lê o teto é
+    // `tetosVigentes`, que devolve reais.
+    && !(m.modulo === 'financeiro' && m.tipoMeta === 'objetivo-03'));
   const vale = (m) =>
     (!m.vigenciaInicio || !competencia || m.vigenciaInicio <= competencia) &&
     (!m.vigenciaFim || !competencia || m.vigenciaFim >= competencia);

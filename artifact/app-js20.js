@@ -26,8 +26,68 @@ const SENTIDO_MODULO = {
   equilibrio: 'teto para o gasto de uma unidade consumido por outras',
 };
 
+/**
+ * TIPO DE META no módulo Financeiro — a qual objetivo ela pertence.
+ *
+ * Antes havia um alvo percentual só, e todo indicador financeiro lia a mesma
+ * meta: cadastrar um teto para o Objetivo 03 mexeria na leitura do Objetivo 01,
+ * que fala de outra coisa. O tipo é o que separa os três.
+ *
+ * Meta antiga não tem o campo, e vale como **Objetivo 01**: é o único que lia a
+ * meta financeira até aqui, e nenhum número muda na migração.
+ */
+const TIPOS_META_FINANCEIRO = {
+  'objetivo-01': 'Objetivo 01 — Redução de Custo',
+  'objetivo-02': 'Objetivo 02 — Adequação dos Custos Compartilhados',
+  'objetivo-03': 'Objetivo 03 — Teto de Gasto Mensal',
+};
+const tipoDaMeta = (m) =>
+  (m && m.modulo === 'financeiro' && TIPOS_META_FINANCEIRO[m.tipoMeta] ? m.tipoMeta : 'objetivo-01');
+
+/**
+ * O CONTEXTO de um teto: qual natureza de gasto ele limita.
+ *
+ * São três tetos independentes, cada um com a própria vigência — mudar o de
+ * investimentos não pode obrigar a recadastrar os outros dois. O teto GERAL é a
+ * SOMA dos vigentes, e é calculado, nunca digitado: um valor geral digitado à
+ * parte poderia divergir das partes que ele diz somar.
+ */
+const CONTEXTOS_TETO = {
+  fixas: 'Despesas fixas (mensais)',
+  variaveis: 'Despesas variáveis (pontuais)',
+  investimentos: 'Investimentos',
+};
+const ehTetoDeGasto = (m) => m && m.modulo === 'financeiro' && tipoDaMeta(m) === 'objetivo-03';
+
 function metasDoCliente() {
   return (E.metas || []).filter((m) => !m.cliente || m.cliente === E.clienteSel);
+}
+
+/**
+ * Os tetos que valem numa competência, por contexto, mais a soma deles.
+ *
+ * `null` num contexto é "sem meta cadastrada", e não zero: zero seria um teto de
+ * gasto nenhum, que reprovaria todo mês. A diferença entre os dois é justamente
+ * o que a tela precisa dizer.
+ */
+function tetosVigentes(comp) {
+  const vale = (m) => m.ativo !== false
+    && (!m.vigenciaInicio || !comp || m.vigenciaInicio <= comp)
+    && (!m.vigenciaFim || !comp || m.vigenciaFim >= comp);
+  const saida = { fixas: null, variaveis: null, investimentos: null, geral: null, metas: {} };
+  for (const ctx of Object.keys(CONTEXTOS_TETO)) {
+    // Entre duas vigentes ganha a de início mais recente — a mesma regra de
+    // desempate que as demais metas já usam.
+    const candidatas = metasDoCliente()
+      .filter((m) => ehTetoDeGasto(m) && m.contextoTeto === ctx && vale(m))
+      .sort((a, b) => String(a.vigenciaInicio || '').localeCompare(String(b.vigenciaInicio || '')));
+    const escolhida = candidatas[candidatas.length - 1];
+    if (escolhida) { saida[ctx] = Number(escolhida.valorTeto) || 0; saida.metas[ctx] = escolhida; }
+  }
+  const partes = [saida.fixas, saida.variaveis, saida.investimentos].filter((v) => v !== null);
+  saida.geral = partes.length ? partes.reduce((s, v) => s + v, 0) : null;
+  saida.contextosSemMeta = Object.keys(CONTEXTOS_TETO).filter((c) => saida[c] === null);
+  return saida;
 }
 
 function viewMetas() {
@@ -41,11 +101,18 @@ function viewMetas() {
       <header><h2>Metas</h2><span class="nota">${inteiro(metas.length)}</span></header>
       ${metas.length === 0 ? '<p class="vazio">Nenhuma meta cadastrada.</p>' : `
       <div class="rol"><table>
-        <thead><tr><th>Meta</th><th>Módulo</th><th class="n">Alvo</th><th>Vigência</th><th>Situação</th><th></th></tr></thead>
+        <thead><tr><th>Meta</th><th>Módulo</th><th>Tipo</th><th class="n">Alvo</th><th>Vigência</th><th>Situação</th><th></th></tr></thead>
         <tbody>${metas.map((m, i) => `<tr>
           <td>${esc(m.nome)}</td>
           <td title="${esc(SENTIDO_MODULO[m.modulo] || '')}">${esc(ROTULO_MODULO_META[m.modulo] || m.modulo)}</td>
-          <td class="n">${Number(m.alvoPct).toLocaleString('pt-BR')}%</td>
+          <td>${m.modulo !== 'financeiro' ? '<span style="color:var(--tinta3)">—</span>'
+            : `${esc(TIPOS_META_FINANCEIRO[tipoDaMeta(m)])}${ehTetoDeGasto(m)
+              ? `<div class="arv-comp">${esc(CONTEXTOS_TETO[m.contextoTeto] || '—')}</div>` : ''}`}</td>
+          <!-- O alvo de um teto é o VALOR em reais, e não um percentual: a
+               coluna mostra o que cada tipo de meta de fato compromete. -->
+          <td class="n">${ehTetoDeGasto(m)
+            ? brl(Number(m.valorTeto) || 0)
+            : Number(m.alvoPct).toLocaleString('pt-BR') + '%'}</td>
           <td>${esc(vigenciaEmTexto(m))}</td>
           <td><span class="tag ${m.ativo === false ? '' : 'bom'}">${m.ativo === false ? 'Inativa' : 'Ativa'}</span></td>
           <td><button class="bt fant peq" data-alternar="${i}">${m.ativo === false ? 'Reativar' : 'Desativar'}</button></td>
@@ -79,8 +146,29 @@ function formMeta() {
           ${MODULOS_META.map((k) => `<option value="${esc(k)}">${esc(ROTULO_MODULO_META[k])}</option>`).join('')}
         </select></div>
       </div>
+      <!-- O tipo só existe no Financeiro: é ele que separa os três objetivos,
+           que leem coisas diferentes. Nos outros módulos há um indicador só, e
+           oferecer a escolha ali seria pedir uma decisão sem efeito. -->
+      <div class="campo" id="m-tipo-campo" hidden>
+        <label for="m-tipo">Tipo de meta</label>
+        <select id="m-tipo" name="tipoMeta">
+          ${Object.entries(TIPOS_META_FINANCEIRO)
+            .map(([k, r]) => `<option value="${esc(k)}">${esc(r)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="grade g2" id="m-teto-campos" hidden>
+        <div class="campo"><label for="m-ctx">Contexto do teto</label>
+          <select id="m-ctx" name="contextoTeto">
+            ${Object.entries(CONTEXTOS_TETO)
+              .map(([k, r]) => `<option value="${esc(k)}">${esc(r)}</option>`).join('')}
+          </select>
+          <p class="nota" style="margin:4px 0 0">São três tetos independentes, cada um com a sua vigência.
+            O teto <strong>geral</strong> é a soma dos vigentes — calculado, nunca digitado.</p></div>
+        <div class="campo"><label for="m-valor">Valor da meta (R$)</label>
+          <input id="m-valor" name="valorTeto" inputmode="decimal" placeholder="0,00"></div>
+      </div>
       <div class="grade g3">
-        <div class="campo"><label for="m-alvo">Alvo (%)</label>
+        <div class="campo" id="m-alvo-campo"><label for="m-alvo">Alvo (%)</label>
           <input id="m-alvo" name="alvo" type="number" min="0" max="100" step="0.1"></div>
         <div class="campo"><label for="m-de">Vigência de (MM/AAAA)</label>
           <input id="m-de" name="de" inputmode="numeric" placeholder="em branco: desde sempre"></div>
@@ -90,6 +178,23 @@ function formMeta() {
     acoes: `<button type="button" class="bt" data-c>Cancelar</button>
             <button type="button" class="bt pri" data-s>Cadastrar</button>`,
     aoMontar({ raiz, fechar, erro, campo }) {
+      // Os campos aparecem conforme a escolha: tipo só no Financeiro, teto só no
+      // Objetivo 03, e o alvo percentual some onde ele não significa nada —
+      // pedir um percentual para um teto em reais é pedir um número que não
+      // será usado.
+      const mod = raiz.querySelector('#m-mod');
+      const tipo = raiz.querySelector('#m-tipo');
+      const mostrar = () => {
+        const financeiro = mod.value === 'financeiro';
+        const teto = financeiro && tipo.value === 'objetivo-03';
+        raiz.querySelector('#m-tipo-campo').hidden = !financeiro;
+        raiz.querySelector('#m-teto-campos').hidden = !teto;
+        raiz.querySelector('#m-alvo-campo').hidden = teto;
+      };
+      mod.addEventListener('change', mostrar);
+      tipo.addEventListener('change', mostrar);
+      mostrar();
+
       raiz.querySelector('[data-c]').onclick = fechar;
       raiz.querySelector('[data-s]').onclick = async (ev) => {
         ev.target.disabled = true; erro('');
@@ -99,8 +204,40 @@ function formMeta() {
           if (metasDoCliente().some((m) => m.nome.toLowerCase() === nome.toLowerCase())) {
             throw new Error('Já existe uma meta com este nome neste cliente.');
           }
-          const alvo = Number(String(campo('alvo').value).replace(',', '.'));
-          if (!Number.isFinite(alvo) || alvo < 0 || alvo > 100) {
+          const modulo = campo('modulo').value;
+          const tipoMeta = modulo === 'financeiro' ? campo('tipoMeta').value : null;
+          const ehTeto = tipoMeta === 'objetivo-03';
+
+          let valorTeto = null, contextoTeto = null;
+          if (ehTeto) {
+            contextoTeto = campo('contextoTeto').value;
+            // A mensagem de "informe o valor" do leitor genérico não diz de
+            // qual campo ela fala, e neste formulário há três números. A
+            // recusa tem de nomear o campo e o que ele espera.
+            try { valorTeto = lerValor(campo('valorTeto').value); } catch (e) { valorTeto = NaN; }
+            if (!Number.isFinite(valorTeto) || valorTeto <= 0) {
+              throw new Error('O Objetivo 03 é um teto em reais: informe o "Valor da meta (R$)" '
+                + 'maior que zero, no formato 1.234,56.');
+            }
+            // Dois tetos vigentes ao mesmo tempo no mesmo contexto dariam duas
+            // respostas para "qual é o limite deste mês".
+            const conflito = metasDoCliente().find((m) =>
+              ehTetoDeGasto(m) && m.ativo !== false && m.contextoTeto === contextoTeto
+              && (!m.vigenciaFim || !campo('de').value.trim()
+                || m.vigenciaFim >= mesInterno(campo('de').value.trim()))
+              && (!campo('ate').value.trim() || !m.vigenciaInicio
+                || m.vigenciaInicio <= mesInterno(campo('ate').value.trim())));
+            if (conflito) {
+              throw new Error(`Já existe um teto de ${CONTEXTOS_TETO[contextoTeto].toLowerCase()} vigente `
+                + `no mesmo período ("${conflito.nome}", ${vigenciaEmTexto(conflito)}). `
+                + 'Ajuste a vigência de um dos dois, ou desative o anterior.');
+            }
+          }
+
+          // O alvo percentual não se aplica ao teto: ali o compromisso é o valor
+          // em reais, e um percentual guardado junto viraria um número órfão.
+          const alvo = ehTeto ? 0 : Number(String(campo('alvo').value).replace(',', '.'));
+          if (!ehTeto && (!Number.isFinite(alvo) || alvo < 0 || alvo > 100)) {
             throw new Error('O valor-alvo é um percentual entre 0 e 100.');
           }
           const ponta = (texto, rotulo) => {
@@ -115,11 +252,14 @@ function formMeta() {
           if (de && ate && de > ate) throw new Error('A vigência final é anterior à inicial.');
 
           const nova = {
-            cliente: E.clienteSel, nome, modulo: campo('modulo').value,
+            cliente: E.clienteSel, nome, modulo,
             alvoPct: Math.round(alvo * 10) / 10, vigenciaInicio: de, vigenciaFim: ate, ativo: true,
+            ...(tipoMeta ? { tipoMeta } : {}),
+            ...(ehTeto ? { contextoTeto, valorTeto } : {}),
           };
           await Loja.gravarCatalogo('metas', [...(E.metas || []), nova]);
-          await Loja.auditar({ acao: 'criar', entidade: 'meta', depois: { nome, modulo: nova.modulo, alvo: nova.alvoPct } });
+          await Loja.auditar({ acao: 'criar', entidade: 'meta',
+            depois: { nome, modulo: nova.modulo, tipoMeta, contextoTeto, valorTeto, alvo: nova.alvoPct } });
           fechar(); render();
         } catch (e) { erro(e.message); ev.target.disabled = false; }
       };

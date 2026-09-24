@@ -148,19 +148,31 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
     }
   }
 
-  // ----------------------------------- o "antes" continua na tela, separado
-  console.log('\nCONVIVÊNCIA — as duas leituras ficam, e a tela diz qual é qual');
+  // ----------------------------------- as duas leituras, agora no mesmo bloco
+  //
+  // O bloco solto "Despesa paga por uma unidade, consumida por outras" saiu da
+  // tela a pedido do gestor. A leitura INTEGRAL não se perdeu: ela é o "antes"
+  // do comparativo dentro do Objetivo 02, ao lado do "depois" rateado — que é
+  // onde as duas deixam de poder ser somadas por engano.
+  console.log('\nCONVIVÊNCIA — as duas leituras no mesmo comparativo');
   const convivem = await pag.evaluate(() => {
-    const texto = document.querySelector('#pagina').textContent;
+    const sec = document.querySelector('[data-kpi="rateio"]').closest('section.bloco-indicador');
+    const texto = sec.textContent.replace(/\s+/g, ' ');
     return {
-      integral: /paga por uma unidade, consumida por outras/i.test(texto),
-      rateada: /compartilhadas regularizadas/i.test(texto),
-      apontaUmaParaOutra: /leitura .*rateada.* dessa mesma despesa/i.test(texto.replace(/\s+/g, ' ')),
+      // `calcularConsumo` é a leitura integral, e continua sendo a fonte do
+      // "antes": o que saiu foi a seção que a exibia solta.
+      integralViva: calcularConsumo(recorteDoBloco('financeiro')).lancamentos >= 0,
+      antesEDepois: /antes/i.test(texto) && /depois/i.test(texto),
+      criterioJunto: /proporcional à despesa própria/.test(texto),
+      // E o bloco solto não pode ter sobrado em lugar nenhum da tela.
+      blocoSolto: /paga por uma unidade, consumida por outras/i
+        .test(document.querySelector('#pagina').textContent),
     };
   });
-  ok('a leitura integral continua na tela', convivem.integral);
-  ok('a leitura rateada também', convivem.rateada);
-  ok('e uma aponta para a outra, para ninguém somar as duas', convivem.apontaUmaParaOutra);
+  ok('a leitura integral continua existindo, como fonte do "antes"', convivem.integralViva);
+  ok('e as duas aparecem lado a lado no comparativo', convivem.antesEDepois);
+  ok('com o critério do rateio junto delas', convivem.criterioJunto);
+  ok('o bloco solto saiu da tela', !convivem.blocoSolto);
 
   // --------------------------------- recorte vazio não inventa rateio
   console.log('\nRECORTE VAZIO — sem compartilhada, o indicador não inventa');
