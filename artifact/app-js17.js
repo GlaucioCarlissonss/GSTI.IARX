@@ -250,6 +250,167 @@ const naFilialDoBloco = (valor, r) => (r.filiais.size === 0 ? true : r.filiais.h
  * é só o fim de uma compra. A tendência compara as médias das duas metades do
  * período, e não o último ponto: um mês atípico no fim não é direção.
  */
+/**
+ * FAROL 1 — variação dos custos fixos (mensais) E dos variáveis (pontuais).
+ *
+ * Absorve o antigo "Custo recorrente — variação no período": a leitura dos
+ * fixos é a MESMA, número por número, e ganha ao lado a dos pontuais, que o
+ * indicador antigo deixava de fora de propósito e nunca mostrava em lugar
+ * nenhum.
+ *
+ * Três decisões:
+ *
+ * 1. **Fixos e variáveis são séries SEPARADAS, nunca somadas.** Uma compra
+ *    pontual num mês e nenhuma no seguinte produz uma "queda" de 100% que é só
+ *    o fim da compra; misturá-la ao recorrente contaminaria a única leitura
+ *    que fala de patamar. São dois faróis dentro de um bloco, não um.
+ * 2. **Dentro de cada série, despesa e investimento aparecem separados.**
+ *    Investir R$ 50 mil num mês não é o custo subir R$ 50 mil, e um total que
+ *    não distingue os dois faz o gestor explicar à diretoria uma alta que não
+ *    é despesa. A divisão é por `classificacao`, que o lançamento já carrega.
+ * 3. **A variação é do TOTAL do grupo**, e não de cada classificação: é a
+ *    pergunta "o custo subiu?", e responder duas vezes com sinais opostos não
+ *    é resposta.
+ */
+function calcularFarolCustos(r) {
+  const base = Loja.todosDoEscopo().filter((l) =>
+    passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, r) &&
+    naJanela(l.competencia, r) && (!r.somenteReconhecidas || reconhecidoDe(l)));
+
+  const ehInvestimento = (l) => l.classificacao === 'investimento';
+  const grupo = (itens) => {
+    const porMes = new Map();
+    for (const l of itens) {
+      const a = porMes.get(l.competencia) || { despesa: 0, investimento: 0, n: 0 };
+      a[ehInvestimento(l) ? 'investimento' : 'despesa'] += cent(l.valor);
+      a.n += 1;
+      porMes.set(l.competencia, a);
+    }
+    const meses = ordenado([...porMes.keys()]);
+    const serie = meses.map((m, i) => {
+      const a = porMes.get(m);
+      const total = a.despesa + a.investimento;
+      const ant = i > 0 ? porMes.get(meses[i - 1]) : null;
+      const anterior = ant ? ant.despesa + ant.investimento : null;
+      return {
+        comp: m, rot: mesExib(m), lancamentos: a.n,
+        despesa: reais(a.despesa), investimento: reais(a.investimento),
+        valor: reais(total), centavos: total,
+        // Sem mês anterior não há variação — e 0% diria que ficou igual.
+        variacao: anterior === null || anterior === 0
+          ? null : Math.round(((total - anterior) / anterior) * 1000) / 10,
+      };
+    });
+    const primeiro = serie[0] ? serie[0].centavos : 0;
+    const ultimo = serie.length ? serie[serie.length - 1].centavos : 0;
+    const metade = Math.floor(serie.length / 2);
+    const media = (f) => (f.length ? f.reduce((s, p) => s + p.centavos, 0) / f.length : 0);
+    const inicioMedio = media(serie.slice(0, metade || 1));
+    const variacaoMedia = inicioMedio === 0 ? 0 : ((media(serie.slice(metade)) - inicioMedio) / inicioMedio) * 100;
+    const totalDespesa = itens.filter((l) => !ehInvestimento(l)).reduce((s, l) => s + cent(l.valor), 0);
+    const totalInvestimento = itens.filter(ehInvestimento).reduce((s, l) => s + cent(l.valor), 0);
+    return {
+      serie, itens,
+      valorInicial: reais(primeiro), valorFinal: reais(ultimo),
+      variacaoTotal: serie.length < 2 || primeiro === 0
+        ? null : Math.round(((ultimo - primeiro) / primeiro) * 1000) / 10,
+      economia: reais(Math.max(primeiro - ultimo, 0)),
+      tendencia: serie.length < 2 ? 'indefinida'
+        : variacaoMedia <= -2 ? 'queda' : variacaoMedia >= 2 ? 'alta' : 'estavel',
+      despesa: reais(totalDespesa), investimento: reais(totalInvestimento),
+      total: reais(totalDespesa + totalInvestimento),
+      pctInvestimento: pct(totalInvestimento, totalDespesa + totalInvestimento),
+    };
+  };
+
+  return {
+    fixos: grupo(base.filter((l) => l.natureza === 'fixa')),
+    variaveis: grupo(base.filter((l) => l.natureza !== 'fixa')),
+  };
+}
+
+/**
+ * As DUAS medidas de um grupo, escritas juntas e nomeadas.
+ *
+ * `variacaoTotal` compara o primeiro mês com o último; `tendencia` compara a
+ * média da primeira metade com a da segunda. A segunda é mais robusta — uma
+ * ponta atípica não a move —, e as duas podem discordar de verdade. Mostrá-las
+ * sem rótulo ("↓ em queda" ao lado de "+72,8%") lê-se como defeito.
+ */
+const SETA_TENDENCIA = { queda: '↓', alta: '↑', estavel: '→', indefinida: '·' };
+const PALAVRA_TENDENCIA = {
+  queda: 'em queda', alta: 'em alta', estavel: 'estável', indefinida: 'sem base para dizer',
+};
+const rotuloVariacao = (g) =>
+  (g.variacaoTotal === null ? 'sem base para dizer' : (g.variacaoTotal > 0 ? '+' : '')
+    + g.variacaoTotal.toLocaleString('pt-BR') + '% ponta a ponta')
+  + ` (tendência ${SETA_TENDENCIA[g.tendencia]} ${PALAVRA_TENDENCIA[g.tendencia]})`;
+
+/** As duas classificações. Cor E hachura: dois canais, nunca um só. */
+const COR_DESPESA = 'var(--s1)';
+const COR_INVESTIMENTO = 'var(--m4)';
+
+const legendaDeClassificacaoHtml = () => `<div class="legenda-tipos" style="margin-top:10px">
+  <span class="legenda-titulo">Classificação</span>
+  <span><i style="background:${COR_DESPESA}" aria-hidden="true"></i>despesa</span>
+  <span><i class="amostra-hachura" style="background:${COR_INVESTIMENTO}" aria-hidden="true"></i>investimento</span>
+</div>`;
+
+/**
+ * Os quatro números do Farol 1: variação de cada grupo, e quanto de cada um é
+ * investimento. O percentual de investimento fica ao lado da variação porque é
+ * ele que explica uma alta que não é despesa.
+ */
+function cardsDoFarolHtml(f) {
+  const variacao = (g) => (g.variacaoTotal === null
+    ? '—' : (g.variacaoTotal > 0 ? '+' : '') + g.variacaoTotal.toLocaleString('pt-BR') + '%');
+  const cor = (g) => (g.variacaoTotal === null ? null
+    : g.variacaoTotal < 0 ? 'var(--bomtxt)' : g.variacaoTotal > 0 ? 'var(--crit)' : null);
+  const card = (rot, valor, apoio, c) => `<div class="card-plano">
+    <span class="card-rot">${esc(rot)}</span>
+    <strong${c ? ` style="color:${c}"` : ''}>${valor}</strong>
+    <span class="card-apoio">${esc(apoio)}</span></div>`;
+  const apoioDe = (g) => `${brl(g.valorInicial)} → ${brl(g.valorFinal)}`
+    + ` · tendência ${SETA_TENDENCIA[g.tendencia]} ${PALAVRA_TENDENCIA[g.tendencia]}`
+    + `${g.pctInvestimento > 0 ? ` · ${pctTxt(g.pctInvestimento)} investimento` : ''}`;
+  return `<div class="cards-plano">
+    ${card('Custos fixos (mensais)', variacao(f.fixos), apoioDe(f.fixos), cor(f.fixos))}
+    ${card('Custos variáveis (pontuais)', variacao(f.variaveis), apoioDe(f.variaveis), cor(f.variaveis))}
+  </div>`;
+}
+
+/**
+ * Um grupo do farol: o título, a série mês a mês em barras empilhadas por
+ * classificação, e a tabela com a variação de cada mês.
+ *
+ * A tabela existe porque a barra responde "como foi ao longo do tempo" e a
+ * coluna de variação responde "quanto mudou de um mês para o outro" — a
+ * segunda não se lê num gráfico, e é a que vai para a reunião.
+ */
+function grupoDoFarolHtml(id, titulo, g) {
+  if (!g.serie.length) {
+    return `<h3 class="titulo-mini">${esc(titulo)}</h3>
+      <p class="vazio">Nenhum lançamento deste tipo no recorte.</p>`;
+  }
+  return `<h3 class="titulo-mini">${esc(titulo)} — ${brl(g.total)} no período${
+    g.investimento > 0 ? `, dos quais ${brl(g.investimento)} em investimento` : ''}</h3>
+    <div id="i-farol-${esc(id)}"></div>
+    <div class="rol rol-fixo" style="margin-top:10px;max-height:240px;min-height:0"><table>
+      <thead><tr><th>Competência</th><th class="n">Despesa</th><th class="n">Investimento</th>
+        <th class="n">Total</th><th class="n">Variação</th></tr></thead>
+      <tbody>${g.serie.map((p) => `<tr>
+        <td>${esc(p.rot)}</td>
+        <td class="n">${p.despesa > 0 ? brl(p.despesa) : '—'}</td>
+        <td class="n"${p.investimento > 0 ? ` style="color:${COR_INVESTIMENTO}"` : ''}>${
+          p.investimento > 0 ? brl(p.investimento) : '—'}</td>
+        <td class="n">${brl(p.valor)}</td>
+        <td class="n"${p.variacao === null ? '' : ` style="color:${
+          p.variacao < 0 ? 'var(--bomtxt)' : p.variacao > 0 ? 'var(--crit)' : 'var(--tinta2)'}"`}>${
+          p.variacao === null ? '—' : (p.variacao > 0 ? '+' : '') + p.variacao.toLocaleString('pt-BR') + '%'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
 function calcularReducao(r) {
   const porMes = new Map();
   for (const l of Loja.todosDoEscopo()) {
@@ -1809,6 +1970,7 @@ async function viewIndicadores() {
   const proj = calcularProjetos(rp);
   const rateio = calcularRateio(rf);
   const adequacao = calcularAdequacao(rf);
+  const farol = calcularFarolCustos(rf);
   const plano = calcularPlanoReducao(rf);
 
   // As quebras por unidade saem dos MESMOS registros que os cálculos acima
@@ -1835,8 +1997,9 @@ async function viewIndicadores() {
   };
   const semExtra = { coluna: 'Tarefas', colunaExtra: '', matriz: () => '', filial: () => '' };
 
-  const seta = { queda: '↓', alta: '↑', estavel: '→', indefinida: '·' };
-  const palavra = { queda: 'em queda', alta: 'em alta', estavel: 'estável', indefinida: 'sem base para dizer' };
+  // A seta e a palavra da tendência subiram para `SETA_TENDENCIA` e
+  // `PALAVRA_TENDENCIA`: `rotuloVariacao` também precisa delas, e duas cópias
+  // divergiriam na primeira correção.
   const corPrimeira = rateio.porEmpresa.length ? rateio.porEmpresa[0].cor : 'var(--m1)';
 
   el('#pagina').innerHTML = `
@@ -2059,17 +2222,37 @@ async function viewIndicadores() {
 
     ${blocoIndicador({
       chave: 'custo-recorrente',
-      titulo: 'Custo recorrente — variação no período',
-      valor: reducao.variacaoTotal === null
+      titulo: 'Farol 1 - Variação dos custos Fixos(Mensais) e Variação dos custos Variáveis(pontuais)',
+      // O NÚMERO DO CABEÇALHO continua sendo o dos fixos, e não uma média dos
+      // dois: é o patamar recorrente que responde "o custo subiu?", e somar
+      // uma compra pontual a ele foi justamente o que o indicador antigo
+      // evitava. A variação dos pontuais vem ao lado, no apoio e nos cards.
+      valor: farol.fixos.variacaoTotal === null
         ? '—'
-        : (reducao.variacaoTotal > 0 ? '+' : '') + reducao.variacaoTotal.toLocaleString('pt-BR') + '%',
-      cor: reducao.tendencia === 'queda' ? 'var(--bomtxt)' : reducao.tendencia === 'alta' ? 'var(--crit)' : null,
-      apoio: `${esc(seta[reducao.tendencia])} ${esc(palavra[reducao.tendencia])}${
-        reducao.economia > 0 ? ` · economia de ${brl(reducao.economia)}/mês` : ''}`,
+        : (farol.fixos.variacaoTotal > 0 ? '+' : '') + farol.fixos.variacaoTotal.toLocaleString('pt-BR') + '%',
+      cor: farol.fixos.tendencia === 'queda' ? 'var(--bomtxt)'
+        : farol.fixos.tendencia === 'alta' ? 'var(--crit)' : null,
+      // As duas medidas vêm NOMEADAS. A porcentagem é ponta a ponta (primeiro
+      // contra último mês) e a palavra é a tendência (média da primeira metade
+      // contra a da segunda). Elas podem discordar de verdade — uma série que
+      // dá um salto só no último mês é "em queda" na tendência e "+72%" ponta a
+      // ponta —, e escrevê-las juntas sem rótulo lê-se como defeito.
+      apoio: `fixos ${esc(rotuloVariacao(farol.fixos))} · variáveis ${esc(rotuloVariacao(farol.variaveis))}`
+        + `${farol.fixos.economia > 0 ? ` · economia de ${brl(farol.fixos.economia)}/mês` : ''}`,
       corpo: `${metaHtml(metaDoCustoRecorrente(rf, reducao))}
+        ${cardsDoFarolHtml(farol)}
+        ${legendaDeClassificacaoHtml()}
+        ${grupoDoFarolHtml('fixos', 'Custos fixos (mensais)', farol.fixos)}
+        ${grupoDoFarolHtml('variaveis', 'Custos variáveis (pontuais)', farol.variaveis)}
+        <h3 class="titulo-mini">Custo fixo por empresa e filial</h3>
         ${faixaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
         ${legendaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
         ${arvoreDeUnidadesHtml('ind-fixos', q.fixos, emDinheiro)}`,
+      nota: 'Fixos e variáveis são séries <strong>separadas, nunca somadas</strong>: uma compra pontual '
+        + 'num mês e nenhuma no seguinte produz uma "queda" de 100% que é só o fim da compra, e '
+        + 'misturá-la ao recorrente contaminaria a única leitura que fala de patamar. Dentro de cada '
+        + 'série, <strong>despesa</strong> e <strong>investimento</strong> aparecem separados — investir '
+        + 'R$ 50 mil num mês não é o custo subir R$ 50 mil. A variação é a do total de cada grupo.',
     })}
 
     ${blocoIndicador({
@@ -2313,6 +2496,29 @@ async function viewIndicadores() {
           nota: `${inteiro(doMes.length)} despesa(s) fixa(s) compartilhada(s), somando `
             + `${brl(reais(somaC(doMes.map((l) => l.valor))))}. `
             + `${inteiro(doMes.filter(jaRegularizada).length)} já com marco de adequação alcançado.`,
+        });
+      });
+  }
+  // FAROL 1 — uma barra empilhada por grupo, dividida entre despesa e
+  // investimento. Empilhada porque as duas somam o custo do mês: lado a lado
+  // fariam procurar uma comparação entre elas, quando o que há é uma soma.
+  for (const [id, g] of [['fixos', farol.fixos], ['variaveis', farol.variaveis]]) {
+    const alvo = el(`#i-farol-${id}`);
+    if (!alvo) continue;
+    barras(alvo,
+      g.serie.map((p) => ({ rot: p.rot, comp: p.comp, v: { despesa: p.despesa, investimento: p.investimento } })),
+      [{ k: 'despesa', nome: 'Despesa', cor: COR_DESPESA },
+        { k: 'investimento', nome: 'Investimento', cor: COR_INVESTIMENTO, hachura: true }],
+      'empilhado', brl, curto,
+      (ponto) => {
+        const doMes = g.itens.filter((l) => l.competencia === ponto.comp);
+        abrirRegistros({
+          titulo: `${id === 'fixos' ? 'Custos fixos' : 'Custos variáveis'} de ${ponto.rot}`,
+          tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
+          itens: [...doMes].sort((a, b) => cent(b.valor) - cent(a.valor)),
+          contagem: null,
+          nota: `${inteiro(doMes.length)} lançamento(s), somando ${brl(reais(somaC(doMes.map((l) => l.valor))))}. `
+            + `${inteiro(doMes.filter((l) => l.classificacao === 'investimento').length)} classificado(s) como investimento.`,
         });
       });
   }

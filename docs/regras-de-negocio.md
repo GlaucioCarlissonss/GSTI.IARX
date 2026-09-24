@@ -1167,6 +1167,42 @@ A leitura é um comparativo por empresa: **antes** é o que é dela mais 100% do
 que ela paga; **depois** é o que é dela mais a parcela que lhe cabe. A pagadora
 original vem marcada.
 
+## Farol 1: variação dos custos fixos e dos variáveis
+
+O bloco absorve o antigo *Custo recorrente — variação no período*: a leitura dos
+fixos é a mesma, número por número — série, variação, tendência, economia e a
+árvore por empresa e filial —, e ganha ao lado a dos **pontuais**, que o
+indicador antigo deixava de fora de propósito e não aparecia em lugar nenhum.
+
+**Fixos e variáveis são séries separadas, nunca somadas.** Uma compra pontual
+num mês e nenhuma no seguinte produz uma "queda" de 100% que é só o fim da
+compra; misturá-la ao recorrente contaminaria a única leitura que fala de
+patamar. São dois faróis dentro de um bloco, não um.
+
+**Dentro de cada série, despesa e investimento aparecem separados.** Investir
+R$ 50 mil num mês não é o custo subir R$ 50 mil, e um total que não distingue os
+dois faz explicar à diretoria uma alta que não é despesa. A divisão sai de
+`classificacao`, que o lançamento já carrega. Na base real do cliente, **98,7%
+dos custos variáveis são investimento** — sem a distinção, a variação dos
+pontuais seria lida como descontrole de despesa.
+
+A distinção usa **três canais**, nunca a cor sozinha: tom próprio, **hachura** na
+barra do investimento (a legenda mostra a mesma marca) e **coluna escrita** na
+tabela mês a mês.
+
+**A variação é a do total de cada grupo**, e não uma por classificação: a
+pergunta é "o custo subiu?", e responder duas vezes com sinais opostos não é
+resposta.
+
+### Duas medidas, e elas podem discordar
+
+O bloco mostra **ponta a ponta** (primeiro mês contra último) e **tendência**
+(média da primeira metade contra a da segunda). A segunda é mais robusta — uma
+ponta atípica não a move —, e as duas discordam de verdade quando a série dá um
+salto só no fim: na base real os variáveis são `+72,8% ponta a ponta` com
+`tendência em queda`. As duas vêm **nomeadas** na tela; escrevê-las juntas sem
+rótulo ("↓ em queda" ao lado de "+72,8%") lê-se como defeito.
+
 ## Objetivo 02: adequação dos custos compartilhados
 
 Adequar é fazer cada unidade pagar a parte dela **na origem**, em vez de uma

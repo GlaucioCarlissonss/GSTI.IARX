@@ -189,6 +189,12 @@
 .legenda-tipos .legenda-titulo{font-family:var(--mono);font-size:10px;letter-spacing:.09em;
   text-transform:uppercase;color:var(--tinta3)}
 .legenda-tipos em{font-style:italic;color:var(--tinta3)}
+/* A amostra hachurada da legenda: a mesma marca que a barra usa para
+   investimento. Sem ela, a legenda prometeria uma cor lisa e o gráfico
+   entregaria outra coisa. */
+.legenda-tipos i.amostra-hachura{
+  background-image:repeating-linear-gradient(45deg,
+    color-mix(in srgb,var(--sup) 90%,transparent) 0 2px, transparent 2px 6px)}
 /* A caixa fixa de meta, dentro do SVG: ela fica SEMPRE visível, ao contrário
    do balão de hover, porque é o compromisso do mês e não um detalhe sob
    demanda. O símbolo e o nome do tipo vão dentro dela — a cor da borda é

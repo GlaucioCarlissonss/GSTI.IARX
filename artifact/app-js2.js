@@ -89,6 +89,21 @@ function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = c
   const y = (v) => m.t + ap - (v/teto)*ap;
   const passo = lp/Math.max(pontos.length,1), larg = Math.min(passo*.62, 34);
   const svg = svgEl('svg', { viewBox:`0 0 ${L} ${A}`, role:'img', 'aria-label':'gráfico de barras' });
+  // HACHURA OPCIONAL POR SÉRIE: um segundo canal além da cor. Duas séries que
+  // precisam ser distinguidas por quem não separa matizes — despesa e
+  // investimento, por exemplo — não podem depender só do tom.
+  //
+  // O id é único por gráfico: dois na mesma página com o mesmo id fariam o
+  // segundo herdar a hachura do primeiro, que é um defeito silencioso.
+  const idHachura = `hachura-barras-${(barras.seq = (barras.seq || 0) + 1)}`;
+  if (series.some((s) => s.hachura)) {
+    const defs = svgEl('defs', {});
+    const p = svgEl('pattern', { id: idHachura, width: 6, height: 6,
+      patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
+    p.appendChild(svgEl('rect', { width: 1.8, height: 6, fill: 'var(--sup)', 'fill-opacity': 0.9 }));
+    defs.appendChild(p);
+    svg.appendChild(defs);
+  }
   for (const mk of marcas) {
     svg.appendChild(svgEl('line', { x1:m.e, x2:L-m.d, y1:y(mk), y2:y(mk), stroke: mk===0?'var(--linha2)':'var(--linha)', 'stroke-width':1 }));
     const t = svgEl('text', { x:m.e-8, y:y(mk)+3.5, 'text-anchor':'end', class:'eixo' }); t.textContent = fmtEixo(mk); svg.appendChild(t);
@@ -104,7 +119,11 @@ function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = c
       for (const s of series) {
         const v = p.v[s.k]||0, base = acc; acc += v;
         const topo = y(acc), alt = Math.max(y(base)-topo-2, 0);
-        if (alt > 0) g.appendChild(svgEl('path', { d: pathBarra(cx-larg/2, topo, larg, alt), fill:s.cor }));
+        if (alt > 0) {
+          const d = pathBarra(cx-larg/2, topo, larg, alt);
+          g.appendChild(svgEl('path', { d, fill:s.cor }));
+          if (s.hachura) g.appendChild(svgEl('path', { d, fill:`url(#${idHachura})` }));
+        }
       }
     } else {
       const lb = Math.max((larg - 2*(series.length-1))/series.length, 3);

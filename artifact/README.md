@@ -334,6 +334,7 @@ Vinte e uma suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-reclassificacao.cjs` | a prioridade do chamado: começa indefinida (a extração não traz), exige cargo e nome de quem pediu, e o histórico fica na linha |
 | `testar-rateio.cjs` | o rateio das compartilhadas: a soma das parcelas fecha exatamente, o grupo inteiro entra na tabela, e a leitura integral continua ao lado como o "antes" |
 | `testar-reducao.cjs` | o plano de redução: sem cadastro o indicador diz isso, cadastrar muda o indicador do topo, desativar devolve ao vazio, e dois planos sobre a mesma despesa são degraus em cadeia |
+| `testar-farol-custos.cjs` | o Farol 1: a série dos fixos sai idêntica à do indicador que ele absorveu, fixos e variáveis cobrem o recorte sem sobra nem repetição, e investimento se distingue por cor, hachura e coluna |
 | `testar-adequacao.cjs` | o Objetivo 02: a base nasce sem nada classificado e o indicador diz isso; classificar em lote o acende; o marco de adequação move valor de "compartilhado" para "regularizado" no mês certo; e os dois percentuais têm bases diferentes |
 | `testar-acordos.cjs` | o acordo de SLA que decide: a vigência escolhe pela abertura do chamado, a prévia não grava, a reaplicação vira dentro/fora, agregado e sem-prioridade ficam de fora, e mês fechado recusa |
 | `testar-reconhecedores.cjs` | quem reconhece despesa: o mesmo nome escrito de outro jeito é a mesma pessoa, a prévia não grava, aplicar marca só quem o cadastro alcança, e desativar não desfaz o passado |
