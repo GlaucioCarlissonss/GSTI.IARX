@@ -181,6 +181,19 @@
 .legenda-tipos .legenda-titulo{font-family:var(--mono);font-size:10px;letter-spacing:.09em;
   text-transform:uppercase;color:var(--tinta3)}
 .legenda-tipos em{font-style:italic;color:var(--tinta3)}
+/* A caixa fixa de meta, dentro do SVG: ela fica SEMPRE visível, ao contrário
+   do balão de hover, porque é o compromisso do mês e não um detalhe sob
+   demanda. O símbolo e o nome do tipo vão dentro dela — a cor da borda é
+   reforço, nunca o canal único. */
+.rot-meta{font-family:var(--sans);font-size:9.5px;font-weight:600}
+.caixa-meta{pointer-events:auto}
+/* A amostra de "projeção" na legenda: o mesmo tracejado da barra, para a marca
+   ser reconhecível. Fica separada por uma barra vertical — ela não é um tipo
+   de despesa, é a chave de leitura do que está hachurado. */
+.legenda-proj{margin-left:auto;padding-left:12px;border-left:1px solid var(--linha);color:var(--tinta3)}
+.legenda-proj i{width:12px;height:9px;border-radius:2px;display:inline-block;flex:none;
+  background:repeating-linear-gradient(45deg,var(--tinta3) 0 2px,transparent 2px 5px);
+  border:1px solid var(--linha2)}
 /* Antes → depois: duas barras na mesma escala, uma sobre a outra. Escalas
    diferentes fariam a segunda parecer maior por acidente de largura. */
 .comparativo{display:flex;flex-direction:column;gap:3px;min-width:180px}

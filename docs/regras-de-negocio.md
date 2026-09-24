@@ -1278,6 +1278,73 @@ mês aparece como "sem despesa neste mês", e não como "R$ 0,00": zero se lê c
 razão: três das oito cores ficam abaixo de 3:1 contra o fundo claro, e a regra é
 que cor fraca só entra acompanhada de rótulo visível.
 
+### O mês de referência é o último REALIZADO
+
+O "quanto custa hoje" sai do **último mês com despesa fixa que já aconteceu** —
+nunca do último mês da janela. Duas coisas empurram a janela para o futuro: a
+base carrega projeções lançadas com competência futura, e uma meta **sem fim de
+vigência** estica a ponta de cima até elas. Sem este corte, na base real o card
+comparava o alvo contra dezembro de 2027 e a legenda anunciava valores de um ano
+à frente. O **mês corrente** também fica de fora: ele está pela metade, e tomá-lo
+como referência faria o custo parecer ter despencado no dia 3.
+
+### Projeção, linha de topo e marcos de meta
+
+**Os meses futuros são projeção**, e repetem a **composição inteira** do mês de
+referência — não só o total, o que é o que permite a barra projetada manter as
+mesmas cores da realizada. Ela sai **hachurada e translúcida**, com o rótulo
+"projeção" na legenda e no balão: opacidade sozinha não serve como canal, porque
+quem não distingue tons claros não veria diferença nenhuma, e a diferença entre
+realizado e projetado é o ponto.
+
+> Os lançamentos futuros que já existem na base são deliberadamente ignorados
+> aqui. O que este objetivo pergunta é *"se nada mudar, o custo fixo de hoje
+> continua assim?"* — e é o custo de hoje, repetido, que responde. Quem quer ver
+> o que já está lançado no futuro tem o indicador **Custo recorrente mês a mês**.
+
+**A linha de topo** liga o alto de cada barra, realizada e projetada. Ela não
+repete a altura da barra: o que ela mostra é a **tendência**, que num empilhado
+de sete cores se perde no meio dos segmentos.
+
+**O ponto de cada mês tem três estados**, e o terceiro é o que evita uma mentira:
+
+| ponto | quando |
+| --- | --- |
+| **azul** | o mês não tem plano de redução vigente |
+| **cinza** | tem plano, mas o mês ainda não aconteceu — "a apurar" |
+| **verde / vermelho** | o mês aconteceu, e o realizado ficou dentro ou fora do alvo |
+
+Pintar de verde um mês futuro afirmaria um resultado inventado.
+
+**A caixa fixa sai do PLANO DE REDUÇÃO, não da meta.** É o plano que sabe qual
+tipo de despesa deve cair e para quanto; `metas` guarda um percentual de
+variação do custo fixo inteiro e não nomeia despesa nenhuma. Uma caixa por plano
+vigente, então **um mês pode ter várias** — é o caso que o enunciado cita.
+
+As caixas ficam numa faixa no topo, cada uma no nível mais alto em que não
+encosta numa vizinha, com uma haste tracejada até o ponto do mês dela. **Mês
+projetado não ganha caixa fixa**: um plano sem fim de vigência cobre todos eles,
+e dezesseis caixas dizendo "a apurar" cobririam o gráfico para não informar nada.
+O ponto cinza continua anunciando o compromisso, e a caixa aparece no balão.
+
+### Hover e clique
+
+**O balão é do MÊS**: uma linha por tipo com a cor ao lado e o valor, mais o
+total, mais as metas daquele mês. Tipo zerado não vira linha — procurar-se-ia
+uma despesa que não existe.
+
+**O clique abre os lançamentos do mês**, com a ficha **completa** (doze colunas,
+incluindo fornecedor, natureza, classificação, consumo, origem e reconhecimento)
+e ordenados **do maior para o menor valor**. A tela nasce larga, porque doze
+colunas em 680px chegam ilegíveis; o tamanho que a pessoa escolher continua
+ganhando. Clicar num mês **projetado** abre os lançamentos do mês de referência,
+que é a base da projeção, e a nota diz isso: o mês futuro não tem lançamento
+próprio, e um detalhamento vazio faria duvidar do número.
+
+> **Balão e clique param a propagação.** O `.kpi` que embrulha o gráfico também
+> é um gatilho de drill-down; sem isso, passar o cursor na barra mostrava a dica
+> do card inteiro, e clicar nela abria **duas** telas empilhadas.
+
 ## Cor da despesa compartilhada
 
 Cada empresa tem a sua cor, pela posição na lista ordenada do cliente. A

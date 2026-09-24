@@ -550,9 +550,17 @@ function calcularPlanoReducao(r) {
     naFilialDoBloco(l.filial, r) && naJanelaDoObjetivo(l.competencia));
 
   const meses = ordenado([...new Set(base.map((l) => l.competencia).filter(Boolean))]);
-  // O mês de REFERÊNCIA: o último com despesa fixa na janela. É contra ele que
-  // o alvo mensal é comparado, e é dele que sai o percentual.
-  const referencia = meses[meses.length - 1] || null;
+  // O mês de REFERÊNCIA é o último mês REALIZADO — e não simplesmente o último
+  // da janela. A base carrega projeções lançadas com competência futura, e uma
+  // meta sem fim estica a janela até elas: sem este corte, o "quanto custa
+  // hoje" saía de dezembro de 2027, o card comparava o alvo contra um mês que
+  // ainda não aconteceu e a legenda anunciava valores de um ano à frente.
+  //
+  // O mês corrente também fica de fora: ele está pela metade, e tomá-lo como
+  // referência faria o custo parecer ter despencado no dia 3.
+  const fechado = mesSoma(mesHoje(), -1);
+  const realizados = meses.filter((m) => m <= fechado);
+  const referencia = realizados[realizados.length - 1] || meses[meses.length - 1] || null;
   const doMesRef = base.filter((l) => l.competencia === referencia);
   const totalFixasMes = doMesRef.reduce((s, l) => s + cent(l.valor), 0);
 
@@ -623,7 +631,7 @@ function calcularPlanoReducao(r) {
 
   return {
     itens, serie, janela, referencia,
-    composicao: composicaoDoCustoFixo(base, meses, referencia),
+    composicao: composicaoDoCustoFixo(base, meses, referencia, vigentes),
     totalAtual: reais(totalAtual), totalAlvo: reais(totalAlvo),
     totalReducao: reais(totalAtual - totalAlvo),
     pctReducao: pct(totalAtual - totalAlvo, totalAtual),
@@ -671,7 +679,8 @@ function calcularPlanoReducao(r) {
  * legenda É esse rótulo — sem ela o gráfico seria cor pura, que é justamente o
  * que o projeto não admite.
  */
-function legendaDeTiposHtml(series, referencia) {
+function legendaDeTiposHtml(composicao) {
+  const { series, pontos, referencia } = composicao;
   const visiveis = series.filter((s) => s.total > 0);
   if (!visiveis.length) return '';
   // Ordenada por VALOR, ao contrário do empilhamento, que vai pela ordem das
@@ -679,16 +688,238 @@ function legendaDeTiposHtml(series, referencia) {
   // que a barra pode se dar ao luxo de empilhar na ordem que protege as cores.
   const porValor = [...visiveis].sort((a, b) => b.naReferencia - a.naReferencia
     || b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'));
+  const temProjecao = pontos.some((p) => p.projetado);
   return `<div class="legenda-tipos">
     <span class="legenda-titulo">Valores de ${esc(mesExib(referencia))}:</span>
     ${porValor.map((s) => `<span><i style="background:${s.cor}"></i>${esc(s.nome)} ·
       ${s.naReferencia > 0
         ? brl(s.naReferencia)
         : `<em title="Este tipo tem despesa em outros meses da janela, mas nenhuma em ${esc(mesExib(referencia))}.">sem despesa neste mês</em>`}</span>`).join('')}
+    ${temProjecao ? `<span class="legenda-proj"><i aria-hidden="true"></i>Barra hachurada = projeção,
+      repetindo a composição de ${esc(mesExib(referencia))}</span>` : ''}
   </div>`;
 }
 
-function composicaoDoCustoFixo(base, meses, referencia) {
+/**
+ * O gráfico do Objetivo 01: barras empilhadas por tipo, projeção, linha de topo
+ * e os marcos de meta.
+ *
+ * É uma função própria, e não `barras()`, porque `barras()` serve a outros
+ * cinco gráficos do sistema e nenhum deles tem projeção, linha de topo nem
+ * caixa fixa. Enfiar tudo lá dentro por parâmetro transformaria um desenho
+ * simples em quatro desenhos mal resolvidos.
+ *
+ * `aoClicar(ponto)` recebe o mês; quem liga o detalhamento é o chamador.
+ */
+/**
+ * As despesas fixas de UMA competência, no mesmo recorte que o objetivo usa.
+ *
+ * Repete os filtros de `calcularPlanoReducao` de propósito — é isso que faz a
+ * soma da lista fechar com a altura da barra clicada. Consultar por outro
+ * caminho abriria espaço para os dois divergirem sem ninguém perceber.
+ */
+function fixasDaCompetencia(r, comp) {
+  if (!comp) return [];
+  return Loja.todosDoEscopo().filter((l) =>
+    l.natureza === 'fixa' && l.competencia === comp &&
+    passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, r));
+}
+
+function barrasDoObjetivo(alvo, dados, aoClicar) {
+  alvo.replaceChildren();
+  const { series, pontos } = dados;
+  if (!pontos.length) { alvo.innerHTML = '<p class="vazio">Sem despesa fixa na vigência da meta.</p>'; return; }
+
+  const marcos = dados.marcos || new Map();
+  const L = 700, ALT = 15, LARG_CAIXA = 134, VAO = 3;
+  const mE = 80, mD = 12, lp = L - mE - mD;
+  const passo = lp / Math.max(pontos.length, 1);
+  const cx = (i) => mE + passo * (i + 0.5);
+
+  // As caixas fixas são posicionadas ANTES de o resto do desenho existir,
+  // porque é o número de níveis delas que decide a altura do gráfico. Cada
+  // caixa recebe o nível mais alto em que ela não encosta em nenhuma vizinha —
+  // empilhar por ordem de chegada, como eu fazia, deixava sete caixas em cima
+  // umas das outras e escondia justamente as barras.
+  //
+  // Mês PROJETADO não ganha caixa fixa: um plano sem fim de vigência cobre
+  // todos eles, e dezesseis caixas dizendo "a apurar" cobririam o gráfico para
+  // não informar nada. O ponto cinza continua lá, e o balão traz a meta.
+  const planejadas = [];
+  pontos.forEach((p, i) => {
+    if (p.projetado) return;
+    for (const mc of (marcos.get(p.comp) || [])) {
+      planejadas.push({ i, p, mc, x: Math.max(0, Math.min(L - mD - LARG_CAIXA, cx(i) - LARG_CAIXA / 2)) });
+    }
+  });
+  planejadas.sort((a, b) => a.x - b.x);
+  const niveis = [];
+  for (const c of planejadas) {
+    let n = 0;
+    while (niveis[n] && niveis[n] > c.x - VAO) n++;
+    niveis[n] = c.x + LARG_CAIXA;
+    c.nivel = n;
+  }
+
+  const alturaCaixas = niveis.length ? niveis.length * (ALT + VAO) + 12 : 14;
+  const A = 236 + alturaCaixas, m = { t: alturaCaixas, d: mD, b: 24, e: mE };
+  const ap = A - m.t - m.b;
+  const max = Math.max(0, ...pontos.map((p) => series.reduce((s, x) => s + (p.v[x.k] || 0), 0)));
+  const { teto, marcas } = escalaBoa(max);
+  const y = (v) => m.t + ap - (v / teto) * ap;
+  const larg = Math.min(passo * 0.62, 34);
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${L} ${A}`, role: 'img',
+    'aria-label': `Custo fixo mês a mês por tipo de despesa, ${pontos.length} meses`
+      + (planejadas.length ? ', com os meses que têm plano de redução marcados' : '') });
+
+  // A hachura que marca a projeção. A opacidade sozinha não serve como canal:
+  // quem não distingue tons claros não veria diferença nenhuma entre realizado
+  // e projetado, e a diferença entre os dois é o ponto.
+  const defs = svgEl('defs', {});
+  const hach = svgEl('pattern', { id: 'hachura-proj', width: 6, height: 6,
+    patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
+  hach.appendChild(svgEl('rect', { width: 6, height: 6, fill: 'var(--sup)', 'fill-opacity': 0.55 }));
+  hach.appendChild(svgEl('rect', { width: 2, height: 6, fill: 'var(--sup)', 'fill-opacity': 0.95 }));
+  defs.appendChild(hach);
+  svg.appendChild(defs);
+
+  for (const mk of marcas) {
+    svg.appendChild(svgEl('line', { x1: m.e, x2: L - m.d, y1: y(mk), y2: y(mk),
+      stroke: mk === 0 ? 'var(--linha2)' : 'var(--linha)', 'stroke-width': 1 }));
+    const t = svgEl('text', { x: m.e - 8, y: y(mk) + 3.5, 'text-anchor': 'end', class: 'eixo' });
+    t.textContent = curto(mk);
+    svg.appendChild(t);
+  }
+
+  const balao = (p) => [
+    ...series
+      .filter((s) => (p.v[s.k] || 0) > 0)       // tipo zerado não vira linha: procurar-se-ia uma despesa que não existe
+      .sort((a, b) => (p.v[b.k] || 0) - (p.v[a.k] || 0))
+      .map((s) => ({ nome: s.nome, cor: s.cor, valor: brl(p.v[s.k] || 0) })),
+    { nome: p.projetado ? 'Total projetado' : 'Total do mês', valor: brl(p.total) },
+    ...(marcos.get(p.comp) || []).map((mc) => ({
+      nome: `Meta: ${mc.tipo}`,
+      valor: `alvo ${brl(mc.alvo)} · ${mc.atinge === null ? 'a apurar' : mc.atinge ? 'alcançada' : 'não alcançada'}`,
+      cor: mc.atinge === null ? 'var(--tinta3)' : mc.atinge ? 'var(--bom)' : 'var(--crit)',
+    })),
+  ];
+
+  pontos.forEach((p, i) => {
+    const g = svgEl('g', {});
+    let acc = 0;
+    for (const s of series) {
+      const v = p.v[s.k] || 0, base = acc; acc += v;
+      const topo = y(acc), alt = Math.max(y(base) - topo - 2, 0);
+      if (alt <= 0) continue;
+      const d = pathBarra(cx(i) - larg / 2, topo, larg, alt);
+      g.appendChild(svgEl('path', { d, fill: s.cor,
+        'fill-opacity': p.projetado ? 0.42 : 1 }));
+      if (p.projetado) g.appendChild(svgEl('path', { d, fill: 'url(#hachura-proj)' }));
+    }
+    // A área de captura por ÚLTIMO, para ficar por cima dos segmentos: embaixo
+    // deles, uma barra alta a cobre inteira e o ponteiro nunca a alcança.
+    g.appendChild(svgEl('rect', { x: cx(i) - passo / 2, y: m.t, width: passo, height: ap, fill: 'transparent' }));
+
+    const titulo = p.rot + (p.projetado ? ' · projetado' : '');
+    // `stopPropagation` porque o `.kpi` que embrulha o gráfico tem o próprio
+    // `mousemove` (a dica do indicador, posta por `ligarKpis`): sendo ancestral,
+    // ele dispara DEPOIS e sobrescreveria o balão do mês pelo do card inteiro.
+    g.addEventListener('mousemove', (ev) => { ev.stopPropagation(); mostrarDica(ev, titulo, balao(p)); });
+    g.addEventListener('mouseleave', sumirDica);
+    if (aoClicar && p.total > 0) {
+      g.style.cursor = 'pointer';
+      g.setAttribute('role', 'button');
+      g.setAttribute('tabindex', '0');
+      g.setAttribute('aria-label', `${titulo}: ${brl(p.total)} — abrir os lançamentos deste mês`);
+      // `stopPropagation` pela mesma razão do balão: o `.kpi` que embrulha o
+      // gráfico também é um gatilho de drill-down, e sem isto um clique na
+      // barra abria DUAS telas empilhadas — a do mês e a do card inteiro.
+      const abrir = (ev) => { ev.stopPropagation(); sumirDica(); aoClicar(p); };
+      g.addEventListener('click', abrir);
+      g.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrir(ev); }
+      });
+      // O foco de teclado abre o mesmo balão, posicionado pelo retângulo do
+      // elemento — é a regra que vale para todo gatilho do sistema.
+      g.addEventListener('focus', () => {
+        const r = g.getBoundingClientRect();
+        mostrarDica({ clientX: r.left + r.width / 2, clientY: r.top + 12 }, titulo, balao(p));
+      });
+      g.addEventListener('blur', sumirDica);
+    }
+    svg.appendChild(g);
+    if (pontos.length <= 13 || i % 2 === 0) {
+      const t = svgEl('text', { x: cx(i), y: A - 7, 'text-anchor': 'middle', class: 'eixo' });
+      t.textContent = p.rot;
+      svg.appendChild(t);
+    }
+  });
+
+  // A LINHA DE TOPO: liga o alto de cada barra, realizada e projetada. Ela não
+  // repete a altura da barra — o que ela mostra é a TENDÊNCIA, que num
+  // empilhado com sete cores some no meio dos segmentos.
+  const topoY = (p) => y(series.reduce((s, x) => s + (p.v[x.k] || 0), 0));
+  svg.appendChild(svgEl('path', {
+    d: pontos.map((p, i) => `${i ? 'L' : 'M'}${cx(i)},${topoY(p)}`).join(' '),
+    fill: 'none', stroke: 'var(--s1)', 'stroke-width': 2,
+    'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+  }));
+
+  const alturaPonto = new Map();
+  pontos.forEach((p, i) => {
+    const lista = marcos.get(p.comp);
+    const py = topoY(p);
+    alturaPonto.set(p.comp, py);
+    // O ponto: AZUL quando o mês não tem compromisso; CINZA quando tem e ainda
+    // não dá para julgar (mês projetado); VERDE ou VERMELHO quando dá.
+    let cor = 'var(--s1)';
+    if (lista) {
+      const julgaveis = lista.filter((x) => x.atinge !== null);
+      cor = !julgaveis.length ? 'var(--tinta3)'
+        : julgaveis.every((x) => x.atinge) ? 'var(--bom)' : 'var(--crit)';
+    }
+    svg.appendChild(svgEl('circle', { cx: cx(i), cy: py, r: lista ? 4.5 : 3,
+      fill: cor, stroke: 'var(--sup)', 'stroke-width': 1.5 }));
+  });
+
+  // As caixas fixas, na faixa reservada no topo, cada uma no nível calculado
+  // lá em cima. A haste tracejada liga a caixa ao ponto do mês dela — com
+  // várias na tela, sem a haste não se sabe de que mês cada uma fala.
+  for (const c of planejadas) {
+    const mc = c.mc;
+    const yy = 6 + c.nivel * (ALT + VAO);
+    const corC = mc.atinge === null ? 'var(--tinta3)' : mc.atinge ? 'var(--bom)' : 'var(--crit)';
+    const simbolo = mc.atinge === null ? '·' : mc.atinge ? '\u2713' : '\u2717';
+    const dica = `${mc.nome} \u2014 reduzir ${mc.tipo} para ${brl(mc.alvo)} por m\u00eas. `
+      + `Realizado em ${c.p.rot}: ${brl(mc.realizado)}. `
+      + (mc.atinge === null ? 'M\u00eas ainda n\u00e3o apurado.'
+        : mc.atinge ? 'Meta alcan\u00e7ada.' : 'Meta n\u00e3o alcan\u00e7ada.');
+
+    const gc = svgEl('g', { class: 'caixa-meta' });
+    gc.appendChild(svgEl('line', { x1: cx(c.i), x2: cx(c.i), y1: yy + ALT,
+      y2: alturaPonto.get(c.p.comp) - 5,
+      stroke: corC, 'stroke-width': 1, 'stroke-dasharray': '2 2', opacity: 0.55 }));
+    gc.appendChild(svgEl('rect', { x: c.x, y: yy, width: LARG_CAIXA, height: ALT, rx: 4,
+      fill: 'var(--sup)', stroke: corC, 'stroke-width': 1.2 }));
+    const t = svgEl('text', { x: c.x + 6, y: yy + ALT - 4.5, class: 'rot-meta', fill: corC });
+    // O rótulo é o TIPO de despesa a reduzir, como pedido, com o mês na frente
+    // porque há várias caixas na mesma faixa. Truncar é melhor que transbordar:
+    // o nome inteiro e os números estão no `title` e no balão. O corte sai da
+    // largura da caixa — 9,5px em negrito dão cerca de 5,4px por caractere.
+    const MAX = Math.floor((LARG_CAIXA - 12) / 5.4);
+    const rot = `${simbolo} ${c.p.rot.replace(/\/\d\d/, '/')} ${mc.tipo}`;
+    t.textContent = rot.length > MAX ? rot.slice(0, MAX - 1) + '\u2026' : rot;
+    gc.appendChild(t);
+    gc.appendChild(svgEl('title', {})).textContent = dica;
+    gc.setAttribute('aria-label', dica);
+    svg.appendChild(gc);
+  }
+
+  alvo.appendChild(svg);
+}
+
+function composicaoDoCustoFixo(base, meses, referencia, planos) {
   const OUTROS = 'Outros';
   const rotulo = (l) => {
     const nome = String(l.tipo || '').trim() || 'Sem tipo';
@@ -715,18 +946,75 @@ function composicaoDoCustoFixo(base, meses, referencia) {
     naReferencia: reais(pesoNaReferencia(nome)),
   }));
 
+  // A COMPOSIÇÃO DO MÊS DE REFERÊNCIA, que é o molde das barras projetadas:
+  // "as barras futuras são projetadas com base nas despesas fixas do último
+  // mês". Repetir a composição inteira, e não só o total, é o que permite a
+  // barra projetada manter as mesmas cores da realizada.
+  const doRef = {};
+  for (const nome of nomes) doRef[nome] = pesoNaReferencia(nome);
+
   const pontos = meses.map((m) => {
+    // Depois do mês de referência, a barra é PROJEÇÃO. Os lançamentos futuros
+    // que já existem na base (parcelas e projeções cadastradas) são deliberada-
+    // mente ignorados aqui: o que este objetivo pergunta é "se nada mudar, o
+    // custo fixo de hoje continua assim?" — e é o custo de hoje, repetido, que
+    // responde. Quem quer ver o que já está lançado no futuro tem o indicador
+    // "Custo recorrente mês a mês", que mostra exatamente isso.
+    const projetado = !!referencia && m > referencia;
     const v = {};
     let totalC = 0;
     for (const nome of nomes) {
-      const c = porTipo.get(nome).get(m) || 0;
+      const c = projetado ? (doRef[nome] || 0) : (porTipo.get(nome).get(m) || 0);
       v[nome] = reais(c);
       totalC += c;
     }
-    return { comp: m, rot: mesExib(m), v, total: reais(totalC), centavos: totalC };
+    return { comp: m, rot: mesExib(m), v, total: reais(totalC), centavos: totalC, projetado };
   });
 
-  return { series, pontos };
+  return { series, pontos, referencia, marcos: marcosDeMeta(pontos, porTipo, planos, referencia) };
+}
+
+/**
+ * Os marcos de meta por mês: o que o ponto da linha azul anuncia.
+ *
+ * Um marco é um **plano de redução vigente naquele mês**, porque é o plano que
+ * sabe QUAL tipo de despesa deve cair e para quanto — a meta de `metas` é um
+ * percentual de variação do custo fixo inteiro, e não nomeia despesa nenhuma.
+ * É por isso que a caixa fixa sai do plano e não da meta.
+ *
+ * Três estados, e o terceiro é o que evita uma mentira: mês **futuro** não tem
+ * realizado, então não é verde nem vermelho — é "a apurar". Pintar de verde um
+ * mês que ainda não aconteceu afirmaria um resultado inventado.
+ */
+function marcosDeMeta(pontos, porTipo, planos, referencia) {
+  const vigenteEm = (p, m) =>
+    (!p.vigenciaInicio || p.vigenciaInicio <= m) && (!p.vigenciaFim || p.vigenciaFim >= m);
+
+  const marcos = new Map();
+  for (const pt of pontos) {
+    const doMes = (planos || []).filter((p) => vigenteEm(p, pt.comp));
+    if (!doMes.length) continue;
+    marcos.set(pt.comp, doMes.map((p) => {
+      const tipo = String(p.tipo || '').trim();
+      const serie = tipo ? porTipo.get(tipo) : null;
+      // Num mês projetado o realizado é o do mês de referência, repetido —
+      // é a mesma barra, então tem de ser o mesmo número.
+      const chave = pt.projetado ? referencia : pt.comp;
+      const realizadoC = tipo
+        ? (serie ? (serie.get(chave) || 0) : 0)
+        : Math.round(pt.total * 100);
+      const alvoC = cent(p.valorAlvo);
+      return {
+        nome: p.nome, tipo: tipo || 'todo o custo fixo',
+        cor: tipo ? corDoTipo(tipo) : 'var(--tinta3)',
+        alvo: reais(alvoC), realizado: reais(realizadoC),
+        // `null` = a apurar. É o estado dos meses que ainda não aconteceram.
+        atinge: pt.projetado ? null : realizadoC > 0 && realizadoC <= alvoC,
+        projetado: pt.projetado,
+      };
+    }));
+  }
+  return marcos;
 }
 
 /**
@@ -1121,8 +1409,8 @@ async function viewIndicadores() {
         ${plano.composicao.pontos.length === 0 ? '' : `
         <h3 class="titulo-mini">Custo fixo mês a mês, por tipo de despesa${
           plano.janela.de ? ` — ${mesExib(plano.janela.de)} a ${mesExib(plano.janela.ate)}` : ''}</h3>
-        <div id="i-plano-serie" style="margin-top:6px"></div>
-        ${legendaDeTiposHtml(plano.composicao.series, plano.referencia)}`}
+        ${legendaDeTiposHtml(plano.composicao)}
+        <div id="i-plano-serie" style="margin-top:2px"></div>`}
         ${plano.itens.length === 0 ? '' : `
         <div class="rol" style="margin-top:12px"><table>
           <thead><tr><th>Item</th><th class="n">Atual / mês</th><th class="n">Alvo / mês</th>
@@ -1415,11 +1703,26 @@ async function viewIndicadores() {
   // medição —, e é a distância entre as duas curvas que diz se o plano anda.
   const alvoPlano = el('#i-plano-serie');
   if (alvoPlano) {
-    if (plano.composicao.pontos.length) {
-      barras(alvoPlano, plano.composicao.pontos, plano.composicao.series, 'empilhado');
-    } else {
-      alvoPlano.innerHTML = '<p class="vazio">Sem despesa fixa na vigência da meta.</p>';
-    }
+    barrasDoObjetivo(alvoPlano, plano.composicao, (ponto) => {
+      // Mês projetado não tem lançamento próprio: o que o compõe é o mês de
+      // referência, repetido. Abrir a lista do mês futuro devolveria vazio, e
+      // um detalhamento vazio faz duvidar do número em vez de esclarecê-lo.
+      const comp = ponto.projetado ? plano.referencia : ponto.comp;
+      const itens = fixasDaCompetencia(rf, comp);
+      abrirRegistros({
+        titulo: ponto.projetado
+          ? `Custo fixo projetado para ${ponto.rot} — base: ${mesExib(comp)}`
+          : `Custo fixo de ${ponto.rot}`,
+        tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true,
+        // Do maior para o menor: a despesa que mais pesa é a que decide.
+        itens: [...itens].sort((a, b) => cent(b.valor) - cent(a.valor)),
+        contagem: null,
+        nota: ponto.projetado
+          ? `${inteiro(itens.length)} lançamento(s) de ${mesExib(comp)}, que é a base da projeção. `
+            + 'Os meses futuros repetem a composição do último mês realizado; eles não têm lançamento próprio.'
+          : `${inteiro(itens.length)} despesa(s) fixa(s), somando ${brl(ponto.total)}.`,
+      });
+    });
   }
   // O termômetro mora dentro do bloco de SLA, que abre fechado: desenhar num
   // elemento escondido é legítimo — o SVG tem `viewBox`, e aparece pronto
@@ -1986,10 +2289,14 @@ function tarefasDoRecorte(r, quais) {
  * tarefa. Aqui a conferência é por CONTAGEM, porque o número no card pode ser um
  * percentual — e somar percentuais não significa nada.
  */
-function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota }) {
+function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga }) {
   const confere = contagem === null || contagem === undefined || contagem === itens.length;
   abrirModal({
     titulo, tipo,
+    // A ficha completa nasce larga, e a tabela vale a soma das colunas em vez
+    // de 100% da caixa: sem isso, doze colunas se espremem e o texto de cada
+    // uma quebra em torre.
+    larguraPadrao: larga ? Math.min(1180, Math.max(window.innerWidth - 40, 680)) : null,
     corpo: `
       <div class="msg${confere ? '' : ' erro'}">
         <strong>${inteiro(itens.length)} registro(s).</strong>
@@ -1998,10 +2305,10 @@ function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota }) {
         ${nota ? ' ' + nota : ''}
       </div>
       ${itens.length === 0 ? '<p class="vazio">Nenhum registro neste recorte.</p>' : `
-      <div class="rol" style="margin-top:10px"><table>
+      <div class="rol" style="margin-top:10px"><table${larga ? ' class="larga"' : ''}>
         <thead><tr>${colunas.map((c) => `<th${c.n ? ' class="n"' : ''}>${esc(c.rotulo)}</th>`).join('')}</tr></thead>
         <tbody>${itens.slice(0, 400).map((it) => `<tr>${colunas
-          .map((c) => `<td${c.n ? ' class="n"' : ''}>${c.valor(it)}</td>`).join('')}</tr>`).join('')}</tbody>
+          .map((c) => `<td${c.n ? ' class="n"' : c.texto ? ' class="texto"' : ''}>${c.valor(it)}</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div>
       ${itens.length > 400 ? `<p class="nota" style="margin-top:8px">Exibindo os 400 primeiros de ${inteiro(itens.length)}.</p>` : ''}`}`,
     acoes: '<button type="button" class="bt" data-c>Fechar</button>',
@@ -2052,6 +2359,29 @@ const COLUNAS_LANCAMENTO_SIMPLES = [
   { rotulo: 'Filial', valor: (l) => esc(l.filial || 'empresa') },
   { rotulo: 'Centro de custo', valor: (l) => esc(l.tipo || '') },
   { rotulo: 'Descrição', valor: (l) => esc(l.descricao || '') },
+  { rotulo: 'Valor', n: true, valor: (l) => brl(l.valor) },
+];
+
+/**
+ * A ficha COMPLETA do lançamento, para quando o clique num gráfico é o pedido
+ * de "quero ver tudo o que há sobre estas despesas".
+ *
+ * Existe ao lado da versão curta, e não no lugar dela: a lista curta serve às
+ * telas em que o detalhamento é um aparte, e doze colunas ali empurrariam a
+ * leitura para a rolagem horizontal.
+ */
+const COLUNAS_LANCAMENTO_COMPLETO = [
+  { rotulo: 'Competência', valor: (l) => mesExib(l.competencia) },
+  { rotulo: 'Unidade', valor: (l) => esc(nomeEmpresa(l.empresa)) },
+  { rotulo: 'Filial', valor: (l) => esc(l.filial || 'empresa') },
+  { rotulo: 'Tipo de despesa', valor: (l) => esc(l.tipo || '—') },
+  { rotulo: 'Descrição', texto: true, valor: (l) => esc(l.descricao || '—') },
+  { rotulo: 'Fornecedor', texto: true, valor: (l) => esc(l.fornecedor || '—') },
+  { rotulo: 'Natureza', valor: (l) => esc(NATUREZAS[l.natureza] || l.natureza || '—') },
+  { rotulo: 'Classificação', valor: (l) => (l.classificacao === 'investimento' ? 'Investimento' : 'Despesa') },
+  { rotulo: 'Consumo', valor: (l) => esc(resumoConsumo(l) || 'própria') },
+  { rotulo: 'Origem', valor: (l) => esc((ORIGENS[origemDe(l)] || {}).curto || '—') },
+  { rotulo: 'Reconhecido', valor: (l) => (reconhecidoDe(l) ? 'Sim' : 'Não') },
   { rotulo: 'Valor', n: true, valor: (l) => brl(l.valor) },
 ];
 

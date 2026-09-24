@@ -23,7 +23,15 @@ function gravarTamanhoDoModal(chave, dados) {
  * `tipo` separa o tamanho guardado por espécie de tela — o detalhamento de um
  * indicador quer largura, um formulário de cadastro não.
  */
-function abrirModal({ titulo, corpo, acoes, aoMontar, tipo }) {
+/**
+ * `larguraPadrao` é o tamanho de ABERTURA quando esta espécie de tela ainda não
+ * foi redimensionada por ninguém. Existe para a tela que nasce larga por
+ * natureza — uma ficha de doze colunas em 680px chega ilegível, e pedir ao
+ * gestor que arraste a borda antes de conseguir ler é transferir a ele um
+ * problema que o desenho já conhecia. O que a pessoa escolher continua
+ * ganhando: o valor guardado é aplicado depois.
+ */
+function abrirModal({ titulo, corpo, acoes, aoMontar, tipo, larguraPadrao }) {
   const chave = chaveDoModal(tipo, titulo);
   const guardado = lerTamanhoDoModal(chave) || {};
 
@@ -64,7 +72,7 @@ function abrirModal({ titulo, corpo, acoes, aoMontar, tipo }) {
     if (largura) caixa.style.width = limitar(largura, MODAL_MINIMO.largura, tetoLargura()) + 'px';
     if (altura) caixa.style.height = limitar(altura, MODAL_MINIMO.altura, tetoAltura()) + 'px';
   };
-  aplicar(guardado.largura, guardado.altura);
+  aplicar(guardado.largura || larguraPadrao, guardado.altura);
 
   const btCheia = fundo.querySelector('[data-cheia]');
   const alternarCheia = (cheia) => {

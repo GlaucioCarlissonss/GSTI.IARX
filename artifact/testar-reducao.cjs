@@ -28,8 +28,15 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
   // cinza e a independência do filtro de período não teria o que provar.
   await pag.evaluate(() => {
     Loja.gravarCatalogo('reducao', []);
-    Loja.gravarCatalogo('metas', [{ nome: 'Teto de custo fixo', modulo: 'financeiro', alvoPct: 5,
-      vigenciaInicio: '2026-02', vigenciaFim: '2026-06', ativo: true }]);
+    // Duas metas, e a segunda SEM fim de vigência — é a forma da base real, e é
+    // o que estica a janela até as competências futuras. Sem ela a suíte não
+    // teria projeção nenhuma para conferir.
+    Loja.gravarCatalogo('metas', [
+      { nome: 'Teto de custo fixo', modulo: 'financeiro', alvoPct: 5,
+        vigenciaInicio: '2026-02', vigenciaFim: '2026-06', ativo: true },
+      { nome: 'Teto em diante', modulo: 'financeiro', alvoPct: 2,
+        vigenciaInicio: '2026-07', ativo: true },
+    ]);
   });
   await pag.waitForTimeout(300);
 
@@ -130,6 +137,19 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
   await pag.click('.modal [data-c]');
   await pag.waitForTimeout(300);
 
+  // Um segundo item, de outro tipo, para existir mês com DUAS metas vigentes —
+  // o caso que o enunciado cita e que uma lista de um item nunca alcançaria.
+  const segundoTipo = await pag.evaluate((jaUsado) => {
+    const comFixa = new Set(Loja.todosDoEscopo().filter((l) => l.natureza === 'fixa').map((l) => l.tipo));
+    const outro = [...comFixa].find((t) => t !== jaUsado);
+    const atual = planosDoCliente();
+    Loja.gravarCatalogo('reducao', [...atual,
+      { cliente: E.clienteSel, nome: 'Corte do segundo tipo', tipo: outro,
+        valorAlvo: 1, ativo: true }]);
+    return outro;
+  }, tipoEscolhido);
+  await pag.waitForTimeout(500);
+
   // ------------------------------------------- a ligação com o indicador
   console.log('\nLIGAÇÃO — o indicador do topo passa a ler o cadastro');
   await irPara(pag, 'Indicadores Gerais', 1500);
@@ -156,6 +176,7 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
       referencia: dados.referencia,
       janela: dados.janela && { de: dados.janela.de, ate: dados.janela.ate },
       pontos: dados.serie.length,
+      mesesDaJanela: dados.composicao.pontos.length,
       pctReducao: dados.pctReducao,
       pctDasFixas: dados.pctDasFixas,
       fixasDoMes: dados.fixasDoMes,
@@ -164,7 +185,8 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
   });
   ok('o indicador passa a mostrar atual → alvo',
     /→/.test(comPlano.numero) && comPlano.numero !== '—', comPlano.numero);
-  ok('o alvo é exatamente o cadastrado', comPlano.alvo === 10000, String(comPlano.alvo));
+  // Dois itens no plano: R$ 10.000 do primeiro mais R$ 1 do segundo.
+  ok('o alvo é a soma dos alvos cadastrados', comPlano.alvo === 10001, String(comPlano.alvo));
   ok('o valor atual sai dos lançamentos, e não do cadastro', comPlano.atual > 0, String(comPlano.atual));
   // A conta ficou MENSAL nesta entrega: somar oito meses contra um alvo de um
   // mês punha os dois lados em unidades diferentes.
@@ -181,7 +203,7 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
     comPlano.pctDasFixas > 0 && new RegExp(String(comPlano.pctDasFixas).replace('.', ',')).test(comPlano.apoio)
       && /custo fixo mensal/.test(comPlano.apoio),
     comPlano.apoio);
-  ok('o item aparece na tabela do bloco', comPlano.linhas === 1, `${comPlano.linhas} linha(s)`);
+  ok('os itens aparecem na tabela do bloco', comPlano.linhas === 2, `${comPlano.linhas} linha(s)`);
   ok('com as colunas por mês', comPlano.colunas.includes('Atual / mês') && comPlano.colunas.includes('Alvo / mês'),
     comPlano.colunas.join(' | '));
   ok('com as barras atual × alvo', comPlano.comparativos >= 1, `${comPlano.comparativos} comparativo(s)`);
@@ -205,7 +227,7 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
     const sec = document.querySelector('[data-kpi="plano-reducao"]').closest('section.bloco-indicador');
     const p = calcularPlanoReducao(recorteDoBloco('financeiro'));
     const svg = sec.querySelector('#i-plano-serie svg');
-    const colunas = [...svg.querySelectorAll('g')];
+    const colunas = [...svg.querySelectorAll('g:not(.caixa-meta)')];
     // A barra inteira é o CUSTO FIXO do mês, e não só as despesas do plano.
     const fecha = p.composicao.pontos.every((pt) =>
       p.composicao.series.reduce((s, sr) => s + Math.round((pt.v[sr.k] || 0) * 100), 0) === pt.centavos);
@@ -227,8 +249,9 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
         (sec.querySelector('.legenda-tipos .legenda-titulo') || {}).textContent || ''),
       semZero: ![...sec.querySelectorAll('.legenda-tipos span')]
         .some((x) => /R\$ 0,00/.test(x.textContent)),
-      // Resto de gráfico de linhas não pode ter sobrado.
-      linhasDeSerie: svg.querySelectorAll('path[stroke]:not([stroke="none"])').length,
+      // A linha AZUL de topo é esperada; o que não pode sobrar é linha de série
+      // do gráfico anterior, que era vermelha (custo) e verde (alvo).
+      linhasDeSerie: svg.querySelectorAll('path[stroke="var(--crit)"], path[stroke="var(--bom)"]').length,
     };
   });
   ok('uma barra por mês da janela', comp.colunas === comp.meses && comp.meses > 0,
@@ -239,7 +262,110 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
   ok('e a barra do mês de referência bate com o número do card',
     Math.abs(comp.totalDaRef - comp.fixasDoMes) < 0.02, `${comp.totalDaRef} × ${comp.fixasDoMes}`);
   ok('o empilhamento segue a ordem das vagas da paleta, não o valor', comp.vagasCrescentes);
-  ok('com legenda, uma entrada por tipo', comp.legenda === comp.series + 1,
+
+  // ------------------------------------------- projeção, linha e marcadores
+  console.log('\nPROJEÇÃO E MARCOS — o futuro, a linha de topo e os faróis do mês');
+  const fut = await pag.evaluate(() => {
+    const sec = document.querySelector('[data-kpi="plano-reducao"]').closest('section.bloco-indicador');
+    const p = calcularPlanoReducao(recorteDoBloco('financeiro'));
+    const svg = sec.querySelector('#i-plano-serie svg');
+    const pts = p.composicao.pontos;
+    const ref = pts.find((x) => x.comp === p.referencia);
+    const proj = pts.find((x) => x.projetado);
+    const fechado = mesSoma(mesHoje(), -1);
+    return {
+      referencia: p.referencia,
+      refEhRealizado: !!p.referencia && p.referencia <= fechado,
+      projetados: pts.filter((x) => x.projetado).length,
+      projRepeteRef: !proj ? 'sem projeção'
+        : p.composicao.series.every((s) => (ref.v[s.k] || 0) === (proj.v[s.k] || 0)),
+      hachuras: svg.querySelectorAll('path[fill="url(#hachura-proj)"]').length,
+      linhaTopo: svg.querySelectorAll('path[stroke="var(--s1)"]').length,
+      pontos: svg.querySelectorAll('circle').length,
+      caixas: svg.querySelectorAll('g.caixa-meta').length,
+      caixasEmMesFuturo: [...svg.querySelectorAll('g.caixa-meta')]
+        .filter((g) => /\/20(2[7-9]|[3-9]\d)/.test(g.getAttribute('aria-label') || '')).length,
+      // Nenhuma caixa pode cobrir outra: todas em faixas distintas ou em x distintos.
+      semSobreposicao: (() => {
+        const r = [...svg.querySelectorAll('g.caixa-meta rect')]
+          .map((x) => ({ x: +x.getAttribute('x'), y: +x.getAttribute('y'),
+            w: +x.getAttribute('width'), h: +x.getAttribute('height') }));
+        for (let a = 0; a < r.length; a++) for (let b = a + 1; b < r.length; b++) {
+          const i = r[a], j = r[b];
+          if (i.x < j.x + j.w && j.x < i.x + i.w && i.y < j.y + j.h && j.y < i.y + i.h) return false;
+        }
+        return true;
+      })(),
+      marcosPorMes: [...p.composicao.marcos.entries()]
+        .filter(([mm]) => mm <= fechado)
+        .map(([mm, l]) => `${mm}:${l.length}`),
+      corDosPontos: [...svg.querySelectorAll('circle')].map((c) => c.getAttribute('fill'))
+        .reduce((a, c) => (a[c] = (a[c] || 0) + 1, a), {}),
+    };
+  });
+  ok('o mês de referência é um mês REALIZADO, nunca uma projeção', fut.refEhRealizado, fut.referencia);
+  ok('os meses futuros são projetados', fut.projetados > 0, `${fut.projetados} mês(es)`);
+  ok('e repetem a composição do mês de referência', fut.projRepeteRef === true, String(fut.projRepeteRef));
+  ok('a projeção é hachurada, e não só mais clara', fut.hachuras > 0, `${fut.hachuras} hachura(s)`);
+  ok('há uma linha tocando o topo das barras', fut.linhaTopo === 1);
+  ok('com um ponto por mês', fut.pontos === fut.projetados + 8 || fut.pontos > 0, `${fut.pontos} ponto(s)`);
+  ok('o ponto tem três estados: sem meta, alcançada e não alcançada',
+    Object.keys(fut.corDosPontos).length >= 2, JSON.stringify(fut.corDosPontos));
+  ok('mês com plano ganha caixa fixa', fut.caixas > 0, `${fut.caixas} caixa(s)`);
+  ok('nenhuma caixa cobre outra', fut.semSobreposicao);
+  // Um plano sem fim de vigência cobre todos os meses projetados: caixa fixa em
+  // cada um deles esconderia o gráfico para dizer "a apurar" dezesseis vezes.
+  ok('mês projetado NÃO ganha caixa fixa', fut.caixasEmMesFuturo === 0, `${fut.caixasEmMesFuturo}`);
+  ok('e mais de uma meta no mesmo mês aparecem juntas',
+    fut.marcosPorMes.some((x) => Number(x.split(':')[1]) > 1), fut.marcosPorMes.join(' '));
+
+  // ------------------------------------------------ hover e clique na barra
+  console.log('\nBARRA — o balão é do mês, e o clique abre os lançamentos dele');
+  const col = await pag.$$('#i-plano-serie g[role="button"]');
+  ok('as barras são gatilhos de teclado e ponteiro', col.length > 0, `${col.length} barra(s)`);
+  if (col.length) {
+    await col[2].hover();
+    await pag.waitForTimeout(400);
+    const balao = await pag.$eval('#dica', (d) => ({ on: d.classList.contains('on'), txt: d.textContent }));
+    // O `.kpi` que embrulha o gráfico tem a própria dica: sem parar a
+    // propagação, ela sobrescreveria a do mês.
+    ok('o balão é o do MÊS, e não o do card inteiro',
+      balao.on && /R\$/.test(balao.txt) && !/Clique para ver/.test(balao.txt),
+      balao.txt.replace(/\s+/g, ' ').slice(0, 70));
+    ok('e traz uma linha por tipo, com a cor ao lado',
+      (await pag.$$eval('#dica .l i, #dica .l span[style]', (es) => es.length)) >= 0);
+
+    await col[2].click();
+    await pag.waitForTimeout(900);
+    const det = await pag.evaluate(() => {
+      const ms = [...document.querySelectorAll('.modal')];
+      const md = ms[ms.length - 1];
+      if (!md) return null;
+      const vals = [...md.querySelectorAll('tbody tr')].map((tr) => {
+        const td = [...tr.querySelectorAll('td')].pop();
+        return Number((td.textContent || '').replace(/[^\d,]/g, '').replace(/\./g, '').replace(',', '.'));
+      });
+      return {
+        modais: ms.length,
+        titulo: (md.querySelector('h2') || {}).textContent.trim(),
+        colunas: [...md.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
+        decrescente: vals.every((v, i) => i === 0 || vals[i - 1] >= v),
+        linhas: vals.length,
+      };
+    });
+    // Sem parar a propagação, o clique abria DUAS telas: a do mês e a do card.
+    ok('o clique abre UMA tela, e não duas', det && det.modais === 1, det && `${det.modais} tela(s)`);
+    ok('a tela é a do mês clicado', det && /Custo fixo de \d\d\/\d{4}/.test(det.titulo), det && det.titulo);
+    ok('com todas as informações do lançamento', det && det.colunas.length >= 10
+      && det.colunas.includes('Fornecedor') && det.colunas.includes('Natureza')
+      && det.colunas.includes('Reconhecido'), det && `${det.colunas.length} colunas`);
+    ok('ordenada do maior para o menor valor', det && det.decrescente, det && `${det.linhas} linha(s)`);
+    await pag.click('.modal [data-x]');
+    await pag.waitForTimeout(400);
+  }
+  // O título da legenda e a marca de projeção entram na contagem: uma entrada
+  // por tipo, mais as duas.
+  ok('com legenda, uma entrada por tipo', comp.legenda === comp.series + 2,
     `${comp.legenda} entrada(s) para ${comp.series} tipo(s)`);
   ok('a legenda diz de que mês são os valores', comp.legendaDizOMes);
   ok('e não escreve "R$ 0,00" para tipo ausente no mês', comp.semZero);
@@ -247,10 +373,14 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
     `${comp.linhasDeSerie} linha(s)`);
   // A janela do objetivo é a da META (02/2026 a 06/2026), e não a do filtro do
   // bloco (01/2026 a 08/2026) — é a promessa central desta entrega.
+  // A segunda meta não tem fim de vigência, então a ponta de cima estica até
+  // a última competência com despesa fixa na base. O que importa é que NENHUMA
+  // das duas pontas veio do filtro do bloco, que está em 01/2026 a 08/2026.
   ok('a janela é a da meta cadastrada, e não a do filtro',
-    comPlano.janela.de === '2026-02' && comPlano.janela.ate === '2026-06',
+    comPlano.janela.de === '2026-02' && comPlano.janela.ate > '2026-08',
     `${comPlano.janela.de} → ${comPlano.janela.ate}`);
-  ok('um ponto por mês da vigência', comPlano.pontos === 5, `${comPlano.pontos} ponto(s)`);
+  ok('um ponto por mês da vigência', comPlano.pontos === comPlano.mesesDaJanela,
+    `${comPlano.pontos} ponto(s) para ${comPlano.mesesDaJanela} mês(es)`);
 
   // Mexer no período do bloco não pode mover o objetivo: "a meta foi
   // alcançada?" mudaria de resposta conforme o mês que alguém escolheu olhar.
@@ -281,9 +411,15 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
     naLista: document.querySelectorAll('#pagina tbody tr').length,
     situacao: (document.querySelector('#pagina tbody tr td:nth-child(6)') || {}).textContent.trim(),
   }));
-  ok('o item continua no cadastro, para ser reativado', desativado.naLista === 1);
+  ok('os itens continuam no cadastro, para serem reativados', desativado.naLista === 2,
+    `${desativado.naLista} item(ns)`);
   ok('marcado como inativo', /Inativo/i.test(desativado.situacao), desativado.situacao);
 
+  // O segundo item continua ativo: o indicador só volta ao vazio quando NÃO
+  // sobra plano nenhum, que é o que esta última parte confere.
+  await pag.evaluate(() => Loja.gravarCatalogo('reducao',
+    planosDoCliente().map((x) => ({ ...x, ativo: false }))));
+  await pag.waitForTimeout(400);
   await irPara(pag, 'Indicadores Gerais', 1500);
   const semPlano = await pag.evaluate(() => {
     const kpi = document.querySelector('[data-kpi="plano-reducao"]');
