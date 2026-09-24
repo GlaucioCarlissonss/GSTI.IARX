@@ -212,6 +212,42 @@ const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-te
     [...r.cells].slice(1, 4).map((c) => c.textContent.trim().slice(0, 28)).join(' | ')));
   acoes.forEach((a) => console.log('    ' + a));
 
+  // ------------------------------------------- natureza editável na edição
+  console.log('\nNATUREZA — dá para reclassificar uma despesa já lançada');
+  await irPara(pag, 'Lançamentos', 1200);
+  await pag.click('#pagina tbody tr [data-ed]');
+  await pag.waitForTimeout(700);
+  const campoNat = await pag.evaluate(() => {
+    const sel = document.querySelector('#c-nat');
+    if (!sel) return null;
+    return { desabilitado: sel.disabled, valor: sel.value,
+      nota: (sel.closest('.campo').querySelector('.nota') || {}).textContent.replace(/\s+/g, ' ').trim() };
+  });
+  confere('o campo de natureza existe e está liberado na edição',
+    !!campoNat && campoNat.desabilitado === false, true);
+  confere('e avisa que não cria nem remove meses',
+    !!campoNat && /não cria nem remove meses/i.test(campoNat.nota), true);
+
+  const troca = await pag.evaluate(() => {
+    const sel = document.querySelector('#c-nat');
+    const de = sel.value;
+    const para = [...sel.options].map((o) => o.value).find((v) => v !== de);
+    sel.value = para;
+    sel.dispatchEvent(new Event('change'));
+    const j = document.querySelector('#c-just');
+    if (j) j.value = 'reclassificação conferida';
+    return { de, para, antes: Loja.todosDoEscopo().filter((l) => l.natureza === para).length };
+  });
+  await pag.click('.modal [data-s]');
+  await pag.waitForTimeout(1200);
+  const depoisNat = await pag.evaluate((para) => ({
+    modalAberto: !!document.querySelector('.modal'),
+    quantos: Loja.todosDoEscopo().filter((l) => l.natureza === para).length,
+  }), troca.para);
+  confere('trocar a natureza salva sem erro', depoisNat.modalAberto, false);
+  confere('e o lançamento passa a ter a natureza nova',
+    depoisNat.quantos > troca.antes, true);
+
   console.log('\n=== falhas: ' + (falhas.length ? falhas.join('; ') : 'nenhuma') + ' ===');
   console.log('=== erros de console: ' + (erros.length ? '\n' + erros.join('\n') : 'nenhum') + ' ===');
   await nav.close();

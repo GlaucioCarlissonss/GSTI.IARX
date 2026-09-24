@@ -168,8 +168,11 @@ function formLancamento(existente) {
       <div class="grade g3">
         <div class="campo"><label for="c-valor">Valor (R$)</label>
           <input id="c-valor" name="valor" value="${v.valor===''?'':String(v.valor).replace('.',',')}" placeholder="1.234,56"></div>
-        <div class="campo"><label for="c-nat">Natureza</label><select id="c-nat" name="natureza"${ed?' disabled':''}>
-          ${Object.entries(NATUREZAS).map(([k,n])=>`<option value="${k}"${k===v.natureza?' selected':''}>${n}</option>`).join('')}</select></div>
+        <div class="campo"><label for="c-nat">Natureza</label><select id="c-nat" name="natureza">
+          ${Object.entries(NATUREZAS).map(([k,n])=>`<option value="${k}"${k===v.natureza?' selected':''}>${n}</option>`).join('')}</select>
+          ${!ed ? '' : `<p class="nota" style="margin:4px 0 0">Reclassifica ${v.grupo
+            ? '<strong>a série inteira</strong>: uma série com meses de naturezas diferentes não descreveria despesa nenhuma'
+            : 'esta despesa'}. Não cria nem remove meses — para isso, lance de novo.</p>`}</div>
         <div class="campo"><label for="c-cls">Classificação</label><select id="c-cls" name="classificacao">
           <option value="despesa"${v.classificacao==='despesa'?' selected':''}>Despesa</option>
           <option value="investimento"${v.classificacao==='investimento'?' selected':''}>Investimento</option></select></div>
@@ -342,6 +345,26 @@ function lerValor(t) {
  * `filial` vem de fora quando o formulário está criando em várias de uma vez;
  * ao editar, o campo do formulário é que manda — o registro tem uma filial só.
  */
+/**
+ * Reclassifica a natureza de TODOS os meses de uma série, menos o que está
+ * sendo salvo — esse a própria gravação atualiza.
+ *
+ * Percorre os meses JÁ CARREGADOS da empresa (`E.lanc`), e não a base inteira:
+ * é onde a série pode estar ao alcance, e varrer o cliente inteiro a cada
+ * edição custaria uma leitura de tudo para achar irmãos.
+ */
+async function reclassificarSerie(emp, grupo, natureza, exceto, just) {
+  for (const comp of [...E.lanc.keys()]
+    .filter((k) => k.startsWith(emp + '__')).map((k) => k.slice(emp.length + 2))) {
+    const itens = Loja.itens(emp, comp);
+    if (!itens.some((x) => x.grupo === grupo && x.id !== exceto && x.natureza !== natureza)) continue;
+    // Mês fechado não é reescrito em silêncio: a mesma trava da edição comum.
+    checarCompetencia(comp, just, emp);
+    await Loja.gravarMes(emp, comp, itens.map((x) =>
+      (x.grupo === grupo && x.id !== exceto ? { ...x, natureza } : x)));
+  }
+}
+
 async function salvarLancamento(existente, campo, empresa, filial) {
   const emp = empresa || exigirEmpresaUnica();
   const comp = mesInterno(campo('competencia').value);
@@ -365,6 +388,7 @@ async function salvarLancamento(existente, campo, empresa, filial) {
   const base = {
     filial: pagadora,
     tipo: campo('tipo').value,
+    natureza: campo('natureza').value,
     classificacao: campo('classificacao').value,
     fornecedor: campo('fornecedor').value.trim() || null,
     descricao: campo('descricao').value.trim() || null,
@@ -376,6 +400,13 @@ async function salvarLancamento(existente, campo, empresa, filial) {
 
   if (existente) {
     checarCompetencia(existente.competencia, just, emp);
+    // A natureza vale para a SÉRIE inteira. Meia série fixa e meia pontual não
+    // descreveria despesa nenhuma — e é o custo recorrente que lê esse campo
+    // para decidir o que entra na conta.
+    const mudouNatureza = base.natureza !== existente.natureza;
+    if (mudouNatureza && existente.grupo) {
+      await reclassificarSerie(emp, existente.grupo, base.natureza, existente.id, just);
+    }
     if (comp !== existente.competencia) {
       if (existente.parcela) throw new Error('Não é possível mover a competência de uma parcela projetada.');
       checarCompetencia(comp, just, emp);
@@ -387,8 +418,10 @@ async function salvarLancamento(existente, campo, empresa, filial) {
     destino.forEach((x) => delete x.competencia);
     await Loja.gravarMes(emp, comp, destino);
     await Loja.auditar({ acao:'atualizar', entidade:'lancamento', id: existente.id, justificativa: just || null,
-      antes: { valor: existente.valor, classificacao: existente.classificacao, competencia: mesExib(existente.competencia) },
-      depois: { valor, classificacao: base.classificacao, competencia: mesExib(comp) } }, emp);
+      antes: { valor: existente.valor, classificacao: existente.classificacao,
+        natureza: existente.natureza, competencia: mesExib(existente.competencia) },
+      depois: { valor, classificacao: base.classificacao,
+        natureza: base.natureza, competencia: mesExib(comp) } }, emp);
     return;
   }
 

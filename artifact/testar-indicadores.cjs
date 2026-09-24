@@ -182,12 +182,23 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
     const m = document.querySelector('.modal');
     return m ? {
       titulo: m.querySelector('h2, .tit') ? m.textContent.slice(0, 40) : '',
-      linhas: m.querySelectorAll('tbody tr').length,
-      destacadas: m.querySelectorAll('tr[data-sem-reconhecer]').length,
+      // O detalhamento virou ÁRVORE: o LANÇAMENTO é o nível 4, e é só ele
+      // que carrega a marca de por reconhecer — tipo, empresa e filial são
+      // agrupadores, não registros.
+      linhas: m.querySelectorAll('tr.nivel-4').length,
+      destacadas: m.querySelectorAll('tr.nivel-4[data-sem-reconhecer]').length,
+      niveis: [1, 2, 3, 4].map((n) => m.querySelectorAll(`tr.nivel-${n}`).length),
+      caixas: m.querySelectorAll('input[data-sel-lanc]').length,
       botao: m.querySelector('[data-reconhecer]') ? m.querySelector('[data-reconhecer]').disabled : null,
     } : null;
   });
   ok('o detalhamento abre com os lançamentos', modal && modal.linhas > 0, `${modal && modal.linhas} linha(s)`);
+  // A MESMA estrutura do detalhamento da barra do Objetivo 01: uma tela que
+  // lista lançamento tem de listar do mesmo jeito em toda a tela.
+  ok('e na mesma árvore tipo → empresa → filial → lançamento',
+    modal && modal.niveis.every((n) => n > 0), modal && modal.niveis.join('/'));
+  ok('com a caixa de reconhecer em cada lançamento',
+    modal && modal.caixas === modal.linhas, modal && `${modal.caixas} caixa(s)`);
   ok('todos aparecem destacados como por reconhecer', modal && modal.destacadas === modal.linhas,
     `${modal && modal.destacadas}/${modal && modal.linhas}`);
   ok('e o botão começa desabilitado, sem seleção', modal && modal.botao === true);

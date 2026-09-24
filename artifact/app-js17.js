@@ -651,10 +651,21 @@ function calcularPlanoReducao(r) {
   // versão anterior fazia, e por isso o alvo nunca podia ser alcançado.
   const vigenteEm = (p, m) =>
     (!p.vigenciaInicio || p.vigenciaInicio <= m) && (!p.vigenciaFim || p.vigenciaFim >= m);
-  const mesBase = meses.find((m) => vigentes.some((p) => vigenteEm(p, m))) || meses[0] || referencia;
-  const custoFixoBase = base.filter((l) => l.competencia === mesBase)
-    .reduce((s, l) => s + cent(l.valor), 0);
-  const jaCortado = custoFixoBase - totalFixasMes;
+  // O mês base tem de ser REALIZADO. Antes ele era o primeiro mês da janela com
+  // plano vigente, e um plano que só começa a valer no futuro punha a base num
+  // mês que ainda não aconteceu — cujos lançamentos são só as projeções já
+  // cadastradas. Na base real isso produziu a frase "o custo fixo subiu
+  // R$ 95.572,89 desde 01/2027", comparando agosto de 2026 com janeiro de 2027.
+  const mesBase = realizados.find((m) => vigentes.some((p) => vigenteEm(p, m))) || null;
+  const custoFixoBase = mesBase
+    ? base.filter((l) => l.competencia === mesBase).reduce((s, l) => s + cent(l.valor), 0)
+    : 0;
+  const jaCortado = mesBase ? custoFixoBase - totalFixasMes : 0;
+  // Plano que só passa a valer no futuro não tem o que julgar: o primeiro mês
+  // em que ele vigora.
+  const inicioNoFuturo = !mesBase && vigentes.length
+    ? ordenado(vigentes.map((p) => p.vigenciaInicio).filter(Boolean))[0] || null
+    : null;
 
   return {
     itens, serie, janela, referencia,
@@ -662,7 +673,7 @@ function calcularPlanoReducao(r) {
     totalAtual: reais(totalAtual), totalAlvo: reais(totalAlvo),
     metaTotal: reais(metaTotal),
     resultadoEsperado: reais(resultadoEsperado),
-    mesBase, custoFixoBase: reais(custoFixoBase), jaCortado: reais(jaCortado),
+    mesBase, custoFixoBase: reais(custoFixoBase), jaCortado: reais(jaCortado), inicioNoFuturo,
     totalReducao: reais(metaTotal),
     pctReducao: pct(metaTotal, totalAtual),
     // O percentual que o enunciado pede: quanto o plano representa sobre o
@@ -671,7 +682,8 @@ function calcularPlanoReducao(r) {
     fixasDoMes: reais(totalFixasMes),
     // Alcançado quando o custo fixo já caiu, desde o mês base, pelo menos o
     // que se combinou cortar.
-    atinge: metaTotal > 0 && jaCortado >= metaTotal,
+    // Sem mês base realizado não há veredicto: `null` é o cinza de "a apurar".
+    atinge: !mesBase ? null : metaTotal > 0 && jaCortado >= metaTotal,
     // O semáforo da META cadastrada, medida na janela dela — e não no recorte
     // do bloco, que é justamente o que esta entrega desacoplou.
     leituraMeta: metaNaJanelaDoObjetivo(r, janela),
@@ -817,7 +829,7 @@ function abrirMetasDoMes(rot, mc) {
  * recorte já é um mês só, e os níveis nascem fechados — o custo de montar é o
  * de percorrer a lista que a tela já tem na mão.
  */
-function arvoreDoDetalhamentoHtml(lancamentos) {
+function arvoreDoDetalhamentoHtml(lancamentos, prefixoDoLancamento) {
   if (!lancamentos.length) return '<p class="vazio">Nenhum registro neste recorte.</p>';
 
   const total = lancamentos.reduce((s, l) => s + cent(l.valor), 0);
@@ -867,8 +879,9 @@ function arvoreDoDetalhamentoHtml(lancamentos) {
         [...f.itens].sort((a, b) => cent(b.valor) - cent(a.valor)).forEach((l) => {
           const c = cent(l.valor);
           const rotulo = l.descricao || l.fornecedor || l.tipo || 'Lançamento';
-          linhas.push(`<tr class="nivel-4" data-pai="${nF}" hidden>
-            <td><span class="arv-vazio" aria-hidden="true"></span><span class="arv-vazio" aria-hidden="true"></span>
+          linhas.push(`<tr class="nivel-4" data-pai="${nF}"${classeReconhecimento(l)} hidden>
+            <td>${prefixoDoLancamento ? prefixoDoLancamento(l) : '<span class="arv-vazio" aria-hidden="true"></span>'}
+              <span class="arv-vazio" aria-hidden="true"></span>
               <span class="arv-vazio" aria-hidden="true"></span>${esc(rotulo)}
               <span class="arv-comp">${esc(mesExib(l.competencia))}${
                 reconhecidoDe(l) ? '' : ' · por reconhecer'}</span></td>
@@ -1678,16 +1691,23 @@ async function viewIndicadores() {
             estado: plano.itens.length === 0 || plano.metaTotal === 0 ? null : plano.atinge,
             texto: plano.itens.length === 0
               ? 'nenhuma despesa no plano de redução'
-              : plano.jaCortado > 0
-                ? `o custo fixo caiu ${brl(plano.jaCortado)} desde ${mesExib(plano.mesBase)}, `
-                  + `contra a meta de cortar ${brl(plano.metaTotal)}`
-                : `o custo fixo subiu ${brl(-plano.jaCortado)} desde ${mesExib(plano.mesBase)}, `
-                  + `e a meta é cortar ${brl(plano.metaTotal)}`,
-            detalhe: plano.itens.length
-              ? `Compara o custo fixo de ${mesExib(plano.referencia)} com o de ${mesExib(plano.mesBase)}, `
-                + 'que é o primeiro mês em que algum plano já vigorava. O alvo tem de sair de um mês '
-                + 'FIXO: derivado do mês corrente, ele desceria junto com o custo e nunca seria alcançado.'
-              : 'Cadastre as despesas e quanto cortar em Sistema › Cadastro › Plano de redução.' })}
+              : !plano.mesBase
+                ? `o plano só passa a valer em ${plano.inicioNoFuturo ? mesExib(plano.inicioNoFuturo) : 'um mês futuro'}`
+                  + ` — a meta é cortar ${brl(plano.metaTotal)}`
+                : plano.jaCortado > 0
+                  ? `o custo fixo caiu ${brl(plano.jaCortado)} desde ${mesExib(plano.mesBase)}, `
+                    + `contra a meta de cortar ${brl(plano.metaTotal)}`
+                  : `o custo fixo subiu ${brl(-plano.jaCortado)} desde ${mesExib(plano.mesBase)}, `
+                    + `e a meta é cortar ${brl(plano.metaTotal)}`,
+            detalhe: !plano.itens.length
+              ? 'Cadastre as despesas e quanto cortar em Sistema › Cadastro › Plano de redução.'
+              : !plano.mesBase
+                ? 'Não há mês REALIZADO com este plano vigente, então não há resultado para julgar. '
+                  + 'A comparação começa no primeiro mês fechado em que ele valer.'
+                : `Compara o custo fixo de ${mesExib(plano.referencia)} com o de ${mesExib(plano.mesBase)}, `
+                  + 'que é o primeiro mês REALIZADO em que algum plano já vigorava. O alvo tem de sair de '
+                  + 'um mês fixo e passado: derivado do mês corrente ele desceria junto com o custo, e num '
+                  + 'mês futuro compararia o hoje com uma projeção.' })}
         </div>
         ${plano.composicao.pontos.length === 0 ? '' : `
         <h3 class="titulo-mini">Custo fixo mês a mês, por tipo de despesa${
@@ -2063,8 +2083,9 @@ async function viewIndicadores() {
         + 'Clique para ver os lançamentos que compõem o valor atual.',
       abrir: plano.itens.length
         ? () => abrirRegistros({
-            titulo: 'Objetivo 01 — despesas fixas do plano', tipo: 'indicadores',
-            colunas: COLUNAS_LANCAMENTO_SIMPLES, itens: lancamentosDoPlano(), contagem: null,
+            titulo: 'Objetivo 01 — despesas fixas do plano', tipo: 'indicadores-mes',
+            colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
+            itens: lancamentosDoPlano(), contagem: null,
             nota: `Custo mensal atual ${brl(plano.totalAtual)}, alvo ${brl(plano.totalAlvo)} — `
               + `${pctTxt(plano.pctReducao)} de redução, medidos em `
               + `${plano.referencia ? mesExib(plano.referencia) : 'nenhum mês'}. `
@@ -2079,8 +2100,8 @@ async function viewIndicadores() {
         + 'Clique para ver os lançamentos compartilhados.',
       abrir: rateio.lancamentos
         ? () => abrirRegistros({
-            titulo: 'Despesas compartilhadas do recorte', tipo: 'indicadores',
-            colunas: COLUNAS_LANCAMENTO_SIMPLES,
+            titulo: 'Despesas compartilhadas do recorte', tipo: 'indicadores-mes',
+            colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
             itens: Loja.todosDoEscopo().filter((l) =>
               passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, rf) &&
               naJanela(l.competencia, rf) && consumoDe(l) === 'compartilhado'),
@@ -2095,8 +2116,9 @@ async function viewIndicadores() {
         + 'Só a despesa de natureza fixa entra: uma compra pontual num mês e nenhuma no seguinte '
         + 'produziria uma "redução" que é só o fim da compra. Clique para ver as despesas fixas.',
       abrir: () => abrirRegistros({
-        titulo: 'Custo recorrente — despesas fixas do recorte', tipo: 'indicadores',
-        colunas: COLUNAS_LANCAMENTO_SIMPLES, itens: fixosDoRecorte(rf), contagem: null,
+        titulo: 'Custo recorrente — despesas fixas do recorte', tipo: 'indicadores-mes',
+        colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
+        itens: fixosDoRecorte(rf), contagem: null,
         nota: 'A variação compara o primeiro e o último mês; a lista traz as despesas que formam a série.',
       }),
     },
@@ -2165,8 +2187,9 @@ async function viewIndicadores() {
     tr.onclick = (ev) => {
       ev.stopPropagation();
       abrirRegistros({
-        titulo: 'Plano de redução — ' + item.nome, tipo: 'indicadores',
-        colunas: COLUNAS_LANCAMENTO_SIMPLES, itens: item.registros, contagem: null,
+        titulo: 'Plano de redução — ' + item.nome, tipo: 'indicadores-mes',
+        colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
+        itens: item.registros, contagem: null,
         nota: `Atual ${brl(item.atual)} · alvo ${brl(item.alvo)} · ${pctTxt(item.pctReducao)} de redução.`,
       });
     };
@@ -2581,7 +2604,7 @@ function tarefasDoRecorte(r, quais) {
  * tarefa. Aqui a conferência é por CONTAGEM, porque o número no card pode ser um
  * percentual — e somar percentuais não significa nada.
  */
-function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga, arvore }) {
+function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga, arvore, prefixo }) {
   const confere = contagem === null || contagem === undefined || contagem === itens.length;
   abrirModal({
     titulo, tipo,
@@ -2596,7 +2619,7 @@ function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga, a
           : confere ? ' Confere com o indicador.' : ` Diverge: o indicador conta ${inteiro(contagem)}.`}
         ${nota ? ' ' + nota : ''}
       </div>
-      ${arvore ? arvoreDoDetalhamentoHtml(itens)
+      ${arvore ? arvoreDoDetalhamentoHtml(itens, prefixo)
         : itens.length === 0 ? '<p class="vazio">Nenhum registro neste recorte.</p>' : `
       <div class="rol" style="margin-top:10px"><table${larga ? ' class="larga"' : ''}>
         <thead><tr>${colunas.map((c) => `<th${c.n ? ' class="n"' : ''}>${esc(c.rotulo)}</th>`).join('')}</tr></thead>
@@ -2691,27 +2714,21 @@ function abrirDetalhe({ titulo, tipo, itens, esperado }) {
   const confere = esperado === null || Math.abs(soma - esperado) < 0.01;
   abrirModal({
     titulo, tipo,
+    // A MESMA árvore do detalhamento da barra — tipo → empresa → filial →
+    // lançamento. Esta tela tinha uma tabela plana própria, e duas telas que
+    // listam a mesma coisa de dois jeitos obrigam quem usa a reaprender a
+    // leitura a cada clique. A caixa de seleção do lote entra no nível 4, que é
+    // onde o lançamento está.
+    larguraPadrao: Math.min(1180, Math.max(window.innerWidth - 40, 680)),
     corpo: `
       <div class="msg${confere ? '' : ' erro'}">
         <strong>${inteiro(itens.length)} lançamento(s) · ${brl(soma)}.</strong>
         ${esperado === null ? '' : confere ? ' Confere com o indicador.' : ` Diverge: o indicador mostra ${brl(esperado)}.`}
+        Abra um tipo de despesa para chegar aos lançamentos e marcá-los.
       </div>
-      ${itens.length === 0 ? '<p class="vazio">Nenhum lançamento.</p>' : `
-      <div class="rol" style="margin-top:10px"><table>
-        <thead><tr><th></th><th>Competência</th><th>Filial</th><th>Consumo</th><th>Centro de custo</th><th>Descrição</th>
-          <th class="n">Valor</th></tr></thead>
-        <tbody>${itens.slice(0, 400).map((l) => `<tr${classeReconhecimento(l)}>
-          <td><input type="checkbox" data-sel-lanc="${esc(l.id)}" data-comp="${esc(l.competencia)}"
-               data-emp="${esc(l.empresa)}"${reconhecidoDe(l) ? ' disabled' : ''}
-               aria-label="Selecionar ${esc(l.descricao || l.tipo)}"></td>
-          <td>${mesExib(l.competencia)}</td>
-          <td>${esc(l.filial || 'empresa')}</td>
-          <td title="${esc(detalheConsumo(l))}">${etiquetaConsumoHtml(l)}</td>
-          <td>${esc(l.tipo)}</td>
-          <td>${esc(l.descricao || '')}</td>
-          <td class="n">${brl(l.valor)}</td></tr>`).join('')}</tbody>
-      </table></div>
-      ${itens.length > 400 ? `<p class="nota" style="margin-top:8px">Exibindo os 400 primeiros de ${inteiro(itens.length)}.</p>` : ''}`}`,
+      ${arvoreDoDetalhamentoHtml(itens, (l) => `<input type="checkbox" data-sel-lanc="${esc(l.id)}"
+        data-comp="${esc(l.competencia)}" data-emp="${esc(l.empresa)}"${reconhecidoDe(l) ? ' disabled' : ''}
+        aria-label="Selecionar ${esc(l.descricao || l.tipo)}">`)}`,
     acoes: `<button type="button" class="bt" data-todos>Marcar todos</button>
       <button type="button" class="bt pri" data-reconhecer disabled>Reconhecer selecionados</button>
       <button type="button" class="bt" data-c>Fechar</button>`,
@@ -2730,6 +2747,9 @@ function abrirDetalhe({ titulo, tipo, itens, esperado }) {
         contar();
       };
       raiz.querySelector('[data-c]').onclick = fechar;
+      ligarArvoreDoDetalhamento(raiz);
+      // Marcar a caixa não pode abrir ou fechar o nó em que ela mora.
+      caixas.forEach((c) => c.addEventListener('click', (ev) => ev.stopPropagation()));
       bt.onclick = async () => {
         bt.disabled = true;
         const alvos = caixas.filter((c) => c.checked).map((c) =>

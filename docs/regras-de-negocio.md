@@ -1297,12 +1297,35 @@ a despesa custa hoje menos o corte pactuado.
 > tinha base zero, o alvo virava R$ 0,00 e a tela anunciava "100% de redução".
 > O mês de referência é o único que sempre existe para um item vigente.
 
-**O veredicto é do agregado, e contra um mês fixo.** Ele compara o custo fixo do
-mês de referência com o do **primeiro mês da janela em que algum plano já
-vigorava**, e pergunta se a diferença já cobre a meta: *"o custo fixo caiu R$ X
+**O veredicto é do agregado, e contra um mês fixo e REALIZADO.** Ele compara o
+custo fixo do mês de referência com o do **primeiro mês realizado em que algum
+plano já vigorava**, e pergunta se a diferença já cobre a meta: *"o custo fixo caiu R$ X
 desde MM/AAAA, contra a meta de cortar R$ Y"*. Julgar item a item não daria: o
 alvo do item é derivado do custo dele, e comparar os dois seria comparar um
 número consigo mesmo.
+
+> **O mês base precisa ser realizado**, e isso foi aprendido na base real. Com a
+> base escolhida apenas por "primeiro mês da janela com plano vigente", um plano
+> que só passa a valer em 2027 punha a referência num mês futuro — cujos
+> lançamentos são só as projeções já cadastradas —, e a tela anunciava *"o custo
+> fixo subiu R$ 95.572,89 desde 01/2027"*, comparando agosto de 2026 com janeiro
+> de 2027. Quando não existe mês realizado com o plano vigente, **não há
+> veredicto**: o farol fica cinza e diz em que mês o plano passa a valer.
+
+### Natureza: reclassificável depois do lançamento
+
+A natureza (fixa, pontual única, pontual parcelada) deixou de ser imutável. Ela
+decide o que entra no custo recorrente, e uma despesa lançada na natureza errada
+distorcia o Objetivo 01 sem que houvesse como corrigir.
+
+Duas regras a acompanham:
+
+- **A troca vale para a SÉRIE inteira** quando o lançamento pertence a uma
+  (`grupo`): meia série fixa e meia pontual não descreveria despesa nenhuma.
+  Meses fechados na série continuam protegidos pela mesma trava da edição comum.
+- **A troca não cria nem remove meses.** Os campos de parcelas e de repetição
+  mensal continuam só na criação: reclassificar é dizer o que a despesa *é*, não
+  refazer a projeção que já existe. A tela diz isso ao lado do campo.
 
 ### O mês de referência é o último REALIZADO
 
@@ -1374,6 +1397,13 @@ quem clica no marcador do compromisso quer ver o compromisso. A tela traz os tr�
 números daquele mês e a tabela dos planos vigentes — nome, tipo, vigência, custo
 no mês, quanto cortar e onde deve chegar. Os lançamentos continuam a um clique,
 na barra logo abaixo.
+
+**TODA tela flutuante que lista lançamento usa a MESMA árvore** — o
+detalhamento da barra, o do custo recorrente, o das compartilhadas, o de cada
+item do plano e o de "despesas por reconhecer". Duas telas que listam a mesma
+coisa de dois jeitos obrigam quem usa a reaprender a leitura a cada clique. Na
+tela de reconhecer em lote, a caixa de seleção entra no **nível 4**, que é onde
+o lançamento está; o botão de reconhecer continua no rodapé.
 
 **O clique na barra — e no ponto de um mês sem plano — abre os lançamentos do
 mês numa ÁRVORE de quatro níveis:** tipo de despesa → empresa → filial → lançamento. É a
