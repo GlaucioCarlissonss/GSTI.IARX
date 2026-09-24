@@ -1167,6 +1167,70 @@ A leitura é um comparativo por empresa: **antes** é o que é dela mais 100% do
 que ela paga; **depois** é o que é dela mais a parcela que lhe cabe. A pagadora
 original vem marcada.
 
+## Objetivo 02: adequação dos custos compartilhados
+
+Adequar é fazer cada unidade pagar a parte dela **na origem**, em vez de uma
+filial pagar o contrato inteiro e as outras consumirem sem aparecer na conta. O
+indicador mede o andamento: do que é compartilhado, quanto já foi adequado.
+
+**O estado sai de um marco explícito, não da ausência do lançamento.** O campo
+`regularizadaEm` é um mês (`AAAA-MM`) no lançamento, e uma despesa conta como
+regularizada no mês em que a própria competência alcança esse marco. A
+alternativa — deduzir a adequação de a despesa ter parado de aparecer — trata
+*ter sido adequada* e *ter acabado* como a mesma coisa, e faria o indicador
+comemorar um contrato cancelado.
+
+O marco vale para a **série inteira**, como a natureza: o contrato foi adequado
+uma vez, e cada mês resolve o próprio estado comparando a competência com ele.
+Marcar mês a mês seriam doze edições para registrar um fato só. Num lançamento
+de consumo integral o campo é ignorado — não há compartilhamento a desfazer.
+
+Quatro decisões que mudam o número:
+
+- **Só despesa fixa (mensal) e só compartilhada.** É o universo do objetivo: uma
+  compra pontual não tem contrato a renegociar, e o que já é 100% da filial não
+  tem o que adequar.
+- **Compartilhado e regularizado somam o universo do mês**, porque são dois
+  estados da *mesma* despesa. Daí a linha do tempo ser uma barra empilhada: a
+  altura é quanto há de compartilhado naquele mês, e a divisão interna é o
+  andamento. Duas linhas soltas fariam procurar uma relação que é uma soma.
+- **Os percentuais saem do último mês realizado.** A base carrega projeções
+  lançadas em competência futura, e tomá-las como "hoje" anunciaria um
+  andamento que ainda não aconteceu. É a mesma regra do Objetivo 01.
+- **A árvore mostra o que AINDA é compartilhado**, agrupado por empresa → filial
+  → lançamento. O que já foi adequado deixou de ser trabalho a distribuir.
+
+**Os dois percentuais têm denominadores diferentes, e é por isso que cada card
+escreve o seu.** O *% já regularizado* é sobre o compartilhado do mês; o *% do
+custo fixo* é sobre o custo fixo mensal inteiro. Sem o denominador escrito, dois
+percentuais lado a lado convidam a uma soma que não significa nada.
+
+### A base nasce sem nada classificado
+
+Medido na base real do cliente: **zero** dos 1.841 lançamentos têm consumo
+compartilhado. O campo entrou com "100% da filial" como padrão para tudo o que
+veio na migração, e ninguém voltou a classificar desde então. O indicador
+declara isso — *"nenhuma despesa fixa classificada como compartilhada"* — em vez
+de mostrar um zero, que se leria como "não há problema".
+
+Daí a ação **classificar em lote**, alcançável do próprio indicador. Ela lista
+uma linha por **contrato**, identificado pelo `grupo` da série, e não por
+lançamento: o mesmo contrato se repete mês a mês, e escolher doze vezes a mesma
+coisa é como se erra em alguma delas. Três cuidados:
+
+- A identidade é o `grupo`, e não tipo + unidade. Na base real, `Telefonia/
+  Internet · AHC RN` são dois contratos de fornecedores diferentes; agrupar por
+  tipo classificaria os dois ao marcar um.
+- O rótulo sai da **descrição**, porque é lá que o favorecido está nos
+  lançamentos de planilha — o campo `fornecedor` está vazio em todos eles.
+- **"Marcar os visíveis"**, e não "marcar todos": são 1.273 contratos, e um
+  clique capaz de reclassificar a base inteira sem ninguém ver o que entrou não
+  é uma conveniência, é um acidente esperando.
+
+Voltar para "100% da filial" limpa beneficiadas e marco junto: deixá-los para
+trás faria a próxima leitura encontrar benefício sem despesa compartilhada que o
+justifique.
+
 ## Plano de redução: de quanto para quanto
 
 `metas` dá um alvo **percentual** por indicador inteiro ("não crescer mais que

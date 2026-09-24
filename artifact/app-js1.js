@@ -151,6 +151,30 @@ const classeReconhecimento = (l) => (reconhecidoDe(l) ? '' : ' data-sem-reconhec
 const consumoDe = (l) => (l && l.tipoConsumo === 'compartilhado' ? 'compartilhado' : 'integral');
 const beneficiadasDe = (l) => (Array.isArray(l && l.beneficiadas) ? l.beneficiadas : []);
 
+/**
+ * REGULARIZAÇÃO — o marco que diz quando a despesa compartilhada foi adequada.
+ *
+ * Adequar é fazer cada unidade pagar a parte dela na origem, em vez de uma
+ * filial pagar tudo e as outras consumirem de graça. Isso é um FATO do contrato,
+ * com data, e não algo que se possa deduzir dos lançamentos: uma despesa que
+ * simplesmente deixou de aparecer pode ter sido adequada ou pode ter acabado, e
+ * as duas coisas não podem virar o mesmo número.
+ *
+ * Por isso o marco é explícito, é um mês (`AAAA-MM`) e vale para a SÉRIE inteira:
+ * o contrato foi adequado uma vez, e cada mês resolve o próprio estado
+ * comparando a própria competência com esse marco. Sem o marco, a despesa
+ * compartilhada segue como compartilhada — que é o que ela é até alguém agir.
+ *
+ * O marco só vale onde há o que adequar: num lançamento de consumo integral ele
+ * é ignorado, porque não existe compartilhamento a desfazer.
+ */
+const regularizadaEmDe = (l) =>
+  (l && consumoDe(l) === 'compartilhado' ? String(l.regularizadaEm || '') : '');
+const jaRegularizada = (l) => {
+  const marco = regularizadaEmDe(l);
+  return !!marco && String((l && l.competencia) || '') >= marco;
+};
+
 const ROTULO_CONSUMO = { integral:'100% da filial', compartilhado:'Beneficia outras' };
 
 /**
@@ -161,6 +185,9 @@ const ROTULO_CONSUMO = { integral:'100% da filial', compartilhado:'Beneficia out
  */
 function resumoConsumo(l) {
   if (consumoDe(l) === 'integral') return ROTULO_CONSUMO.integral;
+  // O estado vem primeiro: quem lê a célula quer saber se ainda há o que
+  // adequar antes de saber quem se beneficia.
+  if (jaRegularizada(l)) return 'Regularizada em ' + mesExib(regularizadaEmDe(l));
   if (l.beneficiaTodas) return 'Beneficia todas as filiais do grupo';
   const nomes = beneficiadasDe(l);
   if (!nomes.length) return ROTULO_CONSUMO.compartilhado;

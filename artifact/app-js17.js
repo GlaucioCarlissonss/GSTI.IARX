@@ -411,6 +411,121 @@ function ratearPorPeso(centavos, pesos) {
  * cada empresa no período. Própria, e não total, porque incluir o
  * compartilhado no divisor tornaria a conta circular.
  */
+/**
+ * OBJETIVO 02 — Adequação dos custos compartilhados.
+ *
+ * Adequar é fazer cada unidade pagar a parte dela na ORIGEM, em vez de uma
+ * filial pagar o contrato inteiro e as outras consumirem sem aparecer na conta.
+ * O indicador mede o andamento disso: do que é compartilhado, quanto já foi
+ * adequado.
+ *
+ * Quatro decisões, e cada uma muda o número:
+ *
+ * 1. **Só despesa FIXA (mensal) e só compartilhada.** É o universo do objetivo:
+ *    uma compra pontual não tem contrato a renegociar, e o que já é 100% da
+ *    filial não tem o que adequar.
+ * 2. **O estado sai do MARCO, não da ausência.** Uma despesa que some pode ter
+ *    sido adequada ou pode ter acabado; contar as duas como adequação faria o
+ *    indicador comemorar um contrato cancelado. Ver `jaRegularizada`.
+ * 3. **Compartilhado e regularizado somam o universo do mês.** São dois estados
+ *    da MESMA despesa, e por isso a linha do tempo é uma barra empilhada: a
+ *    altura é quanto há de compartilhado no mês, e a divisão é o andamento.
+ * 4. **Os percentuais saem do último mês REALIZADO.** A base carrega projeções
+ *    lançadas em competência futura; tomá-las como "hoje" faria a tela anunciar
+ *    um andamento de um ano à frente. É a mesma regra do Objetivo 01.
+ */
+function calcularAdequacao(r) {
+  const base = Loja.todosDoEscopo().filter((l) =>
+    l.natureza === 'fixa' && passaNoFiltro(E.cenariosSel, l.cenario) &&
+    naFilialDoBloco(l.filial, r) && naJanela(l.competencia, r));
+  const compartilhadas = base.filter((l) => consumoDe(l) === 'compartilhado');
+
+  const meses = ordenado([...new Set(base.map((l) => l.competencia).filter(Boolean))]);
+  const fechado = mesSoma(mesHoje(), -1);
+  const realizados = meses.filter((m) => m <= fechado);
+  const referencia = realizados[realizados.length - 1] || meses[meses.length - 1] || null;
+
+  const somaDe = (itens) => itens.reduce((s, l) => s + cent(l.valor), 0);
+  const serie = meses.map((m) => {
+    const doMes = compartilhadas.filter((l) => l.competencia === m);
+    const reg = somaDe(doMes.filter(jaRegularizada));
+    const ainda = somaDe(doMes.filter((l) => !jaRegularizada(l)));
+    return {
+      comp: m, rot: mesExib(m), projetado: m > fechado,
+      regularizado: reais(reg), compartilhado: reais(ainda), total: reais(reg + ainda),
+      pctRegularizado: pct(reg, reg + ainda),
+    };
+  });
+
+  const doMesRef = compartilhadas.filter((l) => l.competencia === referencia);
+  const regC = somaDe(doMesRef.filter(jaRegularizada));
+  const aindaC = somaDe(doMesRef.filter((l) => !jaRegularizada(l)));
+  const custoFixoMes = somaDe(base.filter((l) => l.competencia === referencia));
+
+  // A árvore mostra o que AINDA é compartilhado: é o trabalho que resta, e é
+  // sobre ele que a pergunta "de quem é, e em qual filial" tem resposta útil.
+  // O que já foi adequado deixou de ser um problema a distribuir.
+  const pendentes = doMesRef.filter((l) => !jaRegularizada(l));
+
+  return {
+    referencia, serie, meses,
+    lancamentos: compartilhadas.length,
+    pendentesNoMes: pendentes.length,
+    regularizado: reais(regC), compartilhado: reais(aindaC), total: reais(regC + aindaC),
+    custoFixoMes: reais(custoFixoMes),
+    // OS DOIS PERCENTUAIS DO ENUNCIADO. O primeiro é o andamento; o segundo
+    // diz o tamanho disso dentro do custo fixo, que é o que decide se a
+    // adequação move o ponteiro do mês ou é detalhe.
+    pctRegularizado: pct(regC, regC + aindaC),
+    pctDoCustoFixo: pct(regC, custoFixoMes),
+    // O peso do que ainda falta, no mesmo denominador: sem ele, "23% adequado"
+    // não diz se o que resta é grande ou irrelevante.
+    pctPendenteDoCustoFixo: pct(aindaC, custoFixoMes),
+    porUnidade: quebrarPorUnidade(pendentes, (l) => cent(l.valor)),
+    pendentes,
+    // Todo o compartilhado da janela, para o detalhamento do número clicado.
+    registros: compartilhadas,
+  };
+}
+
+/** As cores dos dois estados. Fixas, e não da paleta por tipo: aqui a cor é o
+ *  estado (pendente × adequado), e o verde/laranja da escala já significa isso
+ *  em toda a tela. */
+const COR_PENDENTE = 'var(--alerta)';
+const COR_REGULARIZADO = 'var(--bom)';
+
+/**
+ * Os números do Objetivo 02 em cards, com a conta à vista.
+ *
+ * Os dois percentuais que o enunciado pede têm DENOMINADORES diferentes, e é
+ * por isso que eles não podem ficar soltos lado a lado sem rótulo: um é sobre o
+ * compartilhado, o outro sobre o custo fixo do mês. Escrever o denominador em
+ * cada card é o que impede a leitura de somar os dois.
+ */
+function cardsDaAdequacaoHtml(a) {
+  const card = (rot, valor, apoio, cor, forte) => `<div class="card-plano${forte ? ' forte' : ''}">
+    <span class="card-rot">${esc(rot)}</span>
+    <strong${cor ? ` style="color:${cor}"` : ''}>${valor}</strong>
+    ${apoio ? `<span class="card-apoio">${esc(apoio)}</span>` : ''}</div>`;
+  return `<div class="cards-plano" role="group" aria-label="Adequação em ${esc(mesExib(a.referencia))}">
+    ${card('Ainda compartilhado', brl(a.compartilhado),
+      `${pctTxt(a.pctPendenteDoCustoFixo)} do custo fixo do mês`, COR_PENDENTE)}
+    <span class="card-op" aria-hidden="true">+</span>
+    ${card('Já regularizado', brl(a.regularizado),
+      `${pctTxt(a.pctDoCustoFixo)} do custo fixo do mês`, COR_REGULARIZADO)}
+    <span class="card-op" aria-hidden="true">=</span>
+    ${card('Compartilhado no mês', brl(a.total),
+      `${pctTxt(a.pctRegularizado)} dele já regularizado`, null, true)}
+  </div>`;
+}
+
+/** A chave de leitura da linha do tempo. A cor nunca é o único canal. */
+const legendaDaAdequacaoHtml = () => `<div class="legenda-tipos" style="margin-top:10px">
+  <span class="legenda-titulo">Linha do tempo</span>
+  <span><i style="background:${COR_PENDENTE}" aria-hidden="true"></i>ainda compartilhado</span>
+  <span><i style="background:${COR_REGULARIZADO}" aria-hidden="true"></i>já regularizado</span>
+</div>`;
+
 function calcularRateio(r) {
   const empresas = new Map();
   const compartilhados = [];
@@ -1693,6 +1808,7 @@ async function viewIndicadores() {
   const sla = calcularSla(rs);
   const proj = calcularProjetos(rp);
   const rateio = calcularRateio(rf);
+  const adequacao = calcularAdequacao(rf);
   const plano = calcularPlanoReducao(rf);
 
   // As quebras por unidade saem dos MESMOS registros que os cálculos acima
@@ -1849,13 +1965,53 @@ async function viewIndicadores() {
 
     ${blocoIndicador({
       chave: 'rateio',
-      titulo: 'Despesas compartilhadas regularizadas',
-      valor: rateio.lancamentos ? brl(rateio.compartilhado) : '—',
-      apoio: rateio.lancamentos
-        ? `${inteiro(rateio.lancamentos)} lançamento(s) · ${pctTxt(rateio.pctCompartilhado)} da despesa do recorte`
-          + `${rateio.divisaoIgual ? ' · dividido igualmente (nenhuma empresa tem despesa própria)' : ''}`
-        : 'nenhuma despesa compartilhada no recorte',
-      corpo: rateio.lancamentos === 0 ? '' : `
+      titulo: 'Objetivo 02: Adequação dos Custos Compartilhados',
+      descricao: 'Normalização dos Custos com Despesas FIXAS(MENSAIS) que são compartilhadas '
+        + 'e pago por uma filial VERSOS as Regularizadas',
+      valor: adequacao.lancamentos
+        ? `${brl(adequacao.compartilhado)} → ${brl(adequacao.regularizado)}`
+        : '—',
+      cor: !adequacao.lancamentos ? null
+        : adequacao.pctRegularizado >= 100 ? 'var(--bomtxt)'
+          : adequacao.pctRegularizado > 0 ? null : 'var(--crit)',
+      apoio: adequacao.lancamentos
+        ? `${pctTxt(adequacao.pctRegularizado)} já regularizado · `
+          + `${pctTxt(adequacao.pctDoCustoFixo)} do custo fixo mensal`
+          + `${adequacao.referencia ? ` · valores de ${mesExib(adequacao.referencia)}` : ''}`
+        : 'nenhuma despesa fixa classificada como compartilhada',
+      corpo: adequacao.lancamentos === 0 ? `
+        <div class="msg alerta">
+          <strong>Nenhuma despesa fixa está classificada como compartilhada.</strong>
+          O objetivo mede a adequação de contratos que uma filial paga e o grupo consome — e esse
+          consumo é uma <em>classificação</em>, não algo que se deduza do valor. Enquanto ninguém
+          marcar quais despesas são compartilhadas, o indicador não tem o que medir.
+        </div>
+        <div class="acoes" style="justify-content:flex-start;margin-top:10px">
+          <button type="button" class="bt pri" data-classificar>Classificar despesas compartilhadas</button>
+        </div>` : `
+        ${cardsDaAdequacaoHtml(adequacao)}
+        ${legendaDaAdequacaoHtml()}
+        <div id="i-adequacao" style="margin-top:2px"></div>
+        <h3 class="titulo-mini">O que ainda é compartilhado, por empresa e filial${
+          adequacao.referencia ? ` — ${mesExib(adequacao.referencia)}` : ''}</h3>
+        ${adequacao.porUnidade.length
+          ? `${faixaDeMatrizesHtml(fatiasDe(adequacao.porUnidade, emDinheiro))}
+             ${legendaDeMatrizesHtml(fatiasDe(adequacao.porUnidade, emDinheiro))}
+             ${arvoreDeUnidadesHtml('ind-adequacao', adequacao.porUnidade, emDinheiro)}`
+          : '<p class="vazio">Nada pendente no mês de referência: tudo o que é compartilhado já foi regularizado.</p>'}
+        <div class="acoes" style="justify-content:flex-start;margin-top:10px">
+          <button type="button" class="bt" data-classificar>Classificar despesas compartilhadas</button>
+        </div>
+        <h3 class="titulo-mini">Como ficaria rateado entre as empresas</h3>
+        <!-- O critério sai do rodapé do bloco e passa a morar JUNTO da tabela
+             que ele explica: o bloco agora fala de duas coisas, e uma nota no
+             fim descreveria a de cima. -->
+        <p class="nota" style="margin:2px 0 0">O <strong>antes</strong> é como a unidade aparece hoje:
+          o que é dela mais 100% do que ela paga. O <strong>depois</strong> é o que é dela mais a parcela
+          que lhe cabe. O critério é <strong>proporcional à despesa própria</strong> de cada empresa no
+          período; com nenhuma empresa tendo despesa própria, a divisão sai igual. O total redistribui,
+          não cresce — e nenhum lançamento é alterado.</p>
+        ${rateio.lancamentos === 0 ? '<p class="vazio">Sem despesa compartilhada no recorte.</p>' : `
         ${legendaDeConsumoHtml(corPrimeira)}
         <div class="rol" style="margin-top:10px"><table>
           <thead><tr><th>Empresa</th><th class="n">Própria</th><th class="n">Rateio recebido</th>
@@ -1889,12 +2045,15 @@ async function viewIndicadores() {
           }).join('')}</tbody>
           <tfoot><tr><td>Total rateado</td><td class="n"></td>
             <td class="n">${brl(rateio.sanidade)}</td><td></td><td class="n"></td></tr></tfoot>
-        </table></div>`,
-      nota: rateio.lancamentos
-        ? 'O <strong>antes</strong> é como a unidade aparece hoje: o que é dela mais 100% do que ela paga. '
-          + 'O <strong>depois</strong> é o que é dela mais a parcela que lhe cabe. O critério do rateio é '
-          + 'proporcional à despesa própria de cada empresa no período; com nenhuma empresa tendo despesa '
-          + 'própria, a divisão sai igual. O total redistribui, não cresce.'
+        </table></div>`}`,
+      nota: adequacao.lancamentos
+        ? 'Só despesa de natureza <strong>fixa (mensal)</strong> e <strong>classificada como '
+          + 'compartilhada</strong> entra. Regularizada é a que tem <strong>marco de adequação</strong> '
+          + 'cadastrado e já alcançou o mês — uma despesa que apenas sumiu da base não conta, porque '
+          + 'ter sido adequada e ter acabado são coisas diferentes. Os percentuais são do último mês '
+          + '<strong>realizado</strong> do recorte — um mês futuro só tem projeção lançada, e tomá-lo '
+          + 'como "hoje" anunciaria um andamento que ainda não aconteceu. O rateio abaixo é a '
+          + 'simulação de como o custo ficaria distribuído, e não muda lançamento nenhum.'
         : '',
     })}
 
@@ -2130,6 +2289,44 @@ async function viewIndicadores() {
       });
     });
   }
+  // OBJETIVO 02 — a linha do tempo da adequação. Barra empilhada porque os dois
+  // estados são partições da MESMA despesa: a altura é quanto há de
+  // compartilhado no mês, e a divisão interna é o andamento. Duas linhas
+  // soltas fariam procurar uma relação entre elas que é, na verdade, uma soma.
+  const alvoAdequacao = el('#i-adequacao');
+  if (alvoAdequacao) {
+    barras(alvoAdequacao,
+      adequacao.serie.map((p) => ({
+        rot: p.rot, comp: p.comp, projetado: p.projetado,
+        v: { pendente: p.compartilhado, regular: p.regularizado },
+      })),
+      [{ k: 'pendente', nome: 'Ainda compartilhado', cor: COR_PENDENTE },
+        { k: 'regular', nome: 'Já regularizado', cor: COR_REGULARIZADO }],
+      'empilhado', brl, curto,
+      (ponto) => {
+        const doMes = adequacao.registros.filter((l) => l.competencia === ponto.comp);
+        abrirRegistros({
+          titulo: `Despesas compartilhadas de ${ponto.rot}`,
+          tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
+          itens: [...doMes].sort((a, b) => cent(b.valor) - cent(a.valor)),
+          contagem: null,
+          nota: `${inteiro(doMes.length)} despesa(s) fixa(s) compartilhada(s), somando `
+            + `${brl(reais(somaC(doMes.map((l) => l.valor))))}. `
+            + `${inteiro(doMes.filter(jaRegularizada).length)} já com marco de adequação alcançado.`,
+        });
+      });
+  }
+  // A ação em lote, alcançável dos dois estados do bloco: do vazio, que é onde
+  // ela resolve o problema, e do preenchido, para continuar classificando.
+  el('#pagina').querySelectorAll('[data-classificar]').forEach((b) => {
+    b.onclick = (ev) => {
+      // O cartão que abriga este botão É um gatilho de drill-down assim que o
+      // indicador tem número. Sem barrar a propagação, um clique abre as DUAS
+      // telas empilhadas — a de classificar por baixo da de lançamentos.
+      ev.stopPropagation();
+      abrirClassificacaoCompartilhada(rf);
+    };
+  });
   // O termômetro mora dentro do bloco de SLA, que abre fechado: desenhar num
   // elemento escondido é legítimo — o SVG tem `viewBox`, e aparece pronto
   // quando o bloco abre.
@@ -2188,20 +2385,19 @@ async function viewIndicadores() {
         : null,
     },
     rateio: {
-      dica: 'A despesa que uma unidade paga e o grupo consome, distribuída proporcionalmente à '
-        + 'despesa própria de cada empresa no período. O indicador abaixo, "paga por uma unidade, '
-        + 'consumida por outras", é a mesma despesa sem rateio — o "antes" deste comparativo. '
+      dica: 'A despesa FIXA que uma unidade paga e o grupo consome, e o andamento da adequação: '
+        + 'quanto dela já tem marco de regularização alcançado. Os dois percentuais têm bases '
+        + 'diferentes — um sobre o compartilhado, outro sobre o custo fixo do mês. '
         + 'Clique para ver os lançamentos compartilhados.',
-      abrir: rateio.lancamentos
+      abrir: adequacao.lancamentos
         ? () => abrirRegistros({
-            titulo: 'Despesas compartilhadas do recorte', tipo: 'indicadores-mes',
+            titulo: 'Despesas fixas compartilhadas do recorte', tipo: 'indicadores-mes',
             colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
-            itens: Loja.todosDoEscopo().filter((l) =>
-              passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, rf) &&
-              naJanela(l.competencia, rf) && consumoDe(l) === 'compartilhado'),
+            itens: adequacao.registros,
             contagem: null,
-            nota: `${brl(rateio.compartilhado)} distribuídos entre ${inteiro(rateio.porEmpresa.length)} empresa(s). `
-              + 'A soma das parcelas é exatamente este valor.',
+            nota: `${inteiro(adequacao.registros.length)} lançamento(s) fixo(s) compartilhado(s) na janela. `
+              + `Em ${mesExib(adequacao.referencia)}: ${brl(adequacao.compartilhado)} ainda compartilhados e `
+              + `${brl(adequacao.regularizado)} já regularizados.`,
           })
         : null,
     },
@@ -2803,6 +2999,179 @@ const COLUNAS_LANCAMENTO_COMPLETO = [
  * lote: quem abriu "o que falta reconhecer" veio para resolver, e mandá-lo
  * clicar um a um na tela de Lançamentos seria devolver o problema.
  */
+/**
+ * Classificar despesas compartilhadas em lote.
+ *
+ * O que se classifica é o CONTRATO, não o mês: a lista mostra uma linha por
+ * série de despesa fixa (tipo · fornecedor · quem paga), com quantos meses ela
+ * tem e quanto custa por mês. Listar 1.457 lançamentos faria escolher doze
+ * vezes a mesma coisa e errar em alguma delas.
+ */
+function abrirClassificacaoCompartilhada(r) {
+  const base = Loja.todosDoEscopo().filter((l) =>
+    l.natureza === 'fixa' && passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, r));
+  // A identidade do contrato é o `grupo` — é a série que o próprio sistema
+  // criou ao lançar a recorrência, e é ela que a propagação alcança. Agrupar por
+  // tipo + unidade juntaria FALEMAIS e BRISANET numa linha só "Telefonia/Internet",
+  // e classificar uma arrastaria a outra. Sem grupo, cai no que descreve a
+  // despesa.
+  const chaveDe = (l) => (l.grupo
+    ? 'g\u0001' + l.grupo
+    : ['x', l.tipo || '', l.descricao || '', l.empresa, l.filial || ''].join('\u0001'));
+  const contratos = new Map();
+  for (const l of base) {
+    const k = chaveDe(l);
+    const c = contratos.get(k) || {
+      chave: k, tipo: l.tipo,
+      // O favorecido dos lançamentos de planilha está dentro da DESCRIÇÃO, e
+      // não no campo próprio: é ela que identifica o contrato para quem lê.
+      nome: l.descricao || l.fornecedor || l.tipo || '(sem descrição)',
+      empresa: l.empresa,
+      nomeEmpresa: String(nomeEmpresa(l.empresa)), cor: corDaMatriz(l.empresa),
+      filial: l.filial || 'Sem filial (nível empresa)', itens: [],
+    };
+    c.itens.push(l);
+    contratos.set(k, c);
+  }
+  const lista = [...contratos.values()].map((c) => {
+    const comps = ordenado([...new Set(c.itens.map((l) => l.competencia))]);
+    const ultimo = comps[comps.length - 1];
+    const doUltimo = c.itens.filter((l) => l.competencia === ultimo);
+    return {
+      ...c, meses: comps.length,
+      // O período distingue duas séries do MESMO fornecedor na mesma unidade,
+      // que a base tem: sem ele, as duas linhas parecem a mesma repetida e
+      // ninguém sabe qual marcar.
+      periodo: comps.length
+        ? (comps[0] === ultimo ? mesExib(ultimo) : `${mesExib(comps[0])} a ${mesExib(ultimo)}`)
+        : '',
+      porMes: reais(doUltimo.reduce((s, l) => s + cent(l.valor), 0)),
+      compartilhada: c.itens.some((l) => consumoDe(l) === 'compartilhado'),
+      marco: regularizadaEmDe(c.itens.find((l) => regularizadaEmDe(l)) || {}),
+    };
+  }).sort((a, b) => b.porMes - a.porMes);
+
+  const filiais = filiaisDoEscopo().map((f) => f.nome);
+  abrirModal({
+    titulo: 'Classificar despesas compartilhadas',
+    tipo: 'classificar-consumo',
+    larguraPadrao: Math.min(1100, Math.max(window.innerWidth - 40, 680)),
+    corpo: `
+      <div class="msg">
+        <strong>Uma linha por contrato de despesa fixa</strong>, e não por lançamento: a classificação
+        vale para a série inteira, porque ser compartilhada é um fato do contrato e não de um mês.
+        Marque os que uma filial paga e o grupo consome.
+      </div>
+      <div class="grade g2">
+        <div class="campo"><label for="cc-todas">Quem consome</label>
+          <select id="cc-todas">
+            <option value="todas">Todas as filiais do grupo</option>
+            <option value="escolher">Escolher filiais</option>
+            <option value="integral">Voltar para 100% da filial que paga</option>
+          </select></div>
+        <div class="campo"><label for="cc-reg">Regularizada em (MM/AAAA)</label>
+          <input id="cc-reg" placeholder="em branco = ainda compartilhada"></div>
+      </div>
+      <div class="campo" id="cc-filiais-campo" hidden>
+        <label>Filiais beneficiadas</label>
+        <div class="multi-caixas" role="group" aria-label="Filiais beneficiadas">
+          ${filiais.map((n) => `<label><input type="checkbox" data-cc-filial="${esc(n)}"> ${esc(n)}</label>`).join('')}
+        </div>
+      </div>
+      <div class="campo"><label for="cc-just">Justificativa</label>
+        <input id="cc-just" placeholder="obrigatória para competências passadas ou fechadas"></div>
+      <!-- A busca não é conveniência: são ${inteiro(lista.length)} contratos, e
+           rolar até achar um seria pior do que editar lançamento por lançamento. -->
+      <div class="campo"><label for="cc-busca">Buscar</label>
+        <input id="cc-busca" placeholder="descrição, tipo de despesa, empresa ou filial"></div>
+      <div class="rol" style="max-height:340px"><table>
+        <thead><tr><th style="width:28px"></th><th>Contrato / descrição</th><th>Tipo</th>
+          <th>Quem paga</th><th class="n">Meses</th><th class="n">Por mês</th><th>Hoje</th></tr></thead>
+        <tbody>${lista.map((c, i) => `<tr data-cc-linha="${i}"
+          data-busca="${esc(`${c.nome} ${c.tipo || ''} ${c.nomeEmpresa} ${c.filial}`.toLowerCase())}">
+          <td><input type="checkbox" data-cc="${i}"${c.compartilhada ? ' checked' : ''}
+            aria-label="Selecionar ${esc(c.nome)}"></td>
+          <td class="texto">${esc(c.nome)}<div class="arv-comp">${esc(c.periodo)}</div></td>
+          <td>${esc(c.tipo || '—')}</td>
+          <td><i class="ponto-matriz" style="background:${c.cor}" aria-hidden="true"></i>${esc(c.nomeEmpresa)}
+            <div class="arv-comp">${esc(c.filial)}</div></td>
+          <td class="n">${inteiro(c.meses)}</td>
+          <td class="n">${brl(c.porMes)}</td>
+          <td>${c.compartilhada
+            ? `<span class="tag compartilhada" style="--cor:${corCompartilhada(c.empresa)}"><i></i>compartilhada${
+                c.marco ? ' · ' + mesExib(c.marco) : ''}</span>`
+            : '<span style="color:var(--tinta3)">100% da filial</span>'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`,
+    acoes: `<button type="button" class="bt" data-todos>Marcar os visíveis</button>
+      <button type="button" class="bt pri" data-aplicar>Aplicar aos marcados</button>
+      <button type="button" class="bt" data-c>Fechar</button>`,
+    aoMontar({ raiz, fechar, erro }) {
+      const caixas = [...raiz.querySelectorAll('input[data-cc]')];
+      const quem = raiz.querySelector('#cc-todas');
+      const campoFiliais = raiz.querySelector('#cc-filiais-campo');
+      const campoReg = raiz.querySelector('#cc-reg');
+      const alternar = () => {
+        campoFiliais.hidden = quem.value !== 'escolher';
+        // Voltar para integral apaga o compartilhamento: um marco de adequação
+        // ali não descreveria nada, então o campo sai de cena junto.
+        campoReg.closest('.campo').hidden = quem.value === 'integral';
+      };
+      quem.addEventListener('change', alternar);
+      alternar();
+
+      const linhas = [...raiz.querySelectorAll('[data-cc-linha]')];
+      const visiveis = () => linhas.filter((tr) => !tr.hidden);
+      raiz.querySelector('#cc-busca').addEventListener('input', (ev) => {
+        const termo = ev.target.value.trim().toLowerCase();
+        for (const tr of linhas) tr.hidden = !!termo && !tr.dataset.busca.includes(termo);
+      });
+      // "Marcar todos" sobre mil e duzentos contratos seria um clique capaz de
+      // reclassificar a base inteira sem ninguém ver o que entrou. A ação vale
+      // para o que está À VISTA, que é o recorte que a pessoa acabou de montar.
+      raiz.querySelector('[data-todos]').onclick = () => {
+        const alvo = visiveis().map((tr) => tr.querySelector('input[data-cc]'));
+        const ligar = !alvo.every((c) => c.checked);
+        alvo.forEach((c) => { c.checked = ligar; });
+      };
+      raiz.querySelector('[data-c]').onclick = fechar;
+      raiz.querySelector('[data-aplicar]').onclick = async () => {
+        const alvos = caixas.filter((c) => c.checked).map((c) => lista[Number(c.dataset.cc)]);
+        if (!alvos.length) return erro('Marque ao menos um contrato.');
+        const integral = quem.value === 'integral';
+        const escolhidas = [...raiz.querySelectorAll('[data-cc-filial]:checked')].map((c) => c.dataset.ccFilial);
+        if (quem.value === 'escolher' && !escolhidas.length) {
+          return erro('Marque ao menos uma filial beneficiada, ou escolha "todas as filiais do grupo".');
+        }
+        const regBruto = campoReg.value.trim();
+        const regularizadaEm = !integral && regBruto ? mesInterno(regBruto) : null;
+        if (!integral && regBruto && !regularizadaEm) {
+          return erro('Regularizada em: use MM/AAAA, ou deixe em branco se ainda não houve.');
+        }
+        try {
+          // Um alvo de cada série basta: o gravador propaga para os irmãos.
+          const conta = await classificarCompartilhadasEmLote(
+            alvos.map((c) => c.itens[0]),
+            {
+              tipoConsumo: integral ? 'integral' : 'compartilhado',
+              beneficiaTodas: quem.value === 'todas',
+              beneficiadas: quem.value === 'todas' ? filiais : escolhidas,
+              regularizadaEm,
+            },
+            raiz.querySelector('#cc-just').value.trim());
+          // O retorno da ação é o próprio bloco repintado: ele sai do estado
+          // vazio e passa a mostrar os números. Um aviso por cima disso seria
+          // dizer duas vezes a mesma coisa.
+          void conta;
+          fechar();
+        } catch (e) {
+          erro(e.message || String(e));
+        }
+      };
+    },
+  });
+}
+
 function abrirDetalhe({ titulo, tipo, itens, esperado }) {
   const soma = reais(somaC(itens.map((l) => l.valor)));
   const confere = esperado === null || Math.abs(soma - esperado) < 0.01;

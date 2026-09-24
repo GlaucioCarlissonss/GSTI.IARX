@@ -191,6 +191,17 @@ function formLancamento(existente) {
             uma filial cadastrada depois não entra neste lançamento.</p>
         </div>
       </div>
+      <!-- O marco da adequação. Fica FORA da grade das beneficiadas porque
+           responde a outra pergunta: não "quem consome", mas "desde quando cada
+           um paga a parte dele". É o campo que o Objetivo 02 lê. -->
+      <div class="campo" id="c-reg-campo"${consumoDe(v)==='compartilhado'?'':' hidden'}>
+        <label for="c-reg">Regularizada em (MM/AAAA)</label>
+        <input id="c-reg" name="regularizadaEm" value="${esc(mesExib(v.regularizadaEm||''))}"
+          placeholder="em branco = ainda compartilhada">
+        <p class="nota" style="margin:4px 0 0">O mês em que cada unidade passou a pagar a parte dela na origem.
+          Vale para <strong>a série inteira</strong> — o contrato foi adequado uma vez —, e cada mês anterior
+          a ele continua contando como compartilhado.</p>
+      </div>
       <div id="c-extra"></div>
       <div class="campo"><label for="c-cen">Cenário</label><select id="c-cen" name="cenario"${ed?' disabled':''}></select></div>
       <!-- O favorecido em campo próprio. Era digitado dentro da Descrição, e
@@ -286,6 +297,9 @@ function formLancamento(existente) {
       const alternarConsumo = () => {
         const compartilha = consumo.value === 'compartilhado';
         raiz.querySelector('#c-benef-campo').hidden = !compartilha;
+        // Sem compartilhamento não há o que adequar: o marco desaparece junto,
+        // em vez de ficar oferecendo uma data que não significaria nada.
+        raiz.querySelector('#c-reg-campo').hidden = !compartilha;
         if (compartilha) pintarBeneficiadas();
       };
       consumo.addEventListener('change', alternarConsumo);
@@ -353,17 +367,27 @@ function lerValor(t) {
  * é onde a série pode estar ao alcance, e varrer o cliente inteiro a cada
  * edição custaria uma leitura de tudo para achar irmãos.
  */
-async function reclassificarSerie(emp, grupo, natureza, exceto, just) {
+async function propagarNaSerie(emp, grupo, patch, exceto, just) {
+  const campos = Object.keys(patch);
+  let meses = 0;
   for (const comp of [...E.lanc.keys()]
     .filter((k) => k.startsWith(emp + '__')).map((k) => k.slice(emp.length + 2))) {
     const itens = Loja.itens(emp, comp);
-    if (!itens.some((x) => x.grupo === grupo && x.id !== exceto && x.natureza !== natureza)) continue;
+    const daSerie = (x) => x.grupo === grupo && x.id !== exceto;
+    // Comparação rasa de propósito: os campos propagados são escalares, e uma
+    // lista igual em conteúdo grava de novo sem prejuízo — o que não pode é o
+    // contrário, pular um mês que precisava mudar.
+    if (!itens.some((x) => daSerie(x) && campos.some((c) => x[c] !== patch[c]))) continue;
     // Mês fechado não é reescrito em silêncio: a mesma trava da edição comum.
     checarCompetencia(comp, just, emp);
-    await Loja.gravarMes(emp, comp, itens.map((x) =>
-      (x.grupo === grupo && x.id !== exceto ? { ...x, natureza } : x)));
+    await Loja.gravarMes(emp, comp, itens.map((x) => (daSerie(x) ? { ...x, ...patch } : x)));
+    meses += 1;
   }
+  return meses;
 }
+
+const reclassificarSerie = (emp, grupo, natureza, exceto, just) =>
+  propagarNaSerie(emp, grupo, { natureza }, exceto, just);
 
 async function salvarLancamento(existente, campo, empresa, filial) {
   const emp = empresa || exigirEmpresaUnica();
@@ -384,6 +408,16 @@ async function salvarLancamento(existente, campo, empresa, filial) {
   if (escolhaConsumo === 'compartilhado' && !beneficiadas.length) {
     throw new Error('Marque ao menos uma filial beneficiada além da que paga, ou volte para 100% da filial.');
   }
+  // O marco da adequação, em branco quando ainda não houve. Recusar o mês
+  // ilegível é melhor do que gravar vazio: "03/27" digitado errado viraria
+  // "nunca regularizada" em silêncio, e o Objetivo 02 contaria a despesa como
+  // pendente para sempre.
+  const regBruto = (campo('regularizadaEm')?.value || '').trim();
+  const regularizadaEm = escolhaConsumo === 'compartilhado' && regBruto
+    ? (mesInterno(regBruto) || null) : null;
+  if (escolhaConsumo === 'compartilhado' && regBruto && !regularizadaEm) {
+    throw new Error('Regularizada em: use MM/AAAA, ou deixe em branco se ainda não houve.');
+  }
 
   const base = {
     filial: pagadora,
@@ -396,6 +430,7 @@ async function salvarLancamento(existente, campo, empresa, filial) {
     tipoConsumo: escolhaConsumo,
     beneficiadas,
     beneficiaTodas: escolhaConsumo === 'compartilhado' && !!marcadas.todas,
+    regularizadaEm,
   };
 
   if (existente) {
@@ -406,6 +441,15 @@ async function salvarLancamento(existente, campo, empresa, filial) {
     const mudouNatureza = base.natureza !== existente.natureza;
     if (mudouNatureza && existente.grupo) {
       await reclassificarSerie(emp, existente.grupo, base.natureza, existente.id, just);
+    }
+    // O marco da adequação também é da SÉRIE: o contrato foi adequado uma vez,
+    // e cada mês resolve o próprio estado comparando a competência com ele.
+    // Marcar mês a mês seria doze edições para registrar um fato só.
+    const mudouMarco = (base.regularizadaEm || null) !== (existente.regularizadaEm || null);
+    if (mudouMarco && existente.grupo) {
+      await propagarNaSerie(emp, existente.grupo,
+        { regularizadaEm: base.regularizadaEm, tipoConsumo: base.tipoConsumo },
+        existente.id, just);
     }
     if (comp !== existente.competencia) {
       if (existente.parcela) throw new Error('Não é possível mover a competência de uma parcela projetada.');
@@ -419,9 +463,11 @@ async function salvarLancamento(existente, campo, empresa, filial) {
     await Loja.gravarMes(emp, comp, destino);
     await Loja.auditar({ acao:'atualizar', entidade:'lancamento', id: existente.id, justificativa: just || null,
       antes: { valor: existente.valor, classificacao: existente.classificacao,
-        natureza: existente.natureza, competencia: mesExib(existente.competencia) },
+        natureza: existente.natureza, competencia: mesExib(existente.competencia),
+        tipoConsumo: consumoDe(existente), regularizadaEm: existente.regularizadaEm || null },
       depois: { valor, classificacao: base.classificacao,
-        natureza: base.natureza, competencia: mesExib(comp) } }, emp);
+        natureza: base.natureza, competencia: mesExib(comp),
+        tipoConsumo: base.tipoConsumo, regularizadaEm: base.regularizadaEm } }, emp);
     return;
   }
 
@@ -536,6 +582,78 @@ async function alternarReconhecimento(lancamentos, forcar, via = 'manual') {
     depois: { reconhecido: destino, quantidade: mudar.length },
   }, emp);
   render();
+}
+
+/**
+ * Classificar despesas compartilhadas EM LOTE.
+ *
+ * A classificação de consumo nasceu com "100% da filial" para tudo o que veio
+ * na migração, e ninguém volta a mil e oitocentos lançamentos um a um para
+ * dizer quais são compartilhados. Sem uma ação em lote, o Objetivo 02 seria um
+ * indicador correto medindo uma base que nunca vai ser preenchida.
+ *
+ * Aplica à SÉRIE inteira de cada alvo, pela mesma razão do formulário: ser
+ * compartilhada e ter sido adequada são fatos do contrato, não de um mês.
+ * `exceto: null` porque aqui não há um lançamento "sendo salvo à parte" — todos
+ * os meses da série recebem o mesmo estado.
+ */
+async function classificarCompartilhadasEmLote(lancamentos, escolha, just) {
+  const alvos = (lancamentos || []).filter(Boolean);
+  if (!alvos.length) return { series: 0, meses: 0 };
+  const compartilhado = escolha.tipoConsumo === 'compartilhado';
+  // A pagadora não se beneficia de si mesma. A lista é a mesma para o lote, mas
+  // quem paga muda de contrato para contrato, então ela é resolvida por alvo —
+  // senão a filial que banca o contrato apareceria consumindo-o de graça.
+  const patchDe = (l) => ({
+    tipoConsumo: compartilhado ? 'compartilhado' : 'integral',
+    // Voltar para integral limpa o que só existe no compartilhamento: deixar a
+    // lista de beneficiadas para trás faria a próxima leitura encontrar
+    // benefício sem despesa compartilhada que o justifique.
+    beneficiadas: compartilhado
+      ? (escolha.beneficiadas || []).filter((n) => n && n !== (l.filial || null))
+      : [],
+    beneficiaTodas: compartilhado && !!escolha.beneficiaTodas,
+    regularizadaEm: compartilhado ? (escolha.regularizadaEm || null) : null,
+  });
+
+  // Um alvo sem série é o próprio lançamento: sem `grupo` não há irmãos a
+  // alcançar, e escrever por grupo nulo varreria tudo o que também não tem.
+  const porEmpresa = new Map();
+  for (const l of alvos) {
+    const emp = l.empresa || exigirEmpresaUnica();
+    if (!porEmpresa.has(emp)) porEmpresa.set(emp, { series: new Map(), avulsos: [] });
+    if (l.grupo) porEmpresa.get(emp).series.set(l.grupo, l);
+    else porEmpresa.get(emp).avulsos.push(l);
+  }
+
+  let series = 0, meses = 0;
+  for (const [emp, { series: grupos, avulsos }] of porEmpresa) {
+    for (const [grupo, exemplo] of grupos) {
+      series += 1;
+      meses += await propagarNaSerie(emp, grupo, patchDe(exemplo), null, just);
+    }
+    for (const l of avulsos) {
+      const itens = Loja.itens(emp, l.competencia);
+      if (!itens.some((x) => x.id === l.id)) continue;
+      checarCompetencia(l.competencia, just, emp);
+      const patch = patchDe(l);
+      await Loja.gravarMes(emp, l.competencia,
+        itens.map((x) => (x.id === l.id ? { ...x, ...patch } : x)));
+      series += 1; meses += 1;
+    }
+    await Loja.auditar({
+      acao: 'classificar_consumo', entidade: 'lancamento', id: null,
+      justificativa: just || null,
+      depois: {
+        tipoConsumo: compartilhado ? 'compartilhado' : 'integral',
+        beneficiaTodas: compartilhado && !!escolha.beneficiaTodas,
+        regularizadaEm: compartilhado ? (escolha.regularizadaEm || null) : null,
+        series: grupos.size + avulsos.length,
+      },
+    }, emp);
+  }
+  render();
+  return { series, meses };
 }
 
 function excluirLancamento(l) {
