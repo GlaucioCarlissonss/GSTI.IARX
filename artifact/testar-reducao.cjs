@@ -489,6 +489,90 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
   });
   ok('e o indicador volta ao vazio', semPlano === '—', semPlano);
 
+  // ------------------------------------------------- planos em cadeia
+  //
+  // O caso do print do gestor: dois planos sobre a MESMA despesa, começando em
+  // meses diferentes. Eles são degraus de uma escada — o segundo parte do que o
+  // primeiro deixou —, e a tela anunciava os dois partindo do mesmo valor, o
+  // que contava o mesmo dinheiro duas vezes.
+  console.log('\nCADEIA — dois planos sobre a mesma despesa, em meses diferentes');
+  const TIPO = await pag.evaluate(() => {
+    const m = new Map();
+    for (const l of Loja.todosDoEscopo()) {
+      if (l.natureza !== 'fixa') continue;
+      m.set(l.tipo, (m.get(l.tipo) || 0) + 1);
+    }
+    return [...m].sort((a, b) => b[1] - a[1])[0][0];
+  });
+  // De propósito na ordem INVERSA da cronológica: é o cadastro que a tela tem
+  // de reordenar sozinha.
+  await pag.evaluate((tipo) => Loja.gravarCatalogo('reducao', [
+    { nome: 'Degrau 2', tipo, valorAlvo: 5000, vigenciaInicio: '2027-02', ativo: true },
+    { nome: 'Degrau 1', tipo, valorAlvo: 3500, vigenciaInicio: '2027-01', ativo: true },
+  ]), TIPO);
+  // Repintar de propósito: a tela JÁ está em Indicadores Gerais, e trocar de
+  // aba para a mesma aba não remonta o DOM — as conferências abaixo leem a
+  // tabela, não só o cálculo.
+  await pag.evaluate(async () => { await render(); });
+  await pag.waitForTimeout(700);
+  const cadeia = await pag.evaluate(() => {
+    const p = calcularPlanoReducao(recorteDoBloco('financeiro'));
+    const sec = document.querySelector('[data-kpi="plano-reducao"]').closest('section.bloco-indicador');
+    const mes = (c) => {
+      const m = p.composicao.marcos.get(c);
+      return m ? m.metas.map((x) => `${x.nome}:${x.realizado}→${x.alvo}`) : [];
+    };
+    return {
+      nomes: p.itens.map((i) => i.nome),
+      atuais: p.itens.map((i) => i.atual),
+      alvos: p.itens.map((i) => i.alvo),
+      pctCorte: p.itens.map((i) => i.pctDoCorte),
+      fixas: p.fixasDoMes, metaTotal: p.metaTotal,
+      // O total sai da UNIÃO dos escopos: os dois planos alcançam a mesma
+      // despesa, então o "atual" do plano é ela uma vez só.
+      totalAtual: p.totalAtual, totalAlvo: p.totalAlvo,
+      // A coluna da tela, que é a que o gestor lê.
+      colunaPct: [...sec.querySelectorAll('tbody tr[data-plano]')]
+        .map((tr) => tr.children[5].textContent.trim()),
+      // O detalhamento não pode listar o mesmo lançamento uma vez por plano.
+      repetidosPorItem: p.itens.flatMap((i) => i.registros).length,
+      noDetalhamento: p.registros.length,
+      unicos: p.registros.length === new Set(p.registros.map((l) => l.id)).size,
+      jan2027: mes('2027-01'), fev2027: mes('2027-02'),
+    };
+  });
+  ok('a ordem é cronológica, e não a do cadastro',
+    cadeia.nomes.join(' → ') === 'Degrau 1 → Degrau 2', cadeia.nomes.join(' → '));
+  ok('o primeiro degrau parte do custo cheio da despesa',
+    cadeia.alvos[0] === cadeia.atuais[0] - 3500, `${cadeia.atuais[0]} → ${cadeia.alvos[0]}`);
+  ok('o segundo parte do patamar que o primeiro deixou',
+    cadeia.atuais[1] === cadeia.alvos[0] && cadeia.alvos[1] === cadeia.atuais[1] - 5000,
+    `${cadeia.atuais[1]} → ${cadeia.alvos[1]}`);
+  ok('e não do custo cheio, que contaria o mesmo dinheiro duas vezes',
+    cadeia.atuais[1] !== cadeia.atuais[0], `${cadeia.atuais[0]} vs ${cadeia.atuais[1]}`);
+  // O defeito da coluna: dois cortes diferentes anunciavam o MESMO percentual,
+  // porque ela media a despesa, não o corte.
+  ok('a coluna % do custo fixo é a do CORTE, e por isso difere entre as linhas',
+    cadeia.colunaPct.length === 2 && cadeia.colunaPct[0] !== cadeia.colunaPct[1],
+    cadeia.colunaPct.join(' vs '));
+  // `pct` devolve pontos percentuais já arredondados a uma casa, então a
+  // tolerância é a do próprio arredondamento das duas parcelas.
+  ok('e a coluna soma a meta total sobre o custo fixo',
+    Math.abs(cadeia.pctCorte.reduce((s, x) => s + x, 0)
+      - (cadeia.metaTotal / cadeia.fixas) * 100) <= 0.11,
+    `${cadeia.pctCorte.join(' + ')} · meta ${cadeia.metaTotal} de ${cadeia.fixas}`);
+  ok('o total do plano conta a despesa uma vez só',
+    cadeia.totalAtual === cadeia.atuais[0] && cadeia.totalAlvo === cadeia.totalAtual - cadeia.metaTotal,
+    `${cadeia.totalAtual} → ${cadeia.totalAlvo}`);
+  ok('e o detalhamento não repete lançamento',
+    cadeia.unicos && cadeia.noDetalhamento < cadeia.repetidosPorItem,
+    `${cadeia.noDetalhamento} de ${cadeia.repetidosPorItem} somando item a item`);
+  ok('no mês do primeiro degrau só ele vale', cadeia.jan2027.length === 1, cadeia.jan2027.join(' · '));
+  ok('no mês seguinte os dois valem, e em cadeia',
+    cadeia.fev2027.length === 2
+      && cadeia.fev2027[1].startsWith(`Degrau 2:${cadeia.atuais[1]}`),
+    cadeia.fev2027.join(' · '));
+
   void abrirBlocos;
   console.log(`\n=== falhas: ${falhas.length ? '\n' + falhas.join('\n') : 'nenhuma'} ===`);
   console.log(`=== erros de console: ${erros.length ? '\n' + erros.join('\n') : 'nenhum'} ===`);

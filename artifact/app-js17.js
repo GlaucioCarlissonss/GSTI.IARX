@@ -524,6 +524,53 @@ function janelaDoObjetivo() {
 }
 
 /**
+ * O escopo de um plano é o par (tipo de despesa, filial), em que vazio quer
+ * dizer "tudo". `contemEscopo(a, b)` responde: tudo o que `b` alcança, `a`
+ * também alcança?
+ */
+const contemEscopo = (a, b) =>
+  (!a.tipo || a.tipo === b.tipo) && (!a.filial || a.filial === b.filial);
+
+/** Um lançamento entra no plano quando casa com o escopo dele. */
+const planoAlcanca = (p, l) =>
+  (!p.tipo || l.tipo === p.tipo) && (!p.filial || l.filial === p.filial);
+
+/**
+ * A ordem dos planos é CRONOLÓGICA — vigência vazia é "desde sempre" e vem
+ * primeiro. Empate: o corte maior à frente, e o nome por último, para que a
+ * ordem não dependa da ordem em que alguém cadastrou.
+ */
+const porVigenciaDoPlano = (a, b) =>
+  String(a.vigenciaInicio || '').localeCompare(String(b.vigenciaInicio || ''))
+  || cent(b.valorAlvo) - cent(a.valorAlvo)
+  || String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
+
+/**
+ * OS PLANOS SÃO DEGRAUS DE UMA ESCADA, NÃO LEITURAS ALTERNATIVAS DO MESMO MÊS.
+ *
+ * Dois planos sobre a mesma despesa se somam no tempo: se um corta R$ 3.500 a
+ * partir de 01/2027 e o outro corta R$ 5.000 a partir de 02/2027, o segundo
+ * não parte dos R$ 13.300 de hoje — parte dos R$ 9.800 que o primeiro deixou.
+ * Medir os dois contra a mesma base conta o mesmo dinheiro duas vezes e
+ * promete uma economia que o plano não produz: era o que a tela fazia, com as
+ * duas linhas anunciando "de R$ 13.300,00".
+ *
+ * Encadeia-se quando o escopo do plano ANTERIOR cabe dentro do escopo do
+ * posterior — é aí, e só aí, que se sabe que aquele corte já saiu desta base.
+ * O contrário é indeterminado: cortar R$ 10.000 "do custo fixo" em janeiro não
+ * diz quanto disso saiu de Pessoas, e atribuir tudo seria inventar. Nesse caso
+ * o degrau parte do valor cheio, que é o único número que a base sustenta.
+ */
+function planosEmCadeia(planos) {
+  const ordem = [...planos].sort(porVigenciaDoPlano);
+  return ordem.map((p, i) => ({
+    plano: p,
+    jaCortado: ordem.slice(0, i).reduce(
+      (s, q) => s + (contemEscopo(p, q) ? cent(q.valorAlvo) : 0), 0),
+  }));
+}
+
+/**
  * OBJETIVO 01 — Redução de custo sobre a despesa FIXA (mensal).
  *
  * Três decisões que mudam o número, e cada uma tem razão própria:
@@ -577,11 +624,13 @@ function calcularPlanoReducao(r) {
     (!p.vigenciaFim || !janela.de || p.vigenciaFim >= janela.de) &&
     (!p.vigenciaInicio || !janela.ate || p.vigenciaInicio <= janela.ate));
 
-  const itens = vigentes.map((p) => {
-    const casam = base.filter((l) =>
-      (!p.tipo || l.tipo === p.tipo) && (!p.filial || l.filial === p.filial));
+  const itens = planosEmCadeia(vigentes).map(({ plano: p, jaCortado }) => {
+    const casam = base.filter((l) => planoAlcanca(p, l));
     const noMes = casam.filter((l) => l.competencia === referencia);
-    const atual = noMes.reduce((s, l) => s + cent(l.valor), 0);
+    const bruto = noMes.reduce((s, l) => s + cent(l.valor), 0);
+    // A BASE DESTE DEGRAU: o que a despesa custa hoje, menos o que os planos
+    // anteriores já se comprometeram a tirar dela. Ver `planosEmCadeia`.
+    const atual = Math.max(0, bruto - jaCortado);
 
     // O VALOR CADASTRADO É QUANTO CORTAR: o alvo do item é o que ele custa
     // hoje menos a redução pactuada.
@@ -610,15 +659,25 @@ function calcularPlanoReducao(r) {
 
     return {
       nome: p.nome, tipo: p.tipo, filial: p.filial,
+      vigencia: vigenciaEmTexto(p), vigenciaInicio: p.vigenciaInicio || '',
       atual: reais(atual), alvo: reais(alvo), corte: reais(corte),
+      // O que a despesa custa de verdade no mês, antes do desconto do degrau
+      // anterior: é ele que dá o peso real dela no custo fixo.
+      custoBruto: reais(bruto), jaCortadoAntes: reais(jaCortado),
       reducao: reais(corte),
       pctReducao: pct(corte, atual),
       // O veredicto NÃO é por item: o alvo do item é derivado do próprio custo
       // dele, e comparar um com o outro seria comparar um número consigo
       // mesmo. Quem julga é o agregado, contra o mês em que o plano começou.
       atinge: null,
-      semDespesa: atual === 0,
-      pctDoGrupo: pct(atual, totalFixasMes),
+      semDespesa: bruto === 0,
+      // O PESO da despesa no custo fixo sai do valor CHEIO dela — é o que ela
+      // representa no mês, e não o que sobrou depois do degrau anterior.
+      pctDoGrupo: pct(bruto, totalFixasMes),
+      // A coluna da tabela: quanto do custo fixo total ESTA meta corta. É o
+      // percentual que soma — o anterior repetia 10,4% em duas linhas que
+      // cortam valores diferentes, porque media a mesma despesa duas vezes.
+      pctDoCorte: pct(corte, totalFixasMes),
       porMes,
       porFilial: [...porFilial.entries()]
         .map(([chave, f]) => ({ ...f, valorReais: reais(f.valor), pctDaFilial: pct(f.valor, gastoDaFilial.get(chave) || 0) }))
@@ -627,22 +686,25 @@ function calcularPlanoReducao(r) {
     };
   });
 
-  const totalAtual = itens.reduce((s, i) => s + cent(i.atual), 0);
-  const totalAlvo = itens.reduce((s, i) => s + cent(i.alvo), 0);
-  // Por valor atual decrescente, e não pela ordem do cadastro: a despesa que
-  // mais pesa é a que decide se o plano vale alguma coisa.
-  itens.sort((a, b) => b.atual - a.atual);
+  // OS TOTAIS SAEM DA UNIÃO DOS ESCOPOS, e não da soma das linhas. Dois planos
+  // sobre "Pessoas" são dois degraus da MESMA despesa: somar o "atual" das duas
+  // linhas contaria os mesmos R$ 13.300 duas vezes, e o percentual sobre o
+  // custo fixo passaria de 100% com plano nenhum sendo grande.
+  const alcancado = (l) => vigentes.some((p) => planoAlcanca(p, l));
+  const totalAtual = doMesRef.filter(alcancado).reduce((s, l) => s + cent(l.valor), 0);
+  const metaTotal = itens.reduce((s, i) => s + cent(i.corte), 0);
+  const totalAlvo = Math.max(0, totalAtual - metaTotal);
 
   // A linha do tempo: mês a mês, o custo das despesas do plano contra o alvo
   // mensal somado. O alvo é uma reta — é um compromisso, não uma medição.
   const serie = meses.map((m) => {
-    const c = itens.reduce((s, i) => s + (i.porMes.get(m) || 0), 0);
+    const c = base.filter((l) => l.competencia === m && alcancado(l))
+      .reduce((s, l) => s + cent(l.valor), 0);
     return { comp: m, rot: mesExib(m), valor: reais(c), centavos: c, alvo: reais(totalAlvo) };
   });
 
   // OS TRÊS NÚMEROS DO PLANO, todos sobre o mês de referência e fechando a
   // conta na tela: custo fixo total − meta total = resultado esperado.
-  const metaTotal = itens.reduce((s, i) => s + cent(i.corte), 0);
   const resultadoEsperado = Math.max(0, totalFixasMes - metaTotal);
 
   // O VEREDICTO é do agregado, e contra um mês fixo: o primeiro da janela em
@@ -669,6 +731,11 @@ function calcularPlanoReducao(r) {
 
   return {
     itens, serie, janela, referencia,
+    // Os lançamentos do plano, como UNIÃO dos escopos. Somar os `registros` de
+    // cada item listaria o mesmo lançamento uma vez por plano que o alcança —
+    // dois planos sobre "Pessoas" mostrariam a folha inteira em dobro, e a soma
+    // do detalhamento deixaria de bater com o número clicado.
+    registros: base.filter(alcancado),
     composicao: composicaoDoCustoFixo(base, meses, referencia, vigentes),
     totalAtual: reais(totalAtual), totalAlvo: reais(totalAlvo),
     metaTotal: reais(metaTotal),
@@ -799,7 +866,11 @@ function abrirMetasDoMes(rot, mc) {
           <td>${esc(x.nome)}${x.filial ? `<div class="arv-comp">${esc(x.filial)}</div>` : ''}</td>
           <td><i class="ponto-matriz" style="background:${x.cor}" aria-hidden="true"></i>${esc(x.tipo)}</td>
           <td>${esc(x.vigencia)}</td>
-          <td class="n">${brl(x.realizado)}</td>
+          <td class="n"${x.jaCortadoAntes > 0
+            ? ` title="${esc(`A despesa custa ${brl(x.custoBruto)} no mês; ${brl(x.jaCortadoAntes)} `
+                + 'já são meta de um plano que começa antes, e este parte do que sobra.')}"`
+            : ''}>${brl(x.realizado)}${x.jaCortadoAntes > 0
+              ? `<div class="arv-comp">de ${brl(x.custoBruto)} − ${brl(x.jaCortadoAntes)}</div>` : ''}</td>
           <td class="n">${brl(x.corte)}</td>
           <td class="n">${brl(x.alvo)}</td>
         </tr>`).join('')}</tbody>
@@ -807,8 +878,10 @@ function abrirMetasDoMes(rot, mc) {
           <td class="n">${brl(mc.esperado)}</td></tr></tfoot>
       </table></div>
       <p class="nota" style="margin-top:10px">O valor cadastrado é <strong>quanto cortar</strong>:
-        o patamar a atingir é o custo de hoje menos ele. Cadastro em
-        Sistema › Cadastro › Plano de redução.</p>`,
+        o patamar a atingir é o custo de hoje menos ele. Os planos aparecem em
+        <strong>ordem de vigência</strong> e <strong>em cadeia</strong> — quando dois alcançam a
+        mesma despesa, o que começa depois parte do patamar que o anterior deixou, e não do
+        custo cheio. Cadastro em Sistema › Cadastro › Plano de redução.</p>`,
     acoes: '<button type="button" class="bt" data-c>Fechar</button>',
     aoMontar({ raiz, fechar }) { raiz.querySelector('[data-c]').onclick = fechar; },
   });
@@ -1256,17 +1329,22 @@ function marcosDeMeta(pontos, porTipo, planos, referencia) {
     // mesma barra, então tem de ser o mesmo número.
     const chave = pt.projetado ? referencia : pt.comp;
 
-    const metas = doMes.map((p) => {
+    // Em cadeia e em ordem cronológica, pela mesma razão da tabela do item: um
+    // plano que começa depois parte do patamar que o anterior deixou, não do
+    // custo cheio. Ver `planosEmCadeia`.
+    const metas = planosEmCadeia(doMes).map(({ plano: p, jaCortado }) => {
       const tipo = String(p.tipo || '').trim();
       const serie = tipo ? porTipo.get(tipo) : null;
-      const realizadoC = tipo
+      const bruto = tipo
         ? (serie ? (serie.get(chave) || 0) : 0)
         : Math.round(pt.total * 100);
+      const realizadoC = Math.max(0, bruto - jaCortado);
       const corteC = cent(p.valorAlvo);
       return {
         nome: p.nome, tipo: tipo || 'todo o custo fixo',
         cor: tipo ? corDoTipo(tipo) : 'var(--tinta3)',
         corte: reais(corteC), realizado: reais(realizadoC),
+        custoBruto: reais(bruto), jaCortadoAntes: reais(jaCortado),
         alvo: reais(Math.max(0, realizadoC - corteC)),
         vigencia: vigenciaEmTexto(p),
         filial: p.filial || null,
@@ -1717,26 +1795,39 @@ async function viewIndicadores() {
         ${plano.itens.length === 0 ? '' : `
         <div class="rol" style="margin-top:12px"><table>
           <thead><tr><th>Item</th><th class="n">Atual / mês</th><th class="n">Alvo / mês</th>
-            <th>Atual × alvo</th><th class="n">Meta (cortar)</th><th class="n">% do custo fixo</th></tr></thead>
+            <th>Atual × alvo</th><th class="n">Meta (cortar)</th>
+            <th class="n" title="Quanto do custo fixo total do mês esta meta corta. A coluna soma a meta total.">% do custo fixo</th></tr></thead>
           <tbody>${plano.itens.map((i) => `<tr data-plano="${esc(i.nome)}">
-            <td>${esc(i.nome)}${i.tipo ? `<div class="arv-comp">${esc(i.tipo)}${i.filial ? ' · ' + esc(i.filial) : ''}</div>` : ''}</td>
+            <td>${esc(i.nome)}<div class="arv-comp">${
+              [i.tipo, i.filial, i.vigencia].filter(Boolean).map(esc).join(' · ')}</div>${
+              i.jaCortadoAntes > 0
+                ? `<div class="arv-comp" title="${esc(`A despesa custa ${brl(i.custoBruto)} no mês; `
+                    + `${brl(i.jaCortadoAntes)} já são meta de um plano que começa antes.`)}"
+                    >parte de ${brl(i.custoBruto)} − ${brl(i.jaCortadoAntes)} já pactuados</div>`
+                : ''}</td>
             <td class="n">${brl(i.atual)}</td>
             <td class="n">${brl(i.alvo)}</td>
             <td>${i.semDespesa
               ? '<span class="nota">sem despesa fixa no mês de referência</span>'
               : barrasComparativasHtml(i.atual, i.alvo, 'var(--crit)', 'var(--bom)', Math.max(i.atual, i.alvo),
                   { titulo: i.nome, linhas: [
-                    { nome: 'Custo mensal atual', valor: brl(i.atual), cor: 'var(--crit)' },
+                    { nome: 'Vigência', valor: i.vigencia },
+                    ...(i.jaCortadoAntes > 0 ? [
+                      { nome: 'Custo da despesa no mês', valor: brl(i.custoBruto) },
+                      { nome: 'Já pactuado antes', valor: `− ${brl(i.jaCortadoAntes)}` },
+                    ] : []),
+                    { nome: 'Base deste plano', valor: brl(i.atual), cor: 'var(--crit)' },
                     { nome: 'Alvo mensal', valor: brl(i.alvo), cor: 'var(--bom)' },
                     { nome: 'Redução', valor: `${brl(i.reducao)} (${pctTxt(i.pctReducao)})` },
-                    { nome: 'Peso no custo fixo do mês', valor: pctTxt(i.pctDoGrupo) },
+                    { nome: 'Peso da despesa no custo fixo', valor: pctTxt(i.pctDoGrupo) },
+                    { nome: 'Do custo fixo, esta meta corta', valor: pctTxt(i.pctDoCorte) },
                     ...i.porFilial.slice(0, 6).map((f) => ({
                       nome: f.unidade, valor: `${brl(f.valorReais)} · ${pctTxt(f.pctDaFilial)} da unidade`, cor: f.cor,
                     })),
                   ] })}</td>
             <td class="n" style="color:${i.corte > 0 ? 'var(--bomtxt)' : 'var(--tinta2)'}">${
               i.semDespesa ? '—' : brl(i.corte)}</td>
-            <td class="n">${pctTxt(i.pctDoGrupo)}</td>
+            <td class="n">${i.semDespesa ? '—' : pctTxt(i.pctDoCorte)}</td>
           </tr>
           ${i.porFilial.length === 0 ? '' : `<tr class="plano-filiais"><td colspan="6">
             <div class="plano-filiais-lista">${i.porFilial.map((f) => `<span>
@@ -1747,7 +1838,10 @@ async function viewIndicadores() {
       nota: plano.itens.length
         ? 'Só despesa de natureza <strong>fixa (mensal)</strong> entra, e tudo é <strong>por mês</strong>: o '
           + `atual é o que as despesas do plano custaram em ${plano.referencia ? mesExib(plano.referencia) : 'nenhum mês'}, `
-          + 'contra o alvo mensal do cadastro. A janela é a da <strong>meta cadastrada</strong> — o filtro de '
+          + 'contra o alvo mensal do cadastro. Os planos vêm em <strong>ordem de vigência</strong> e '
+          + '<strong>em cadeia</strong>: quando dois alcançam a mesma despesa, o que começa depois parte do '
+          + 'patamar que o anterior deixou — medir os dois contra o mesmo valor contaria o mesmo dinheiro '
+          + 'duas vezes. A janela é a da <strong>meta cadastrada</strong> — o filtro de '
           + 'período do bloco não alcança este objetivo, para que "a meta foi alcançada?" não mude de resposta '
           + 'conforme o mês que alguém escolheu olhar.'
         : 'Sem alvo cadastrado não há de quanto para quanto — e um alvo inventado seria pior que a ausência dele.',
@@ -2070,7 +2164,7 @@ async function viewIndicadores() {
 
   // ----------------------------------------------------- detalhamento
   const linhasPendentes = () => naoReconhecidos;
-  const lancamentosDoPlano = () => plano.itens.flatMap((i) => i.registros);
+  const lancamentosDoPlano = () => plano.registros;
 
   // O mapa é por CHAVE, e não por posição: a ordem dos blocos mudou nesta
   // entrega e vai mudar de novo, e um mapa posicional ligaria em silêncio o

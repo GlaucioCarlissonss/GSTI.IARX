@@ -1190,6 +1190,47 @@ quanto cai cada uma, que é exatamente a leitura pedida.
 
 O plano é do **cliente**, como as metas: o corte é negociado para o grupo.
 
+### Planos são degraus de uma escada, não leituras alternativas do mesmo mês
+
+Dois planos sobre a **mesma despesa** em meses diferentes se somam no tempo. Se
+um corta R$ 3.500 a partir de 01/2027 e outro corta R$ 5.000 a partir de
+02/2027, o segundo **não parte do custo cheio** — parte do patamar que o
+primeiro deixou:
+
+| ordem | plano | parte de | corta | chega a |
+| --- | --- | ---: | ---: | ---: |
+| 1º | vigente de 01/2027 | R$ 13.300,00 | R$ 3.500,00 | R$ 9.800,00 |
+| 2º | vigente de 02/2027 | R$ 9.800,00 | R$ 5.000,00 | R$ 4.800,00 |
+
+Medir os dois contra os mesmos R$ 13.300,00 conta o mesmo dinheiro duas vezes e
+promete uma economia que o plano não produz. Daí três regras:
+
+- **A ordem é cronológica**, pela vigência — e não a do cadastro nem a do valor.
+  Vigência em branco é "desde sempre" e vem primeiro. É a ordem que torna a
+  cadeia legível: ler de cima para baixo é ler a história do corte.
+- **Encadeia-se quando o escopo do plano anterior cabe dentro do escopo do
+  posterior.** É aí, e só aí, que se sabe que aquele corte já saiu desta base.
+  O contrário é indeterminado: cortar R$ 10.000 "do custo fixo" em janeiro não
+  diz quanto disso saiu de Pessoas, e atribuir tudo seria inventar — nesse caso
+  o degrau parte do valor cheio, que é o único número que a base sustenta.
+- **Os totais saem da união dos escopos, não da soma das linhas.** Dois planos
+  sobre "Pessoas" são dois degraus da mesma despesa: somar o "atual" das duas
+  linhas contaria os mesmos R$ 13.300,00 duas vezes, e o percentual sobre o
+  custo fixo passaria de 100% sem plano nenhum ser grande. Pela mesma razão o
+  detalhamento lista cada lançamento **uma vez**, e não uma vez por plano que o
+  alcança.
+
+A mesma cadeia vale na caixa fixa de cada mês do gráfico e na tela que o ponto
+cinza abre: lá os planos são os que vigoram **naquele** mês, na mesma ordem e
+partindo uns dos outros.
+
+**A coluna "% do custo fixo" é a do corte, não a da despesa.** Ela responde
+"quanto do custo fixo total do mês esta meta corta", e por isso **soma**: as
+linhas fecham na mesma fração que o cabeçalho anuncia para a meta total. A
+versão anterior mostrava o peso da *despesa*, e duas linhas que cortam valores
+diferentes da mesma despesa exibiam o mesmo percentual — somá-las daria o dobro
+do peso real. O peso da despesa continua existindo, no balão do comparativo.
+
 ### Objetivo 01: Redução de Custo — o indicador
 
 O primeiro indicador do bloco Financeiro apresenta o plano, e ele segue três
