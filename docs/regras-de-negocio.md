@@ -1245,14 +1245,16 @@ ele é feito"; um gráfico só das despesas do plano mostraria a parte e esconde
 o todo contra o qual a meta é medida. A soma dos segmentos fecha com o número do
 card, em centavos, e isso é conferido por teste.
 
-**A cor do tipo de despesa tem paleta própria** (`--t1`…`--t8`), e ela é as
-**mesmas oito matizes** da paleta de empresa, começando em outra vaga. A razão é
-que as vagas categóricas de um gráfico são oito e já estavam gastas: uma paleta
-"nova" só poderia ser re-degraus das mesmas matizes, e um azul mais claro ao
-lado do azul de empresa leria como "a mesma coisa, desbotada" — pior do que a
-repetição. Rotacionando a ordem, as cores **dominantes** de cada gráfico ficam
-diferentes, que é o que o olho compara. Do nono tipo em diante tudo cai em
-**Outros**, em cinza.
+**A cor do tipo de despesa tem paleta própria** (`--t1`…`--t8`): índigo, âmbar,
+teal, rosa, céu, laranja, esmeralda e violeta. São matizes distintas das de
+empresa porque as duas legendas convivem na mesma tela, e repetir a cor faria o
+mesmo azul dizer "HR-PE" num card e "Telefonia" no de cima. Do nono tipo em
+diante tudo cai em **Outros**, em cinza.
+
+A paleta foi validada como conjunto nos **dois temas**, contra a superfície real
+do cartão: banda de luminosidade, piso de croma, separação para daltonismo
+(ΔE ≥ 8 entre vizinhas na ordem das vagas) e **contraste ≥ 3:1** — que a versão
+anterior não cumpria em três vagas no tema claro.
 
 **A cor sai do NOME do tipo, nunca do tamanho do gasto** (`corDoTipo`, no molde
 de `corDaMatriz`). Se viesse do valor, apertar um filtro repintaria os
@@ -1278,6 +1280,21 @@ mês aparece como "sem despesa neste mês", e não como "R$ 0,00": zero se lê c
 razão: três das oito cores ficam abaixo de 3:1 contra o fundo claro, e a regra é
 que cor fraca só entra acompanhada de rótulo visível.
 
+### O alvo do plano: o valor cadastrado é QUANTO CORTAR
+
+O campo do cadastro é a **redução pactuada**, e não o patamar a atingir. O alvo
+sai de uma subtração:
+
+> **alvo = base − corte**, onde a **base** é o custo daquele tipo de despesa no
+> **primeiro mês da janela** do objetivo — o que ele custava quando o plano
+> começou a valer.
+
+A base tem de ser fixa, e é por isso que ela **não** sai do mês de referência:
+um alvo derivado do mês corrente desceria junto com o custo, e "alcançou a meta"
+nunca seria verdade nem mentira. Com a base no começo da janela, a leitura fica
+a que o gestor leva para a reunião: *"custava X, combinamos cortar Y, então tem
+de chegar em X−Y — e hoje está em Z"*.
+
 ### O mês de referência é o último REALIZADO
 
 O "quanto custa hoje" sai do **último mês com despesa fixa que já aconteceu** —
@@ -1301,6 +1318,12 @@ realizado e projetado é o ponto.
 > aqui. O que este objetivo pergunta é *"se nada mudar, o custo fixo de hoje
 > continua assim?"* — e é o custo de hoje, repetido, que responde. Quem quer ver
 > o que já está lançado no futuro tem o indicador **Custo recorrente mês a mês**.
+
+**Os rótulos de mês saem inclinados a 80°**, para que CADA barra tenha o seu:
+na horizontal, com 24 meses, só cabia um a cada dois, e metade das barras ficava
+sem dizer de que mês era. Os segmentos empilhados têm **1px de vão e canto
+reto** — no empilhado, o topo arredondado faz cada faixa parecer um objeto
+solto, e um vão maior separa cores que formam um valor só.
 
 **A linha de topo** liga o alto de cada barra, realizada e projetada. Ela não
 repete a altura da barra: o que ela mostra é a **tendência**, que num empilhado
@@ -1333,13 +1356,20 @@ O ponto cinza continua anunciando o compromisso, e a caixa aparece no balão.
 total, mais as metas daquele mês. Tipo zerado não vira linha — procurar-se-ia
 uma despesa que não existe.
 
-**O clique abre os lançamentos do mês**, com a ficha **completa** (doze colunas,
-incluindo fornecedor, natureza, classificação, consumo, origem e reconhecimento)
-e ordenados **do maior para o menor valor**. A tela nasce larga, porque doze
-colunas em 680px chegam ilegíveis; o tamanho que a pessoa escolher continua
-ganhando. Clicar num mês **projetado** abre os lançamentos do mês de referência,
-que é a base da projeção, e a nota diz isso: o mês futuro não tem lançamento
-próprio, e um detalhamento vazio faria duvidar do número.
+**O clique — na barra ou no ponto da linha — abre os lançamentos do mês numa
+ÁRVORE de quatro níveis:** tipo de despesa → empresa → filial → lançamento. É a
+mesma peça da árvore "por unidade" do card, com um nível a mais no topo, e cada
+nível abre e fecha em sanfona, ordenado por valor decrescente e com a
+representatividade dentro do nível de cima.
+
+Uma lista plana responde "quais lançamentos são"; não responde **"de onde vem o
+peso"**, que é a pergunta de quem clicou numa barra empilhada por tipo. A árvore
+responde as duas: o nível 1 repete as cores do gráfico, e daí para baixo cada
+nível diz quanto vale dentro do seu pai.
+
+Clicar num mês **projetado** abre os lançamentos do mês de referência, que é a
+base da projeção, e a nota diz isso: o mês futuro não tem lançamento próprio, e
+um detalhamento vazio faria duvidar do número.
 
 > **Balão e clique param a propagação.** O `.kpi` que embrulha o gráfico também
 > é um gatilho de drill-down; sem isso, passar o cursor na barra mostrava a dica

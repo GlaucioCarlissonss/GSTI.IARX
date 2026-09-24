@@ -27,16 +27,16 @@
   --m1:#2a78d6; --m2:#eb6834; --m3:#1baf7a; --m4:#8e5ad6;
   --m5:#c9315e; --m6:#0f8f9e; --m7:#a8720f; --m8:#5b6b7d;
   /* Uma cor por TIPO DE DESPESA FIXA, para a composição do custo mensal.
-     São as mesmas oito matizes validadas da paleta de empresa, começando em
-     OUTRA vaga: as vagas categóricas de um gráfico são oito, e já estavam
-     gastas. Uma paleta "nova" só poderia ser re-degraus destas mesmas matizes,
-     e um azul mais claro ao lado do azul de empresa leria como a mesma coisa
-     desbotada — pior que a repetição. Rotacionando a ordem, as cores DOMINANTES
-     de cada gráfico ficam diferentes, que é o que o olho compara.
-     Validadas como conjunto nos dois temas: banda de luminosidade, piso de
-     croma, separação para daltonismo (ΔE ≥ 8 entre vizinhas) e contraste. */
-  --t1:#eda100; --t2:#e87ba4; --t3:#008300; --t4:#4a3aa7;
-  --t5:#e34948; --t6:#2a78d6; --t7:#eb6834; --t8:#1baf7a;
+     Matizes próprias — índigo, âmbar, teal, rosa, céu, laranja, esmeralda e
+     violeta —, e não as da paleta de empresa: as duas legendas convivem na
+     mesma tela, e repetir a cor faria o mesmo azul dizer "HR-PE" num card e
+     "Telefonia" no de cima.
+     Validadas como conjunto nos DOIS temas contra a superfície real do cartão:
+     banda de luminosidade, piso de croma, separação para daltonismo (ΔE ≥ 8
+     entre vizinhas na ordem das vagas) e contraste ≥ 3:1 — que a paleta
+     anterior não cumpria em três vagas no tema claro. */
+  --t1:#4f46e5; --t2:#d97706; --t3:#0d9488; --t4:#e11d48;
+  --t5:#0284c7; --t6:#ea580c; --t7:#059669; --t8:#7c3aed;
   --bom:#0ca30c; --bomtxt:#056605; --alerta:#b26a00; --crit:#c0392f;
   --sombra:0 1px 2px rgba(17,23,33,.05),0 8px 24px rgba(17,23,33,.06);
   --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -50,8 +50,8 @@
   --s1:#3987e5; --s2:#d95926; --s3:#199e70;
   --m1:#3987e5; --m2:#d95926; --m3:#199e70; --m4:#a273e8;
   --m5:#e0526f; --m6:#22a7b8; --m7:#d9a13c; --m8:#8a97a8;
-  --t1:#c98500; --t2:#d55181; --t3:#008300; --t4:#9085e9;
-  --t5:#e66767; --t6:#3987e5; --t7:#d95926; --t8:#199e70;
+  --t1:#6366f1; --t2:#cc7a05; --t3:#0d9e8f; --t4:#f0355a;
+  --t5:#0b90cc; --t6:#e35f12; --t7:#0ca176; --t8:#8b5cf6;
   --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
   --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
 }}
@@ -63,8 +63,8 @@
   --s1:#3987e5; --s2:#d95926; --s3:#199e70;
   --m1:#3987e5; --m2:#d95926; --m3:#199e70; --m4:#a273e8;
   --m5:#e0526f; --m6:#22a7b8; --m7:#d9a13c; --m8:#8a97a8;
-  --t1:#c98500; --t2:#d55181; --t3:#008300; --t4:#9085e9;
-  --t5:#e66767; --t6:#3987e5; --t7:#d95926; --t8:#199e70;
+  --t1:#6366f1; --t2:#cc7a05; --t3:#0d9e8f; --t4:#f0355a;
+  --t5:#0b90cc; --t6:#e35f12; --t7:#0ca176; --t8:#8b5cf6;
   --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
   --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
 }
@@ -104,6 +104,14 @@
 .arvore-unidades tr.nivel-2>td:first-child{padding-left:20px;color:var(--tinta2)}
 .arvore-unidades tr.nivel-3>td:first-child{padding-left:20px;color:var(--tinta3);font-size:11.5px}
 .arvore-unidades tr.nivel-3>td{color:var(--tinta3)}
+/* O quarto nível — o lançamento — na árvore do detalhamento, que sobe um degrau
+   porque ali o topo é o TIPO de despesa. */
+.arvore-unidades tr.nivel-4>td:first-child{padding-left:20px;color:var(--tinta3);font-size:11.5px}
+.arvore-unidades tr.nivel-4>td{color:var(--tinta3)}
+/* Dentro da tela flutuante a árvore tem mais espaço: a coluna do nome pode
+   crescer, e a barra ocupa o que sobra. */
+[data-arvore-det] table{min-width:560px}
+[data-arvore-det] td:first-child{min-width:320px}
 .arvore-unidades td:first-child{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
 .arv-abrir{flex:none;width:17px;height:17px;padding:0;border:1px solid var(--linha2);border-radius:5px;
   background:var(--sup2);color:var(--tinta2);font:inherit;font-size:12px;line-height:1;cursor:pointer;

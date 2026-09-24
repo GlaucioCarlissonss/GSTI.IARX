@@ -582,7 +582,19 @@ function calcularPlanoReducao(r) {
       (!p.tipo || l.tipo === p.tipo) && (!p.filial || l.filial === p.filial));
     const noMes = casam.filter((l) => l.competencia === referencia);
     const atual = noMes.reduce((s, l) => s + cent(l.valor), 0);
-    const alvo = cent(p.valorAlvo);
+
+    // O VALOR CADASTRADO É QUANTO CORTAR, não o patamar a atingir: o alvo é a
+    // base menos a redução pactuada. E a base é o custo daquele tipo no
+    // PRIMEIRO mês da janela — "o que custava quando o plano começou".
+    //
+    // A base tem de ser fixa, e é por isso que ela não sai do mês de
+    // referência: um alvo derivado do mês corrente desceria junto com o custo,
+    // e "alcançou a meta" nunca seria verdade nem mentira.
+    const corte = cent(p.valorAlvo);
+    const primeiroMes = meses[0] || referencia;
+    const base0 = casam.filter((l) => l.competencia === primeiroMes)
+      .reduce((s, l) => s + cent(l.valor), 0);
+    const alvo = Math.max(0, base0 - corte);
 
     // A série do item: quanto aquela despesa custou em cada mês da janela.
     const porMes = new Map();
@@ -602,9 +614,12 @@ function calcularPlanoReducao(r) {
     return {
       nome: p.nome, tipo: p.tipo, filial: p.filial,
       atual: reais(atual), alvo: reais(alvo),
+      corte: reais(corte), base: reais(base0), mesBase: primeiroMes,
+      // O que FALTA cortar: a distância entre onde o custo está e onde ele
+      // deveria estar. Negativo quer dizer que passou do alvo, para melhor.
       reducao: reais(atual - alvo),
       pctReducao: pct(atual - alvo, atual),
-      atinge: atual > 0 && atual <= alvo,
+      atinge: atual > 0 && alvo > 0 && atual <= alvo,
       semDespesa: atual === 0,
       pctDoGrupo: pct(atual, totalFixasMes),
       porMes,
@@ -712,6 +727,119 @@ function legendaDeTiposHtml(composicao) {
  * `aoClicar(ponto)` recebe o mês; quem liga o detalhamento é o chamador.
  */
 /**
+ * O detalhamento em árvore: TIPO → EMPRESA → FILIAL → LANÇAMENTO.
+ *
+ * A mesma estrutura da árvore "por unidade" do card, com um nível a mais no
+ * topo. Uma lista plana de 122 lançamentos responde "quais são", mas não
+ * responde "de onde vem o peso" — e é essa a pergunta de quem clicou numa
+ * barra empilhada por tipo. A árvore responde as duas: o nível 1 repete as
+ * cores do gráfico, e cada nível abaixo diz o seu peso dentro do nível de cima.
+ *
+ * Cada nível ordena por valor DECRESCENTE, que é a regra da tela inteira.
+ *
+ * É montada por inteiro de uma vez, e não sob demanda como a do card: aqui o
+ * recorte já é um mês só, e os níveis nascem fechados — o custo de montar é o
+ * de percorrer a lista que a tela já tem na mão.
+ */
+function arvoreDoDetalhamentoHtml(lancamentos) {
+  if (!lancamentos.length) return '<p class="vazio">Nenhum registro neste recorte.</p>';
+
+  const total = lancamentos.reduce((s, l) => s + cent(l.valor), 0);
+  const agrupar = (lista, chave) => {
+    const m = new Map();
+    for (const l of lista) {
+      const k = chave(l);
+      if (!m.has(k)) m.set(k, { nome: k, valor: 0, itens: [] });
+      const no = m.get(k);
+      no.valor += cent(l.valor);
+      no.itens.push(l);
+    }
+    return [...m.values()].sort((a, b) => b.valor - a.valor);
+  };
+
+  const barra = (valor, pai, cor, rot) => `<td class="num">${brl(reais(valor))}</td>
+    <td>${barraDeRepresentatividadeHtml(pct(valor, pai), cor, rot)}</td>`;
+
+  const linhas = [];
+  agrupar(lancamentos, (l) => String(l.tipo || 'Sem tipo')).forEach((t, i) => {
+    const cor = corDoTipo(t.nome);
+    const nT = `t${i}`;
+    linhas.push(`<tr class="nivel-1" data-no="${nT}">
+      <td><button type="button" class="arv-abrir" aria-expanded="false" data-abrir-no="${nT}"
+            aria-label="Abrir as empresas de ${esc(t.nome)}"><span aria-hidden="true">+</span></button>
+        <i class="ponto-matriz" style="background:${cor}" aria-hidden="true"></i>${esc(t.nome)}</td>
+      ${barra(t.valor, total, cor, `${t.nome}: ${brl(reais(t.valor))} · ${pctTxt(pct(t.valor, total))} do mês`)}
+    </tr>`);
+
+    agrupar(t.itens, (l) => String(nomeEmpresa(l.empresa))).forEach((e, j) => {
+      const nE = `${nT}:e${j}`;
+      linhas.push(`<tr class="nivel-2" data-no="${nE}" data-pai="${nT}" hidden>
+        <td><button type="button" class="arv-abrir" aria-expanded="false" data-abrir-no="${nE}"
+              aria-label="Abrir as filiais de ${esc(e.nome)}"><span aria-hidden="true">+</span></button>${esc(e.nome)}</td>
+        ${barra(e.valor, t.valor, cor, `${e.nome}: ${brl(reais(e.valor))} · ${pctTxt(pct(e.valor, t.valor))} de ${t.nome}`)}
+      </tr>`);
+
+      agrupar(e.itens, (l) => String(l.filial || 'Sem filial (nível empresa)')).forEach((f, k) => {
+        const nF = `${nE}:f${k}`;
+        linhas.push(`<tr class="nivel-3" data-no="${nF}" data-pai="${nE}" hidden>
+          <td><span class="arv-vazio" aria-hidden="true"></span>
+            <button type="button" class="arv-abrir" aria-expanded="false" data-abrir-no="${nF}"
+              aria-label="Abrir os lançamentos de ${esc(f.nome)}"><span aria-hidden="true">+</span></button>${esc(f.nome)}</td>
+          ${barra(f.valor, e.valor, cor, `${f.nome}: ${brl(reais(f.valor))} · ${pctTxt(pct(f.valor, e.valor))} de ${e.nome}`)}
+        </tr>`);
+
+        [...f.itens].sort((a, b) => cent(b.valor) - cent(a.valor)).forEach((l) => {
+          const c = cent(l.valor);
+          const rotulo = l.descricao || l.fornecedor || l.tipo || 'Lançamento';
+          linhas.push(`<tr class="nivel-4" data-pai="${nF}" hidden>
+            <td><span class="arv-vazio" aria-hidden="true"></span><span class="arv-vazio" aria-hidden="true"></span>
+              <span class="arv-vazio" aria-hidden="true"></span>${esc(rotulo)}
+              <span class="arv-comp">${esc(mesExib(l.competencia))}${
+                reconhecidoDe(l) ? '' : ' · por reconhecer'}</span></td>
+            ${barra(c, f.valor, cor, `${rotulo}: ${brl(l.valor)} · ${pctTxt(pct(c, f.valor))} de ${f.nome}`
+              + (l.fornecedor ? ` · ${l.fornecedor}` : ''))}
+          </tr>`);
+        });
+      });
+    });
+  });
+
+  return `<div class="rol" data-arvore-det><table class="arvore-unidades larga">
+    <thead><tr><th>Tipo / empresa / filial / lançamento</th>
+      <th class="num">Valor</th><th>Representatividade</th></tr></thead>
+    <tbody>${linhas.join('')}</tbody></table></div>`;
+}
+
+/**
+ * Liga a árvore do detalhamento. Estado só na tela: uma árvore dentro de um
+ * modal que fecha não tem por que sobreviver a ele, e guardar cada nó em
+ * `localStorage` encheria a loja de chaves de um recorte que passou.
+ */
+function ligarArvoreDoDetalhamento(raiz) {
+  const tabela = raiz.querySelector('[data-arvore-det] table');
+  if (!tabela) return;
+  const aplicar = (no, aberto) => {
+    const bt = tabela.querySelector(`[data-abrir-no="${CSS.escape(no)}"]`);
+    if (bt) {
+      bt.setAttribute('aria-expanded', String(aberto));
+      bt.firstElementChild.textContent = aberto ? '−' : '+';
+    }
+    for (const filho of tabela.querySelectorAll(`[data-pai="${CSS.escape(no)}"]`)) {
+      filho.hidden = !aberto;
+      // Fechar o pai recolhe o que estava aberto abaixo: netos visíveis sob um
+      // pai fechado seriam uma árvore mentindo sobre si.
+      if (!aberto && filho.dataset.no) aplicar(filho.dataset.no, false);
+    }
+  };
+  for (const bt of tabela.querySelectorAll('[data-abrir-no]')) {
+    bt.onclick = (ev) => {
+      ev.stopPropagation();
+      aplicar(bt.dataset.abrirNo, bt.getAttribute('aria-expanded') !== 'true');
+    };
+  }
+}
+
+/**
  * As despesas fixas de UMA competência, no mesmo recorte que o objetivo usa.
  *
  * Repete os filtros de `calcularPlanoReducao` de propósito — é isso que faz a
@@ -762,7 +890,7 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
   }
 
   const alturaCaixas = niveis.length ? niveis.length * (ALT + VAO) + 12 : 14;
-  const A = 236 + alturaCaixas, m = { t: alturaCaixas, d: mD, b: 24, e: mE };
+  const A = 236 + alturaCaixas + 24, m = { t: alturaCaixas, d: mD, b: 48, e: mE };
   const ap = A - m.t - m.b;
   const max = Math.max(0, ...pontos.map((p) => series.reduce((s, x) => s + (p.v[x.k] || 0), 0)));
   const { teto, marcas } = escalaBoa(max);
@@ -779,8 +907,8 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
   const defs = svgEl('defs', {});
   const hach = svgEl('pattern', { id: 'hachura-proj', width: 6, height: 6,
     patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
-  hach.appendChild(svgEl('rect', { width: 6, height: 6, fill: 'var(--sup)', 'fill-opacity': 0.55 }));
-  hach.appendChild(svgEl('rect', { width: 2, height: 6, fill: 'var(--sup)', 'fill-opacity': 0.95 }));
+  hach.appendChild(svgEl('rect', { width: 6, height: 6, fill: 'var(--sup)', 'fill-opacity': 0.34 }));
+  hach.appendChild(svgEl('rect', { width: 1.6, height: 6, fill: 'var(--sup)', 'fill-opacity': 0.85 }));
   defs.appendChild(hach);
   svg.appendChild(defs);
 
@@ -810,11 +938,14 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
     let acc = 0;
     for (const s of series) {
       const v = p.v[s.k] || 0, base = acc; acc += v;
-      const topo = y(acc), alt = Math.max(y(base) - topo - 2, 0);
+      // 1px de vão e canto RETO: no empilhado o topo arredondado faz cada
+      // faixa parecer um objeto solto, e 2px de vão separavam demais cores que
+      // formam um valor só.
+      const topo = y(acc), alt = Math.max(y(base) - topo - 1, 0);
       if (alt <= 0) continue;
-      const d = pathBarra(cx(i) - larg / 2, topo, larg, alt);
+      const d = pathBarra(cx(i) - larg / 2, topo, larg, alt, 0);
       g.appendChild(svgEl('path', { d, fill: s.cor,
-        'fill-opacity': p.projetado ? 0.42 : 1 }));
+        'fill-opacity': p.projetado ? 0.55 : 1 }));
       if (p.projetado) g.appendChild(svgEl('path', { d, fill: 'url(#hachura-proj)' }));
     }
     // A área de captura por ÚLTIMO, para ficar por cima dos segmentos: embaixo
@@ -849,11 +980,17 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
       g.addEventListener('blur', sumirDica);
     }
     svg.appendChild(g);
-    if (pontos.length <= 13 || i % 2 === 0) {
-      const t = svgEl('text', { x: cx(i), y: A - 7, 'text-anchor': 'middle', class: 'eixo' });
-      t.textContent = p.rot;
-      svg.appendChild(t);
-    }
+    // Inclinado a 80°, CADA barra ganha o seu rótulo. Na horizontal, com 24
+    // meses, só cabia um a cada dois — e metade das barras ficava sem dizer de
+    // que mês era.
+    // A âncora fica logo ABAIXO do eixo, e não na borda de baixo: com
+    // `text-anchor:end` e -80°, o texto se estende para baixo e para a
+    // esquerda da âncora — ancorado na borda, ele caía fora do desenho e só
+    // sobrava o último caractere.
+    const t = svgEl('text', { x: 0, y: 0, 'text-anchor': 'end', class: 'eixo',
+      transform: `translate(${cx(i) + 3},${A - m.b + 9}) rotate(-80)` });
+    t.textContent = p.rot;
+    svg.appendChild(t);
   });
 
   // A LINHA DE TOPO: liga o alto de cada barra, realizada e projetada. Ela não
@@ -879,8 +1016,24 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
       cor = !julgaveis.length ? 'var(--tinta3)'
         : julgaveis.every((x) => x.atinge) ? 'var(--bom)' : 'var(--crit)';
     }
-    svg.appendChild(svgEl('circle', { cx: cx(i), cy: py, r: lista ? 4.5 : 3,
-      fill: cor, stroke: 'var(--sup)', 'stroke-width': 1.5 }));
+    // O ponto abre o MESMO detalhamento da barra. Ele fica por cima dela, e
+    // sem gatilho próprio um clique no ponto não fazia nada — a área de
+    // captura da coluna está embaixo dele.
+    const ponto = svgEl('circle', { cx: cx(i), cy: py, r: lista ? 4.5 : 3,
+      fill: cor, stroke: 'var(--sup)', 'stroke-width': 1.5 });
+    if (aoClicar && p.total > 0) {
+      ponto.style.cursor = 'pointer';
+      ponto.setAttribute('role', 'button');
+      ponto.setAttribute('tabindex', '0');
+      ponto.setAttribute('aria-label',
+        `${p.rot}${p.projetado ? ' (projetado)' : ''}: ${brl(p.total)} — abrir os lançamentos deste mês`);
+      const abrir = (ev) => { ev.stopPropagation(); sumirDica(); aoClicar(p); };
+      ponto.addEventListener('click', abrir);
+      ponto.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrir(ev); }
+      });
+    }
+    svg.appendChild(ponto);
   });
 
   // As caixas fixas, na faixa reservada no topo, cada uma no nível calculado
@@ -1714,7 +1867,10 @@ async function viewIndicadores() {
           ? `Custo fixo projetado para ${ponto.rot} — base: ${mesExib(comp)}`
           : `Custo fixo de ${ponto.rot}`,
         tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true,
-        // Do maior para o menor: a despesa que mais pesa é a que decide.
+        // Em ÁRVORE — tipo → empresa → filial → lançamento —, porque quem
+        // clicou numa barra empilhada por tipo quer saber de onde vem o peso, e
+        // não só quais lançamentos existem. Cada nível ordena por valor.
+        arvore: true,
         itens: [...itens].sort((a, b) => cent(b.valor) - cent(a.valor)),
         contagem: null,
         nota: ponto.projetado
@@ -2289,7 +2445,7 @@ function tarefasDoRecorte(r, quais) {
  * tarefa. Aqui a conferência é por CONTAGEM, porque o número no card pode ser um
  * percentual — e somar percentuais não significa nada.
  */
-function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga }) {
+function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga, arvore }) {
   const confere = contagem === null || contagem === undefined || contagem === itens.length;
   abrirModal({
     titulo, tipo,
@@ -2304,7 +2460,8 @@ function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga })
           : confere ? ' Confere com o indicador.' : ` Diverge: o indicador conta ${inteiro(contagem)}.`}
         ${nota ? ' ' + nota : ''}
       </div>
-      ${itens.length === 0 ? '<p class="vazio">Nenhum registro neste recorte.</p>' : `
+      ${arvore ? arvoreDoDetalhamentoHtml(itens)
+        : itens.length === 0 ? '<p class="vazio">Nenhum registro neste recorte.</p>' : `
       <div class="rol" style="margin-top:10px"><table${larga ? ' class="larga"' : ''}>
         <thead><tr>${colunas.map((c) => `<th${c.n ? ' class="n"' : ''}>${esc(c.rotulo)}</th>`).join('')}</tr></thead>
         <tbody>${itens.slice(0, 400).map((it) => `<tr>${colunas
@@ -2312,7 +2469,10 @@ function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga })
       </table></div>
       ${itens.length > 400 ? `<p class="nota" style="margin-top:8px">Exibindo os 400 primeiros de ${inteiro(itens.length)}.</p>` : ''}`}`,
     acoes: '<button type="button" class="bt" data-c>Fechar</button>',
-    aoMontar({ raiz, fechar }) { raiz.querySelector('[data-c]').onclick = fechar; },
+    aoMontar({ raiz, fechar }) {
+      raiz.querySelector('[data-c]').onclick = fechar;
+      if (arvore) ligarArvoreDoDetalhamento(raiz);
+    },
   });
 }
 

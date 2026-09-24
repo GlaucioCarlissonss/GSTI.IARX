@@ -177,6 +177,9 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
       janela: dados.janela && { de: dados.janela.de, ate: dados.janela.ate },
       pontos: dados.serie.length,
       mesesDaJanela: dados.composicao.pontos.length,
+      // O alvo conferido POR FORA: soma de (base do item − corte cadastrado).
+      alvoConferido: dados.itens.reduce((s, i) => s + Math.max(0, i.base - i.corte), 0),
+      base: dados.itens.reduce((s, i) => s + i.base, 0),
       pctReducao: dados.pctReducao,
       pctDasFixas: dados.pctDasFixas,
       fixasDoMes: dados.fixasDoMes,
@@ -185,8 +188,14 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
   });
   ok('o indicador passa a mostrar atual → alvo',
     /→/.test(comPlano.numero) && comPlano.numero !== '—', comPlano.numero);
-  // Dois itens no plano: R$ 10.000 do primeiro mais R$ 1 do segundo.
-  ok('o alvo é a soma dos alvos cadastrados', comPlano.alvo === 10001, String(comPlano.alvo));
+  // O valor cadastrado é QUANTO CORTAR, não o patamar a atingir: o alvo de
+  // cada item é o custo dele no primeiro mês da janela menos a redução
+  // pactuada, e o total é a soma desses alvos.
+  ok('o alvo é a base menos o corte pactuado',
+    comPlano.alvoConferido !== null && Math.abs(comPlano.alvo - comPlano.alvoConferido) < 0.02,
+    `${comPlano.alvo} × ${comPlano.alvoConferido}`);
+  ok('e cortar mais deixa o alvo menor', comPlano.alvo < comPlano.base,
+    `alvo ${comPlano.alvo} contra base ${comPlano.base}`);
   ok('o valor atual sai dos lançamentos, e não do cadastro', comPlano.atual > 0, String(comPlano.atual));
   // A conta ficou MENSAL nesta entrega: somar oito meses contra um alvo de um
   // mês punha os dois lados em unidades diferentes.
@@ -341,14 +350,14 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
       const ms = [...document.querySelectorAll('.modal')];
       const md = ms[ms.length - 1];
       if (!md) return null;
-      const vals = [...md.querySelectorAll('tbody tr')].map((tr) => {
-        const td = [...tr.querySelectorAll('td')].pop();
-        return Number((td.textContent || '').replace(/[^\d,]/g, '').replace(/\./g, '').replace(',', '.'));
-      });
+      // O nível 1 é o tipo de despesa: é nele que a ordem decrescente se vê.
+      const vals = [...md.querySelectorAll('tr.nivel-1 td.num')]
+        .map((td) => Number((td.textContent || '').replace(/[^\d,]/g, '').replace(',', '.')));
       return {
         modais: ms.length,
         titulo: (md.querySelector('h2') || {}).textContent.trim(),
-        colunas: [...md.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
+        niveis: [1, 2, 3, 4].map((n) => md.querySelectorAll(`tr.nivel-${n}`).length),
+        visiveis: [...md.querySelectorAll('tbody tr')].filter((t) => !t.hidden).length,
         decrescente: vals.every((v, i) => i === 0 || vals[i - 1] >= v),
         linhas: vals.length,
       };
@@ -356,10 +365,13 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
     // Sem parar a propagação, o clique abria DUAS telas: a do mês e a do card.
     ok('o clique abre UMA tela, e não duas', det && det.modais === 1, det && `${det.modais} tela(s)`);
     ok('a tela é a do mês clicado', det && /Custo fixo de \d\d\/\d{4}/.test(det.titulo), det && det.titulo);
-    ok('com todas as informações do lançamento', det && det.colunas.length >= 10
-      && det.colunas.includes('Fornecedor') && det.colunas.includes('Natureza')
-      && det.colunas.includes('Reconhecido'), det && `${det.colunas.length} colunas`);
-    ok('ordenada do maior para o menor valor', det && det.decrescente, det && `${det.linhas} linha(s)`);
+    ok('o detalhamento é uma ÁRVORE tipo → empresa → filial → lançamento',
+      det && det.niveis[0] > 0 && det.niveis[1] > 0 && det.niveis[2] > 0 && det.niveis[3] > 0,
+      det && det.niveis.join(' / '));
+    ok('que abre fechada, só com os tipos à vista',
+      det && det.visiveis === det.niveis[0], det && `${det.visiveis} visível(is)`);
+    ok('e ordenada do maior para o menor em cada nível',
+      det && det.decrescente, det && `${det.linhas} tipo(s)`);
     await pag.click('.modal [data-x]');
     await pag.waitForTimeout(400);
   }
