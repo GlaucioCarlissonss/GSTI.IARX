@@ -1942,6 +1942,29 @@ function blocoIndicador({ chave, titulo, descricao, valor, cor, apoio, corpo, no
     </section>`;
 }
 
+/**
+ * O que falta reconhecer, por centro de custo.
+ *
+ * Neste sistema o centro de custo É o tipo de despesa: é assim que as bases do
+ * cliente vêm rotuladas, e a importação já traduz um pelo outro.
+ *
+ * A peça é compartilhada porque a mesma tabela aparece no Farol 2, em
+ * Indicadores Gerais, e no Painel do Controle Financeiro — duas cópias
+ * divergiriam na primeira correção, e as duas telas falam do mesmo trabalho.
+ */
+function porCentroDeCustoHtml(pendente) {
+  if (!pendente.centros.length) return '<p class="vazio">Nada por reconhecer neste recorte.</p>';
+  return `<div class="rol"><table>
+      <thead><tr><th>Centro de custo</th><th class="n">Lançamentos</th><th class="n">Valor</th></tr></thead>
+      <tbody>${pendente.centros.map((c) => `<tr data-centro="${esc(c.centro)}">
+        <td>${esc(c.centro)}</td><td class="n">${inteiro(c.quantidade)}</td>
+        <td class="n" style="color:var(--alerta);font-weight:700">${brl(c.valor)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>Total</td><td class="n">${inteiro(pendente.quantidade)}</td>
+        <td class="n">${brl(pendente.valor)}</td></tr></tfoot></table></div>
+    <p class="nota" style="margin-top:10px">O centro de custo é o tipo de despesa — é assim que as bases
+      vêm rotuladas.</p>`;
+}
+
 /** A barra dupla do comparativo antes → depois. Mesma escala nas duas. */
 function barrasComparativasHtml(antes, depois, corAntes, corDepois, teto, detalhe) {
   const largura = (v) => (teto > 0 ? Math.max(0, Math.min(100, (v / teto) * 100)) : 0);
@@ -2257,14 +2280,21 @@ async function viewIndicadores() {
 
     ${blocoIndicador({
       chave: 'por-reconhecer',
-      titulo: 'Despesas por reconhecer',
+      titulo: 'Farol 2 - Custos de Despesas lançadas pelo Financeiro que NÃO SÃO Reconhecidas/gerenciadas',
       valor: brl(pendente.valor),
       cor: pendente.quantidade ? 'var(--alerta)' : 'var(--bomtxt)',
       apoio: `${inteiro(pendente.quantidade)} de ${inteiro(pendente.universoN)} lançamentos `
         + `(${pendente.pctQuantidade.toLocaleString('pt-BR')}%)`,
       corpo: `${faixaDeMatrizesHtml(fatiasDe(q.pendentes, emDinheiro))}
         ${legendaDeMatrizesHtml(fatiasDe(q.pendentes, emDinheiro))}
-        ${arvoreDeUnidadesHtml('ind-pendentes', q.pendentes, emDinheiro)}`,
+        ${arvoreDeUnidadesHtml('ind-pendentes', q.pendentes, emDinheiro)}
+        <!-- O "Por reconhecer, por centro de custo" era um bloco solto na fila,
+             abaixo deste e falando do mesmo número. Passa a viver AQUI dentro:
+             são duas leituras do mesmo trabalho a fazer — por unidade e por
+             centro —, e mantê-las separadas obrigava a rolar a tela para
+             descobrir que o total era o mesmo. -->
+        <h3 class="titulo-mini">Não reconhecido, por centro de custo</h3>
+        ${porCentroDeCustoHtml(pendente)}`,
     })}
 
     <section class="bloco" style="margin-top:14px">
@@ -2279,22 +2309,6 @@ async function viewIndicadores() {
             p.variacao === null ? '—' : (p.variacao > 0 ? '+' : '') + p.variacao.toLocaleString('pt-BR') + '%'}</td>
         </tr>`).join('')}</tbody></table></div>` : ''}
       ${rf.somenteReconhecidas ? '<p class="nota" style="margin-top:10px">Exibindo apenas despesas reconhecidas.</p>' : ''}
-    </section>
-
-    <section class="bloco" style="margin-top:14px">
-      <header><h2>Por reconhecer, por centro de custo</h2>
-        <span class="nota">${inteiro(pendente.centros.length)} centro(s)</span></header>
-      ${pendente.centros.length === 0
-        ? '<p class="vazio">Nada por reconhecer neste recorte.</p>'
-        : `<div class="rol"><table>
-            <thead><tr><th>Centro de custo</th><th class="n">Lançamentos</th><th class="n">Valor</th></tr></thead>
-            <tbody>${pendente.centros.map((c) => `<tr data-centro="${esc(c.centro)}">
-              <td>${esc(c.centro)}</td><td class="n">${inteiro(c.quantidade)}</td>
-              <td class="n" style="color:var(--alerta);font-weight:700">${brl(c.valor)}</td></tr>`).join('')}</tbody>
-            <tfoot><tr><td>Total</td><td class="n">${inteiro(pendente.quantidade)}</td>
-              <td class="n">${brl(pendente.valor)}</td></tr></tfoot></table></div>
-          <p class="nota" style="margin-top:10px">O centro de custo é o tipo de despesa — é assim que as bases
-            vêm rotuladas.</p>`}
     </section>
 
     ${consumo.lancamentos === 0 ? '' : `
@@ -2669,11 +2683,17 @@ async function viewIndicadores() {
   ligarDicasDaTela();
   el('#pagina').querySelectorAll('tr[data-centro]').forEach((tr) => {
     tr.style.cursor = 'pointer';
-    tr.onclick = () => abrirDetalhe({
-      titulo: 'Por reconhecer — ' + tr.dataset.centro, tipo: 'indicadores',
-      itens: linhasPendentes().filter((l) => (l.tipo || '(sem centro de custo)') === tr.dataset.centro),
-      esperado: null,
-    });
+    tr.onclick = (ev) => {
+      // A tabela agora mora DENTRO do cartão do Farol 2, que é ele próprio um
+      // gatilho de drill-down: sem barrar a propagação, clicar num centro abre
+      // duas telas empilhadas — a do centro por baixo da do farol inteiro.
+      ev.stopPropagation();
+      abrirDetalhe({
+        titulo: 'Não reconhecido — ' + tr.dataset.centro, tipo: 'indicadores',
+        itens: linhasPendentes().filter((l) => (l.tipo || '(sem centro de custo)') === tr.dataset.centro),
+        esperado: null,
+      });
+    };
   });
   // Cada item do plano abre os lançamentos que compõem o valor ATUAL dele.
   el('#pagina').querySelectorAll('tr[data-plano]').forEach((tr) => {

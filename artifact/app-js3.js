@@ -255,6 +255,29 @@ function viewPainel() {
   const invest = somaDe(doPeriodo.filter((l) => l.classificacao === 'investimento'));
   const total = despesa + invest;
 
+  // DESPESAS POR RECONHECER — veio de Indicadores Gerais para cá, que é a tela
+  // onde se resolve o que ela aponta.
+  //
+  // O recorte é o DESTA tela (competências e cenários do painel), e não o do
+  // bloco de indicadores: um número que não bate com o filtro logo acima dele
+  // faz duvidar dos dois. Por isso a conta é refeita aqui em vez de importada.
+  const porReconhecer = doPeriodo.filter((l) => !reconhecidoDe(l));
+  const pendente = {
+    quantidade: porReconhecer.length,
+    valor: somaDe(porReconhecer),
+    universoN: doPeriodo.length,
+    pctQuantidade: pct(porReconhecer.length, doPeriodo.length),
+    centros: [...porReconhecer.reduce((m, l) => {
+      const k = l.tipo || '(sem centro de custo)';
+      const a = m.get(k) || { n: 0, c: 0 };
+      m.set(k, { n: a.n + 1, c: a.c + cent(l.valor) });
+      return m;
+    }, new Map()).entries()]
+      .map(([centro, v]) => ({ centro, quantidade: v.n, valor: reais(v.c) }))
+      .sort((a, b) => b.valor - a.valor),
+  };
+  const quebraPendentes = quebrarPorUnidade(porReconhecer, (l) => cent(l.valor));
+
   // Delta só com um mês em foco: comparar um período de N meses com o mês
   // anterior seria comparar coisas de tamanhos diferentes.
   let varia = null, anterior = null;
@@ -334,6 +357,33 @@ function viewPainel() {
         <span class="a">a partir de ${mesExib(mesSoma(ultimo, 1))}</span></div>`}
     </div>
 
+    ${comparando ? '' : `
+    <section class="bloco bloco-indicador" style="margin-top:14px">
+      <header><h2>Despesas por reconhecer</h2>
+        <span class="nota valor-cabecalho" style="color:${
+          pendente.quantidade ? 'var(--alerta)' : 'var(--bomtxt)'}">${brl(pendente.valor)}</span></header>
+      <!-- O atributo title é contrato da tela: todo indicador explica o que
+           mede, com ou sem drill-down, e é por ele que o leitor de tela chega
+           ao texto. Sem crases aqui: este comentário vive DENTRO de um template
+           literal, e uma crase fecharia a string no meio do HTML. -->
+      <div class="kpi kpi-largo drill" data-pendentes role="button" tabindex="0"
+        aria-label="Despesas por reconhecer — abrir os registros"
+        title="Soma e contagem das despesas que ninguém reconheceu ainda, no recorte desta tela. Despesa que veio por carga não foi conferida por ninguém, e ausente vale como não reconhecida. Clique para ver os lançamentos e reconhecer em lote.">
+        <span class="r">Despesas por reconhecer</span>
+        <span class="n" style="color:${pendente.quantidade ? 'var(--alerta)' : 'var(--bomtxt)'}">${brl(pendente.valor)}</span>
+        <span class="a">${inteiro(pendente.quantidade)} de ${inteiro(pendente.universoN)} lançamentos
+          (${pendente.pctQuantidade.toLocaleString('pt-BR')}%)</span>
+        ${faixaDeMatrizesHtml(fatiasDe(quebraPendentes, (v) => brl(reais(v))))}
+        ${legendaDeMatrizesHtml(fatiasDe(quebraPendentes, (v) => brl(reais(v))))}
+        ${arvoreDeUnidadesHtml('painel-pendentes', quebraPendentes, (v) => brl(reais(v)))}
+        <h3 class="titulo-mini">Não reconhecido, por centro de custo</h3>
+        ${porCentroDeCustoHtml(pendente)}
+      </div>
+      <p class="nota" style="margin-top:10px">Despesa que veio por carga <strong>não foi conferida por
+        ninguém</strong>: ausente vale como não reconhecida, porque tratá-la como reconhecida apagaria o
+        trabalho a fazer. O recorte é o desta tela — competências e cenários escolhidos acima.</p>
+    </section>`}
+
     <div class="grade g2">
       <section class="bloco"><header><h2>Evolução mensal</h2>
         <span class="nota">${comparando ? 'total por cenário' : 'despesa × investimento'}</span></header>
@@ -378,6 +428,36 @@ function viewPainel() {
     { chave:'cen', rotulo:'Cenário', itens:itensCen, selecionados:E.cenariosSelSel, minimo:1,
       ocultarSeTudo:false, total:itensCen.length, aoMudar:(n) => { E.cenariosSel = n; ajustarCompetencias(); render(); } },
   ]);
+
+  // As ligações do indicador que veio de Indicadores Gerais. Mesmas peças
+  // compartilhadas — a árvore, os balões e o detalhamento em lote —, para as
+  // duas telas se comportarem igual diante do mesmo número.
+  const cartaoPendentes = el('[data-pendentes]');
+  if (cartaoPendentes) {
+    ligarArvoresDeUnidade();
+    ligarDicasDaTela();
+    const abrir = () => abrirDetalhe({
+      titulo: 'Despesas por reconhecer', tipo: 'financeiro',
+      itens: porReconhecer, esperado: pendente.valor,
+    });
+    cartaoPendentes.onclick = abrir;
+    cartaoPendentes.onkeydown = (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrir(); }
+    };
+    el('#pagina').querySelectorAll('tr[data-centro]').forEach((tr) => {
+      tr.style.cursor = 'pointer';
+      tr.onclick = (ev) => {
+        // O cartão inteiro é gatilho: sem barrar, o clique num centro abriria
+        // as duas telas empilhadas.
+        ev.stopPropagation();
+        abrirDetalhe({
+          titulo: 'Não reconhecido — ' + tr.dataset.centro, tipo: 'financeiro',
+          itens: porReconhecer.filter((l) => (l.tipo || '(sem centro de custo)') === tr.dataset.centro),
+          esperado: null,
+        });
+      };
+    });
+  }
 
   const CORES = ['var(--s1)', 'var(--s2)', 'var(--s3)'];
 

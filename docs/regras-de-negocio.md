@@ -1167,6 +1167,34 @@ A leitura é um comparativo por empresa: **antes** é o que é dela mais 100% do
 que ela paga; **depois** é o que é dela mais a parcela que lhe cabe. A pagadora
 original vem marcada.
 
+## Farol 2: o que o financeiro lançou e ninguém reconheceu
+
+O indicador **Despesas por reconhecer** saiu de Indicadores Gerais e passou para
+o **Painel do Controle Financeiro**, que é a tela onde se resolve o que ele
+aponta — reconhecer em lote é trabalho operacional, não leitura estratégica. Em
+Indicadores Gerais fica o **Farol 2**, com a mesma estrutura visual: número,
+faixa e legenda por empresa, árvore empresa → filial → lançamento e drill-down.
+
+**O bloco solto "Por reconhecer, por centro de custo" deixou de existir como
+bloco.** Ele falava do mesmo número que o indicador logo acima, e mantê-los
+separados obrigava a rolar a tela para descobrir isso. A tabela passou a viver
+**dentro** do Farol 2, como a segunda leitura do mesmo trabalho: por unidade e
+por centro de custo.
+
+**Cada tela refaz a conta com o próprio recorte.** No Painel, o número obedece às
+competências e cenários escolhidos ali; em Indicadores Gerais, ao filtro do
+bloco. Importar o número de uma tela para a outra faria um deles não bater com o
+filtro logo acima dele, e um número que não obedece ao próprio filtro faz
+duvidar dos dois. A **tabela por centro de custo é peça compartilhada**
+(`porCentroDeCustoHtml`), porque a apresentação é a mesma e duas cópias
+divergiriam na primeira correção.
+
+**Tabela dentro de cartão exige barrar a propagação.** O cartão do farol é ele
+próprio um gatilho de drill-down; sem `stopPropagation`, clicar numa linha de
+centro abre duas telas flutuantes empilhadas — a do centro por baixo da do farol
+inteiro. É o terceiro lugar do sistema onde esse par apareceu, e a suíte passou
+a conferir a contagem de telas abertas nas duas superfícies.
+
 ## Farol 1: variação dos custos fixos e dos variáveis
 
 O bloco absorve o antigo *Custo recorrente — variação no período*: a leitura dos
