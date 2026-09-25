@@ -375,6 +375,72 @@ const legendaDosTetosHtml = (f3) => `<div class="legenda-tipos" style="margin-to
   }).join('')}
 </div>`;
 
+/**
+ * A MÉDIA DO PERÍODO — a reta que responde "este mês está acima ou abaixo do
+ * que este período vem custando?".
+ *
+ * Quatro regras, e cada uma evita uma leitura falsa:
+ *
+ * 1. **Só meses realizados.** Incluir projeção puxaria a média para o nível
+ *    repetido, e ela deixaria de falar do que aconteceu.
+ * 2. **Menos de dois meses, sem média.** A "média" de um mês é o próprio mês, e
+ *    a reta afirmaria uma referência que não existe.
+ * 3. **Média simples dos meses com dado**, e não do valor total dividido pela
+ *    janela: um mês sem lançamento nenhum não é um mês de custo zero.
+ * 4. **Ela acompanha o filtro**, e por isso o rótulo diz sobre quantos meses
+ *    foi feita — "média 8m" e "média 3m" não são a mesma promessa.
+ */
+function mediaDoPeriodo(valores) {
+  const uteis = (valores || []).filter((v) => v !== null && v !== undefined && Number.isFinite(v));
+  if (uteis.length < 2) return null;
+  return { valor: uteis.reduce((s, v) => s + v, 0) / uteis.length, meses: uteis.length };
+}
+
+const rotuloDaMedia = (m) => (m ? `média ${inteiro(m.meses)}m` : '');
+
+/** A distância de um valor até a média, para o balão e para o racional. */
+function distanciaDaMedia(valor, media) {
+  if (!media || valor === null || valor === undefined || media.valor === 0) return null;
+  const pp = ((valor - media.valor) / media.valor) * 100;
+  return {
+    pct: Math.round(pp * 10) / 10,
+    acima: pp > 0.05, abaixo: pp < -0.05,
+    texto: `${pp > 0 ? '+' : ''}${(Math.round(pp * 10) / 10).toLocaleString('pt-BR')}% `
+      + (pp > 0.05 ? 'acima da média' : pp < -0.05 ? 'abaixo da média' : 'na média'),
+    cor: pp > 0.05 ? 'var(--crit)' : pp < -0.05 ? 'var(--bomtxt)' : 'var(--tinta2)',
+  };
+}
+
+/**
+ * O interruptor das médias, por bloco.
+ *
+ * Guarda-se a EXCEÇÃO ao padrão, que aqui é "ligado": assim um bloco novo já
+ * nasce mostrando a média, e o armazenamento só cresce com o que alguém
+ * desligou de propósito. Mesma convenção das dobras.
+ */
+const CHAVE_MEDIAS = 'iarx-medias-ocultas';
+function mediasOcultas() {
+  try { return new Set(JSON.parse(localStorage.getItem(CHAVE_MEDIAS) || '[]')); }
+  catch (e) { return new Set(); }
+}
+const mostrarMedias = (chave) => !mediasOcultas().has(chave);
+function alternarMedias(chave) {
+  const atual = mediasOcultas();
+  if (atual.has(chave)) atual.delete(chave); else atual.add(chave);
+  try { localStorage.setItem(CHAVE_MEDIAS, JSON.stringify([...atual])); }
+  catch (e) { /* sem armazenamento: vale só nesta sessão */ }
+  render();
+}
+
+/**
+ * O controle fica na FAIXA DA LEGENDA, e não no cabeçalho do bloco: o cabeçalho
+ * inteiro é o botão que abre e fecha o bloco, e uma caixa de seleção dentro
+ * dele disputaria o mesmo clique.
+ */
+const interruptorDeMediasHtml = (chave) => `<label class="liga-medias">
+  <input type="checkbox" data-medias="${esc(chave)}"${mostrarMedias(chave) ? ' checked' : ''}>
+  mostrar médias do período</label>`;
+
 /** As faixas do Objetivo 03 e o vermelho do teto. */
 const COR_FAIXA = { fixas: 'var(--s1)', variaveis: 'var(--m4)', investimentos: 'var(--s3)' };
 const ROTULO_FAIXA = {
@@ -405,7 +471,7 @@ function tabelaDoObjetivo03Html(o) {
         `<th class="n" style="color:${COR_FAIXA[k]}">${esc(r.split(' (')[0])}</th>`).join('')}
       <th class="n" style="color:${COR_TOTAL}">Total</th>
       <th class="n" style="color:${COR_TETO}">Teto</th>
-      <th class="n">Diferença</th><th>Situação</th></tr></thead>
+      <th class="n">Diferença</th><th class="n">vs. média</th><th>Situação</th></tr></thead>
     <tbody>${o.serie.map((p) => `<tr data-mes-obj3="${esc(p.comp)}">
       <td>${esc(p.rot)}</td>
       <td class="n">${brl(p.fixas)}</td>
@@ -415,6 +481,8 @@ function tabelaDoObjetivo03Html(o) {
       <td class="n">${p.teto === null ? '—' : brl(p.teto)}</td>
       <td class="n"${p.dentro === null ? '' : ` style="color:${p.dentro ? 'var(--bomtxt)' : 'var(--crit)'}"`}>${
         p.diferenca === null ? '—' : (p.diferenca > 0 ? '+' : '') + brl(p.diferenca)}</td>
+      <td class="n"${!p.vsMedia ? '' : ` style="color:${p.vsMedia.cor}"`}>${
+        p.vsMedia ? esc(p.vsMedia.texto.replace(' da média', '')) : '—'}</td>
       <td>${p.dentro === null
         ? '<span class="tag">sem teto</span>'
         : p.dentro
@@ -547,6 +615,12 @@ function calcularObjetivo03(r) {
     };
   });
 
+  // A média entra no CÁLCULO, e não só no desenho: é ela que alimenta a coluna
+  // "vs. média" do racional, e duas médias — uma para a reta, outra para a
+  // tabela — poderiam divergir.
+  const mediaTotal = mediaDoPeriodo(serie.map((p) => p.total));
+  for (const p of serie) p.vsMedia = distanciaDaMedia(p.total, mediaTotal);
+
   const referencia = serie[serie.length - 1] || null;
   const comTeto = serie.filter((p) => p.dentro !== null);
   const estouros = comTeto.filter((p) => !p.dentro);
@@ -554,7 +628,7 @@ function calcularObjetivo03(r) {
   const reconhecidosDoMes = referencia ? referencia.itens : [];
 
   return {
-    serie, referencia, tetos: tetosHoje,
+    serie, referencia, tetos: tetosHoje, mediaTotal,
     mesesComTeto: comTeto.length, estouros: estouros.length,
     // O placar só existe onde há teto: "0 de 0 dentro" não é elogio nem crítica.
     atinge: comTeto.length === 0 ? null : estouros.length === 0,
@@ -664,9 +738,15 @@ function calcularFarol3(r) {
   }
   const tetosDoUltimo = tetosVigentes(ultimo ? ultimo.comp : null);
 
+  // A média do TOTAL, sobre os meses realizados. Mês projetado não recebe
+  // comparação: ele não foi medido, e dizer que está "acima da média" afirmaria
+  // um resultado que ainda não aconteceu.
+  const mediaTotal = mediaDoPeriodo(realizados.map((p) => p.total));
+  for (const p of pontos) p.vsMedia = p.projetado ? null : distanciaDaMedia(p.total, mediaTotal);
+
   return {
     realizados, projetados, pontos,
-    tetos: tetosDoUltimo,
+    tetos: tetosDoUltimo, mediaTotal,
     // Contexto sem meta vira linha CINZA tracejada e um aviso: o vermelho é o
     // limite de alguém, e pintar de vermelho a ausência de limite seria
     // inventar um compromisso.
@@ -1564,7 +1644,7 @@ function fixasDaCompetencia(r, comp) {
     passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, r));
 }
 
-function barrasDoObjetivo(alvo, dados, aoClicar) {
+function barrasDoObjetivo(alvo, dados, aoClicar, media = null) {
   alvo.replaceChildren();
   const { series, pontos } = dados;
   if (!pontos.length) { alvo.innerHTML = '<p class="vazio">Sem despesa fixa na vigência da meta.</p>'; return; }
@@ -1602,7 +1682,10 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
   const alturaCaixas = niveis.length ? niveis.length * (ALT + VAO) + 12 : 14;
   const A = 236 + alturaCaixas + 24, m = { t: alturaCaixas, d: mD, b: 48, e: mE };
   const ap = A - m.t - m.b;
-  const max = Math.max(0, ...pontos.map((p) => series.reduce((s, x) => s + (p.v[x.k] || 0), 0)));
+  // A média entra no TETO da escala: uma referência acima do maior mês ficaria
+  // fora do gráfico justamente quando a distância até ela é a notícia.
+  const max = Math.max(0, ...pontos.map((p) => series.reduce((s, x) => s + (p.v[x.k] || 0), 0)),
+    media ? media.valor : 0);
   const { teto, marcas } = escalaBoa(max);
   const y = (v) => m.t + ap - (v / teto) * ap;
   const larg = Math.min(passo * 0.62, 34);
@@ -1794,6 +1877,18 @@ function barrasDoObjetivo(alvo, dados, aoClicar) {
     gc.appendChild(svgEl('title', {})).textContent = dica;
     gc.setAttribute('aria-label', dica);
     svg.appendChild(gc);
+  }
+
+  // A MÉDIA DO PERÍODO, por último para ficar por cima das barras. Pontilhada:
+  // o tracejado longo já é a marca da projeção, e o hachurado é o da barra
+  // projetada — um terceiro traço precisa de forma própria.
+  if (media) {
+    svg.appendChild(svgEl('line', { x1: m.e, x2: L - m.d, y1: y(media.valor), y2: y(media.valor),
+      stroke: 'var(--s1)', 'stroke-width': 1.5, 'stroke-dasharray': '2 3' }));
+    const t = svgEl('text', { x: L - m.d, y: y(media.valor) - 4, class: 'eixo',
+      fill: 'var(--s1)', 'text-anchor': 'end' });
+    t.textContent = rotuloDaMedia(media);
+    svg.appendChild(t);
   }
 
   alvo.appendChild(svg);
@@ -2380,6 +2475,7 @@ async function viewIndicadores() {
         <h3 class="titulo-mini">Custo fixo mês a mês, por tipo de despesa${
           plano.janela.de ? ` — ${mesExib(plano.janela.de)} a ${mesExib(plano.janela.ate)}` : ''}</h3>
         ${legendaDeTiposHtml(plano.composicao)}
+        ${interruptorDeMediasHtml('plano-reducao')}
         <div id="i-plano-serie" style="margin-top:2px"></div>`}
         ${plano.itens.length === 0 ? '' : `
         <div class="rol" style="margin-top:12px"><table>
@@ -2464,6 +2560,7 @@ async function viewIndicadores() {
         </div>` : `
         ${cardsDaAdequacaoHtml(adequacao)}
         ${legendaDaAdequacaoHtml()}
+        ${interruptorDeMediasHtml('rateio')}
         <div id="i-adequacao" style="margin-top:2px"></div>
         <h3 class="titulo-mini">O que ainda é compartilhado, por empresa e filial${
           adequacao.referencia ? ` — ${mesExib(adequacao.referencia)}` : ''}</h3>
@@ -2554,6 +2651,7 @@ async function viewIndicadores() {
           O teto geral é a soma dos vigentes, então ele está menor do que seria com os três.
           Cadastre em Sistema › Cadastro › Metas, tipo <em>Objetivo 03</em>.</div>`}
         ${legendaDoObjetivo03Html()}
+        ${interruptorDeMediasHtml('teto-gasto')}
         <div id="i-obj3" style="margin-top:2px"></div>
         ${tabelaDoObjetivo03Html(obj3)}
         <h3 class="titulo-mini">Despesas reconhecidas de ${esc(obj3.referencia.rot)}, por empresa e filial</h3>
@@ -2597,6 +2695,7 @@ async function viewIndicadores() {
       corpo: `${metaHtml(metaDoCustoRecorrente(rf, reducao))}
         ${cardsDoFarolHtml(farol)}
         ${legendaDeClassificacaoHtml()}
+        ${interruptorDeMediasHtml('custo-recorrente')}
         ${grupoDoFarolHtml('fixos', 'Custos fixos (mensais)', farol.fixos)}
         ${grupoDoFarolHtml('variaveis', 'Custos variáveis (pontuais)', farol.variaveis)}
         <h3 class="titulo-mini">Custo fixo por empresa e filial</h3>
@@ -2645,6 +2744,7 @@ async function viewIndicadores() {
           soma dos vigentes. Cadastre em Sistema › Cadastro › Metas, tipo <em>Objetivo 03</em>.</div>`}
         ${legendaDoFarol3Html()}
         ${legendaDosTetosHtml(farol3)}
+        ${interruptorDeMediasHtml('custo-mes-a-mes')}
         <div id="i-reducao" style="margin-top:2px"></div>
         <div class="rol rol-fixo" style="margin-top:12px;max-height:300px;min-height:0"><table>
           <thead><tr><th>Competência</th>
@@ -2652,6 +2752,7 @@ async function viewIndicadores() {
             <th class="n" style="color:${COR_VARIAVEL}">Variáveis</th>
             <th class="n" style="color:${COR_FIXA}">Fixas</th>
             <th class="n">Variação do fixo</th>
+            <th class="n">Total vs. média</th>
             ${TETOS_DO_FAROL3.map((t) => `<th class="n" style="color:${
               (t.ctx === 'geral' ? farol3.tetos.geral : farol3.tetos[t.ctx]) === null
                 ? COR_SEM_TETO : COR_TETO}">${esc(t.nome.replace('Teto — ', 'Teto ')
@@ -2668,6 +2769,8 @@ async function viewIndicadores() {
             <td class="n"${p.variacao === null ? '' : ` style="color:${
               p.variacao < 0 ? 'var(--bomtxt)' : p.variacao > 0 ? 'var(--crit)' : 'var(--tinta2)'}"`}>${
               p.variacao === null ? '—' : (p.variacao > 0 ? '+' : '') + p.variacao.toLocaleString('pt-BR') + '%'}</td>
+            <td class="n"${!p.vsMedia ? '' : ` style="color:${p.vsMedia.cor}"`}>${
+              p.vsMedia ? esc(p.vsMedia.texto.replace(' da média', '')) : '—'}</td>
             ${TETOS_DO_FAROL3.map((t) => `<td class="n"${p[t.k] === null ? '' : ` style="color:${COR_TETO}"`}>${
               p[t.k] === null ? '<span class="vazio2">sem meta</span>' : brl(p[t.k])}</td>`).join('')}
           </tr>`).join('')}</tbody></table></div>`,
@@ -2792,14 +2895,27 @@ async function viewIndicadores() {
   // invisível justamente no mês em que o gasto passou longe dele.
   const alvoObj3 = el('#i-obj3');
   if (alvoObj3 && obj3.serie.length) {
+    // Uma média por FAIXA, mais a do total — quatro retas, cada uma na cor da
+    // sua série. Teto não tem média: é compromisso, não medição.
+    const verMediasObj3 = mostrarMedias('teto-gasto');
+    const mediasObj3 = Object.fromEntries(['fixas', 'variaveis', 'investimentos', 'total']
+      .map((k) => [k, verMediasObj3 ? mediaDoPeriodo(obj3.serie.map((p) => p[k])) : null]));
     linhas(alvoObj3,
       obj3.serie.map((p) => ({
         rot: p.rot, comp: p.comp,
         v: {
           fixas: p.fixas, variaveis: p.variaveis, investimentos: p.investimentos,
           total: p.total, teto: p.teto,
+          ...Object.fromEntries(Object.entries(mediasObj3)
+            .map(([k, m]) => [`media_${k}`, m ? m.valor : null])),
         },
         extra: [
+          // A DISTÂNCIA até a média, que é a leitura que a reta existe para dar.
+          ...Object.entries(mediasObj3).map(([k, m]) => {
+            const d = distanciaDaMedia(p[k], m);
+            return d ? { nome: `${k === 'total' ? 'Total' : ROTULO_FAIXA[k]} × média`,
+              valor: d.texto, cor: d.cor } : null;
+          }).filter(Boolean),
           { nome: 'Lançamentos', valor: `${inteiro(p.lancamentos)} reconhecido(s)` },
           ...(p.dentro === null
             ? [{ nome: 'Teto', valor: 'sem meta cadastrada para este mês' }]
@@ -2817,7 +2933,15 @@ async function viewIndicadores() {
       })),
       [...Object.entries(ROTULO_FAIXA).map(([k, r]) => ({ k, nome: r, cor: COR_FAIXA[k] })),
         { k: 'total', nome: 'Total', cor: COR_TOTAL },
-        { k: 'teto', nome: 'Teto de gasto', cor: COR_TETO, tracejada: true }],
+        { k: 'teto', nome: 'Teto de gasto', cor: COR_TETO, tracejada: true },
+        ...Object.entries(mediasObj3).filter(([, m]) => m).map(([k, m]) => ({
+          k: `media_${k}`, nome: `Média — ${k === 'total' ? 'total' : ROTULO_FAIXA[k]}`,
+          cor: k === 'total' ? COR_TOTAL : COR_FAIXA[k],
+          pontilhada: true, semPontos: true, foraDoBalao: true,
+          // Só o total leva rótulo na ponta: quatro rótulos empilhados no mesmo
+          // canto se encavalariam, e o balão já nomeia as outras três.
+          rotulo: k === 'total' ? rotuloDaMedia(m) : '',
+        }))],
       brl, curto, '',
       (ponto) => abrirMesDoObjetivo03(obj3, ponto.comp));
   }
@@ -2834,6 +2958,13 @@ async function viewIndicadores() {
   // nasceria solta no ar.
   const alvoFarol3 = el('#i-reducao');
   if (alvoFarol3 && farol3.pontos.length) {
+    // Média das três séries MEDIDAS. A projeção não entra (é o último mês
+    // repetido, e a média dela seria ela mesma) nem os tetos (compromisso).
+    const verMediasF3 = mostrarMedias('custo-mes-a-mes');
+    const mediasF3 = Object.fromEntries(['total', 'variavel', 'fixa'].map((k) =>
+      [k, verMediasF3 ? mediaDoPeriodo(farol3.realizados.map((p) => p[k])) : null]));
+    const nomeSerieF3 = { total: 'total', variavel: 'variáveis', fixa: 'fixas' };
+    const corSerieF3 = { total: COR_TOTAL, variavel: COR_VARIAVEL, fixa: COR_FIXA };
     linhas(alvoFarol3,
       farol3.pontos.map((p) => ({
         rot: p.rot, comp: p.comp, projetado: p.projetado,
@@ -2842,6 +2973,10 @@ async function viewIndicadores() {
           fixaProj: p.fixaProjetada === undefined ? null : p.fixaProjetada,
           // Os quatro tetos, constantes ao longo da vigência de cada um.
           ...Object.fromEntries(TETOS_DO_FAROL3.map((t) => [t.k, p[t.k]])),
+          // As médias só valem sobre o trecho REALIZADO: estendê-las sobre a
+          // projeção sugeriria que o futuro já foi medido.
+          ...Object.fromEntries(Object.entries(mediasF3)
+            .map(([k, m]) => [`media_${k}`, m && !p.projetado ? m.valor : null])),
         },
         // O detalhamento que o enunciado pede: mês, natureza e composição, além
         // do valor que as séries já dão.
@@ -2854,6 +2989,10 @@ async function viewIndicadores() {
             ...(p.variacao === null ? []
               : [{ nome: 'Variação do fixo', valor: (p.variacao > 0 ? '+' : '')
                   + p.variacao.toLocaleString('pt-BR') + '%' }]),
+            ...Object.entries(mediasF3).map(([k, m]) => {
+              const d = distanciaDaMedia(p[k], m);
+              return d ? { nome: `${nomeSerieF3[k]} × média`, valor: d.texto, cor: d.cor } : null;
+            }).filter(Boolean),
             ...p.composicao.map((c) => ({ nome: c.tipo, valor: brl(c.valor), cor: COR_TOTAL }))],
       })),
       [{ k: 'total', nome: 'Total (todos os custos)', cor: COR_TOTAL },
@@ -2871,6 +3010,11 @@ async function viewIndicadores() {
           k: t.k, nome: t.nome, tracejada: true,
           cor: (t.ctx === 'geral' ? farol3.tetos.geral : farol3.tetos[t.ctx]) === null
             ? COR_SEM_TETO : COR_TETO,
+        })),
+        ...Object.entries(mediasF3).filter(([, m]) => m).map(([k, m]) => ({
+          k: `media_${k}`, nome: `Média — ${nomeSerieF3[k]}`, cor: corSerieF3[k],
+          pontilhada: true, semPontos: true, foraDoBalao: true,
+          rotulo: k === 'total' ? rotuloDaMedia(m) : '',
         }))],
       brl, curto, '',
       (ponto) => abrirMesDoFarol3(farol3, ponto.comp));
@@ -2894,6 +3038,11 @@ async function viewIndicadores() {
   // medição —, e é a distância entre as duas curvas que diz se o plano anda.
   const alvoPlano = el('#i-plano-serie');
   if (alvoPlano) {
+    // A média do TOTAL da barra, na cor da linha azul do topo — que é
+    // justamente a linha que liga os totais mês a mês.
+    const mediaPlano = mostrarMedias('plano-reducao')
+      ? mediaDoPeriodo(plano.composicao.pontos.filter((p) => !p.projetado).map((p) => p.total))
+      : null;
     barrasDoObjetivo(alvoPlano, plano.composicao, (ponto, oQue) => {
       // O ponto de um mês com plano abre a META; a barra e os demais pontos
       // abrem os lançamentos.
@@ -2922,7 +3071,7 @@ async function viewIndicadores() {
             + 'Os meses futuros repetem a composição do último mês realizado; eles não têm lançamento próprio.'
           : `${inteiro(itens.length)} despesa(s) fixa(s), somando ${brl(ponto.total)}.`,
       });
-    });
+    }, mediaPlano);
   }
   // OBJETIVO 02 — a linha do tempo da adequação. Barra empilhada porque os dois
   // estados são partições da MESMA despesa: a altura é quanto há de
@@ -2938,6 +3087,8 @@ async function viewIndicadores() {
       [{ k: 'pendente', nome: 'Ainda compartilhado', cor: COR_PENDENTE },
         { k: 'regular', nome: 'Já regularizado', cor: COR_REGULARIZADO }],
       'empilhado', brl, curto,
+      // Numa barra EMPILHADA o olho lê a altura acumulada, então a média é a do
+      // TOTAL da barra — uma média por fatia não teria onde encostar.
       (ponto) => {
         const doMes = adequacao.registros.filter((l) => l.competencia === ponto.comp);
         abrirRegistros({
@@ -2949,7 +3100,12 @@ async function viewIndicadores() {
             + `${brl(reais(somaC(doMes.map((l) => l.valor))))}. `
             + `${inteiro(doMes.filter(jaRegularizada).length)} já com marco de adequação alcançado.`,
         });
-      });
+      },
+      { referencias: (() => {
+        const m = mostrarMedias('rateio')
+          ? mediaDoPeriodo(adequacao.serie.map((p) => p.total)) : null;
+        return m ? [{ valor: m.valor, cor: COR_PENDENTE, rotulo: rotuloDaMedia(m) }] : [];
+      })() });
   }
   // FAROL 1 — uma barra empilhada por grupo, dividida entre despesa e
   // investimento. Empilhada porque as duas somam o custo do mês: lado a lado
@@ -2972,8 +3128,25 @@ async function viewIndicadores() {
           nota: `${inteiro(doMes.length)} lançamento(s), somando ${brl(reais(somaC(doMes.map((l) => l.valor))))}. `
             + `${inteiro(doMes.filter((l) => l.classificacao === 'investimento').length)} classificado(s) como investimento.`,
         });
-      });
+      },
+      // Uma média por gráfico: a do TOTAL da barra, na cor da despesa, que é a
+      // fatia de baixo e a que domina a altura.
+      { referencias: (() => {
+        const m = mostrarMedias('custo-recorrente')
+          ? mediaDoPeriodo(g.serie.map((p) => p.valor)) : null;
+        return m ? [{ valor: m.valor, cor: COR_DESPESA, rotulo: rotuloDaMedia(m) }] : [];
+      })() });
   }
+  // O interruptor das médias. `stopPropagation` porque a caixa mora dentro do
+  // cartão, que é gatilho de drill-down: sem barrar, marcar a caixa abriria a
+  // tela de lançamentos junto.
+  el('#pagina').querySelectorAll('[data-medias]').forEach((c) => {
+    c.addEventListener('click', (ev) => ev.stopPropagation());
+    c.addEventListener('change', () => alternarMedias(c.dataset.medias));
+  });
+  el('#pagina').querySelectorAll('.liga-medias').forEach((l) => {
+    l.addEventListener('click', (ev) => ev.stopPropagation());
+  });
   // A ação em lote, alcançável dos dois estados do bloco: do vazio, que é onde
   // ela resolve o problema, e do preenchido, para continuar classificando.
   el('#pagina').querySelectorAll('[data-classificar]').forEach((b) => {

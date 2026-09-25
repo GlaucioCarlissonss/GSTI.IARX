@@ -62,7 +62,10 @@ const { irPara } = require('./ajuda-testes.cjs');
       titulo: sec.querySelector('h2').textContent.replace(/^\s*[−+]\s*/, '').trim(),
       // Quatro caminhos com traço: as três séries realizadas mais a projeção.
       linhas: svg ? svg.querySelectorAll('path[stroke]').length : 0,
-      tracejadas: svg ? svg.querySelectorAll('path[stroke-dasharray]').length : 0,
+      // Dois traços distintos, e cada um significa uma coisa: `6 4` é
+      // compromisso (teto) ou projeção; `2 3` é a média do período.
+      tracejadas: svg ? svg.querySelectorAll('path[stroke-dasharray="6 4"]').length : 0,
+      pontilhadas: svg ? svg.querySelectorAll('path[stroke-dasharray="2 3"]').length : 0,
       colunas: [...sec.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
       linhasTabela: sec.querySelectorAll('tr[data-mes-farol3]').length,
       projetadasNaTabela: sec.querySelectorAll('tr.linha-projetada').length,
@@ -83,14 +86,16 @@ const { irPara } = require('./ajuda-testes.cjs');
   });
   ok('o Farol 3 existe', !!f3);
   ok('com o título do enunciado', f3 && f3.titulo === 'Farol 3 - Custo recorrente Mês a Mês', f3 && f3.titulo);
-  // Oito séries desde que os tetos entraram: total, variáveis, fixas, projeção
-  // e os quatro tetos. As séries de teto existem mesmo sem meta cadastrada —
-  // sem valor elas não chegam a ser desenhadas, e é a ausência da linha que
-  // diz que não há limite.
-  ok('oito linhas no gráfico: as quatro séries e os quatro tetos',
-    f3 && f3.linhas === 8, f3 && String(f3.linhas));
-  ok('e as tracejadas são a projeção mais os quatro tetos',
+  // Onze séries: total, variáveis, fixas, projeção, os quatro tetos e as três
+  // médias. As séries de teto existem mesmo sem meta cadastrada — sem valor
+  // elas não chegam a ser desenhadas, e é a ausência da linha que diz que não
+  // há limite.
+  ok('onze linhas no gráfico: as quatro séries, os quatro tetos e as três médias',
+    f3 && f3.linhas === 11, f3 && String(f3.linhas));
+  ok('cinco tracejadas: a projeção e os quatro tetos',
     f3 && f3.tracejadas === 5, f3 && String(f3.tracejadas));
+  ok('e três pontilhadas: as médias do período',
+    f3 && f3.pontilhadas === 3, f3 && String(f3.pontilhadas));
   ok('o racional tem coluna para cada série',
     f3 && ['Total', 'Variáveis', 'Fixas'].every((c) => f3.colunas.includes(c)),
     f3 && f3.colunas.join(' | '));
@@ -127,8 +132,8 @@ const { irPara } = require('./ajuda-testes.cjs');
     return {
       // 3 séries realizadas + projeção + 4 tetos.
       linhas: traco.length,
-      // Tracejadas: a projeção mais os quatro tetos.
-      tracejadas: svg.querySelectorAll('path[stroke-dasharray]').length,
+      // Tracejadas: a projeção mais os quatro tetos. As médias usam pontilhado.
+      tracejadas: svg.querySelectorAll('path[stroke-dasharray="6 4"]').length,
       vermelhas: traco.filter((c) => /crit/.test(c)).length,
       cinzas: traco.filter((c) => /tinta3/.test(c)).length,
       colunas: [...sec.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
@@ -145,8 +150,8 @@ const { irPara } = require('./ajuda-testes.cjs');
         [...sec.querySelectorAll('thead th')].some((t) => t.textContent.trim() === c)),
     };
   });
-  ok('oito linhas: três séries, a projeção e os quatro tetos',
-    tetos.linhas === 8, String(tetos.linhas));
+  ok('onze linhas: três séries, a projeção, os quatro tetos e as três médias',
+    tetos.linhas === 11, String(tetos.linhas));
   ok('cinco tracejadas: a projeção e os quatro tetos', tetos.tracejadas === 5, String(tetos.tracejadas));
   // O vermelho é o limite de alguém: pintar de vermelho a ausência de limite
   // inventaria um compromisso que ninguém assumiu.

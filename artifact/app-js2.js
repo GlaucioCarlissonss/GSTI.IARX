@@ -79,12 +79,19 @@ const pathBarra = (x, y, l, a, r=3) => {
  * `aoClicar(ponto, indice)` transforma cada barra em gatilho de drill-down.
  * Sem ele o gráfico segue só informativo, como antes.
  */
-function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = curto, aoClicar = null) {
+/**
+ * `opcoes.referencias`: retas horizontais — a média do período, por exemplo.
+ * Elas entram no cálculo do TETO da escala: uma referência acima do maior mês
+ * ficaria fora do gráfico justamente quando a distância até ela é a notícia.
+ */
+function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = curto, aoClicar = null, opcoes = {}) {
   alvo.replaceChildren();
   if (!pontos.length) { alvo.innerHTML = '<p class="vazio">Sem dados no período.</p>'; return; }
+  const referencias = (opcoes.referencias || []).filter((r) => Number.isFinite(r.valor));
   const L=700, A=230, m={t:10,d:12,b:24,e:80}, ap=A-m.t-m.b, lp=L-m.e-m.d;
   const max = Math.max(0, ...pontos.map((p) => modo==='empilhado'
-    ? series.reduce((s,x)=>s+(p.v[x.k]||0),0) : Math.max(...series.map((x)=>p.v[x.k]||0))));
+    ? series.reduce((s,x)=>s+(p.v[x.k]||0),0) : Math.max(...series.map((x)=>p.v[x.k]||0))),
+    ...referencias.map((r) => r.valor));
   const { teto, marcas } = escalaBoa(max);
   const y = (v) => m.t + ap - (v/teto)*ap;
   const passo = lp/Math.max(pontos.length,1), larg = Math.min(passo*.62, 34);
@@ -151,6 +158,16 @@ function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = c
       const t = svgEl('text', { x:cx, y:A-7, 'text-anchor':'middle', class:'eixo' }); t.textContent = p.rot; svg.appendChild(t);
     }
   });
+  // As referências vão por ÚLTIMO, para ficarem por cima das barras — uma média
+  // desenhada embaixo some atrás da coluna do mês em que ela mais importa.
+  for (const r of referencias) {
+    svg.appendChild(svgEl('line', { x1:m.e, x2:L-m.d, y1:y(r.valor), y2:y(r.valor),
+      stroke:r.cor, 'stroke-width':1.5, 'stroke-dasharray':'2 3' }));
+    if (r.rotulo) {
+      const t = svgEl('text', { x:L-m.d, y:y(r.valor)-4, class:'eixo', fill:r.cor, 'text-anchor':'end' });
+      t.textContent = r.rotulo; svg.appendChild(t);
+    }
+  }
   alvo.appendChild(svg);
 }
 
@@ -183,13 +200,33 @@ function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '', a
       return pedaco;
     }).filter(Boolean).join(' ');
     svg.appendChild(svgEl('path', { d, fill:'none', stroke:s.cor,
-      'stroke-width':2, 'stroke-linejoin':'round', 'stroke-linecap':'round',
-      // O tracejado é o segundo canal da projeção: a cor mais clara sozinha não
-      // distingue realizado de projetado para quem não separa tons.
-      ...(s.tracejada ? { 'stroke-dasharray': '6 4' } : {}) }));
-    pontos.forEach((p,i) => { if (temValor(p, s.k)) {
-      svg.appendChild(svgEl('circle', { cx:x(i), cy:y(p.v[s.k]), r:3.5, fill:s.cor, stroke:'var(--sup)', 'stroke-width':2 }));
-    } });
+      'stroke-width': s.pontilhada ? 1.5 : 2, 'stroke-linejoin':'round', 'stroke-linecap':'round',
+      // Três traços distintos, e cada um significa uma coisa:
+      //   contínuo  = medição
+      //   tracejado = compromisso (teto) ou projeção
+      //   pontilhado= referência calculada (a média do período)
+      // Sem essa separação, a média de fixas ficaria indistinguível do teto de
+      // fixas e da projeção do fixo — três linhas azuladas tracejadas.
+      ...(s.pontilhada ? { 'stroke-dasharray': '2 3' }
+        : s.tracejada ? { 'stroke-dasharray': '6 4' } : {}) }));
+    // Linha de referência não tem "pontos": ela não foi medida mês a mês, e uma
+    // bolinha em cada mês diria que foi.
+    if (!s.semPontos) {
+      pontos.forEach((p,i) => { if (temValor(p, s.k)) {
+        svg.appendChild(svgEl('circle', { cx:x(i), cy:y(p.v[s.k]), r:3.5, fill:s.cor, stroke:'var(--sup)', 'stroke-width':2 }));
+      } });
+    }
+    // O rótulo na ponta direita poupa a ida à legenda para saber que linha é
+    // aquela — e é a única forma de nomear uma reta que atravessa o gráfico.
+    if (s.rotulo) {
+      const ultimo = [...pontos.keys()].reverse().find((i) => temValor(pontos[i], s.k));
+      if (ultimo !== undefined) {
+        const t = svgEl('text', { x: x(ultimo) + 4, y: y(pontos[ultimo].v[s.k]) - 4,
+          class: 'eixo', fill: s.cor, 'text-anchor': 'end' });
+        t.textContent = s.rotulo;
+        svg.appendChild(t);
+      }
+    }
   }
   const captura = svgEl('rect', { x:m.e, y:m.t, width:lp, height:ap, fill:'transparent' });
   const maisProximo = (ev) => {
@@ -203,7 +240,10 @@ function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '', a
     mostrarDica(ev, p.rot, [
       // Série sem valor no mês fica FORA do balão: mostrá-la como "R$ 0,00"
       // afirmaria um zero onde o que há é ausência.
-      ...series.filter((s) => temValor(p, s.k))
+      // Linha de referência fica FORA do balão quando o chamador prefere
+      // mostrar a DISTÂNCIA até ela — repetir o mesmo valor de média em todo
+      // mês encheria o balão sem dizer nada que a reta já não diga.
+      ...series.filter((s) => temValor(p, s.k) && !s.foraDoBalao)
         .map((s)=>({ nome:s.nome, cor:s.cor, valor: fmt(p.v[s.k]) })),
       // O ponto pode trazer linhas próprias — composição, natureza, a origem de
       // uma projeção. É o detalhamento que o balão de um número solto não tem.

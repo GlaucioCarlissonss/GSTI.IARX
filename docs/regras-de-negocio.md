@@ -1211,6 +1211,63 @@ engano. `calcularConsumo` continua existindo e é a fonte desse "antes". O
 equilíbrio mês a mês vinha pendurado no mesmo bloco e saiu junto: descrevia o
 mesmo consumo compartilhado, por outro ângulo.
 
+## A média do período nos gráficos do Financeiro
+
+Uma reta por série responde *"este mês está acima ou abaixo do que este período
+vem custando?"*. Está nos **seis gráficos** do módulo: Objetivo 01, Objetivo 02,
+Objetivo 03, os dois do Farol 1 e o Farol 3.
+
+| gráfico | médias |
+| --- | --- |
+| Objetivo 01, Objetivo 02, Farol 1 (×2) | **1 cada**: o total da barra |
+| Objetivo 03 | **4**: fixas, variáveis, investimentos e total |
+| Farol 3 | **3**: total, variáveis e fixas |
+
+**Nas barras empilhadas a média é a do total.** O olho lê a barra pela altura
+acumulada, então uma média por fatia não teria onde encostar — e no Objetivo 01
+seriam até oito retas sobre oito tipos de despesa.
+
+**Teto e projeção não têm média.** Um teto é compromisso, não medição, e a
+média de um limite não significa nada; a projeção é o último mês repetido, e a
+média dela seria ela mesma.
+
+### Três traços, três significados
+
+| traço | significa |
+| --- | --- |
+| contínuo | medição |
+| tracejado `6 4` | compromisso (teto) ou projeção |
+| **pontilhado `2 3`** | **referência calculada — a média do período** |
+
+Sem essa separação, a média das fixas ficaria indistinguível do teto de fixas e
+da projeção do fixo: três linhas azuladas tracejadas no mesmo gráfico.
+
+### O cálculo
+
+- **Só meses realizados.** Incluir projeção puxaria a média para o nível
+  repetido, e ela deixaria de falar do que aconteceu.
+- **Menos de dois meses, sem média.** A "média" de um mês é o próprio mês, e a
+  reta afirmaria uma referência que não existe.
+- **Média simples dos meses com dado**, e não do total dividido pela janela: um
+  mês sem lançamento nenhum não é um mês de custo zero.
+- **Ela acompanha o filtro**, e o rótulo diz sobre quantos meses foi feita —
+  `média 8m` e `média 3m` não são a mesma promessa.
+- **A média entra no teto da escala.** Uma referência acima do maior mês ficaria
+  fora do gráfico justamente quando a distância até ela é a notícia.
+
+A distância sai **escrita**: no balão (`+8,5% acima da média`) e na coluna
+**"vs. média"** do racional, nunca só pela posição da linha. A média fica fora
+do balão — repetir o mesmo valor em todo mês encheria o balão sem dizer nada
+que a reta já não diga.
+
+### O interruptor
+
+Cada bloco com gráfico tem **"mostrar médias do período"**, ligado por padrão,
+na faixa da legenda — e não no cabeçalho, porque o cabeçalho inteiro é o botão
+que abre e fecha o bloco e disputaria o mesmo clique. Guarda-se a **exceção**:
+só o que foi desligado vai para o armazenamento, então um bloco novo nasce
+mostrando a média.
+
 ## Objetivo 03: custos dentro de um teto de gasto
 
 **Só despesa reconhecida entra.** O teto é um compromisso de gestão, e o que

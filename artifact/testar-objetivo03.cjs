@@ -90,7 +90,9 @@ const { irPara } = require('./ajuda-testes.cjs');
       apoio: kpi.querySelector('.a').textContent.trim(),
       // Três faixas + total + teto.
       linhas: sec.querySelectorAll('#i-obj3 svg path[stroke]').length,
-      tetoTracejado: sec.querySelectorAll('#i-obj3 svg path[stroke-dasharray]').length,
+      // `6 4` é o teto; `2 3` são as quatro médias do período.
+      tetoTracejado: sec.querySelectorAll('#i-obj3 svg path[stroke-dasharray="6 4"]').length,
+      medias: sec.querySelectorAll('#i-obj3 svg path[stroke-dasharray="2 3"]').length,
       colunas: [...sec.querySelectorAll('#i-obj3 ~ .rol thead th, .rol-fixo thead th')]
         .map((t) => t.textContent.trim()),
       estados: [...sec.querySelectorAll('tbody tr[data-mes-obj3] td:last-child')].map((t) => t.textContent.trim()),
@@ -115,8 +117,11 @@ const { irPara } = require('./ajuda-testes.cjs');
   });
   ok('o indicador acende', cheio.numero !== '—', cheio.numero);
   ok('o número traz total e teto', /\/ R\$/.test(cheio.numero), cheio.numero);
-  ok('cinco linhas: três faixas, total e teto', cheio.linhas === 5, String(cheio.linhas));
-  ok('e o teto é a linha tracejada', cheio.tetoTracejado === 1, String(cheio.tetoTracejado));
+  ok('nove linhas: três faixas, total, teto e as quatro médias',
+    cheio.linhas === 9, String(cheio.linhas));
+  ok('o teto é a única tracejada', cheio.tetoTracejado === 1, String(cheio.tetoTracejado));
+  ok('e as médias são pontilhadas, uma por faixa mais a do total',
+    cheio.medias === 4, String(cheio.medias));
   ok('o racional tem coluna de teto e de diferença',
     cheio.colunas.includes('Teto') && cheio.colunas.includes('Diferença'), cheio.colunas.join(' | '));
   ok('só despesa reconhecida entra', cheio.soReconhecidas && cheio.recorteMenor);
