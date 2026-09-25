@@ -356,6 +356,74 @@ const legendaDoFarol3Html = () => `<div class="legenda-tipos" style="margin-top:
   <span class="legenda-proj"><i class="amostra-tracejada" style="background:${COR_PROJECAO}" aria-hidden="true"></i>projeção do fixo</span>
 </div>`;
 
+/** A chave das quatro linhas de teto. Cinza = contexto sem meta cadastrada. */
+const COR_SEM_TETO = 'var(--tinta3)';
+const TETOS_DO_FAROL3 = [
+  { k: 'tetoFixas', ctx: 'fixas', nome: 'Teto — despesas fixas' },
+  { k: 'tetoVariaveis', ctx: 'variaveis', nome: 'Teto — despesas variáveis' },
+  { k: 'tetoInvestimentos', ctx: 'investimentos', nome: 'Teto — investimentos' },
+  { k: 'tetoGeral', ctx: 'geral', nome: 'Teto geral (soma dos três)' },
+];
+
+const legendaDosTetosHtml = (f3) => `<div class="legenda-tipos" style="margin-top:6px">
+  <span class="legenda-titulo">Tetos de gasto</span>
+  ${TETOS_DO_FAROL3.map((t) => {
+    const semMeta = t.ctx === 'geral' ? f3.tetos.geral === null : f3.tetos[t.ctx] === null;
+    return `<span><i class="amostra-tracejada" style="background:${
+      semMeta ? COR_SEM_TETO : COR_TETO}" aria-hidden="true"></i>${esc(t.nome)}${
+      semMeta ? ' <em>(sem meta)</em>' : ''}</span>`;
+  }).join('')}
+</div>`;
+
+/** As faixas do Objetivo 03 e o vermelho do teto. */
+const COR_FAIXA = { fixas: 'var(--s1)', variaveis: 'var(--m4)', investimentos: 'var(--s3)' };
+const ROTULO_FAIXA = {
+  fixas: 'Despesas fixas (mensais)',
+  variaveis: 'Despesas variáveis (pontuais)',
+  investimentos: 'Investimentos',
+};
+const COR_TETO = 'var(--crit)';
+
+const legendaDoObjetivo03Html = () => `<div class="legenda-tipos" style="margin-top:10px">
+  <span class="legenda-titulo">Séries</span>
+  ${Object.entries(ROTULO_FAIXA).map(([k, r]) =>
+    `<span><i style="background:${COR_FAIXA[k]}" aria-hidden="true"></i>${esc(r)}</span>`).join('')}
+  <span><i style="background:${COR_TOTAL}" aria-hidden="true"></i>total</span>
+  <span class="legenda-proj"><i class="amostra-tracejada" style="background:${COR_TETO}" aria-hidden="true"></i>teto de gasto</span>
+</div>`;
+
+/**
+ * O racional do Objetivo 03: cada mês contra o teto.
+ *
+ * A coluna de situação traz PALAVRA e cor, nunca a cor sozinha — e "sem teto"
+ * é um terceiro estado, não um verde por omissão.
+ */
+function tabelaDoObjetivo03Html(o) {
+  return `<div class="rol rol-fixo" style="margin-top:12px;max-height:300px;min-height:0"><table>
+    <thead><tr><th>Competência</th>
+      ${Object.entries(ROTULO_FAIXA).map(([k, r]) =>
+        `<th class="n" style="color:${COR_FAIXA[k]}">${esc(r.split(' (')[0])}</th>`).join('')}
+      <th class="n" style="color:${COR_TOTAL}">Total</th>
+      <th class="n" style="color:${COR_TETO}">Teto</th>
+      <th class="n">Diferença</th><th>Situação</th></tr></thead>
+    <tbody>${o.serie.map((p) => `<tr data-mes-obj3="${esc(p.comp)}">
+      <td>${esc(p.rot)}</td>
+      <td class="n">${brl(p.fixas)}</td>
+      <td class="n">${brl(p.variaveis)}</td>
+      <td class="n">${brl(p.investimentos)}</td>
+      <td class="n">${brl(p.total)}</td>
+      <td class="n">${p.teto === null ? '—' : brl(p.teto)}</td>
+      <td class="n"${p.dentro === null ? '' : ` style="color:${p.dentro ? 'var(--bomtxt)' : 'var(--crit)'}"`}>${
+        p.diferenca === null ? '—' : (p.diferenca > 0 ? '+' : '') + brl(p.diferenca)}</td>
+      <td>${p.dentro === null
+        ? '<span class="tag">sem teto</span>'
+        : p.dentro
+          ? '<span class="tag bom">✓ dentro</span>'
+          : '<span class="tag crit">✗ estourou</span>'}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
 /** As duas classificações. Cor E hachura: dois canais, nunca um só. */
 const COR_DESPESA = 'var(--s1)';
 const COR_INVESTIMENTO = 'var(--m4)';
@@ -419,6 +487,83 @@ function grupoDoFarolHtml(id, titulo, g) {
           p.variacao === null ? '—' : (p.variacao > 0 ? '+' : '') + p.variacao.toLocaleString('pt-BR') + '%'}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
+}
+
+/**
+ * OBJETIVO 03 — custos dentro de um teto de gasto mensal.
+ *
+ * Quatro decisões:
+ *
+ * 1. **Só despesa RECONHECIDA entra.** É o enunciado, e faz sentido: o teto é
+ *    um compromisso de gestão, e o que ninguém conferiu ainda não pode reprovar
+ *    ninguém. O universo é menor que o do Farol 1 de propósito.
+ * 2. **As três faixas são DISJUNTAS**, e é o que torna verdadeiro o "total =
+ *    soma das três". `natureza` e `classificacao` são campos independentes — um
+ *    investimento pode ser fixo ou pontual —, então "investimentos" leva tudo
+ *    o que é investimento, e as outras duas ficam só com despesa:
+ *      fixas        = natureza fixa    E classificação despesa
+ *      variáveis    = natureza pontual E classificação despesa
+ *      investimentos= classificação investimento (de qualquer natureza)
+ *    Sem esse corte, um investimento fixo entraria em duas faixas e o total
+ *    somaria mais do que existe.
+ * 3. **O teto vem do cadastro, por contexto**, e o geral é a soma dos vigentes
+ *    naquele mês — ver `tetosVigentes`. Um mês pode ter teto para uma faixa e
+ *    não para outra, e a tela diz isso em vez de inventar zero.
+ * 4. **Sem teto não há veredicto.** `null` não é "dentro": é "não há contra o
+ *    que comparar", e pintar de verde um mês sem meta afirmaria uma aprovação
+ *    que ninguém deu.
+ */
+function calcularObjetivo03(r) {
+  const base = Loja.todosDoEscopo().filter((l) =>
+    passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, r) &&
+    naJanela(l.competencia, r) && reconhecidoDe(l));
+
+  const faixaDe = (l) => (l.classificacao === 'investimento' ? 'investimentos'
+    : l.natureza === 'fixa' ? 'fixas' : 'variaveis');
+
+  const fechado = mesSoma(mesHoje(), -1);
+  const meses = ordenado([...new Set(base.map((l) => l.competencia).filter(Boolean))])
+    .filter((m) => m <= fechado);
+
+  const serie = meses.map((m) => {
+    const doMes = base.filter((l) => l.competencia === m);
+    const por = { fixas: 0, variaveis: 0, investimentos: 0 };
+    for (const l of doMes) por[faixaDe(l)] += cent(l.valor);
+    const totalC = por.fixas + por.variaveis + por.investimentos;
+    const tetos = tetosVigentes(m);
+    const tetoC = tetos.geral === null ? null : cent(tetos.geral);
+    return {
+      comp: m, rot: mesExib(m), lancamentos: doMes.length, itens: doMes,
+      fixas: reais(por.fixas), variaveis: reais(por.variaveis), investimentos: reais(por.investimentos),
+      total: reais(totalC), teto: tetos.geral, tetos,
+      // `null` = sem teto cadastrado, e não "dentro".
+      dentro: tetoC === null ? null : totalC <= tetoC,
+      diferenca: tetoC === null ? null : reais(totalC - tetoC),
+      // O estouro por faixa, para o balão poder apontar de onde ele veio.
+      porFaixa: ['fixas', 'variaveis', 'investimentos'].map((k) => ({
+        faixa: k, valor: reais(por[k]), teto: tetos[k],
+        dentro: tetos[k] === null ? null : por[k] <= cent(tetos[k]),
+      })),
+    };
+  });
+
+  const referencia = serie[serie.length - 1] || null;
+  const comTeto = serie.filter((p) => p.dentro !== null);
+  const estouros = comTeto.filter((p) => !p.dentro);
+  const tetosHoje = tetosVigentes(referencia ? referencia.comp : null);
+  const reconhecidosDoMes = referencia ? referencia.itens : [];
+
+  return {
+    serie, referencia, tetos: tetosHoje,
+    mesesComTeto: comTeto.length, estouros: estouros.length,
+    // O placar só existe onde há teto: "0 de 0 dentro" não é elogio nem crítica.
+    atinge: comTeto.length === 0 ? null : estouros.length === 0,
+    piorEstouro: estouros.length
+      ? estouros.reduce((a, b) => (b.diferenca > a.diferenca ? b : a)) : null,
+    semTeto: tetosHoje.contextosSemMeta,
+    porUnidade: quebrarPorUnidade(reconhecidosDoMes, (l) => cent(l.valor)),
+    registros: base,
+  };
 }
 
 /** As cores das três séries do Farol 3, mais o tom claro da projeção. */
@@ -505,9 +650,27 @@ function calcularFarol3(r) {
   // nasceria solta no ar, sem ligação com o ponto de onde ela parte.
   if (ultimo) ultimo.fixaProjetada = ultimo.fixa;
 
+  // OS TETOS DE GASTO, mês a mês. Eles atravessam realizados E projetados: um
+  // teto que parasse no último mês fechado deixaria de dizer o que a projeção
+  // mais precisa responder — "este patamar cabe no limite?".
+  const pontos = [...realizados, ...projetados];
+  for (const p of pontos) {
+    const t = tetosVigentes(p.comp);
+    p.tetoFixas = t.fixas;
+    p.tetoVariaveis = t.variaveis;
+    p.tetoInvestimentos = t.investimentos;
+    p.tetoGeral = t.geral;
+    p.contextosSemTeto = t.contextosSemMeta;
+  }
+  const tetosDoUltimo = tetosVigentes(ultimo ? ultimo.comp : null);
+
   return {
-    realizados, projetados,
-    pontos: [...realizados, ...projetados],
+    realizados, projetados, pontos,
+    tetos: tetosDoUltimo,
+    // Contexto sem meta vira linha CINZA tracejada e um aviso: o vermelho é o
+    // limite de alguém, e pintar de vermelho a ausência de limite seria
+    // inventar um compromisso.
+    semTeto: tetosDoUltimo.contextosSemMeta,
     ultimoRealizado: ultimo ? ultimo.comp : null,
     nivelFixo: ultimo ? ultimo.fixa : 0,
     // O que o nível fixo de hoje compromete nos doze meses à frente, se nada
@@ -2107,6 +2270,7 @@ async function viewIndicadores() {
   const adequacao = calcularAdequacao(rf);
   const farol = calcularFarolCustos(rf);
   const farol3 = calcularFarol3(rf);
+  const obj3 = calcularObjetivo03(rf);
   const plano = calcularPlanoReducao(rf);
 
   // As quebras por unidade saem dos MESMOS registros que os cálculos acima
@@ -2366,6 +2530,45 @@ async function viewIndicadores() {
         : '',
     })}
 
+    ${blocoIndicador({
+      chave: 'teto-gasto',
+      titulo: 'Objetivo 03: Custos dentro de um teto de gastos',
+      descricao: 'Custos com despesas reconhecidas dentro de uma meta de teto de gasto mensal, '
+        + 'segmentados entre despesas fixas, despesas variáveis(Pontuais) e investimentos',
+      valor: obj3.referencia
+        ? `${brl(obj3.referencia.total)}${obj3.referencia.teto === null ? '' : ` / ${brl(obj3.referencia.teto)}`}`
+        : '—',
+      cor: obj3.atinge === null ? null : obj3.atinge ? 'var(--bomtxt)' : 'var(--crit)',
+      apoio: !obj3.referencia
+        ? 'nenhum mês fechado com despesa reconhecida neste recorte'
+        : obj3.mesesComTeto === 0
+          ? 'nenhum teto cadastrado — cadastre em Sistema › Cadastro › Metas (Objetivo 03)'
+          : `${inteiro(obj3.mesesComTeto - obj3.estouros)} de ${inteiro(obj3.mesesComTeto)} mês(es) dentro do teto`
+            + `${obj3.piorEstouro ? ` · maior estouro em ${esc(obj3.piorEstouro.rot)}, +${brl(obj3.piorEstouro.diferenca)}` : ''}`,
+      corpo: !obj3.referencia ? `
+        <div class="msg alerta">Nenhum mês fechado com despesa <strong>reconhecida</strong> neste recorte.
+          O objetivo mede só o que alguém conferiu: o que veio por carga e ninguém reconheceu não pode
+          reprovar ninguém.</div>` : `
+        ${obj3.semTeto.length === 0 ? '' : `<div class="msg alerta">
+          <strong>Sem teto cadastrado para ${esc(obj3.semTeto.map((c) => CONTEXTOS_TETO[c].toLowerCase()).join(' e '))}.</strong>
+          O teto geral é a soma dos vigentes, então ele está menor do que seria com os três.
+          Cadastre em Sistema › Cadastro › Metas, tipo <em>Objetivo 03</em>.</div>`}
+        ${legendaDoObjetivo03Html()}
+        <div id="i-obj3" style="margin-top:2px"></div>
+        ${tabelaDoObjetivo03Html(obj3)}
+        <h3 class="titulo-mini">Despesas reconhecidas de ${esc(obj3.referencia.rot)}, por empresa e filial</h3>
+        ${faixaDeMatrizesHtml(fatiasDe(obj3.porUnidade, emDinheiro))}
+        ${legendaDeMatrizesHtml(fatiasDe(obj3.porUnidade, emDinheiro))}
+        ${arvoreDeUnidadesHtml('ind-obj3', obj3.porUnidade, emDinheiro)}`,
+      nota: !obj3.referencia ? '' :
+        'Só entra despesa <strong>reconhecida</strong>: o teto é um compromisso de gestão, e o que '
+        + 'ninguém conferiu ainda não reprova ninguém. As três faixas são <strong>disjuntas</strong> — '
+        + 'investimentos leva tudo o que é investimento, de qualquer natureza, e as outras duas ficam só '
+        + 'com despesa —, e é isso que torna verdadeiro o "total = soma das três". O teto de cada mês é a '
+        + '<strong>soma dos tetos vigentes</strong> naquele mês; mês sem teto cadastrado não é aprovado '
+        + 'nem reprovado, porque não há contra o que comparar.',
+    })}
+
     </section>
 
     <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:14px">
@@ -2435,14 +2638,25 @@ async function viewIndicadores() {
           + ` · projeção de ${inteiro(farol3.mesesProjetados)} meses compromete ${brl(farol3.compromisso)}`
         : 'nenhum mês realizado neste recorte',
       corpo: farol3.realizados.length === 0 ? '' : `
+        ${farol3.semTeto.length === 0 ? '' : `<div class="msg alerta">
+          <strong>Sem teto cadastrado para ${esc(farol3.semTeto.map((c) => CONTEXTOS_TETO[c].toLowerCase()).join(', '))}.</strong>
+          Essas linhas aparecem em <strong>cinza tracejado</strong> e sem valor — o vermelho é o limite de
+          alguém, e pintar de vermelho a ausência de limite inventaria um compromisso. O teto geral é a
+          soma dos vigentes. Cadastre em Sistema › Cadastro › Metas, tipo <em>Objetivo 03</em>.</div>`}
         ${legendaDoFarol3Html()}
+        ${legendaDosTetosHtml(farol3)}
         <div id="i-reducao" style="margin-top:2px"></div>
         <div class="rol rol-fixo" style="margin-top:12px;max-height:300px;min-height:0"><table>
           <thead><tr><th>Competência</th>
             <th class="n" style="color:${COR_TOTAL}">Total</th>
             <th class="n" style="color:${COR_VARIAVEL}">Variáveis</th>
             <th class="n" style="color:${COR_FIXA}">Fixas</th>
-            <th class="n">Variação do fixo</th></tr></thead>
+            <th class="n">Variação do fixo</th>
+            ${TETOS_DO_FAROL3.map((t) => `<th class="n" style="color:${
+              (t.ctx === 'geral' ? farol3.tetos.geral : farol3.tetos[t.ctx]) === null
+                ? COR_SEM_TETO : COR_TETO}">${esc(t.nome.replace('Teto — ', 'Teto ')
+                  .replace('Teto geral (soma dos três)', 'Teto geral'))}</th>`).join('')}
+          </tr></thead>
           <tbody>${farol3.pontos.map((p) => `<tr data-mes-farol3="${esc(p.comp)}"${
             p.projetado ? ' class="linha-projetada"' : ''}>
             <td>${esc(p.rot)}${p.projetado
@@ -2454,6 +2668,8 @@ async function viewIndicadores() {
             <td class="n"${p.variacao === null ? '' : ` style="color:${
               p.variacao < 0 ? 'var(--bomtxt)' : p.variacao > 0 ? 'var(--crit)' : 'var(--tinta2)'}"`}>${
               p.variacao === null ? '—' : (p.variacao > 0 ? '+' : '') + p.variacao.toLocaleString('pt-BR') + '%'}</td>
+            ${TETOS_DO_FAROL3.map((t) => `<td class="n"${p[t.k] === null ? '' : ` style="color:${COR_TETO}"`}>${
+              p[t.k] === null ? '<span class="vazio2">sem meta</span>' : brl(p[t.k])}</td>`).join('')}
           </tr>`).join('')}</tbody></table></div>`,
       // O aviso do filtro vem PRIMEIRO e é incondicional: é quando o recorte
       // esvazia o bloco que a pessoa mais precisa saber por quê, e prendê-lo à
@@ -2569,6 +2785,47 @@ async function viewIndicadores() {
     </section>`;
 
   // ----------------------------------------------------------- desenho
+  // OBJETIVO 03 — as três faixas, o total e o teto como linha de referência.
+  //
+  // O teto é uma SÉRIE constante, e não um traço desenhado à parte: assim ele
+  // entra no cálculo da escala do eixo. Um teto fora da escala ficaria
+  // invisível justamente no mês em que o gasto passou longe dele.
+  const alvoObj3 = el('#i-obj3');
+  if (alvoObj3 && obj3.serie.length) {
+    linhas(alvoObj3,
+      obj3.serie.map((p) => ({
+        rot: p.rot, comp: p.comp,
+        v: {
+          fixas: p.fixas, variaveis: p.variaveis, investimentos: p.investimentos,
+          total: p.total, teto: p.teto,
+        },
+        extra: [
+          { nome: 'Lançamentos', valor: `${inteiro(p.lancamentos)} reconhecido(s)` },
+          ...(p.dentro === null
+            ? [{ nome: 'Teto', valor: 'sem meta cadastrada para este mês' }]
+            : [{
+              nome: p.dentro ? 'Dentro do teto' : 'Estourou o teto',
+              valor: `${p.diferenca > 0 ? '+' : ''}${brl(p.diferenca)}`,
+              cor: p.dentro ? 'var(--bomtxt)' : 'var(--crit)',
+            }]),
+          // De qual faixa veio o estouro: o total sozinho não diz onde agir.
+          ...p.porFaixa.filter((f) => f.dentro === false).map((f) => ({
+            nome: `${ROTULO_FAIXA[f.faixa]} acima do teto`,
+            valor: `${brl(f.valor)} de ${brl(f.teto)}`, cor: COR_TETO,
+          })),
+        ],
+      })),
+      [...Object.entries(ROTULO_FAIXA).map(([k, r]) => ({ k, nome: r, cor: COR_FAIXA[k] })),
+        { k: 'total', nome: 'Total', cor: COR_TOTAL },
+        { k: 'teto', nome: 'Teto de gasto', cor: COR_TETO, tracejada: true }],
+      brl, curto, '',
+      (ponto) => abrirMesDoObjetivo03(obj3, ponto.comp));
+  }
+  el('#pagina').querySelectorAll('tr[data-mes-obj3]').forEach((tr) => {
+    tr.style.cursor = 'pointer';
+    tr.onclick = (ev) => { ev.stopPropagation(); abrirMesDoObjetivo03(obj3, tr.dataset.mesObj3); };
+  });
+
   // FAROL 3 — três séries realizadas mais a projeção do fixo.
   //
   // A projeção é uma SÉRIE à parte, e não a mesma linha pintada de outra cor:
@@ -2583,6 +2840,8 @@ async function viewIndicadores() {
         v: {
           total: p.total, variavel: p.variavel, fixa: p.fixa,
           fixaProj: p.fixaProjetada === undefined ? null : p.fixaProjetada,
+          // Os quatro tetos, constantes ao longo da vigência de cada um.
+          ...Object.fromEntries(TETOS_DO_FAROL3.map((t) => [t.k, p[t.k]])),
         },
         // O detalhamento que o enunciado pede: mês, natureza e composição, além
         // do valor que as séries já dão.
@@ -2600,7 +2859,19 @@ async function viewIndicadores() {
       [{ k: 'total', nome: 'Total (todos os custos)', cor: COR_TOTAL },
         { k: 'variavel', nome: 'Variáveis (pontuais)', cor: COR_VARIAVEL },
         { k: 'fixa', nome: 'Fixas (recorrentes)', cor: COR_FIXA },
-        { k: 'fixaProj', nome: 'Projeção do fixo', cor: COR_PROJECAO, tracejada: true }],
+        { k: 'fixaProj', nome: 'Projeção do fixo', cor: COR_PROJECAO, tracejada: true },
+        // Os tetos entram como SÉRIES, e não como traços à parte: assim eles
+        // participam da escala do eixo. Um teto fora da escala ficaria
+        // invisível justamente no mês em que o gasto passou longe dele.
+        // Cinza onde não há meta, igual à legenda: o vermelho é o limite de
+        // alguém, e pintar de vermelho a ausência de limite inventaria um
+        // compromisso. Sem valor a linha nem chega a ser desenhada — a cor
+        // existe para a legenda e o balão combinarem com ela.
+        ...TETOS_DO_FAROL3.map((t) => ({
+          k: t.k, nome: t.nome, tracejada: true,
+          cor: (t.ctx === 'geral' ? farol3.tetos.geral : farol3.tetos[t.ctx]) === null
+            ? COR_SEM_TETO : COR_TETO,
+        }))],
       brl, curto, '',
       (ponto) => abrirMesDoFarol3(farol3, ponto.comp));
   } else if (alvoFarol3) {
@@ -2798,6 +3069,13 @@ async function viewIndicadores() {
         itens: fixosDoRecorte(rf), contagem: null,
         nota: 'A variação compara o primeiro e o último mês; a lista traz as despesas que formam a série.',
       }),
+    },
+    'teto-gasto': {
+      dica: 'Os custos RECONHECIDOS de cada mês contra o teto de gasto cadastrado, em três faixas '
+        + 'disjuntas: despesa fixa, despesa pontual e investimento. O teto do mês é a soma dos tetos '
+        + 'vigentes; mês sem teto não é aprovado nem reprovado. Clique para ver as despesas do último '
+        + 'mês fechado.',
+      abrir: obj3.referencia ? () => abrirMesDoObjetivo03(obj3, obj3.referencia.comp) : null,
     },
     'custo-mes-a-mes': {
       dica: 'O custo mês a mês em três séries: o TOTAL, os pontuais e o fixo. Só o fixo é projetado '
@@ -3587,6 +3865,32 @@ function abrirClassificacaoCompartilhada(r) {
  * repetido. Abrir a lista do mês futuro devolveria vazio, e um detalhamento
  * vazio faz duvidar do número em vez de esclarecê-lo.
  */
+/**
+ * As despesas reconhecidas de um mês do Objetivo 03, do maior para o menor.
+ *
+ * A nota diz a conta inteira — as três faixas, o total, o teto e a diferença —
+ * porque quem abre um mês estourado veio saber de onde veio o estouro, e a
+ * lista sozinha não responde isso.
+ */
+function abrirMesDoObjetivo03(obj3, comp) {
+  const p = obj3.serie.find((x) => x.comp === comp);
+  if (!p) return;
+  const itens = [...p.itens].sort((a, b) => cent(b.valor) - cent(a.valor));
+  abrirRegistros({
+    titulo: `Despesas reconhecidas de ${p.rot}`,
+    tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
+    itens, contagem: null,
+    nota: `${inteiro(itens.length)} lançamento(s) reconhecido(s): ${brl(p.fixas)} em despesa fixa, `
+      + `${brl(p.variaveis)} em pontual e ${brl(p.investimentos)} em investimento, somando ${brl(p.total)}. `
+      + (p.dentro === null
+        ? 'Não há teto cadastrado para este mês.'
+        : p.dentro
+          ? `Dentro do teto de ${brl(p.teto)}, com folga de ${brl(-p.diferenca)}.`
+          : `Acima do teto de ${brl(p.teto)} em ${brl(p.diferenca)}.`)
+      + ' Do maior para o menor valor.',
+  });
+}
+
 function abrirMesDoFarol3(farol3, comp, soFixas = false) {
   const ponto = farol3.pontos.find((p) => p.comp === comp);
   if (!ponto) return;

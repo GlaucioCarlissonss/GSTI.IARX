@@ -1211,6 +1211,55 @@ engano. `calcularConsumo` continua existindo e é a fonte desse "antes". O
 equilíbrio mês a mês vinha pendurado no mesmo bloco e saiu junto: descrevia o
 mesmo consumo compartilhado, por outro ângulo.
 
+## Objetivo 03: custos dentro de um teto de gasto
+
+**Só despesa reconhecida entra.** O teto é um compromisso de gestão, e o que
+ninguém conferiu ainda não reprova ninguém — o universo é menor que o do Farol 1
+de propósito. Medido na base real: **zero** lançamentos reconhecidos hoje, então
+o indicador nasce vazio e diz por quê.
+
+**As três faixas são disjuntas**, e é o que torna verdadeiro o "total = soma das
+três". `natureza` e `classificacao` são campos independentes — um investimento
+pode ser fixo ou pontual —, então:
+
+| faixa | critério |
+| --- | --- |
+| Despesas fixas | natureza fixa **e** classificação despesa |
+| Despesas variáveis | natureza pontual **e** classificação despesa |
+| Investimentos | classificação investimento, **de qualquer natureza** |
+
+Sem esse corte, um investimento fixo entraria em duas faixas e o total somaria
+mais do que existe.
+
+**O teto do mês é a soma dos tetos vigentes** naquele mês, e **sem teto não há
+veredicto**: `null` não é "dentro". Pintar de verde um mês sem meta afirmaria
+uma aprovação que ninguém deu, e o placar de um recorte sem teto nenhum fica
+zerado em vez de dizer "0 de 0 dentro".
+
+A situação vem **escrita** — *dentro*, *estourou*, *sem teto* —, nunca só pela
+cor. O balão aponta **de qual faixa** veio o estouro: o total sozinho não diz
+onde agir.
+
+## Farol 3: as linhas de teto
+
+O Farol 3 ganhou **quatro linhas de teto** — fixas, variáveis, investimentos e a
+geral —, no gráfico e como colunas no racional. A geral é a **soma das três**,
+calculada.
+
+Os tetos entram como **séries**, e não como traços desenhados à parte: assim
+participam da escala do eixo. Um teto fora da escala ficaria invisível
+justamente no mês em que o gasto passou longe dele.
+
+**Contexto sem meta cadastrada fica cinza tracejado, com aviso** — e na célula
+do racional lê-se *"sem meta"*, não zero. O vermelho é o limite de alguém;
+pintar de vermelho a ausência de limite inventaria um compromisso que ninguém
+assumiu. A legenda, a linha e a coluna usam a mesma cor, para não dizerem coisas
+diferentes sobre o mesmo teto.
+
+**O teto atravessa os meses projetados.** Um teto que parasse no último mês
+fechado deixaria de responder justamente o que a projeção existe para perguntar:
+"este patamar cabe no limite?".
+
 ## Objetivos e Faróis: o terceiro nível de agrupamento
 
 Dentro do módulo Financeiro, os indicadores passaram a viver em dois grupos que

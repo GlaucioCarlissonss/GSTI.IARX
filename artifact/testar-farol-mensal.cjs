@@ -43,8 +43,8 @@ const { irPara } = require('./ajuda-testes.cjs');
   });
   ok('existem os dois grupos', grupos.nomes.join(' · ') === 'Objetivos · Faróis', grupos.nomes.join(' · '));
   ok('dentro do módulo Financeiro', grupos.dentroDoModulo);
-  ok('os dois objetivos estão em "Objetivos"',
-    JSON.stringify(grupos.objetivos) === JSON.stringify(['plano-reducao', 'rateio']),
+  ok('os três objetivos estão em "Objetivos"',
+    JSON.stringify(grupos.objetivos) === JSON.stringify(['plano-reducao', 'rateio', 'teto-gasto']),
     JSON.stringify(grupos.objetivos));
   ok('os três faróis estão em "Faróis"',
     JSON.stringify(grupos.farois) === JSON.stringify(['custo-recorrente', 'por-reconhecer', 'custo-mes-a-mes']),
@@ -83,9 +83,14 @@ const { irPara } = require('./ajuda-testes.cjs');
   });
   ok('o Farol 3 existe', !!f3);
   ok('com o título do enunciado', f3 && f3.titulo === 'Farol 3 - Custo recorrente Mês a Mês', f3 && f3.titulo);
-  ok('quatro linhas no gráfico: total, variáveis, fixas e projeção',
-    f3 && f3.linhas === 4, f3 && String(f3.linhas));
-  ok('e só a projeção é tracejada', f3 && f3.tracejadas === 1, f3 && String(f3.tracejadas));
+  // Oito séries desde que os tetos entraram: total, variáveis, fixas, projeção
+  // e os quatro tetos. As séries de teto existem mesmo sem meta cadastrada —
+  // sem valor elas não chegam a ser desenhadas, e é a ausência da linha que
+  // diz que não há limite.
+  ok('oito linhas no gráfico: as quatro séries e os quatro tetos',
+    f3 && f3.linhas === 8, f3 && String(f3.linhas));
+  ok('e as tracejadas são a projeção mais os quatro tetos',
+    f3 && f3.tracejadas === 5, f3 && String(f3.tracejadas));
   ok('o racional tem coluna para cada série',
     f3 && ['Total', 'Variáveis', 'Fixas'].every((c) => f3.colunas.includes(c)),
     f3 && f3.colunas.join(' | '));
@@ -99,6 +104,65 @@ const { irPara } = require('./ajuda-testes.cjs');
   ok('a tabela traz realizados e projetados, marcando os segundos',
     f3 && f3.linhasTabela === f3.realizados + f3.projetados && f3.projetadasNaTabela === f3.projetados,
     f3 && `${f3.linhasTabela} linhas · ${f3.projetadasNaTabela} projetadas`);
+
+  console.log('\nTETOS — quatro linhas vermelhas, e cinza onde não há meta');
+  await pag.evaluate(async () => {
+    await Loja.gravarCatalogo('metas', [
+      { cliente: E.clienteSel, nome: 'Teto fixas', modulo: 'financeiro', tipoMeta: 'objetivo-03',
+        contextoTeto: 'fixas', valorTeto: 120000, alvoPct: 0, vigenciaInicio: null, vigenciaFim: null, ativo: true },
+      { cliente: E.clienteSel, nome: 'Teto pontuais', modulo: 'financeiro', tipoMeta: 'objetivo-03',
+        contextoTeto: 'variaveis', valorTeto: 30000, alvoPct: 0, vigenciaInicio: null, vigenciaFim: null, ativo: true },
+    ]);
+    await render();
+  });
+  await pag.waitForTimeout(1200);
+  await pag.evaluate(() => [...document.querySelectorAll('.bloco.dobrado > header .bloco-dobra')]
+    .forEach((b) => b.click()));
+  await pag.waitForTimeout(600);
+  const tetos = await pag.evaluate(() => {
+    const sec = document.querySelector('[data-kpi="custo-mes-a-mes"]').closest('section.bloco-indicador');
+    const svg = sec.querySelector('#i-reducao svg');
+    const f = calcularFarol3(recorteDoBloco('financeiro'));
+    const traco = [...svg.querySelectorAll('path[stroke]')].map((p) => p.getAttribute('stroke'));
+    return {
+      // 3 séries realizadas + projeção + 4 tetos.
+      linhas: traco.length,
+      // Tracejadas: a projeção mais os quatro tetos.
+      tracejadas: svg.querySelectorAll('path[stroke-dasharray]').length,
+      vermelhas: traco.filter((c) => /crit/.test(c)).length,
+      cinzas: traco.filter((c) => /tinta3/.test(c)).length,
+      colunas: [...sec.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
+      aviso: /Sem teto cadastrado/.test(sec.textContent),
+      semMetaNaCelula: /sem meta/.test(sec.querySelector('tbody').textContent),
+      // O geral é a SOMA dos três, e não um valor digitado à parte.
+      geral: f.tetos.geral, fixas: f.tetos.fixas, variaveis: f.tetos.variaveis,
+      investimentos: f.tetos.investimentos,
+      // O teto atravessa os meses projetados: é lá que "este patamar cabe no
+      // limite?" mais importa.
+      noProjetado: f.projetados[0] ? f.projetados[0].tetoGeral : null,
+      // E as séries do Farol 3 continuam todas lá.
+      seriesAntigas: ['Total', 'Variáveis', 'Fixas'].every((c) =>
+        [...sec.querySelectorAll('thead th')].some((t) => t.textContent.trim() === c)),
+    };
+  });
+  ok('oito linhas: três séries, a projeção e os quatro tetos',
+    tetos.linhas === 8, String(tetos.linhas));
+  ok('cinco tracejadas: a projeção e os quatro tetos', tetos.tracejadas === 5, String(tetos.tracejadas));
+  // O vermelho é o limite de alguém: pintar de vermelho a ausência de limite
+  // inventaria um compromisso que ninguém assumiu.
+  ok('três vermelhas — as que têm meta', tetos.vermelhas === 3, String(tetos.vermelhas));
+  ok('e a sem meta fica cinza', tetos.cinzas === 1, String(tetos.cinzas));
+  ok('o racional ganhou uma coluna por teto',
+    ['Teto despesas fixas', 'Teto despesas variáveis', 'Teto investimentos', 'Teto geral']
+      .every((c) => tetos.colunas.includes(c)), tetos.colunas.slice(-4).join(' | '));
+  ok('o teto geral é a soma dos três',
+    tetos.geral === tetos.fixas + tetos.variaveis, `${tetos.fixas} + ${tetos.variaveis} = ${tetos.geral}`);
+  ok('contexto sem meta aparece como "sem meta", não como zero',
+    tetos.investimentos === null && tetos.semMetaNaCelula);
+  ok('com aviso no bloco', tetos.aviso);
+  ok('o teto alcança também os meses projetados', tetos.noProjetado === tetos.geral,
+    String(tetos.noProjetado));
+  ok('e as séries do Farol 3 continuam todas', tetos.seriesAntigas);
 
   console.log('\nCLIQUE — lançamentos do maior para o menor');
   await pag.locator('tr[data-mes-farol3]').nth(3).click();
