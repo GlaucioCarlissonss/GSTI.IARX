@@ -84,6 +84,10 @@ const pathBarra = (x, y, l, a, r=3) => {
  * Elas entram no cálculo do TETO da escala: uma referência acima do maior mês
  * ficaria fora do gráfico justamente quando a distância até ela é a notícia.
  */
+/** O mesmo conteúdo do balão, em uma frase, para o leitor de tela. */
+const rotuloAcessivel = (d) =>
+  `${d.titulo}. ` + d.linhas.map((l) => `${l.nome}: ${l.valor}`).join('. ');
+
 function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = curto, aoClicar = null, opcoes = {}) {
   alvo.replaceChildren();
   if (!pontos.length) { alvo.innerHTML = '<p class="vazio">Sem dados no período.</p>'; return; }
@@ -167,6 +171,34 @@ function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = c
       const t = svgEl('text', { x:L-m.d, y:y(r.valor)-4, class:'eixo', fill:r.cor, 'text-anchor':'end' });
       t.textContent = r.rotulo; svg.appendChild(t);
     }
+    if (!r.dica) continue;
+    const faixa = svgEl('line', { x1:m.e, x2:L-m.d, y1:y(r.valor), y2:y(r.valor),
+      stroke:'transparent', 'stroke-width':6, 'stroke-linecap':'round',
+      role:'img', tabindex:'0', 'aria-label': rotuloAcessivel(r.dica) });
+    faixa.style.cursor = 'help';
+    faixa.addEventListener('mousemove', (ev) => { ev.stopPropagation(); mostrarDica(ev, r.dica.titulo, r.dica.linhas); });
+    faixa.addEventListener('mouseleave', sumirDica);
+    faixa.addEventListener('focus', () => {
+      const c = faixa.getBoundingClientRect();
+      mostrarDica({ clientX: c.left + c.width / 2, clientY: c.top }, r.dica.titulo, r.dica.linhas);
+    });
+    faixa.addEventListener('blur', sumirDica);
+    // A faixa fica POR CIMA das colunas: sem repassar o clique, os seis pixels
+    // dela virariam uma faixa morta bem no meio do gráfico — clicar ali não
+    // abriria o mês, e nada na tela explicaria por quê.
+    // O cartão inteiro é gatilho de drill-down: sem barrar a subida, um clique
+    // na faixa abriria DUAS telas flutuantes, uma sobre a outra.
+    faixa.addEventListener('click', (ev) => ev.stopPropagation());
+    if (aoClicar) {
+      faixa.style.cursor = 'pointer';
+      faixa.addEventListener('click', (ev) => {
+        const caixa = svg.getBoundingClientRect();
+        const rel = ((ev.clientX - caixa.left) / caixa.width) * L;
+        const i = Math.max(0, Math.min(pontos.length - 1, Math.floor((rel - m.e) / (passo || 1))));
+        sumirDica(); aoClicar(pontos[i], i);
+      });
+    }
+    svg.appendChild(faixa);
   }
   alvo.appendChild(svg);
 }
@@ -256,6 +288,38 @@ function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '', a
     captura.addEventListener('click', (ev) => { const i = maisProximo(ev); sumirDica(); aoClicar(pontos[i], i); });
   }
   svg.appendChild(captura);
+  // A FAIXA DE CAPTURA DE CADA LINHA DE REFERÊNCIA, por cima do retângulo do
+  // mês: uma reta que atravessa o gráfico é a única marca sem um mês para
+  // apontar, e por isso é a única que precisa contar a própria origem. A faixa
+  // é estreita (6px) para roubar o mínimo do balão mensal.
+  for (const s of series.filter((sr) => sr.dica)) {
+    const alvos = pontos.map((p,i) => (temValor(p, s.k) ? i : -1)).filter((i) => i >= 0);
+    if (!alvos.length) continue;
+    const yy = y(pontos[alvos[0]].v[s.k]);
+    const faixa = svgEl('line', { x1:x(alvos[0]), x2:x(alvos[alvos.length-1]), y1:yy, y2:yy,
+      stroke:'transparent', 'stroke-width':6, 'stroke-linecap':'round',
+      role:'img', tabindex:'0', 'aria-label': rotuloAcessivel(s.dica) });
+    faixa.style.cursor = 'help';
+    faixa.addEventListener('mousemove', (ev) => { ev.stopPropagation(); mostrarDica(ev, s.dica.titulo, s.dica.linhas); });
+    faixa.addEventListener('mouseleave', sumirDica);
+    // Pelo teclado o balão sai do canto da própria linha: não há cursor de onde
+    // partir, e sem isso a informação só existiria para quem usa o mouse.
+    faixa.addEventListener('focus', () => {
+      const c = faixa.getBoundingClientRect();
+      mostrarDica({ clientX: c.left + c.width / 2, clientY: c.top }, s.dica.titulo, s.dica.linhas);
+    });
+    faixa.addEventListener('blur', sumirDica);
+    // O cartão inteiro é gatilho de drill-down: sem barrar a subida, um clique
+    // na faixa abriria DUAS telas flutuantes, uma sobre a outra.
+    faixa.addEventListener('click', (ev) => ev.stopPropagation());
+    if (aoClicar) {
+      faixa.style.cursor = 'pointer';
+      faixa.addEventListener('click', (ev) => {
+        const i = maisProximo(ev); sumirDica(); aoClicar(pontos[i], i);
+      });
+    }
+    svg.appendChild(faixa);
+  }
   // Rótulo a cada `passo` pontos, e o último sempre. O passo sai da LARGURA que
   // um rótulo ocupa, não de um número fixo de rótulos: "01/2026" mede cerca de
   // 56 unidades do viewBox, e com 24 meses o espaço entre pontos é 25 — pular

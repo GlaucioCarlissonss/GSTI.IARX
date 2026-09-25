@@ -1260,6 +1260,35 @@ A distância sai **escrita**: no balão (`+8,5% acima da média`) e na coluna
 do balão — repetir o mesmo valor em todo mês encheria o balão sem dizer nada
 que a reta já não diga.
 
+### O balão da própria reta
+
+A reta é a única marca do gráfico **sem um mês para apontar**, e por isso é a
+única que precisa contar a própria origem. Passar o cursor sobre ela — ou chegar
+nela pelo teclado, porque a faixa é focável — abre uma tela flutuante com quatro
+linhas:
+
+| linha | o que traz |
+| --- | --- |
+| Valor da linha | onde a reta está, na cor da série |
+| Soma dos meses | o total que foi somado |
+| Meses somados | sobre quantos meses |
+| Quais | os meses, nomeados |
+
+Sem a última, `média 8m` não é conferível: não dá para saber se o mês que a
+pessoa tem em mente está lá dentro. Acima de doze meses, mostram-se as duas
+**pontas** (`01/2026 · 02/2026 … 07/2027 · 08/2027`) e não o começo — é pelo
+primeiro e pelo último mês que se reconhece a janela, e cortar só a cauda
+esconderia justamente o mês mais recente. O mesmo texto vai no `aria-label`
+da faixa, porque o balão é visual.
+
+A faixa de captura tem **6px** e fica por cima das barras. Dois cuidados que ela
+exige, e que já custaram defeito antes:
+
+- **o clique segue para o mês que está embaixo dela** — engoli-lo criaria uma
+  faixa morta no meio do gráfico, sem nada na tela explicando por quê;
+- **o clique não sobe para o cartão**, que é gatilho de drill-down — sem barrar,
+  abririam duas telas flutuantes, uma sobre a outra.
+
 ### O interruptor
 
 Cada bloco com gráfico tem **"mostrar médias do período"**, ligado por padrão,

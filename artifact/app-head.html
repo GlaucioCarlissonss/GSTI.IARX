@@ -761,11 +761,11 @@ svg{display:block;width:100%;height:auto}
 .gantt .nome{white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
 .gantt .nome.tarefa{color:var(--tinta2);font-size:12.5px}
 
-.dica{position:fixed;z-index:70;pointer-events:none;background:var(--sup);border:1px solid var(--linha2);border-radius:9px;padding:8px 10px;font-size:12.5px;box-shadow:0 8px 28px rgba(0,0,0,.18);opacity:0;transition:opacity .1s;min-width:140px}
+.dica{position:fixed;z-index:70;pointer-events:none;background:var(--sup);border:1px solid var(--linha2);border-radius:9px;padding:8px 10px;font-size:12.5px;box-shadow:0 8px 28px rgba(0,0,0,.18);opacity:0;transition:opacity .1s;min-width:140px;max-width:340px}
 .dica.on{opacity:1}
 .dica b{display:block;margin-bottom:4px}
 .dica .l{display:flex;justify-content:space-between;gap:12px}
-.dica .l var{font-style:normal;font-weight:600;font-variant-numeric:tabular-nums}
+.dica .l var{font-style:normal;font-weight:600;font-variant-numeric:tabular-nums;text-align:right;overflow-wrap:anywhere}
 
 .carregando{display:flex;align-items:center;gap:9px;color:var(--tinta3);padding:26px}
 .giro{width:15px;height:15px;border:2px solid var(--linha2);border-top-color:var(--s1);border-radius:50%;animation:girar .7s linear infinite}

@@ -164,6 +164,88 @@ const { irPara } = require('./ajuda-testes.cjs');
     poucos.comVazio && poucos.comVazio.valor === 200 && poucos.comVazio.meses === 2,
     JSON.stringify(poucos.comVazio));
 
+  // O BALÃO DA PRÓPRIA RETA. Uma linha que atravessa o gráfico não tem um mês
+  // para apontar: sem balão próprio, "média 8m" fica sem como ser conferida —
+  // não dá para saber a soma nem QUAIS meses entraram nela.
+  console.log('\nBALÃO DA LINHA DE MÉDIA');
+  await repintar();
+  const faixas = await pag.evaluate(() => {
+    const por = {};
+    for (const sec of document.querySelectorAll('section.bloco-indicador')) {
+      const k = (sec.querySelector('[data-kpi]') || {}).dataset;
+      const f = sec.querySelectorAll('svg line[stroke="transparent"][tabindex="0"]');
+      if (k && k.kpi && f.length) por[k.kpi] = [...f].map((x) => x.getAttribute('aria-label'));
+    }
+    return por;
+  });
+  // Os cinco gráficos do Financeiro que ganharam média: Objetivo 01, Objetivo
+  // 02, Objetivo 03, os dois do Farol 1 e o Farol 3.
+  ok('toda reta de média tem faixa de captura', Object.keys(faixas).length >= 5,
+    Object.keys(faixas).join(', '));
+  const todos = Object.values(faixas).flat();
+  ok('e todas anunciam o conteúdo ao leitor de tela',
+    todos.length > 0 && todos.every((r) => /média do período/i.test(r)
+      && /Soma dos meses/.test(r) && /Meses somados/.test(r) && /Quais/.test(r)),
+    todos[0] || '(nenhuma)');
+
+  const balao = await pag.evaluate(async () => {
+    const sec = document.querySelector('[data-kpi="custo-mes-a-mes"]').closest('section.bloco-indicador');
+    const f = sec.querySelector('svg line[stroke="transparent"][tabindex="0"]');
+    const c = f.getBoundingClientRect();
+    f.dispatchEvent(new MouseEvent('mousemove', { bubbles: true,
+      clientX: c.left + c.width / 2, clientY: c.top }));
+    await new Promise((r) => setTimeout(r, 60));
+    const d = document.querySelector('#dica');
+    return { ligado: d.classList.contains('on'), texto: d.textContent };
+  });
+  ok('passar o mouse na reta abre o balão', balao.ligado);
+  // Os quatro dados que o pedido nomeia: o valor da posição da linha, o valor
+  // total somado, quantos meses e QUAIS.
+  ok('com o valor da posição da linha', /Valor da linha/.test(balao.texto), balao.texto);
+  ok('com o total somado', /Soma dos meses/.test(balao.texto));
+  ok('com a quantidade de meses', /Meses somados/.test(balao.texto));
+  ok('e com os meses, nomeados', /Quais/.test(balao.texto) && /\d\d\/\d{4}/.test(balao.texto),
+    balao.texto);
+
+  const conta = await pag.evaluate(() => {
+    const m = mediaDoPeriodo([100, 200, 300], ['01/2026', '02/2026', '03/2026']);
+    return { valor: m.valor, soma: m.soma, meses: m.meses, rotulos: m.rotulos };
+  });
+  // A soma dividida pelos meses tem de dar a posição da reta: é a conferência
+  // que o balão passa a permitir a olho.
+  ok('a soma ÷ meses é a posição da reta', conta.soma / conta.meses === conta.valor,
+    `${conta.soma} / ${conta.meses} = ${conta.valor}`);
+  ok('e os meses saem nomeados na ordem',
+    JSON.stringify(conta.rotulos) === JSON.stringify(['01/2026', '02/2026', '03/2026']),
+    JSON.stringify(conta.rotulos));
+  // Mês sem dado não entra na média nem na lista: ele não foi medido.
+  const lacuna = await pag.evaluate(() =>
+    mediaDoPeriodo([100, null, 300], ['01/2026', '02/2026', '03/2026']).rotulos);
+  ok('mês sem dado fica fora da lista',
+    JSON.stringify(lacuna) === JSON.stringify(['01/2026', '03/2026']), JSON.stringify(lacuna));
+
+  // A faixa fica POR CIMA das barras: se ela engolisse o clique, seis pixels no
+  // meio do gráfico deixariam de abrir o mês, sem nada na tela explicando.
+  const clicou = await pag.evaluate(async () => {
+    const sec = document.querySelector('[data-kpi="custo-recorrente"]').closest('section.bloco-indicador');
+    const f = sec.querySelector('svg line[stroke="transparent"][tabindex="0"]');
+    const c = f.getBoundingClientRect();
+    f.dispatchEvent(new MouseEvent('click', { bubbles: true,
+      clientX: c.left + c.width / 2, clientY: c.top + c.height / 2 }));
+    await new Promise((r) => setTimeout(r, 500));
+    const m = document.querySelectorAll('#modais .modal');
+    return { n: m.length, txt: m.length ? m[0].textContent.replace(/\s+/g, ' ').trim().slice(0, 60) : '' };
+  });
+  ok('clicar na faixa ainda abre o mês que está embaixo dela',
+    /Custos (fixos|variáveis) de \d\d\/\d{4}/.test(clicou.txt), clicou.txt || '(nada abriu)');
+  // O cartão inteiro também é gatilho: sem barrar a subida do clique, abririam
+  // DUAS telas, uma sobre a outra.
+  ok('e abre UMA tela só', clicou.n === 1, `${clicou.n} modal(is)`);
+  await pag.keyboard.press('Escape');
+  await pag.waitForTimeout(400);
+
+  await pag.evaluate(() => document.querySelector('#dica').classList.remove('on'));
+
   console.log('\nRACIONAL E INTERRUPTOR');
   await repintar();
   const racional = await pag.evaluate(() => {

@@ -390,13 +390,53 @@ const legendaDosTetosHtml = (f3) => `<div class="legenda-tipos" style="margin-to
  * 4. **Ela acompanha o filtro**, e por isso o rótulo diz sobre quantos meses
  *    foi feita — "média 8m" e "média 3m" não são a mesma promessa.
  */
-function mediaDoPeriodo(valores) {
-  const uteis = (valores || []).filter((v) => v !== null && v !== undefined && Number.isFinite(v));
-  if (uteis.length < 2) return null;
-  return { valor: uteis.reduce((s, v) => s + v, 0) / uteis.length, meses: uteis.length };
+function mediaDoPeriodo(valores, rotulos = []) {
+  const usados = (valores || [])
+    .map((v, i) => ({ v, rot: rotulos[i] }))
+    .filter((x) => x.v !== null && x.v !== undefined && Number.isFinite(x.v));
+  if (usados.length < 2) return null;
+  const soma = usados.reduce((s, x) => s + x.v, 0);
+  return {
+    valor: soma / usados.length, meses: usados.length, soma,
+    // QUAIS meses entraram: sem isso, "média 8m" não é conferível — a pessoa
+    // não sabe se o mês que ela tem em mente está lá dentro.
+    rotulos: usados.map((x) => x.rot).filter(Boolean),
+  };
 }
 
 const rotuloDaMedia = (m) => (m ? `média ${inteiro(m.meses)}m` : '');
+
+/**
+ * O balão da linha de média: de onde aquela reta saiu.
+ *
+ * Uma reta atravessando o gráfico é a única marca que não tem um mês para
+ * apontar — e por isso é a única que precisa contar a própria origem: quanto
+ * somou, sobre quantos meses e quais. Sem isso ela é um traço que a pessoa
+ * aceita ou não, sem meio de conferir.
+ */
+function detalheDaMedia(nome, media, cor) {
+  if (!media) return null;
+  // Lista os meses até um limite: vinte e três rótulos empurrariam o balão para
+  // fora da tela. Passando disso, mostram-se as duas PONTAS e não o começo: é
+  // pelo primeiro e pelo último mês que se reconhece a janela, e cortar só a
+  // cauda esconderia justamente o mês mais recente.
+  const LIMITE = 12;
+  const r = media.rotulos;
+  const meio = Math.floor(LIMITE / 2);
+  const lista = r.length <= LIMITE ? r.join(' · ')
+    : `${r.slice(0, meio).join(' · ')} … ${r.slice(-meio).join(' · ')}`;
+  return {
+    // Maiúscula inicial: alguns chamadores nomeiam a série em minúscula, para
+    // caber em "Média — fixas", e o título do balão é uma frase.
+    titulo: `${nome.charAt(0).toUpperCase()}${nome.slice(1)} — média do período`,
+    linhas: [
+      { nome: 'Valor da linha', valor: brl(media.valor), cor },
+      { nome: 'Soma dos meses', valor: brl(media.soma) },
+      { nome: 'Meses somados', valor: inteiro(media.meses) },
+      ...(lista ? [{ nome: 'Quais', valor: lista }] : []),
+    ],
+  };
+}
 
 /** A distância de um valor até a média, para o balão e para o racional. */
 function distanciaDaMedia(valor, media) {
@@ -618,7 +658,7 @@ function calcularObjetivo03(r) {
   // A média entra no CÁLCULO, e não só no desenho: é ela que alimenta a coluna
   // "vs. média" do racional, e duas médias — uma para a reta, outra para a
   // tabela — poderiam divergir.
-  const mediaTotal = mediaDoPeriodo(serie.map((p) => p.total));
+  const mediaTotal = mediaDoPeriodo(serie.map((p) => p.total), serie.map((p) => p.rot));
   for (const p of serie) p.vsMedia = distanciaDaMedia(p.total, mediaTotal);
 
   const referencia = serie[serie.length - 1] || null;
@@ -741,7 +781,7 @@ function calcularFarol3(r) {
   // A média do TOTAL, sobre os meses realizados. Mês projetado não recebe
   // comparação: ele não foi medido, e dizer que está "acima da média" afirmaria
   // um resultado que ainda não aconteceu.
-  const mediaTotal = mediaDoPeriodo(realizados.map((p) => p.total));
+  const mediaTotal = mediaDoPeriodo(realizados.map((p) => p.total), realizados.map((p) => p.rot));
   for (const p of pontos) p.vsMedia = p.projetado ? null : distanciaDaMedia(p.total, mediaTotal);
 
   return {
@@ -1889,6 +1929,37 @@ function barrasDoObjetivo(alvo, dados, aoClicar, media = null) {
       fill: 'var(--s1)', 'text-anchor': 'end' });
     t.textContent = rotuloDaMedia(media);
     svg.appendChild(t);
+    // A reta é a única marca do gráfico sem um mês para apontar: o balão dela
+    // tem de contar a própria origem — a soma, quantos meses entraram e quais.
+    const detalhe = detalheDaMedia('Custo total', media, 'var(--s1)');
+    const faixa = svgEl('line', { x1: m.e, x2: L - m.d, y1: y(media.valor), y2: y(media.valor),
+      stroke: 'transparent', 'stroke-width': 6, 'stroke-linecap': 'round',
+      role: 'img', tabindex: '0', 'aria-label': rotuloAcessivel(detalhe) });
+    faixa.style.cursor = 'help';
+    faixa.addEventListener('mousemove', (ev) => {
+      ev.stopPropagation(); mostrarDica(ev, detalhe.titulo, detalhe.linhas);
+    });
+    faixa.addEventListener('mouseleave', sumirDica);
+    faixa.addEventListener('focus', () => {
+      const c = faixa.getBoundingClientRect();
+      mostrarDica({ clientX: c.left + c.width / 2, clientY: c.top }, detalhe.titulo, detalhe.linhas);
+    });
+    faixa.addEventListener('blur', sumirDica);
+    // O clique segue para o mês que está embaixo do cursor: a faixa fica por
+    // cima das barras, e engoli-lo criaria uma faixa morta no meio do gráfico.
+    // O cartão inteiro é gatilho de drill-down: sem barrar a subida, um clique
+    // na faixa abriria DUAS telas flutuantes, uma sobre a outra.
+    faixa.addEventListener('click', (ev) => ev.stopPropagation());
+    if (aoClicar) {
+      faixa.style.cursor = 'pointer';
+      faixa.addEventListener('click', (ev) => {
+        const caixa = svg.getBoundingClientRect();
+        const rel = ((ev.clientX - caixa.left) / caixa.width) * L;
+        const i = Math.max(0, Math.min(pontos.length - 1, Math.floor((rel - mE) / (passo || 1))));
+        sumirDica(); aoClicar(pontos[i], 'barra');
+      });
+    }
+    svg.appendChild(faixa);
   }
 
   alvo.appendChild(svg);
@@ -2899,7 +2970,8 @@ async function viewIndicadores() {
     // sua série. Teto não tem média: é compromisso, não medição.
     const verMediasObj3 = mostrarMedias('teto-gasto');
     const mediasObj3 = Object.fromEntries(['fixas', 'variaveis', 'investimentos', 'total']
-      .map((k) => [k, verMediasObj3 ? mediaDoPeriodo(obj3.serie.map((p) => p[k])) : null]));
+      .map((k) => [k, verMediasObj3
+        ? mediaDoPeriodo(obj3.serie.map((p) => p[k]), obj3.serie.map((p) => p.rot)) : null]));
     linhas(alvoObj3,
       obj3.serie.map((p) => ({
         rot: p.rot, comp: p.comp,
@@ -2941,6 +3013,8 @@ async function viewIndicadores() {
           // Só o total leva rótulo na ponta: quatro rótulos empilhados no mesmo
           // canto se encavalariam, e o balão já nomeia as outras três.
           rotulo: k === 'total' ? rotuloDaMedia(m) : '',
+          dica: detalheDaMedia(k === 'total' ? 'Total' : ROTULO_FAIXA[k], m,
+            k === 'total' ? COR_TOTAL : COR_FAIXA[k]),
         }))],
       brl, curto, '',
       (ponto) => abrirMesDoObjetivo03(obj3, ponto.comp));
@@ -2962,7 +3036,8 @@ async function viewIndicadores() {
     // repetido, e a média dela seria ela mesma) nem os tetos (compromisso).
     const verMediasF3 = mostrarMedias('custo-mes-a-mes');
     const mediasF3 = Object.fromEntries(['total', 'variavel', 'fixa'].map((k) =>
-      [k, verMediasF3 ? mediaDoPeriodo(farol3.realizados.map((p) => p[k])) : null]));
+      [k, verMediasF3 ? mediaDoPeriodo(farol3.realizados.map((p) => p[k]),
+        farol3.realizados.map((p) => p.rot)) : null]));
     const nomeSerieF3 = { total: 'total', variavel: 'variáveis', fixa: 'fixas' };
     const corSerieF3 = { total: COR_TOTAL, variavel: COR_VARIAVEL, fixa: COR_FIXA };
     linhas(alvoFarol3,
@@ -3015,6 +3090,7 @@ async function viewIndicadores() {
           k: `media_${k}`, nome: `Média — ${nomeSerieF3[k]}`, cor: corSerieF3[k],
           pontilhada: true, semPontos: true, foraDoBalao: true,
           rotulo: k === 'total' ? rotuloDaMedia(m) : '',
+          dica: detalheDaMedia(nomeSerieF3[k], m, corSerieF3[k]),
         }))],
       brl, curto, '',
       (ponto) => abrirMesDoFarol3(farol3, ponto.comp));
@@ -3041,7 +3117,10 @@ async function viewIndicadores() {
     // A média do TOTAL da barra, na cor da linha azul do topo — que é
     // justamente a linha que liga os totais mês a mês.
     const mediaPlano = mostrarMedias('plano-reducao')
-      ? mediaDoPeriodo(plano.composicao.pontos.filter((p) => !p.projetado).map((p) => p.total))
+      ? (() => {
+        const base = plano.composicao.pontos.filter((p) => !p.projetado);
+        return mediaDoPeriodo(base.map((p) => p.total), base.map((p) => p.rot));
+      })()
       : null;
     barrasDoObjetivo(alvoPlano, plano.composicao, (ponto, oQue) => {
       // O ponto de um mês com plano abre a META; a barra e os demais pontos
@@ -3103,8 +3182,10 @@ async function viewIndicadores() {
       },
       { referencias: (() => {
         const m = mostrarMedias('rateio')
-          ? mediaDoPeriodo(adequacao.serie.map((p) => p.total)) : null;
-        return m ? [{ valor: m.valor, cor: COR_PENDENTE, rotulo: rotuloDaMedia(m) }] : [];
+          ? mediaDoPeriodo(adequacao.serie.map((p) => p.total), adequacao.serie.map((p) => p.rot))
+          : null;
+        return m ? [{ valor: m.valor, cor: COR_PENDENTE, rotulo: rotuloDaMedia(m),
+          dica: detalheDaMedia('Custo fixo compartilhado', m, COR_PENDENTE) }] : [];
       })() });
   }
   // FAROL 1 — uma barra empilhada por grupo, dividida entre despesa e
@@ -3133,8 +3214,9 @@ async function viewIndicadores() {
       // fatia de baixo e a que domina a altura.
       { referencias: (() => {
         const m = mostrarMedias('custo-recorrente')
-          ? mediaDoPeriodo(g.serie.map((p) => p.valor)) : null;
-        return m ? [{ valor: m.valor, cor: COR_DESPESA, rotulo: rotuloDaMedia(m) }] : [];
+          ? mediaDoPeriodo(g.serie.map((p) => p.valor), g.serie.map((p) => p.rot)) : null;
+        return m ? [{ valor: m.valor, cor: COR_DESPESA, rotulo: rotuloDaMedia(m),
+          dica: detalheDaMedia(id === 'fixos' ? 'Custos fixos' : 'Custos variáveis', m, COR_DESPESA) }] : [];
       })() });
   }
   // O interruptor das médias. `stopPropagation` porque a caixa mora dentro do
