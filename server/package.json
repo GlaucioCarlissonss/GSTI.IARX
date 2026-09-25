@@ -1,0 +1,38 @@
+{
+  "name": "@gsti/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('src/db/schema.sql','dist/db/schema.sql')\"",
+    "start": "node dist/index.js",
+    "seed": "tsx src/db/seed.ts",
+    "semear-clientes": "tsx src/db/semear-clientes.ts",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@types/nodemailer": "^8.0.1",
+    "bcryptjs": "^3.0.2",
+    "better-sqlite3": "^12.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "nodemailer": "^10.0.9",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^22.18.12",
+    "tsx": "^4.20.7",
+    "typescript": "^5.9.3"
+  }
+}
