@@ -157,6 +157,15 @@
   background:none;border:0;border-radius:0;box-shadow:none;padding:14px 0 0;
   border-top:1px solid var(--linha);margin-top:14px}
 .bloco-grupo>.bloco-corpo>.bloco:first-child{border-top:0;margin-top:0}
+/* SUB-BLOCO de um indicador — as três frentes do Farol 4. É o quarto nível de
+   dobra (módulo › grupo › indicador › frente), e o que o distingue não pode ser
+   mais uma moldura: ganha um filete à esquerda na cor da linha e um título
+   menor, como o grupo faz um nível acima. */
+.bloco-sub{background:var(--sup2);border:1px solid var(--linha);border-radius:10px;
+  box-shadow:none;padding:12px 14px}
+.bloco-sub>header h2{font-size:13px;color:var(--tinta2)}
+.bloco-sub>header{margin-bottom:8px}
+.bloco-sub.dobrado>header{margin-bottom:0}
 @media (max-width:640px){.bloco-modulo>.bloco-corpo>.bloco-grupo{padding-left:9px}}
 /* Indicador de largura inteira: um por linha, sem vizinho lateral. O `.kpi`
    dentro dele perde a borda e o padding da faixa de cartões — aqui o cartão é

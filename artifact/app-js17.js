@@ -2365,7 +2365,7 @@ function caixaDeCategorizacaoHtml() {
  * `+/−` e memória entre visitas. O valor vai no cabeçalho — é o que o
  * enunciado chama de "cabeçalho fixo: título, valor principal e estado".
  */
-function blocoIndicador({ chave, titulo, descricao, valor, cor, apoio, corpo, nota }) {
+function blocoIndicador({ chave, titulo, descricao, valor, cor, apoio, corpo, nota, extra }) {
   return `
     <section class="bloco bloco-indicador" style="margin-top:14px">
       <header><h2>${esc(titulo)}</h2>
@@ -2377,9 +2377,152 @@ function blocoIndicador({ chave, titulo, descricao, valor, cor, apoio, corpo, no
         ${apoio ? `<span class="a">${apoio}</span>` : ''}
         ${corpo || ''}
       </div>
+      ${extra || ''}
       ${nota ? `<p class="nota" style="margin-top:10px">${nota}</p>` : ''}
     </section>`;
 }
+
+/* ===================================================================== *
+ * FAROL 4 — Projeção de Economias e Valor Gerado pela TI
+ *
+ * As três frentes que sustentam a TI como CENTRO DE VALOR e não centro de
+ * custo. Cada uma tem cadastro próprio, e é por isso que elas são calculadas
+ * em separado e só depois consolidadas: são naturezas de prova diferentes.
+ *
+ * A CONSOLIDAÇÃO SEPARA MEDIDO DE PROJETADO, e essa é a decisão que rege o
+ * bloco inteiro:
+ *
+ *   realizado = negociação + desenvolvimento interno   (medido, linha a linha)
+ *   evitado   = custo da não gestão                    (projeção por premissa)
+ *   completo  = realizado + evitado
+ *
+ * O cabeçalho mostra o REALIZADO, com o evitado ao lado. Duas razões, e a
+ * segunda é a que decide:
+ *
+ * 1. Somar tudo num número só deixaria a manchete refém de uma premissa: basta
+ *    a diretoria contestar o "% de pagamentos duplicados" para o indicador
+ *    inteiro virar discussão.
+ * 2. SUBTRAIR o custo da não gestão — a leitura literal de "A + B − C" — seria
+ *    pior ainda: o desperdício projetado NÃO ACONTECEU, justamente porque há
+ *    metodologia. Descontá-lo faria o Valor Gerado ENCOLHER quanto mais
+ *    desperdício evitado a TI conseguisse demonstrar, que é o incentivo
+ *    invertido.
+ * ===================================================================== */
+
+/** As três frentes, na ordem em que aparecem e com a cor de cada uma. */
+const FRENTES_FAROL4 = [
+  { k: 'negociacao', titulo: 'Economia com Negociação — Compras e Serviços',
+    curto: 'negociação', cor: 'var(--t3)',
+    mede: 'compras e serviços fechados abaixo do preço de mercado',
+    cadastro: 'contratos negociados, com preço fechado e preço de referência de mercado',
+    entrega: 2, tipo: 'realizado' },
+  { k: 'desenvolvimento', titulo: 'Economia com Desenvolvimento Interno — BI e Automações',
+    curto: 'desenvolvimento interno', cor: 'var(--t1)',
+    mede: 'o que foi construído dentro de casa em vez de terceirizado',
+    cadastro: 'entregas internas, com horas investidas e custo de terceirização equivalente',
+    entrega: 3, tipo: 'realizado' },
+  { k: 'naoGestao', titulo: 'Custo da Não Gestão — Projeção sem Controle e Processo Rigoroso',
+    curto: 'desperdício evitado', cor: 'var(--t2)',
+    mede: 'o desperdício que o cenário sem metodologia produziria',
+    cadastro: 'premissas de desperdício por componente, aplicadas sobre a despesa do período',
+    entrega: 4, tipo: 'projetado' },
+];
+
+/**
+ * A consolidação do Farol 4.
+ *
+ * As três frentes ainda não têm cadastro — cada uma chega na entrega dela. A
+ * forma do retorno, porém, já é a definitiva: as entregas 2, 3 e 4 preenchem
+ * `itens` e `valor` de uma frente cada, sem mexer na consolidação nem na tela.
+ * Montar a casca agora é o que impede que a terceira entrega tenha de
+ * redesenhar o cabeçalho que a primeira estabeleceu.
+ */
+function calcularFarol4(r) {
+  const frentes = FRENTES_FAROL4.map((f) => ({
+    ...f,
+    // `pronto: false` é a marca de "o cadastro desta frente ainda não existe",
+    // e é diferente de valor zero. Zero afirmaria que a TI não gerou economia
+    // nenhuma; o que há é que ninguém cadastrou ainda o que ela gerou.
+    pronto: false, valor: 0, itens: [], projecaoAnual: null,
+  }));
+  const por = Object.fromEntries(frentes.map((f) => [f.k, f]));
+  const somaDe = (tipo) => frentes.filter((f) => f.tipo === tipo && f.pronto)
+    .reduce((acc, f) => acc + f.valor, 0);
+
+  const realizado = somaDe('realizado');
+  const evitado = somaDe('projetado');
+  return {
+    frentes, por, realizado, evitado, completo: realizado + evitado,
+    // Quantas frentes já têm cadastro: é o que a tela usa para dizer "parcial"
+    // em vez de apresentar um total como se fosse o retrato inteiro.
+    prontas: frentes.filter((f) => f.pronto).length,
+    total: frentes.length,
+    janela: { de: r.de, ate: r.ate },
+  };
+}
+
+/**
+ * O sub-bloco de uma frente do Farol 4.
+ *
+ * É um `section.bloco` como qualquer outro — `dobrarBlocos` o converte em
+ * acordeão sozinho —, e mora FORA do `.kpi` do Farol 4, que é gatilho de
+ * drill-down: dentro dele, abrir o sub-bloco abriria a tela flutuante junto.
+ */
+function subBlocoFarol4Html(f, corpo) {
+  return `
+    <section class="bloco bloco-sub" data-sub-farol4="${esc(f.k)}" style="margin-top:12px">
+      <header><h2>${esc(f.titulo)}</h2>
+        <span class="nota valor-cabecalho" style="color:${f.cor}">${
+          f.pronto ? brl(f.valor) : '<span class="vazio2">sem cadastro</span>'}</span></header>
+      ${corpo}
+    </section>`;
+}
+
+/**
+ * A conta do Farol 4 escrita na tela, card a card, com os operadores entre eles.
+ *
+ * O gestor confere a soma com o olho antes de acreditar no número que vai para
+ * a diretoria — e é aqui que a separação entre medido e projetado fica visível
+ * como ESTRUTURA, e não como nota de rodapé: os dois realizados somam num
+ * subtotal, e só então o desperdício evitado entra, marcado como projeção.
+ */
+function cardsDoFarol4Html(f4) {
+  const card = (rot, valor, apoio, cor, forte) => `<div class="card-plano${forte ? ' forte' : ''}">
+    <span class="card-rot">${esc(rot)}</span>
+    <strong${cor ? ` style="color:${cor}"` : ''}>${valor}</strong>
+    <span class="card-apoio">${esc(apoio)}</span></div>`;
+  const op = (sinal) => `<span class="card-op" aria-hidden="true">${sinal}</span>`;
+  // Frente sem cadastro mostra travessão, e não R$ 0,00: zero afirmaria que a
+  // TI não gerou economia nenhuma, quando o que há é ausência de registro.
+  const valorDe = (k) => (f4.por[k].pronto ? brl(f4.por[k].valor) : '—');
+  const apoioDe = (k) => (f4.por[k].pronto
+    ? `${inteiro(f4.por[k].itens.length)} registro(s)` : 'sem cadastro ainda');
+  return `<div class="cards-plano">
+    ${card('Negociação', valorDe('negociacao'), apoioDe('negociacao'), FRENTES_FAROL4[0].cor)}
+    ${op('+')}
+    ${card('Desenvolvimento interno', valorDe('desenvolvimento'), apoioDe('desenvolvimento'),
+      FRENTES_FAROL4[1].cor)}
+    ${op('=')}
+    ${card('Valor gerado (realizado)', f4.prontas ? brl(f4.realizado) : '—',
+      'medido registro a registro', f4.realizado > 0 ? 'var(--bomtxt)' : null, true)}
+    ${op('+')}
+    ${card('Desperdício evitado', valorDe('naoGestao'), 'projeção por premissa', FRENTES_FAROL4[2].cor)}
+    ${op('=')}
+    ${card('Cenário completo', f4.prontas ? brl(f4.completo) : '—',
+      'realizado + projetado', null, true)}
+  </div>`;
+}
+
+/** O que cada frente ainda vai trazer, enquanto o cadastro dela não existe. */
+const frenteSemCadastroHtml = (f) => `<div class="msg">
+    <strong>Mede ${esc(f.mede)}.</strong>
+    Falta o cadastro de ${esc(f.cadastro)} — ele chega na Entrega ${inteiro(f.entrega)},
+    e esta frente passa a somar no cabeçalho assim que houver o primeiro registro.
+    ${f.tipo === 'projetado'
+      ? 'Este valor é <strong>projetado</strong> a partir de premissas configuráveis, e por isso '
+        + 'aparece separado do realizado.'
+      : 'Este valor é <strong>medido</strong> registro a registro, e entra no total realizado.'}
+  </div>`;
 
 /**
  * O que falta reconhecer, por centro de custo.
@@ -2436,6 +2579,7 @@ async function viewIndicadores() {
   const adequacao = calcularAdequacao(rf);
   const farol = calcularFarolCustos(rf);
   const farol3 = calcularFarol3(rf);
+  const farol4 = calcularFarol4(rf);
   const obj3 = calcularObjetivo03(rf);
   const plano = calcularPlanoReducao(rf);
 
@@ -2859,6 +3003,45 @@ async function viewIndicadores() {
         + 'ao que já está lançado no futuro faria o significado da linha mudar de mês para mês. Ela não '
         + 'obedece ao filtro de período, que termina no passado por padrão; recortá-la o apagaria '
         + 'justamente quando ela interessa.'),
+    })}
+
+    ${blocoIndicador({
+      chave: 'valor-gerado',
+      titulo: 'Farol 4 - Projeção de Economias e Valor Gerado pela TI',
+      descricao: 'Resultado gerado com negociação de compras e serviços, desenvolvimento interno '
+        + '(BI e automações) e o custo da ausência de controle e processo rigoroso na gestão de TI',
+      // O número do cabeçalho é o REALIZADO — negociação mais desenvolvimento
+      // interno —, porque é o que se prova registro a registro. O desperdício
+      // evitado vem ao lado, nomeado como projeção.
+      valor: farol4.prontas ? brl(farol4.realizado) : '—',
+      cor: farol4.realizado > 0 ? 'var(--bomtxt)' : null,
+      apoio: farol4.prontas
+        ? `realizado no período · ${brl(farol4.evitado)} de desperdício evitado (projeção) · `
+          + `${brl(farol4.completo)} no cenário completo`
+        : `nenhuma das ${inteiro(farol4.total)} frentes tem cadastro ainda`,
+      // O semáforo vai DENTRO de `.semaforos`: solto num contêiner flex em
+      // coluna ele estica até a altura toda do cartão, porque `.semaforo` pede
+      // `flex:1 1 280px` contando com uma fila horizontal.
+      corpo: `<div class="semaforos">${semaforoHtml({
+        rotulo: 'Meta de valor gerado',
+        estado: null,
+        texto: 'Sem meta cadastrada para o Farol 4. O tipo de meta "Valor Gerado pela TI" '
+          + 'chega na Entrega 5, em Sistema › Cadastro › Metas.',
+      })}</div>
+        ${cardsDoFarol4Html(farol4)}`,
+      // Os três sub-blocos ficam FORA do `.kpi`: ele é gatilho de drill-down, e
+      // abrir um sub-bloco de dentro dele abriria a tela flutuante junto — o
+      // mesmo empilhamento de modais que já apareceu três vezes nesta tela.
+      extra: FRENTES_FAROL4.map((def) => {
+        const f = farol4.por[def.k];
+        return subBlocoFarol4Html(f, frenteSemCadastroHtml(f));
+      }).join(''),
+      nota: '<strong>O realizado e o projetado não se misturam num número só.</strong> Negociação e '
+        + 'desenvolvimento interno são medidos registro a registro e somam o valor do cabeçalho; o '
+        + 'custo da não gestão é <strong>projetado a partir de premissas</strong> e aparece ao lado. '
+        + 'Ele também não é <em>descontado</em> do valor gerado: esse desperdício não aconteceu '
+        + 'justamente porque há metodologia, e subtraí-lo faria o indicador encolher quanto mais '
+        + 'desperdício evitado a TI conseguisse demonstrar.',
     })}
 
     </section>
@@ -3342,6 +3525,18 @@ async function viewIndicadores() {
       // cuja soma não é o número clicado.
       abrir: farol3.ultimoRealizado
         ? () => abrirMesDoFarol3(farol3, farol3.ultimoRealizado, true) : null,
+    },
+    'valor-gerado': {
+      dica: 'O que a gestão de TI gerou em dinheiro, em três frentes: economia de negociação, '
+        + 'economia de desenvolvimento interno e o desperdício que o cenário sem metodologia '
+        + 'produziria. O número do cartão é só o REALIZADO — as duas primeiras, medidas registro a '
+        + 'registro; o desperdício evitado é projetado por premissa e vem ao lado, sem entrar nele '
+        + 'nem ser descontado dele. Cada frente abre no seu sub-bloco.',
+      // Sem `abrir`: o número do cabeçalho é a soma de três frentes de
+      // naturezas diferentes, e uma lista só misturaria contrato com hora
+      // trabalhada e premissa. O detalhamento vive em cada sub-bloco, que é
+      // onde os registros são da mesma espécie.
+      abrir: null,
     },
     'por-reconhecer': {
       dica: 'Soma e contagem das despesas que ninguém reconheceu ainda, no recorte do bloco. '

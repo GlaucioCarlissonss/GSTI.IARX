@@ -46,8 +46,10 @@ const { irPara } = require('./ajuda-testes.cjs');
   ok('os três objetivos estão em "Objetivos"',
     JSON.stringify(grupos.objetivos) === JSON.stringify(['plano-reducao', 'rateio', 'teto-gasto']),
     JSON.stringify(grupos.objetivos));
-  ok('os três faróis estão em "Faróis"',
-    JSON.stringify(grupos.farois) === JSON.stringify(['custo-recorrente', 'por-reconhecer', 'custo-mes-a-mes']),
+  // Quatro desde o Farol 4 (valor gerado pela TI), que entra depois do Farol 3.
+  ok('os quatro faróis estão em "Faróis", na ordem',
+    JSON.stringify(grupos.farois)
+      === JSON.stringify(['custo-recorrente', 'por-reconhecer', 'custo-mes-a-mes', 'valor-gerado']),
     JSON.stringify(grupos.farois));
   ok('cada grupo abre e fecha', grupos.dobram);
   ok('e cada indicador continua abrindo dentro dele', grupos.indicadoresDobram);

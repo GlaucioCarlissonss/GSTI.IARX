@@ -1211,6 +1211,61 @@ engano. `calcularConsumo` continua existindo e é a fonte desse "antes". O
 equilíbrio mês a mês vinha pendurado no mesmo bloco e saiu junto: descrevia o
 mesmo consumo compartilhado, por outro ângulo.
 
+## Farol 4: projeção de economias e valor gerado pela TI
+
+Posiciona a TI como **centro de valor**, e não centro de custo: quanto a gestão
+de TI gerou em dinheiro. Fica no bloco Financeiro, no grupo Faróis,
+**imediatamente depois do Farol 3**, e reúne três frentes, cada uma num
+sub-bloco que abre e fecha sozinho.
+
+| frente | mede | natureza da prova |
+| --- | --- | --- |
+| A — Economia com Negociação | compras e serviços fechados abaixo do preço de mercado | **medida**, contrato a contrato |
+| B — Economia com Desenvolvimento Interno | o que foi construído dentro de casa em vez de terceirizado | **medida**, entrega a entrega |
+| C — Custo da Não Gestão | o desperdício que o cenário sem metodologia produziria | **projetada**, por premissa configurável |
+
+### O realizado e o projetado não viram um número só
+
+```
+realizado = A + B          → é o número do cabeçalho
+evitado   = C              → aparece ao lado, nomeado como projeção
+completo  = realizado + C
+```
+
+Duas razões, e a segunda é a que decide:
+
+1. **Somar tudo numa manchete só a deixaria refém de uma premissa.** Bastaria a
+   diretoria contestar o "% de pagamentos duplicados" para o indicador inteiro
+   virar discussão — inclusive a parte que se prova linha a linha.
+2. **Subtrair C seria pior.** A leitura literal "A + B − C" trata o desperdício
+   projetado como perda a descontar, mas ele **não aconteceu**, justamente
+   porque há metodologia. Descontá-lo faria o Valor Gerado **encolher quanto
+   mais desperdício evitado a TI conseguisse demonstrar** — o incentivo
+   invertido.
+
+A conta vai escrita na tela em cinco cards com os operadores entre eles
+(`A + B = realizado + evitado = completo`), para o gestor conferi-la com o olho
+antes de levá-la à diretoria.
+
+### Sem cadastro não é zero
+
+Cada frente nasce com `pronto: false`, e a tela mostra **travessão**, não
+`R$ 0,00`. Zero afirmaria que a TI não gerou economia nenhuma; o que há é que
+ninguém cadastrou ainda o que ela gerou — e as duas frases levam a decisões
+opostas.
+
+### Estrutura
+
+Os três sub-blocos ficam **fora do `.kpi`** do Farol 4, que é gatilho de
+drill-down: dentro dele, abrir uma frente abriria a tela flutuante junto — o
+mesmo empilhamento de modais que já apareceu três vezes nesta tela. É por isso
+que `blocoIndicador` ganhou o slot `extra`, renderizado depois do cartão.
+
+O cartão do Farol 4 **não abre detalhamento próprio**: o número dele soma três
+frentes de naturezas diferentes, e uma lista só misturaria contrato com hora
+trabalhada e premissa. O detalhamento vive em cada sub-bloco, onde os registros
+são da mesma espécie.
+
 ## A média do período nos gráficos do Financeiro
 
 Uma reta por série responde *"este mês está acima ou abaixo do que este período

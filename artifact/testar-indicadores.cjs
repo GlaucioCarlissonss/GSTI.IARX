@@ -52,10 +52,11 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   ok('e o rateio logo abaixo dele', estrutura.indicadores[1] === 'rateio', estrutura.indicadores[1]);
   ok('nenhum indicador divide a linha com outro', !estrutura.ladoALado);
   ok('cada um ocupa a largura inteira', estrutura.larguraCheia);
-  // Dez: três objetivos e três faróis no Financeiro, dois em Projetos e dois em
-  // SLA. O Farol 3 entrou quando "Custo recorrente mês a mês" deixou de ser uma
-  // seção solta, e o Objetivo 03 com o teto de gasto.
-  ok('os dez indicadores estão na tela', estrutura.indicadores.length === 10,
+  // Onze: três objetivos e QUATRO faróis no Financeiro, dois em Projetos e dois
+  // em SLA. O Farol 3 entrou quando "Custo recorrente mês a mês" deixou de ser
+  // uma seção solta, o Objetivo 03 com o teto de gasto, e o Farol 4 com o valor
+  // gerado pela TI.
+  ok('os onze indicadores estão na tela', estrutura.indicadores.length === 11,
     estrutura.indicadores.join(' · '));
   ok('os três blocos de negócio continuam nomeados',
     ['Financeiro', 'SLA', 'Projetos'].every((n) => estrutura.blocos.includes(n)),
