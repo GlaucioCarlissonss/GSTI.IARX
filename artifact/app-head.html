@@ -267,6 +267,19 @@
 .lista-passos li>span:nth-child(2){flex:1 1 auto;min-width:0}
 .lista-passos li>var{font-style:normal;font-weight:700;font-size:16px;font-variant-numeric:tabular-nums}
 @media (max-width:820px){.painel-spin{grid-template-columns:1fr}}
+/* O cronograma: a linha da fase em destaque, a da unidade recuada. */
+.cronograma tr.fase-linha>td{background:var(--sup2);font-size:13px}
+.cronograma tr.fase-linha td:first-child{display:flex;align-items:center;gap:8px}
+.cronograma tr.unidade-linha>td{font-size:12.5px;color:var(--tinta2)}
+.cronograma tr.unidade-linha:hover>td{background:var(--sup2)}
+/* A grade do Controle Único: 54 colunas exigem rolagem horizontal, e o
+   cabeçalho e a coluna do ID presos — sem eles, no 20º campo ninguém sabe
+   mais que coluna está lendo nem de que atividade é a linha. */
+.grade-spin{max-height:520px}
+.grade-spin table{font-size:12px;width:auto;min-width:100%}
+.grade-spin th,.grade-spin td{white-space:nowrap}
+.grade-spin td.texto{white-space:normal;min-width:200px;max-width:320px}
+.grade-spin tbody tr:hover>th,.grade-spin tbody tr:hover>td{background:var(--sup2)}
 /* A amostra hachurada da legenda: a mesma marca que a barra usa para
    investimento. Sem ela, a legenda prometeria uma cor lisa e o gráfico
    entregaria outra coisa. */

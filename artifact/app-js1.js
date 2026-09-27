@@ -67,6 +67,7 @@ const E = {
   reconhecedores: [],       // quem, na origem, lança despesa que já chega conferida
   spincare: [],             // atividades do Controle Único do Projeto SpinCare, por cliente
   spincareRelatorio: null,  // o relatório da última carga, para sobreviver ao repintar
+  spinFiltro: null,         // os cortes da listagem do Controle Único, só na sessão
   aba: 'painel',
   lanc: new Map(),          // 'empresa__comp' -> {itens:[...]}
   mesesCarregados: new Set(),

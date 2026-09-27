@@ -1211,6 +1211,61 @@ engano. `calcularConsumo` continua existindo e é a fonte desse "antes". O
 equilíbrio mês a mês vinha pendurado no mesmo bloco e saiu junto: descrevia o
 mesmo consumo compartilhado, por outro ângulo.
 
+## O cronograma anual das viradas (visão Macro)
+
+A tabela reproduz o cronograma que o cliente apresenta: **fase · período ·
+unidades a migrar · pacientes · aderência · prazo macro**, com as 17 filiais e
+1.922 pacientes das cinco fases. Cada fase abre para as unidades dela, com data
+planejada, data realizada, o que falta e o estado.
+
+**A pergunta do macro é uma só: a unidade virou no mês planejado?** Tarefa
+pendente não muda essa resposta — ela aparece ao lado porque diz o que falta,
+não porque reprova a virada.
+
+Três estados, e o terceiro é o que evita a mentira mais fácil:
+
+| estado | quando |
+| --- | --- |
+| CUMPRIDO | todas as atividades da unidade estão concluídas |
+| NÃO CUMPRIDO | o mês da virada passou e ela não aconteceu |
+| PENDENTE | o mês ainda não chegou, **ou a planilha não acompanha a unidade** |
+
+**Unidade sem coluna na planilha fica pendente, não em atraso.** A planilha não
+diz que ela não começou; ela ainda não pergunta. Pintá-la de vermelho afirmaria
+um atraso que ninguém mediu — é o caso das 11 unidades das ondas 3 a 5.
+
+A aderência de uma fase sem unidade acompanhada é **nula**, e não zero: zero
+afirmaria um fracasso não medido.
+
+## A listagem fiel do Controle Único
+
+Em **Gestão de Projetos › Projeto SpinCare**, as 172 atividades numa grade com
+rolagem horizontal, cabeçalho e coluna de ID presos — sem eles, na vigésima
+coluna ninguém sabe mais que campo está lendo nem de que atividade é a linha.
+
+**Só as ondas e unidades EM USO ganham coluna.** A planilha prevê oito ondas e
+dez vagas de unidade; desenhar dezesseis colunas de onda com doze vazias seria
+ruído que empurra para fora da tela o que tem conteúdo.
+
+**A ordem padrão é farol (vermelho primeiro) e depois atraso.** Ordenar por ID
+devolveria a ordem da planilha, que não responde pergunta nenhuma — a lista
+existe para dizer o que fazer primeiro.
+
+**Dez cortes** (fonte, grupo/time, frente, tipo de entrega, executante,
+criticidade, status, farol, onda, unidade) mais busca por texto. O campo de
+busca dispara no `change`, e não a cada tecla: repintar a cada letra perderia o
+foco no meio da digitação.
+
+Clicar na linha abre a **ficha completa** — inclusive critério de aceite e
+caminho no sistema, que a grade não comporta e são justamente o que quem
+executa precisa ler. Dali se edita a situação por unidade, a pendência, a
+próxima ação e a evidência.
+
+**A trilha guarda o de-para, campo a campo.** "Editou a atividade PRE-8" não
+responde à pergunta que alguém faz três meses depois, que é o que mudou e a
+partir de qual valor. Sem mudança nenhuma, nada é gravado: uma trilha com uma
+linha por abertura de tela afogaria as alterações de verdade.
+
 ## O painel do SpinCare nos Indicadores Gerais
 
 Quatro leituras do mesmo universo, dentro de **Projetos › Visão Micro**, todas

@@ -191,6 +191,59 @@ const ARQ = process.env.SPINCARE_XLSX || '';
     ok('recarregar o mesmo arquivo não duplica', dobro === 172, String(dobro));
   }
 
+  console.log('\nA LISTAGEM FIEL (Entregável 2)');
+  if (!ARQ || !fs.existsSync(ARQ)) {
+    console.log('  [pulado] sem SPINCARE_XLSX');
+  } else {
+    const g = await pag.evaluate(() => ({
+      linhas: document.querySelectorAll('[data-atividade]').length,
+      cortes: [...document.querySelectorAll('[data-corte]')].map((s) => s.dataset.corte),
+      // A ordem padrão: vermelho primeiro, e dentro dele o mais atrasado.
+      farois: [...document.querySelectorAll('[data-atividade]')].slice(0, 40)
+        .map((tr) => (tr.textContent.match(/VERMELHO|AMARELO|VERDE|N\/A/) || [''])[0]),
+      unidades: [...document.querySelectorAll('.grade-spin thead th')]
+        .filter((th) => /^(HR|HM|UC) /.test(th.textContent)).length,
+    }));
+    ok('as 172 atividades na grade', g.linhas === 172, String(g.linhas));
+    ok('os dez cortes da tela', g.cortes.length === 10, g.cortes.join(', '));
+    ok('uma coluna por unidade acompanhada', g.unidades === 6, String(g.unidades));
+    const ordem = { VERMELHO: 0, AMARELO: 1, VERDE: 2 };
+    ok('ordenadas por farol, vermelho primeiro',
+      g.farois.every((f, i) => i === 0 || (ordem[g.farois[i - 1]] ?? 9) <= (ordem[f] ?? 9)),
+      g.farois.slice(0, 6).join(' · '));
+
+    // A ficha traz o que a grade corta — critério de aceite e caminho no
+    // sistema são justamente o que quem vai executar precisa ler.
+    const ficha = await pag.evaluate(async () => {
+      document.querySelector('[data-atividade]').click();
+      await new Promise((r) => setTimeout(r, 700));
+      const m = document.querySelector('#modais .modal');
+      return { campos: m.querySelectorAll('.ficha dt').length,
+        temCriterio: /Critério de aceite/.test(m.textContent),
+        temCaminho: /Caminho no sistema/.test(m.textContent),
+        selects: m.querySelectorAll('[data-sit]').length };
+    });
+    ok('a ficha traz todos os campos', ficha.campos >= 20, `${ficha.campos} campo(s)`);
+    ok('inclusive critério de aceite e caminho', ficha.temCriterio && ficha.temCaminho);
+    ok('e a situação por unidade é editável', ficha.selects === 6, String(ficha.selects));
+
+    // Editar grava e deixa trilha com o de-para. "Editou a atividade PRE-8"
+    // não responde ao que alguém pergunta três meses depois.
+    const edicao = await pag.evaluate(async () => {
+      const sel = document.querySelector('[data-sit]');
+      const de = sel.value;
+      sel.value = de === 'Concluído' ? 'Bloqueado' : 'Concluído';
+      const para = sel.value;
+      document.querySelector('#modais .modal [data-g]').click();
+      await new Promise((r) => setTimeout(r, 1500));
+      const a = spinAtividades().find((x) => x.id === 'EDU-01');
+      const trilha = (await Loja.auditoriaDoCliente ? [] : []);
+      return { de, para, agora: a && a.unidades[Object.keys(a.unidades)[0]] };
+    });
+    ok('editar a situação grava', edicao.agora === edicao.para,
+      `${edicao.de} → ${edicao.para}, gravado ${edicao.agora}`);
+  }
+
   console.log(`\n=== falhas: ${falhas.length ? '\n' + falhas.join('\n') : 'nenhuma'} ===`);
   console.log(`=== erros de console: ${erros.length ? '\n' + erros.join('\n') : 'nenhum'} ===`);
   await nav.close();

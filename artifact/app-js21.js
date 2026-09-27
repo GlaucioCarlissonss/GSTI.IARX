@@ -490,7 +490,7 @@ function viewSpincare() {
         <header><h2>Diagnóstico da base</h2></header>
         <p class="vazio">Nenhuma atividade carregada ainda. Suba a planilha acima para ver o
           que entrou e o que ficou faltando.</p>
-      </section>` : diagnosticoSpincareHtml(d)}`;
+      </section>` : `${listagemSpincareHtml()}${diagnosticoSpincareHtml(d)}`}`;
 
   const arq = el('#spin-arq');
   const bt = el('#spin-carregar');
@@ -498,6 +498,7 @@ function viewSpincare() {
   bt.addEventListener('click', () => carregarSpincare(arq, bt));
   const limpar = el('#spin-limpar');
   if (limpar) limpar.addEventListener('click', () => removerBaseSpincare());
+  ligarListagemSpincare();
   dobrarBlocos();
 }
 
@@ -878,13 +879,21 @@ function barrasPorUnidadeHtml(p) {
  * Cada quadro continua com título e descrição próprios: o que saiu foi a
  * dobra, não a identificação.
  */
-function painelSpincareHtml(p) {
+function painelSpincareHtml(p, extras = []) {
+  const quadroExtra = (x) => `
+    <section class="quadro${x.largo ? ' quadro-largo' : ''}" data-quadro="${esc(x.chave)}">
+      <header><h3>${esc(x.titulo)}</h3><span>${esc(x.apoio || '')}</span></header>
+      <div class="quadro-corpo">${x.corpo}</div>
+    </section>`;
   if (!p.todas.length) {
+    // Mesmo sem a base do Controle Único, o que existe de tarefas continua
+    // aparecendo: esconder tudo faria a caixa parecer quebrada.
     return `<div class="msg alerta"><strong>A base do Controle Único não foi carregada
       para este cliente.</strong> Suba a planilha em
       <strong>Gestão de Projetos › Projeto SpinCare</strong> — ou na tela de
       <strong>Sistema › Dados</strong>, que também a reconhece — e os quatro indicadores
-      passam a ler dela.</div>`;
+      passam a ler dela.</div>
+      ${extras.length ? `<div class="painel-spin">${extras.map(quadroExtra).join('')}</div>` : ''}`;
   }
   const maior = p.porStatus.filter((s) => !s.foraDoCalculo)
     .reduce((m, s) => (s.valor > m.valor ? s : m), { valor: -1 });
@@ -934,6 +943,8 @@ function painelSpincareHtml(p) {
             <span>${esc(x.texto)}</span>
             <var style="color:${x.cor}">${inteiro(x.n)}</var>
           </li>`).join('')}</ul>`, true)}
+
+      ${extras.map(quadroExtra).join('')}
     </div>
 
     <p class="nota" style="margin-top:12px">Os percentuais somam <strong>100%</strong> porque
@@ -1009,5 +1020,501 @@ function ligarPainelSpincare(p) {
     li.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrir(ev); }
     });
+  });
+}
+
+// ===================================================================== //
+// O CRONOGRAMA ANUAL DAS VIRADAS — a visão MACRO.
+//
+// A pergunta é uma só: a unidade planejada para virar no mês VIROU? Tarefa
+// pendente não muda essa resposta — é informação de apoio, e confundir as
+// duas foi o que motivou separar macro de micro.
+// ===================================================================== //
+
+/**
+ * O estado de cada unidade do cronograma.
+ *
+ * Três estados, e o terceiro é o que evita a mentira mais fácil:
+ *
+ *   CUMPRIDO   a virada aconteceu (todas as atividades da unidade concluídas)
+ *   NÃO CUMPRIDO  o mês da virada passou e ela não aconteceu
+ *   PENDENTE   ainda não chegou o mês, ou a planilha nem acompanha a unidade
+ *
+ * Uma unidade sem coluna na planilha NÃO é "não iniciada": a planilha não diz
+ * que ela não começou, ela ainda não pergunta. Pintá-la de vermelho afirmaria
+ * um atraso que ninguém mediu.
+ */
+function calcularCronograma(hoje) {
+  const mesAtual = (hoje || mesHoje());
+  const atividades = spinAtividades();
+  const ondas = SPIN_ONDAS.map((o) => {
+    const unidades = o.unidades.map((nome, i) => {
+      const chave = o.chaves[i] || null;
+      const acompanhadas = chave ? atividades.filter((a) => (a.unidades || {})[chave]) : [];
+      const validas = acompanhadas.filter((a) => a.avanco !== null);
+      const concluidas = validas.filter((a) => a.unidades[chave] === 'Concluído');
+      const pendentes = validas.filter((a) => a.unidades[chave] !== 'Concluído');
+      const virou = validas.length > 0 && pendentes.length === 0;
+      const passou = o.mes < mesAtual;
+      return {
+        nome, chave, onda: o.n,
+        acompanhada: !!chave && validas.length > 0,
+        total: validas.length, concluidas: concluidas.length, pendentes,
+        pct: pct(concluidas.length, validas.length),
+        virou,
+        // Sem coluna na planilha o estado é PENDENTE, mesmo com o mês vencido.
+        estado: !chave || !validas.length ? 'PENDENTE'
+          : virou ? 'CUMPRIDO' : (passou ? 'NÃO CUMPRIDO' : 'PENDENTE'),
+        dataPlanejada: o.virada,
+        // A data realizada só existe quando a virada aconteceu, e é a do mês
+        // planejado: a planilha não guarda a data efetiva da virada.
+        dataRealizada: virou ? o.virada : null,
+      };
+    });
+    const acompanhadas = unidades.filter((u) => u.acompanhada);
+    const viradas = acompanhadas.filter((u) => u.virou);
+    return {
+      ...o, unidades, acompanhadas: acompanhadas.length, viradas: viradas.length,
+      // A aderência do mês: realizadas ÷ planejadas. Sem unidade acompanhada
+      // ela é nula, e não zero — zero afirmaria um fracasso não medido.
+      aderencia: acompanhadas.length ? pct(viradas.length, acompanhadas.length) : null,
+      estado: !acompanhadas.length ? 'PENDENTE'
+        : viradas.length === acompanhadas.length ? 'CUMPRIDO'
+        : (o.mes < mesAtual ? 'NÃO CUMPRIDO' : 'PENDENTE'),
+    };
+  });
+  return { ondas, mesAtual,
+    pacientes: SPIN_ONDAS.reduce((s, o) => s + o.pacientes, 0),
+    filiais: SPIN_ONDAS.reduce((s, o) => s + o.unidades.length, 0),
+    acompanhadas: ondas.reduce((s, o) => s + o.acompanhadas, 0) };
+}
+
+const SPIN_CORES_ESTADO = { CUMPRIDO: 'var(--bomtxt)', 'NÃO CUMPRIDO': 'var(--crit)',
+  PENDENTE: 'var(--tinta3)' };
+const SPIN_SIMBOLO_ESTADO = { CUMPRIDO: '✓', 'NÃO CUMPRIDO': '✗', PENDENTE: '·' };
+
+/** O cronograma: fases, unidades e o estado de cada virada. */
+function cronogramaHtml(c) {
+  const selo = (estado) => `<span class="tag" style="color:${SPIN_CORES_ESTADO[estado]};
+    border-color:${SPIN_CORES_ESTADO[estado]}">${SPIN_SIMBOLO_ESTADO[estado]} ${esc(estado)}</span>`;
+  return `
+    <div class="cards-plano" style="margin-top:0">
+      <div class="card-plano forte"><span class="card-rot">Total de pacientes</span>
+        <strong>${inteiro(c.pacientes)}</strong>
+        <span class="card-apoio">nas ${inteiro(c.filiais)} filiais do cronograma</span></div>
+      <div class="card-plano"><span class="card-rot">Filiais a migrar</span>
+        <strong>${inteiro(c.filiais)}</strong>
+        <span class="card-apoio">em ${inteiro(c.ondas.length)} fases</span></div>
+      <div class="card-plano"><span class="card-rot">Acompanhadas na planilha</span>
+        <strong>${inteiro(c.acompanhadas)}</strong>
+        <span class="card-apoio">as demais entram quando a planilha as incluir</span></div>
+    </div>
+
+    <div class="rol" style="margin-top:14px"><table class="cronograma">
+      <thead><tr><th>Fase</th><th>Período</th><th>Unidades a migrar</th>
+        <th class="n">Pacientes</th><th class="n">Aderência</th><th>Prazo macro</th></tr></thead>
+      <tbody>${c.ondas.map((o) => `
+        <tr class="fase-linha" data-fase="${inteiro(o.n)}">
+          <td><button type="button" class="arv-abrir" aria-expanded="false"
+              aria-label="Abrir as unidades da fase ${esc(o.fase)}">+</button>
+            <strong>${inteiro(o.n)} · ${esc(o.fase)}</strong></td>
+          <td>${esc(o.periodo)}<div class="arv-comp">virada em ${esc(mesExib(o.mes))}</div></td>
+          <td>${o.unidades.map((u) => `<span class="tag" style="color:${
+            SPIN_CORES_ESTADO[u.estado]};border-color:${SPIN_CORES_ESTADO[u.estado]}">${
+            esc(u.nome)}</span>`).join(' ')}</td>
+          <td class="n">${inteiro(o.pacientes)}</td>
+          <td class="n">${o.aderencia === null ? '<span class="vazio2">sem medição</span>'
+            : `<strong style="color:${SPIN_CORES_ESTADO[o.estado]}">${pctTxt(o.aderencia)}</strong>
+               <div class="arv-comp">${inteiro(o.viradas)} de ${inteiro(o.acompanhadas)}</div>`}</td>
+          <td>${selo(o.estado)}</td>
+        </tr>
+        ${o.unidades.map((u) => `
+        <tr class="unidade-linha" data-da-fase="${inteiro(o.n)}" hidden${
+            u.chave ? ` data-unidade-crono="${esc(u.chave)}"` : ''}>
+          <td style="padding-left:34px">${esc(u.nome)}</td>
+          <td><div class="arv-comp">planejada ${esc(diaExib(u.dataPlanejada))}</div>
+            <div class="arv-comp">realizada ${u.dataRealizada ? esc(diaExib(u.dataRealizada))
+              : '<span class="vazio2">—</span>'}</div></td>
+          <td>${!u.acompanhada
+            ? '<span class="vazio2">sem coluna na planilha ainda</span>'
+            : `${inteiro(u.concluidas)} de ${inteiro(u.total)} atividade(s) concluída(s)
+               ${u.pendentes.length ? `<div class="arv-comp" style="color:var(--alerta)">${
+                 inteiro(u.pendentes.length)} pendente(s) — informativas, não mudam o prazo macro</div>`
+                 : ''}`}</td>
+          <td class="n">—</td>
+          <td class="n">${u.acompanhada ? pctTxt(u.pct) : '—'}</td>
+          <td>${selo(u.estado)}</td>
+        </tr>`).join('')}`).join('')}
+      </tbody></table></div>
+
+    <p class="nota" style="margin-top:10px"><strong>Tarefa pendente não muda o prazo macro.</strong>
+      O que ele mede é a unidade ter virado ou não no mês planejado; as pendências aparecem ao lado
+      porque dizem o que falta, não porque reprovam a virada. Unidade <strong>sem coluna na
+      planilha</strong> fica <em>pendente</em>, e não em atraso — a planilha não diz que ela não
+      começou, ela ainda não pergunta.</p>`;
+}
+
+/** DD/MM/AAAA a partir do ISO. */
+const diaExib = (iso) => (String(iso || '').length === 10
+  ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—');
+
+/** Abre e fecha as fases, e liga o detalhamento de cada unidade. */
+function ligarCronograma(c) {
+  el('#pagina').querySelectorAll('.fase-linha').forEach((tr) => {
+    const bt = tr.querySelector('.arv-abrir');
+    const filhas = [...el('#pagina').querySelectorAll(
+      `[data-da-fase="${tr.dataset.fase}"]`)];
+    bt.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const aberto = bt.getAttribute('aria-expanded') === 'true';
+      bt.setAttribute('aria-expanded', String(!aberto));
+      bt.textContent = aberto ? '+' : '−';
+      for (const f of filhas) f.hidden = aberto;
+    });
+  });
+  el('#pagina').querySelectorAll('[data-unidade-crono]').forEach((tr) => {
+    const chave = tr.dataset.unidadeCrono;
+    const unidade = c.ondas.flatMap((o) => o.unidades).find((u) => u.chave === chave);
+    if (!unidade || !unidade.acompanhada) return;
+    tr.style.cursor = 'pointer';
+    tr.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const itens = spinAtividades().filter((a) => (a.unidades || {})[chave]);
+      abrirAtividadesSpin(`${unidade.nome} — virada da ${unidade.onda}ª onda`, itens,
+        `${inteiro(unidade.concluidas)} de ${inteiro(unidade.total)} concluída(s). `
+        + `Prazo macro: ${unidade.estado}.`);
+    });
+    ligarDica(tr, () => ({ titulo: unidade.nome, linhas: [
+      { nome: 'Fase', valor: `${unidade.onda}ª — ${(SPIN_ONDAS[unidade.onda - 1] || {}).fase || ''}` },
+      { nome: 'Data planejada', valor: diaExib(unidade.dataPlanejada) },
+      { nome: 'Data realizada', valor: unidade.dataRealizada ? diaExib(unidade.dataRealizada) : '—' },
+      { nome: 'Prazo macro', valor: unidade.estado, cor: SPIN_CORES_ESTADO[unidade.estado] },
+      { nome: 'Pendentes', valor: `${inteiro(unidade.pendentes.length)} atividade(s)` },
+    ] }));
+  });
+}
+
+// ===================================================================== //
+// A LISTAGEM FIEL — a planilha inteira dentro do sistema (Entregável 2).
+// ===================================================================== //
+
+/** Os cortes da tela, guardados na sessão. Vazio = tudo. */
+function filtroSpin() {
+  if (!E.spinFiltro) {
+    E.spinFiltro = { fonte: '', grupoTime: '', frente: '', tipoEntrega: '', executante: '',
+      criticidade: '', statusConsolidado: '', farol: '', onda: '', unidade: '', busca: '' };
+  }
+  return E.spinFiltro;
+}
+
+/**
+ * A ordem padrão: VERMELHO primeiro, e dentro dele o mais atrasado no topo.
+ *
+ * Ordenar por ID devolveria a ordem da planilha, que não responde pergunta
+ * nenhuma. A lista existe para dizer o que fazer primeiro.
+ */
+const ORDEM_FAROL = { VERMELHO: 0, AMARELO: 1, VERDE: 2, 'N/A': 3 };
+function ordenarAtividades(lista) {
+  return [...lista].sort((a, b) =>
+    (ORDEM_FAROL[a.farol] ?? 9) - (ORDEM_FAROL[b.farol] ?? 9)
+    || (a.diasParaPrazo === null ? 1 : b.diasParaPrazo === null ? -1 : a.diasParaPrazo - b.diasParaPrazo)
+    || String(a.id).localeCompare(String(b.id), 'pt-BR'));
+}
+
+/** As atividades que passam pelos cortes da tela. */
+function atividadesFiltradas() {
+  const f = filtroSpin();
+  const busca = spinChaveNome(f.busca);
+  return ordenarAtividades(spinAtividades().filter((a) => {
+    const igual = (campo, valor) => !valor || String(a[campo] || '') === valor;
+    if (!igual('fonte', f.fonte) || !igual('grupoTime', f.grupoTime)
+      || !igual('frente', f.frente) || !igual('tipoEntrega', f.tipoEntrega)
+      || !igual('criticidade', f.criticidade) || !igual('statusConsolidado', f.statusConsolidado)
+      || !igual('farol', f.farol)) return false;
+    if (f.executante && !a.executantes.includes(f.executante)) return false;
+    if (f.unidade && !(a.unidades || {})[f.unidade]) return false;
+    if (f.onda && !Object.keys(a.unidades || {}).some((k) =>
+      String((SPIN_UNIDADE_POR_CHAVE[k] || {}).onda) === f.onda)) return false;
+    if (busca && !spinChaveNome(`${a.id} ${a.atividade} ${a.caminho || ''} `
+      + `${a.grupoTime || ''} ${a.executantes.join(' ')}`).includes(busca)) return false;
+    return true;
+  }));
+}
+
+/** Uma etiqueta de situação, na cor dela. */
+const selaSituacao = (s) => (!s ? '<span class="vazio2">—</span>'
+  : `<span class="tag" style="color:${(SPIN_SITUACOES[s] || {}).cor || 'var(--tinta2)'};border-color:${
+    (SPIN_SITUACOES[s] || {}).cor || 'var(--linha2)'}">${esc(s)}</span>`);
+
+/** As ondas que a base usa — só elas ganham colunas na grade. */
+const ondasUsadas = (lista) => [...new Set(lista.flatMap((a) =>
+  Object.keys(a.ondas || {})))].sort((x, y) => Number(x) - Number(y));
+
+/** A grade com a planilha inteira: identificação, ondas, unidades e cálculos. */
+function gradeSpincareHtml(lista) {
+  if (!lista.length) return '<p class="vazio">Nenhuma atividade neste recorte.</p>';
+  const ondas = ondasUsadas(lista);
+  const unidades = SPIN_UNIDADES.filter((u) =>
+    lista.some((a) => (a.unidades || {})[u.k]));
+  return `<div class="rol rol-fixo grade-spin"><table class="pivot">
+    <thead><tr>
+      <th>ID</th><th>Atividade</th><th>Fonte</th><th>Grupo / Time</th><th>Frente</th>
+      <th>Tipo de entrega</th><th>Criticidade</th><th>Líder</th><th>Executante</th>
+      ${ondas.map((o) => `<th class="n">Prazo O${esc(o)}</th><th>Situação O${esc(o)}</th>`).join('')}
+      <th class="n">Prazo repactuado</th>
+      ${unidades.map((u) => `<th>${esc(u.rotulo)}</th>`).join('')}
+      <th>Status consolidado</th><th class="n">Avanço</th><th class="n">Peso</th>
+      <th class="n">Ponderado</th><th>Farol</th><th class="n">Dias p/ prazo</th>
+      <th>Pendência / bloqueio</th><th>Próxima ação</th><th>Evidência</th><th>Observações</th>
+    </tr></thead>
+    <tbody>${lista.map((a) => `<tr data-atividade="${esc(a.chave || a.id)}" style="cursor:pointer">
+      <th><code>${esc(a.id)}</code></th>
+      <td class="texto"><strong>${esc(a.atividade)}</strong></td>
+      <td>${esc(a.fonte || '—')}</td><td>${esc(a.grupoTime || '—')}</td>
+      <td>${esc(a.frente || '—')}</td><td>${esc(a.tipoEntrega || '—')}</td>
+      <td>${esc(a.criticidade || '—')}</td><td>${esc(a.lider || '—')}</td>
+      <td>${a.executantes.length ? esc(a.executantes.join(', '))
+        : '<span class="vazio2">sem responsável</span>'}</td>
+      ${ondas.map((o) => {
+        const od = (a.ondas || {})[o] || {};
+        return `<td class="n">${od.prazo ? esc(diaExib(od.prazo)) : '—'}</td>
+          <td>${od.situacao ? esc(od.situacao) : '—'}</td>`;
+      }).join('')}
+      <td class="n">${a.prazoRepactuado ? esc(diaExib(a.prazoRepactuado)) : '—'}</td>
+      ${unidades.map((u) => `<td>${selaSituacao((a.unidades || {})[u.k])}</td>`).join('')}
+      <td>${selaSituacao(a.statusConsolidado)}</td>
+      <td class="n">${a.avanco === null ? '—' : pctTxt(a.avanco * 100)}</td>
+      <td class="n">${a.peso === null ? '—' : inteiro(a.peso)}</td>
+      <td class="n">${a.avancoPonderado === null ? '—' : a.avancoPonderado.toLocaleString('pt-BR')}</td>
+      <td><span class="tag" style="color:${SPIN_CORES_FAROL[a.farol]};border-color:${
+        SPIN_CORES_FAROL[a.farol]}">${esc(a.farol)}</span></td>
+      <!-- Negativo é VENCIDO, e o sinal sozinho não diz isso a quem chega na
+           tela pela primeira vez: a palavra vai junto do número. -->
+      <td class="n"${a.diasParaPrazo === null ? '' : ` style="color:${
+        a.diasParaPrazo < 0 ? 'var(--crit)' : 'var(--tinta2)'}"`}>${
+        a.diasParaPrazo === null ? '—'
+          : `${inteiro(Math.abs(a.diasParaPrazo))} ${a.diasParaPrazo < 0 ? 'vencido' : 'restante'}`}</td>
+      <td class="texto">${a.pendencia ? esc(a.pendencia) : '—'}</td>
+      <td class="texto">${a.proximaAcao ? esc(a.proximaAcao) : '—'}</td>
+      <td class="texto">${a.evidencia ? esc(a.evidencia) : '—'}</td>
+      <td class="texto">${a.observacoes ? esc(a.observacoes) : '—'}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+/** Um seletor de corte, montado das opções que existem na base. */
+function corteSpinHtml(campo, rotulo, opcoes) {
+  const f = filtroSpin();
+  return `<div class="campo" style="min-width:150px">
+    <label for="sf-${campo}">${esc(rotulo)}</label>
+    <select id="sf-${campo}" data-corte="${campo}">
+      <option value="">Todos</option>
+      ${opcoes.map((o) => {
+        const valor = typeof o === 'string' ? o : o.valor;
+        const nome = typeof o === 'string' ? o : o.rotulo;
+        return `<option value="${esc(valor)}"${f[campo] === valor ? ' selected' : ''}>${esc(nome)}</option>`;
+      }).join('')}
+    </select></div>`;
+}
+
+/**
+ * A ficha de uma atividade: TODOS os campos, inclusive os que a grade corta.
+ *
+ * Critério de aceite e caminho no sistema são textos longos que a grade não
+ * comporta, e são justamente o que quem vai executar precisa ler.
+ */
+function abrirAtividadeSpin(chave) {
+  const a = spinAtividades().find((x) => (x.chave || x.id) === chave);
+  if (!a) return;
+  const linha = (rot, valor, cor) => `<dt>${esc(rot)}</dt><dd${cor ? ` style="color:${cor}"` : ''}>${
+    valor || '<span class="vazio2">—</span>'}</dd>`;
+  const unidades = SPIN_UNIDADES.filter((u) => (a.unidades || {})[u.k]);
+  abrirModal({
+    titulo: `${a.id} — ${a.atividade}`,
+    larguraPadrao: 780,
+    corpo: `
+      <dl class="ficha">
+        ${linha('Fonte', esc(a.fonte || ''))}
+        ${linha('Grupo / Time', esc(a.grupoTime || ''))}
+        ${linha('Frente', esc(a.frente || ''))}
+        ${linha('Tipo de entrega', esc(a.tipoEntrega || ''))}
+        ${linha('Criticidade', esc(a.criticidade || ''))}
+        ${linha('Passível de replicação', esc(a.replicavel || ''))}
+        ${linha('Líder do grupo', esc(a.lider || ''))}
+        ${linha('Executante', a.executantes.length ? esc(a.executantes.join(', ')) : '')}
+        ${linha('Critério de aceite', esc(a.criterioAceite))}
+        ${linha('Caminho no sistema', a.caminho ? `<code>${esc(a.caminho)}</code>` : '')}
+        ${linha('Data-base da onda', a.dataBaseOnda ? esc(diaExib(a.dataBaseOnda)) : '')}
+        ${linha('Prazo repactuado', a.prazoRepactuado ? esc(diaExib(a.prazoRepactuado)) : '')}
+        ${linha('Status consolidado', selaSituacao(a.statusConsolidado))}
+        ${linha('Avanço', a.avanco === null ? '' : pctTxt(a.avanco * 100))}
+        ${linha('Peso', a.peso === null ? '' : inteiro(a.peso))}
+        ${linha('Avanço ponderado', a.avancoPonderado === null ? ''
+          : a.avancoPonderado.toLocaleString('pt-BR'))}
+        ${linha('Farol', `<span class="tag" style="color:${SPIN_CORES_FAROL[a.farol]};border-color:${
+          SPIN_CORES_FAROL[a.farol]}">${esc(a.farol)}</span>`)}
+        ${linha('Dias para o prazo', a.diasParaPrazo === null ? ''
+          : `${inteiro(Math.abs(a.diasParaPrazo))} ${a.diasParaPrazo < 0 ? 'vencido(s)' : 'restante(s)'}`,
+          a.diasParaPrazo !== null && a.diasParaPrazo < 0 ? 'var(--crit)' : null)}
+        ${linha('Status igual em todas', esc(a.statusIgualEmTodas || ''))}
+        ${linha('Pendência / bloqueio', esc(a.pendencia || ''))}
+        ${linha('Próxima ação', esc(a.proximaAcao || ''))}
+        ${linha('Evidência', esc(a.evidencia || ''))}
+        ${linha('Observações', esc(a.observacoes || ''))}
+      </dl>
+
+      <h3 class="titulo-mini">Situação por unidade</h3>
+      ${!unidades.length ? '<p class="vazio">Nenhuma unidade acompanha esta atividade.</p>' : `
+      <div class="rol"><table>
+        <thead><tr><th>Unidade</th><th>Onda</th><th>Situação</th></tr></thead>
+        <tbody>${unidades.map((u) => `<tr>
+          <td>${esc(u.rotulo)}</td><td>${u.onda ? `${inteiro(u.onda)}ª` : '—'}</td>
+          <td><select data-sit="${esc(u.k)}">
+            ${SPIN_SITUACOES_LISTA.map((sit) => `<option${
+              a.unidades[u.k] === sit ? ' selected' : ''}>${esc(sit)}</option>`).join('')}
+          </select></td></tr>`).join('')}</tbody></table></div>`}
+
+      <h3 class="titulo-mini">Acompanhamento</h3>
+      <div class="campo"><label for="sa-pend">Pendência / bloqueio</label>
+        <textarea id="sa-pend">${esc(a.pendencia || '')}</textarea></div>
+      <div class="campo"><label for="sa-acao">Próxima ação</label>
+        <textarea id="sa-acao">${esc(a.proximaAcao || '')}</textarea></div>
+      <div class="campo"><label for="sa-evid">Evidência</label>
+        <input id="sa-evid" value="${esc(a.evidencia || '')}"></div>
+      <div class="msg" data-erro hidden></div>`,
+    acoes: '<button type="button" class="bt" data-c>Fechar</button>'
+      + '<button type="button" class="bt pri" data-g>Salvar</button>',
+    aoMontar({ raiz, fechar }) {
+      raiz.querySelector('[data-c]').onclick = fechar;
+      const erro = raiz.querySelector('[data-erro]');
+      raiz.querySelector('[data-g]').onclick = async (ev) => {
+        ev.target.disabled = true;
+        erro.hidden = true;
+        try {
+          const unidadesNovas = { ...(a.unidades || {}) };
+          for (const sel of raiz.querySelectorAll('[data-sit]')) {
+            unidadesNovas[sel.dataset.sit] = sel.value;
+          }
+          const patch = {
+            unidades: unidadesNovas,
+            pendencia: raiz.querySelector('#sa-pend').value.trim(),
+            proximaAcao: raiz.querySelector('#sa-acao').value.trim(),
+            evidencia: raiz.querySelector('#sa-evid').value.trim(),
+          };
+          await salvarAtividadeSpin(a, patch);
+          fechar();
+          await render();
+        } catch (e) {
+          erro.hidden = false;
+          erro.className = 'msg erro';
+          erro.textContent = e && e.message ? e.message : String(e);
+          ev.target.disabled = false;
+        }
+      };
+    },
+  });
+}
+
+/**
+ * Grava a alteração e registra QUEM, QUANDO e o que mudou.
+ *
+ * A trilha guarda o de-para campo a campo: "editou a atividade PRE-8" não
+ * responde à pergunta que alguém vai fazer daqui a três meses, que é o que
+ * mudou e a partir de qual valor.
+ */
+async function salvarAtividadeSpin(antes, patch) {
+  const chave = antes.chave || antes.id;
+  const base = E.spincare || [];
+  const i = base.findIndex((x) => (x.chave || x.id) === chave && x.cliente === E.clienteSel);
+  if (i < 0) throw new Error('A atividade não foi encontrada na base. Recarregue a tela e tente de novo.');
+
+  const mudancas = [];
+  for (const [campo, valor] of Object.entries(patch)) {
+    if (campo === 'unidades') {
+      for (const [u, novo] of Object.entries(valor)) {
+        const velho = (antes.unidades || {})[u];
+        if (velho !== novo) {
+          mudancas.push(`${(SPIN_UNIDADE_POR_CHAVE[u] || {}).rotulo || u}: ${velho || '—'} → ${novo}`);
+        }
+      }
+    } else if (String(antes[campo] || '') !== String(valor || '')) {
+      mudancas.push(`${campo}: "${antes[campo] || ''}" → "${valor || ''}"`);
+    }
+  }
+  // Sem mudança não há o que gravar: uma trilha com uma linha por abertura de
+  // tela afogaria as alterações de verdade.
+  if (!mudancas.length) return { alterou: false };
+
+  const novo = { ...base[i], ...patch };
+  for (const campo of ['pendencia', 'proximaAcao', 'evidencia']) {
+    if (!novo[campo]) delete novo[campo];
+  }
+  const lista = [...base];
+  lista[i] = novo;
+  await Loja.gravarCatalogo('spincare', lista);
+  await Loja.auditar({ entidade: 'spincare', acao: 'atualizar', id: chave,
+    descricao: `${antes.id}: ${mudancas.join(' · ')}` });
+  return { alterou: true, mudancas };
+}
+
+/** A listagem com os cortes, a grade e a contagem do recorte. */
+function listagemSpincareHtml() {
+  const todas = spinAtividades();
+  const lista = atividadesFiltradas();
+  const f = filtroSpin();
+  const distintos = (extrair) => [...new Set(todas.flatMap(extrair).filter(Boolean))]
+    .sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+  const algumCorte = Object.values(f).some(Boolean);
+  return `
+    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:16px">
+      <header><h2>Atividades do Controle Único</h2>
+        <span class="nota">${inteiro(lista.length)} de ${inteiro(todas.length)} atividade(s)${
+          algumCorte ? ' — com corte aplicado' : ''}</span></header>
+
+      <div class="filtros" style="box-shadow:none;border:0;padding:0;margin-bottom:12px">
+        <div class="campo" style="min-width:210px"><label for="sf-busca">Buscar</label>
+          <input id="sf-busca" value="${esc(f.busca)}"
+            placeholder="ID, atividade, caminho, executante"></div>
+        ${corteSpinHtml('fonte', 'Fonte', distintos((a) => [a.fonte]))}
+        ${corteSpinHtml('grupoTime', 'Grupo / Time', distintos((a) => [a.grupoTime]))}
+        ${corteSpinHtml('frente', 'Frente', distintos((a) => [a.frente]))}
+        ${corteSpinHtml('tipoEntrega', 'Tipo de entrega', distintos((a) => [a.tipoEntrega]))}
+        ${corteSpinHtml('executante', 'Executante', distintos((a) => a.executantes))}
+        ${corteSpinHtml('criticidade', 'Criticidade', distintos((a) => [a.criticidade]))}
+        ${corteSpinHtml('statusConsolidado', 'Status', distintos((a) => [a.statusConsolidado]))}
+        ${corteSpinHtml('farol', 'Farol', distintos((a) => [a.farol]))}
+        ${corteSpinHtml('onda', 'Onda', SPIN_ONDAS.filter((o) => o.chaves.length)
+          .map((o) => ({ valor: String(o.n), rotulo: `${o.n}ª — ${o.fase}` })))}
+        ${corteSpinHtml('unidade', 'Unidade', SPIN_UNIDADES.filter((u) =>
+          todas.some((a) => (a.unidades || {})[u.k])).map((u) => ({ valor: u.k, rotulo: u.rotulo })))}
+        <button class="bt fant" id="sf-limpar">Limpar filtros</button>
+      </div>
+
+      <!-- A ordem padrão é VERMELHO primeiro e, dentro dele, o mais atrasado
+           no topo: ordenar por ID devolveria a ordem da planilha, que não
+           responde pergunta nenhuma. A lista existe para dizer o que fazer
+           primeiro. -->
+      <p class="nota" style="margin-bottom:8px">Ordenadas por <strong>farol</strong> (vermelho
+        primeiro) e depois pelo <strong>atraso</strong>. Clique na linha para abrir a ficha
+        completa e editar situação por unidade, pendência, próxima ação e evidência.</p>
+      ${gradeSpincareHtml(lista)}
+    </section>`;
+}
+
+/** Liga os cortes e o clique da linha. */
+function ligarListagemSpincare() {
+  const f = filtroSpin();
+  el('#pagina').querySelectorAll('[data-corte]').forEach((sel) => {
+    sel.addEventListener('change', () => { f[sel.dataset.corte] = sel.value; render(); });
+  });
+  const busca = el('#sf-busca');
+  if (busca) {
+    // `change`, e não `input`: repintar a cada tecla perderia o foco do campo
+    // no meio da digitação.
+    busca.addEventListener('change', () => { f.busca = busca.value.trim(); render(); });
+  }
+  const limpar = el('#sf-limpar');
+  if (limpar) limpar.addEventListener('click', () => { E.spinFiltro = null; render(); });
+  el('#pagina').querySelectorAll('[data-atividade]').forEach((tr) => {
+    tr.addEventListener('click', () => abrirAtividadeSpin(tr.dataset.atividade));
   });
 }

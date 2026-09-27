@@ -2542,15 +2542,6 @@ function subBlocoFarol4Html(f, corpo) {
  * tem hoje não guarda isso — é a Entrega 4 que traz o cadastro.
  * ===================================================================== */
 
-/** O que a visão Macro vai trazer, enquanto o cadastro da planilha não existe. */
-const visaoMacroPendenteHtml = () => `<div class="msg">
-    <strong>Chega na Entrega 2.</strong> Por mês de competência: quais unidades estavam
-    <strong>planejadas</strong> para virar, quais <strong>viraram</strong>, o percentual de aderência e
-    o status do prazo macro — verde quando todas as planejadas do mês viraram, vermelho quando alguma
-    ficou. A expansão vai de Empresa a Filial, com data planejada, data realizada e as tarefas
-    pendentes ao lado, que <strong>não alteram</strong> o status macro.
-  </div>`;
-
 /**
  * A conta do Farol 4 escrita na tela, card a card, com os operadores entre eles.
  *
@@ -2656,6 +2647,7 @@ async function viewIndicadores() {
   const farol = calcularFarolCustos(rf);
   const farol3 = calcularFarol3(rf);
   const farol4 = calcularFarol4(rf);
+  const crono = calcularCronograma();
   const spin = calcularSpincare({ ondas: rp.ondas, unidades: rp.unidades,
     frentes: rp.frentes, executantes: rp.executantes, status: rp.spinStatus });
   const obj3 = calcularObjetivo03(rf);
@@ -3150,44 +3142,58 @@ async function viewIndicadores() {
     <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:14px">
       <header><h2>Visão Macro — Virada de Sistema</h2>
         <span class="nota">a unidade virou no mês planejado?</span></header>
-      ${visaoMacroPendenteHtml()}
+      ${cronogramaHtml(crono)}
     </section>
 
     <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:14px">
       <header><h2>Visão Micro — Execução do Projeto</h2>
         <span class="nota">atividade a atividade, por unidade</span></header>
 
-    ${blocoIndicador({
-      chave: 'projetos-prazo',
-      titulo: 'Tarefas entregues no prazo',
-      valor: proj.entregues ? proj.pct.toLocaleString('pt-BR') + '%' : '—',
-      cor: proj.entregues === 0 ? null : proj.leitura ? (proj.leitura.atinge ? 'var(--bomtxt)' : 'var(--crit)') : null,
-      apoio: proj.entregues
-        ? `${inteiro(proj.noPrazo)} de ${inteiro(proj.entregues)} entregues`
-        : 'nenhuma tarefa entregue no recorte',
-      corpo: `${metaHtml(proj.leitura)}
-        ${faixaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
-        ${legendaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
-        ${arvoreDeUnidadesHtml('ind-entregues', q.entregues, inteiro, semExtra)}`,
-      nota: `O denominador do percentual é o que foi <strong>entregue</strong>: tarefa ainda em aberto não
-        está fora do prazo enquanto o mês planejado não passa.${
-          proj.canceladas ? ` ${inteiro(proj.canceladas)} cancelada(s) ficam fora das duas contas.` : ''}`,
-    })}
+    <!-- UMA CAIXA SÓ: "Visão Geral (Dashboard)". Os gráficos e os dois
+         indicadores de tarefa medem o mesmo projeto, e em caixas separadas
+         comparar um com o outro exigia abrir duas e rolar entre elas — que é
+         justamente o que um painel existe para evitar. -->
+    <section class="bloco bloco-indicador" data-dobra-padrao="aberto" style="margin-top:14px">
+      <header><h2>Visão Geral (Dashboard)</h2>
+        <span class="nota">o projeto de relance, com tudo à vista</span></header>
 
-    ${blocoIndicador({
-      chave: 'projetos-pendentes',
-      titulo: 'Tarefas pendentes',
-      valor: inteiro(proj.pendentes),
-      cor: proj.atrasadas ? 'var(--alerta)' : null,
-      apoio: proj.atrasadas
-        ? `${inteiro(proj.atrasadas)} com o mês planejado já vencido`
-        : 'nenhuma com o mês planejado vencido',
-      corpo: `${faixaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
-        ${legendaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
-        ${arvoreDeUnidadesHtml('ind-tarefas-pendentes', q.tarefasPendentes, inteiro, semExtra)}`,
-    })}
+      <div class="kpis" style="margin-bottom:14px">
+        <div class="kpi" data-kpi="projetos-prazo" title="">
+          <span class="r">Tarefas entregues no prazo</span>
+          <span class="n"${proj.entregues === 0 ? '' : proj.leitura
+            ? ` style="color:${proj.leitura.atinge ? 'var(--bomtxt)' : 'var(--crit)'}"` : ''}>${
+            proj.entregues ? proj.pct.toLocaleString('pt-BR') + '%' : '—'}</span>
+          <span class="a">${proj.entregues
+            ? `${inteiro(proj.noPrazo)} de ${inteiro(proj.entregues)} entregue(s)`
+            : 'nenhuma tarefa entregue no recorte'}</span>
+          ${metaHtml(proj.leitura)}
+        </div>
+        <div class="kpi" data-kpi="projetos-pendentes" title="">
+          <span class="r">Tarefas pendentes</span>
+          <span class="n"${proj.atrasadas ? ' style="color:var(--alerta)"' : ''}>${
+            inteiro(proj.pendentes)}</span>
+          <span class="a">${proj.atrasadas
+            ? `${inteiro(proj.atrasadas)} com o mês planejado já vencido`
+            : 'nenhuma com o mês planejado vencido'}</span>
+        </div>
+      </div>
 
-    ${painelSpincareHtml(spin)}
+    ${painelSpincareHtml(spin, [
+      // A árvore por unidade das TAREFAS entra como mais um quadro em vez de
+      // sumir: ela é a mesma leitura por empresa e filial que os dois
+      // indicadores do topo resumem, e só aparece quando há tarefa.
+      ...(proj.total ? [{ chave: 'proj-arvore', largo: true,
+        titulo: 'Tarefas por empresa e filial',
+        apoio: `${inteiro(proj.entregues)} entregue(s) · ${inteiro(proj.pendentes)} pendente(s)`,
+        corpo: `<h4 class="titulo-mini" style="margin-top:0">Entregues no prazo</h4>
+          ${faixaDeMatrizesHtml(fatiasDe(q.entregues, inteiro))}
+          ${arvoreDeUnidadesHtml('ind-entregues', q.entregues, inteiro, semExtra)}
+          <h4 class="titulo-mini">Pendentes</h4>
+          ${faixaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
+          ${arvoreDeUnidadesHtml('ind-tarefas-pendentes', q.tarefasPendentes, inteiro, semExtra)}` }]
+        : []),
+    ])}
+    </section>
 
     </section>
     </section>
@@ -3523,6 +3529,7 @@ async function viewIndicadores() {
   // elemento escondido é legítimo — o SVG tem `viewBox`, e aparece pronto
   // quando o bloco abre.
   ligarPainelSpincare(spin);
+  ligarCronograma(crono);
   const alvoTermometro = el('#i-termometro');
   if (alvoTermometro) termometro(alvoTermometro, sla.total ? sla.pct : 0, sla.meta, 'Atendidos dentro do SLA');
 
