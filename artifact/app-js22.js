@@ -299,3 +299,274 @@ function dataInterna(texto) {
   const teste = new Date(Number(a), Number(mes) - 1, Number(d));
   return teste.getMonth() === Number(mes) - 1 && teste.getDate() === Number(d) ? iso : '';
 }
+
+// ======================================================= criticidade padrão
+//
+// O chamado importado chega SEM criticidade. A extração traz `nivel` — a
+// classificação do próprio helpdesk, "N1", "Implementacao" —, que não é
+// prioridade; e o acordo de SLA é por (tópico, prioridade). Sem prioridade não
+// há acordo que alcance o chamado, e ele fica fora do cálculo sem que ninguém
+// perceba: some da conta em vez de aparecer como problema.
+//
+// A saída é uma criticidade PADRÃO por cliente, e ela é opcional de propósito.
+// Sem padrão cadastrado nada muda — inventar "Média" para todo mundo criaria
+// julgamento de SLA em cima de uma classificação que ninguém fez, e um
+// percentual assim é pior do que a ausência dele.
+
+/** Como o chamado ganhou a criticidade que tem. */
+const ORIGEM_CRITICIDADE = {
+  importada: 'veio classificada na origem',
+  padrao: 'padrão do cadastro de SLAs',
+  manual: 'definida à mão nesta tela',
+};
+const ORIGEM_CURTA = { importada: 'da origem', padrao: 'padrão', manual: 'à mão' };
+
+/** A criticidade padrão deste cliente, ou `null` quando não há uma. */
+const criticidadePadrao = (cliente = E.clienteSel) => {
+  const mapa = (E.config && E.config.criticidadePadrao) || {};
+  const v = mapa[cliente];
+  return PRIORIDADES_SLA.includes(v) ? v : null;
+};
+
+async function gravarCriticidadePadrao(valor, cliente = E.clienteSel) {
+  const mapa = { ...((E.config && E.config.criticidadePadrao) || {}) };
+  if (valor) mapa[cliente] = valor; else delete mapa[cliente];
+  await Loja.gravarConfiguracao({ criticidadePadrao: mapa });
+  await Loja.auditar({ acao: 'atualizar', entidade: 'criticidade_padrao',
+    depois: { criticidade: valor ? ROTULO_PRIORIDADE_SLA[valor] : null } }, null);
+}
+
+/**
+ * A criticidade e o prazo de um chamado que acaba de entrar.
+ *
+ * Duas coisas acontecem aqui, e a ordem importa: primeiro o chamado ganha
+ * criticidade (a da origem, ou a padrão), e só então o acordo é consultado —
+ * o acordo é POR criticidade, e medir antes de classificar não acharia acordo
+ * nenhum.
+ *
+ * `medirPeloAcordo` devolve `null` quando não há acordo vigente, e aí o prazo
+ * que a origem informou fica exatamente como estava. Quem não cadastrou acordo
+ * não vê nada mudar.
+ */
+function classificarChamado(empresa, reg) {
+  const r = { ...reg };
+  if (r.prioridade) {
+    r.prioridadeOrigem = r.prioridadeOrigem || 'importada';
+  } else {
+    const padrao = criticidadePadrao();
+    if (!padrao) return r;               // sem padrão: o chamado segue sem criticidade
+    r.prioridade = padrao;
+    r.prioridadeOrigem = 'padrao';
+  }
+  const medida = medirPeloAcordo(empresa, r);
+  return medida ? { ...r, ...medida } : r;
+}
+
+/** Data e hora do prazo, no formato do resto do sistema. */
+const prazoEmTexto = (iso) => (iso
+  ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+  : null);
+
+/**
+ * A situação do chamado contra o prazo: dentro, estourado, ou sem prazo.
+ *
+ * O chamado ABERTO é medido contra AGORA, e não contra a data da extração: um
+ * chamado parado há três semanas está estourado hoje, e dizer que ele está
+ * dentro porque a planilha é de ontem esconderia exatamente o caso que mais
+ * importa.
+ */
+function situacaoDoPrazo(r) {
+  if (!r || !r.prazoEm) return { tem: false, texto: 'sem prazo definido', classe: '' };
+  const referencia = r.fechadoEm || new Date().toISOString();
+  const dentro = referencia <= r.prazoEm;
+  return {
+    tem: true, dentro,
+    texto: dentro
+      ? (r.fechadoEm ? 'resolvido dentro do prazo' : 'dentro do prazo')
+      : (r.fechadoEm ? 'resolvido fora do prazo' : 'prazo estourado'),
+    classe: dentro ? 'bom' : 'crit',
+    prazo: prazoEmTexto(r.prazoEm),
+    fonte: r.prazoDoAcordo ? 'acordo cadastrado' : 'informado pelo helpdesk',
+  };
+}
+
+// ------------------------------------- reprocessar o que já está importado
+/**
+ * O que a carga de retaguarda faria — sem gravar.
+ *
+ * Só alcança o chamado INDIVIDUAL (`total === 1`) e sem criticidade: o
+ * registro agregado do mês não tem abertura nem prioridade, e arbitrar uma
+ * seria inventar dado.
+ */
+function avaliarCriticidadePadrao(empresa, competencia) {
+  const padrao = criticidadePadrao();
+  const resumo = { avaliados: 0, classificados: 0, jaTinham: 0, agregados: 0,
+    ganharamPrazo: 0, virouFora: 0 };
+  const mudancas = [];
+  if (!padrao) return { resumo, mudancas, padrao };
+  for (const r of registrosDoMes(empresa, competencia)) {
+    if (Number(r.total) !== 1) { resumo.agregados += 1; continue; }
+    resumo.avaliados += 1;
+    if (r.prioridade) { resumo.jaTinham += 1; continue; }
+    const novo = classificarChamado(empresa, r);
+    if (novo.prioridade !== padrao) continue;
+    resumo.classificados += 1;
+    if (novo.prazoEm && novo.prazoEm !== r.prazoEm) resumo.ganharamPrazo += 1;
+    if (Number(novo.dentro) === 0 && Number(r.dentro) === 1) resumo.virouFora += 1;
+    mudancas.push({ id: r.id, novo });
+  }
+  return { resumo, mudancas, padrao };
+}
+
+/** As competências em que ainda há chamado individual sem criticidade. */
+function competenciasSemCriticidade(empresa) {
+  const conta = new Map();
+  for (const r of (E.sla.get(empresa) || [])) {
+    if (Number(r.total) !== 1 || r.prioridade || !r.competencia) continue;
+    conta.set(r.competencia, (conta.get(r.competencia) || 0) + 1);
+  }
+  return [...conta.entries()].sort((a, b) => String(b[0]).localeCompare(String(a[0])));
+}
+
+function resumoCriticidadeHtml(linhas, aplicado, recusadas = []) {
+  const total = (c) => linhas.reduce((s, l) => s + l.resumo[c], 0);
+  const itens = [
+    ['Chamados individuais avaliados', total('avaliados')],
+    [aplicado ? 'Classificados pelo padrão' : 'Seriam classificados', total('classificados')],
+    ['Ganharam prazo do acordo', total('ganharamPrazo')],
+    ['Passaram a contar fora do prazo', total('virouFora')],
+    ['Já tinham criticidade (intocados)', total('jaTinham')],
+    ['Registros agregados (fora da conta)', total('agregados')],
+  ];
+  return `<div class="msg ${aplicado ? 'ok' : ''}">
+    <strong>${aplicado ? 'Criticidade padrão aplicada.' : 'Prévia — nada foi gravado.'}</strong>
+    <dl class="ficha" style="margin-top:6px">${itens
+      .map(([r, v]) => `<dt>${esc(r)}</dt><dd>${inteiro(v)}</dd>`).join('')}</dl>
+    ${recusadas.length ? `<p class="nota" style="margin-top:8px">Não alcançou
+      ${esc(recusadas.map((x) => mesExib(x.comp)).join(', '))}: ${esc(recusadas[0].motivo)}</p>` : ''}
+    ${aplicado ? '' : '<p class="nota" style="margin-top:8px">Classificar muda o prazo e pode '
+      + 'mudar o dentro/fora de chamado já contado — o percentual do mês se move.</p>'}</div>`;
+}
+
+/** O bloco do cadastro de SLAs que define a criticidade padrão e reprocessa. */
+function blocoCriticidadePadraoHtml(emp) {
+  const padrao = criticidadePadrao();
+  const pendentes = competenciasSemCriticidade(emp);
+  const semCritico = pendentes.reduce((s, [, n]) => s + n, 0);
+  return `
+    <section class="bloco">
+      <header><h2>Criticidade padrão dos chamados importados</h2>
+        <span class="nota">vale para o cliente inteiro</span></header>
+      <p class="nota">A extração do helpdesk traz <strong>nível</strong> (N1, N2, Implementação),
+        que não é criticidade. Sem criticidade, nenhum acordo alcança o chamado e ele some da conta
+        de conformidade em vez de aparecer como problema. Defina aqui com que criticidade entra o
+        chamado que chega sem uma.</p>
+      <div class="grade g2" style="margin-top:10px">
+        <div class="campo"><label for="cp-pad">Criticidade padrão</label>
+          <select id="cp-pad">
+            <option value="">Nenhuma — o chamado entra sem criticidade</option>
+            ${PRIORIDADES_SLA.map((p) => `<option value="${esc(p)}"${p === padrao ? ' selected' : ''}
+              >${esc(ROTULO_PRIORIDADE_SLA[p])}</option>`).join('')}
+          </select></div>
+        <div class="campo" style="justify-content:flex-end">
+          <button class="bt pri" id="cp-salvar">Salvar a criticidade padrão</button></div>
+      </div>
+      <div id="cp-salvo" style="margin-top:10px"></div>
+
+      <h3 class="titulo-mini" style="margin-top:18px">Chamados já importados sem criticidade</h3>
+      ${!semCritico
+        ? '<p class="nota">Nenhum chamado individual desta unidade está sem criticidade.</p>'
+        : `<p class="nota"><strong>${inteiro(semCritico)} chamado(s)</strong> em
+            ${inteiro(pendentes.length)} competência(s): ${esc(pendentes
+              .map(([c, n]) => `${mesExib(c)} (${n})`).join(' · '))}.
+            A carga aplica a criticidade padrão a todos eles e refaz o prazo pelo acordo. Mês
+            encerrado é recusado, e mês passado exige justificativa — os recusados são nomeados
+            no resultado.</p>
+          <div class="campo" style="max-width:420px;margin-top:10px">
+            <label for="cp-just">Justificativa</label>
+            <input id="cp-just" placeholder="obrigatória em mês já encerrado"></div>
+          <div class="acoes" style="justify-content:flex-start;margin-top:10px">
+            <button class="bt" id="cp-previa">Ver o que mudaria</button>
+            <button class="bt pri" id="cp-aplicar"${padrao ? '' : ' disabled'}>Aplicar a todas</button>
+          </div>
+          ${padrao ? '' : '<p class="nota" style="margin-top:8px;color:var(--alerta)">'
+            + 'Defina a criticidade padrão acima para poder aplicar.</p>'}`}
+      <div id="cp-resultado" style="margin-top:12px"></div>
+    </section>`;
+}
+
+function ligarCriticidadePadrao(emp) {
+  const pagina = el('#pagina');
+  const salvo = pagina.querySelector('#cp-salvo');
+  const saida = pagina.querySelector('#cp-resultado');
+
+  pagina.querySelector('#cp-salvar')?.addEventListener('click', async (ev) => {
+    ev.target.disabled = true;
+    try {
+      await gravarCriticidadePadrao(pagina.querySelector('#cp-pad').value || null);
+      // O `render()` refaz a tela com o valor novo; a mensagem sobreviveria a
+      // ele por acaso, então é escrita depois e na tela nova.
+      await render();
+      const caixa = el('#pagina').querySelector('#cp-salvo');
+      if (caixa) caixa.innerHTML = '<div class="msg ok">Criticidade padrão salva. Ela vale para '
+        + 'os chamados que entrarem daqui em diante; para os já importados, use a carga abaixo.</div>';
+    } catch (e) {
+      salvo.innerHTML = `<div class="msg erro">${esc(e.message)}</div>`;
+      ev.target.disabled = false;
+    }
+  });
+
+  const varrer = () => competenciasSemCriticidade(emp)
+    .map(([comp]) => ({ comp, ...avaliarCriticidadePadrao(emp, comp) }));
+
+  pagina.querySelector('#cp-previa')?.addEventListener('click', () => {
+    if (!criticidadePadrao()) {
+      saida.innerHTML = '<div class="msg alerta">Sem criticidade padrão definida não há o que '
+        + 'aplicar: escolha uma acima e salve.</div>';
+      return;
+    }
+    saida.innerHTML = resumoCriticidadeHtml(varrer(), false);
+  });
+
+  pagina.querySelector('#cp-aplicar')?.addEventListener('click', async (ev) => {
+    ev.target.disabled = true;
+    const just = pagina.querySelector('#cp-just')?.value || '';
+    const feitas = [];
+    const recusadas = [];
+    try {
+      // Tudo é LIDO antes de qualquer escrita, e não mês a mês: `gravarSlaMes`
+      // invalida o cache de chamados da unidade, e `registrosDoMes` lendo do
+      // cache já invalidado devolveria lista vazia — a gravação do segundo mês
+      // apagaria os chamados dele. Ler primeiro torna o laço independente da
+      // ordem das escritas.
+      const planos = [];
+      for (const bloco of varrer()) {
+        // O porteiro de escrita é POR competência: um mês encerrado no meio do
+        // caminho não pode abortar a carga inteira, nem passar despercebido.
+        try { checarCompetencia(bloco.comp, just, emp); }
+        catch (e) { recusadas.push({ comp: bloco.comp, motivo: e.message }); continue; }
+        const porId = new Map(bloco.mudancas.map((m) => [String(m.id), m.novo]));
+        planos.push({ bloco, itens: registrosDoMes(emp, bloco.comp)
+          .map((r) => semCompetencia(porId.get(String(r.id)) || r)) });
+      }
+      for (const { bloco, itens } of planos) {
+        if (bloco.mudancas.length) await Loja.gravarSlaMes(emp, bloco.comp, itens);
+        feitas.push(bloco);
+      }
+      await Loja.slaDa(emp);
+      const total = feitas.reduce((s, b) => s + b.resumo.classificados, 0);
+      await Loja.auditar({ acao: 'classificar_padrao', entidade: 'ticket_sla',
+        justificativa: just || null,
+        depois: { criticidade: ROTULO_PRIORIDADE_SLA[criticidadePadrao()], classificados: total,
+          competencias: feitas.map((b) => mesExib(b.comp)).join(', ') || 'nenhuma',
+          recusadas: recusadas.map((r) => mesExib(r.comp)).join(', ') || 'nenhuma' } }, emp);
+      const html = resumoCriticidadeHtml(feitas, true, recusadas);
+      await render();
+      const caixa = el('#pagina').querySelector('#cp-resultado');
+      if (caixa) caixa.innerHTML = html;
+    } catch (e) {
+      saida.innerHTML = `<div class="msg erro">${esc(e.message)}</div>`;
+      ev.target.disabled = false;
+    }
+  });
+}

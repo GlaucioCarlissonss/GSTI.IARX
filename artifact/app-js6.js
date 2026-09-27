@@ -170,6 +170,9 @@ async function viewSla(secao = 'indicadores') {
             <td style="white-space:nowrap">
               ${r.prioridade ? `<span class="tag">${esc(rotuloPrioridade(r.prioridade))}</span>`
                 : '<span style="color:var(--tinta3)">—</span>'}
+              ${r.prioridadeOrigem ? `<div style="color:var(--tinta3);font-size:11px"
+                title="${esc(ORIGEM_CRITICIDADE[r.prioridadeOrigem] || r.prioridadeOrigem)}"
+                >${esc(ORIGEM_CURTA[r.prioridadeOrigem] || r.prioridadeOrigem)}</div>` : ''}
               ${historicoDe(r).length ? `<span class="nota" title="${esc(historicoDe(r).length)} alteração(ões)">↻</span>` : ''}
               <button class="bt fant peq" data-reclassificar="${esc(r.id)}"
                 data-emp="${esc(r.empresa || '')}" data-comp="${esc(r.competencia || '')}">Prioridade</button>
@@ -178,7 +181,10 @@ async function viewSla(secao = 'indicadores') {
             <td><span class="tag ${ok ? 'bom' : 'crit'}">${ok ? 'Dentro' : 'Fora'}</span></td></tr>`;
         }).join('')}</tbody></table></div>
       <p class="nota" style="margin-top:10px">O número do chamado abre o registro no osTicket.
-        O prazo é a criação mais 48 h do Padrão SLA; chamado ainda aberto é medido contra a data da extração.</p>
+        O prazo sai do <strong>acordo de SLA cadastrado</strong> para a criticidade do chamado; onde
+        não há acordo, vale o que o helpdesk informou. A linha diz de onde veio a criticidade —
+        <em>da origem</em>, <em>padrão</em> do cadastro ou <em>à mão</em> —, e o botão Prioridade
+        mostra o prazo, a situação e o histórico.</p>
     </section>` : `
     <section class="bloco" id="s-chamados"><p class="vazio">
       ${sistemaFixo

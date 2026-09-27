@@ -662,6 +662,9 @@ async function importarSla(empresa, aba, opcoes, rel) {
         criadoEm: ler(linha,'Aberto em') || null, fechadoEm: ler(linha,'Fechado em') || null,
         prazoEm: ler(linha,'Prazo') || null,
         horas: ler(linha,'Horas') === '' ? null : lerValorPlanilha(ler(linha,'Horas')) });
+      // O chamado que chega sem criticidade ganha a padrão do cadastro, e o
+      // prazo passa a sair do acordo. Sem padrão cadastrado, nada muda.
+      Object.assign(reg, classificarChamado(empresa, reg));
     }
     // O chamado se identifica pelo próprio número no osTicket; o registro
     // digitado à mão continua casando por conteúdo.

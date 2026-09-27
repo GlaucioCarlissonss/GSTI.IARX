@@ -362,8 +362,13 @@ function medirPeloAcordo(empresa, registro) {
   };
 }
 
-function viewSlas() {
+async function viewSlas() {
   const emp = empresaAtiva();
+  // Os chamados são carregados sob demanda, e quem os carregava era a tela de
+  // Chamados. Chegando aqui direto, `E.sla` vinha vazio: o seletor de
+  // competência da reaplicação nascia sem uma única opção, e a contagem de
+  // chamados sem criticidade dizia zero onde havia centenas.
+  if (emp) await Loja.slaDa(emp);
   if (!emp) {
     el('#pagina').innerHTML = `<div class="msg alerta"><strong>Este cliente ainda não tem unidade cadastrada.</strong>
       Os acordos pertencem a uma unidade. Cadastre a matriz em <strong>Clientes e unidades</strong>.</div>`;
@@ -413,10 +418,13 @@ function viewSlas() {
         <button class="bt pri" data-aplicar-sla>Aplicar</button>
       </div>
       <div id="r-resultado" style="margin-top:12px"></div>
-    </section>`;
+    </section>
+
+    ${blocoCriticidadePadraoHtml(emp)}`;
 
   el('#pagina').querySelector('[data-novo-sla]')?.addEventListener('click', () => formAcordoSla(emp));
   ligarReaplicacao(emp);
+  ligarCriticidadePadrao(emp);
   for (const bt of el('#pagina').querySelectorAll('[data-alternar-sla]')) {
     bt.addEventListener('click', async () => {
       const alvo = acordos[Number(bt.dataset.alternarSla)];
@@ -635,9 +643,25 @@ function abrirReclassificacao(empresa, competencia, id) {
     titulo: 'Prioridade do chamado #' + esc(registro.numero || registro.ticketId || registro.id),
     corpo: `
       <div class="msg">Prioridade atual:
-        <strong>${esc(rotuloPrioridade(registro.prioridade) || 'não definida')}</strong>.
+        <strong>${esc(rotuloPrioridade(registro.prioridade) || 'não definida')}</strong>${
+          registro.prioridadeOrigem
+            ? ' — ' + esc(ORIGEM_CRITICIDADE[registro.prioridadeOrigem] || registro.prioridadeOrigem)
+            : ''}.
         A prioridade vigente é a que vale para o cálculo do SLA: o prazo é refeito pelo acordo
         cadastrado da prioridade nova, e volta ao prazo da origem quando não houver acordo.</div>
+
+      ${(() => {
+        const sit = situacaoDoPrazo(registro);
+        if (!sit.tem) {
+          return '<div class="msg alerta"><strong>Este chamado não tem prazo.</strong> '
+            + 'Sem criticidade não há acordo que o alcance, e sem acordo o helpdesk também '
+            + 'não informou data-limite: ele fica fora da conta de conformidade.</div>';
+        }
+        return `<dl class="ficha">
+          <dt>Prazo</dt><dd><strong>${esc(sit.prazo)}</strong> · ${esc(sit.fonte)}</dd>
+          <dt>Situação</dt><dd><span class="tag ${sit.classe}">${esc(sit.texto)}</span></dd>
+        </dl>`;
+      })()}
 
       <section class="bloco" style="box-shadow:none">
         <header><h2>Histórico</h2><span class="nota">${inteiro(historico.length)}</span></header>
@@ -645,7 +669,9 @@ function abrirReclassificacao(empresa, competencia, id) {
           ? '<p class="vazio">A prioridade nunca foi alterada desde que o chamado entrou.</p>'
           : `<dl class="ficha">${historico.slice().reverse().map((h) => `
               <dt>${esc(quandoEmTexto(h.quando))}</dt>
-              <dd>${esc(rotuloPrioridade(h.de) || 'sem prioridade')} → ${esc(rotuloPrioridade(h.para))}${
+              <dd>${esc(rotuloPrioridade(h.de) || 'sem prioridade')}${
+                h.origemDe ? ' (' + esc(ORIGEM_CURTA[h.origemDe] || h.origemDe) + ')' : ''
+                } → ${esc(rotuloPrioridade(h.para))}${
                 h.solicitante ? ' · a pedido de ' + esc(h.solicitante) : ''}${
                 h.motivo ? ' · ' + esc(h.motivo) : ''}</dd>`).join('')}</dl>`}
       </section>
@@ -675,7 +701,7 @@ function abrirReclassificacao(empresa, competencia, id) {
           }
           const itens = registrosDoMes(empresa, competencia).map((r) => {
             if (String(r.id) !== String(id)) return semCompetencia(r);
-            const comNova = { ...r, prioridade: nova };
+            const comNova = { ...r, prioridade: nova, prioridadeOrigem: 'manual' };
             // A prioridade vigente passa a valer para o SLA: o prazo é refeito
             // pelo acordo da prioridade NOVA. Elevar para Urgente sem encurtar
             // o prazo seria elevação só no rótulo. Sem acordo para ela, o
@@ -696,14 +722,19 @@ function abrirReclassificacao(empresa, competencia, id) {
               dentro,
               reclassificacoes: [...historicoDe(r), {
                 de: r.prioridade || null, para: nova, quando: new Date().toISOString(),
+                // De onde vinha a classificação anterior: corrigir um "padrão
+                // do cadastro" é outra coisa que corrigir o que a origem
+                // classificou, e seis meses depois ninguém lembra qual era.
+                origemDe: r.prioridadeOrigem || null,
                 motivo: campo('motivo').value.trim() || null, solicitante,
               }],
             });
           });
           await Loja.gravarSlaMes(empresa, competencia, itens);
           await Loja.auditar({ acao:'reclassificar', entidade:'ticket_sla', id,
-            antes:{ prioridade: registro.prioridade || null },
-            depois:{ prioridade: nova, solicitante } }, empresa);
+            antes:{ prioridade: registro.prioridade || null,
+              origem: registro.prioridadeOrigem || null },
+            depois:{ prioridade: nova, origem: 'manual', solicitante } }, empresa);
           fechar(); render();
         } catch (e) { erro(e.message); ev.target.disabled = false; }
       };

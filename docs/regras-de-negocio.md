@@ -2360,6 +2360,64 @@ A tela diz em que dia da semana cada feriado cai, e avisa quando ele cai num
 sábado ou domingo — nesse caso não tira hora útil nenhuma, e sem o aviso alguém
 o cadastraria esperando um efeito que não vem.
 
+## Criticidade padrão dos chamados importados
+
+A extração do helpdesk traz **nível** — "N1", "N2", "Implementacao" —, que é a
+classificação interna da ferramenta e **não é criticidade**. O acordo de SLA é
+por (tópico, prioridade); sem prioridade nenhum acordo alcança o chamado, e ele
+**some da conta de conformidade** em vez de aparecer como problema.
+
+Daí a **criticidade padrão por cliente**, em Sistema › Cadastro › SLAs. O
+chamado que chega sem criticidade entra com ela, e o prazo passa a sair do
+acordo cadastrado.
+
+**O padrão é opcional, e nasce ausente.** Inventar "Média" para todo cliente
+criaria julgamento de SLA sobre uma classificação que ninguém fez, e um
+percentual assim é pior do que a ausência dele. Sem padrão cadastrado, nada
+muda: o chamado segue sem criticidade e com o prazo que o helpdesk informou.
+
+Todo chamado passa a registrar **de onde veio a classificação**:
+
+| origem | significa |
+| --- | --- |
+| `importada` | veio classificada na origem |
+| `padrao` | recebeu a criticidade padrão do cadastro |
+| `manual` | alguém a definiu na tela, com quem pediu e por quê |
+
+A origem aparece na linha do chamado e na ficha, e o histórico de
+reclassificação guarda também **a origem anterior**: corrigir um "padrão do
+cadastro" é outra coisa que corrigir o que a origem classificou, e seis meses
+depois ninguém lembra qual era.
+
+### A carga de retaguarda
+
+Definir o padrão vale para o que **entra daqui em diante**. Para alcançar o que
+já está gravado há uma carga no mesmo bloco, com prévia antes de aplicar — o
+percentual do mês se move, e quem aplica precisa ver quanto antes.
+
+Ela alcança só o chamado **individual** (`total = 1`): o registro agregado do
+mês não tem abertura nem prioridade, e arbitrar uma seria inventar dado.
+
+O porteiro de escrita é **por competência**: um mês encerrado no meio do caminho
+não aborta a carga inteira nem passa despercebido — os recusados são nomeados no
+resultado. A trilha recebe **uma linha por carga**, com a criticidade aplicada, a
+contagem e os meses alcançados e recusados; uma linha por chamado afogaria a
+trilha e esconderia justamente o evento que se quer achar.
+
+> **Um defeito que a suíte pegou e que vale registrar:** a gravação é por mês, e
+> `gravarSlaMes` invalida o cache de chamados da unidade. Gravando mês a mês, a
+> leitura do segundo mês vinha do cache já invalidado — lista vazia — e a
+> gravação **apagava os chamados dele**. Dos 624 sobravam 8. A carga passou a
+> **ler tudo antes de escrever qualquer coisa**, e a suíte confere que a base
+> continua com o mesmo número de chamados depois da carga.
+
+O cadastro de SLAs também passou a **carregar os chamados da unidade** ao abrir.
+Eles eram carregados sob demanda, e quem os carregava era a tela de Chamados:
+chegando direto ao cadastro, o seletor de competência da reaplicação nascia sem
+uma única opção.
+
+---
+
 ### O semáforo da conformidade
 
 Conformidade = **resolvidos dentro do SLA ÷ total de resolvidos × 100**.
