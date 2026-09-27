@@ -1211,6 +1211,48 @@ engano. `calcularConsumo` continua existindo e é a fonte desse "antes". O
 equilíbrio mês a mês vinha pendurado no mesmo bloco e saiu junto: descrevia o
 mesmo consumo compartilhado, por outro ângulo.
 
+## O painel do SpinCare nos Indicadores Gerais
+
+Quatro leituras do mesmo universo, dentro de **Projetos › Visão Micro**, todas
+saindo da base carregada — nenhum número é digitado.
+
+| indicador | responde |
+| --- | --- |
+| Distribuição das atividades | como o todo se reparte por situação (rosca) |
+| Atividades por status | os mesmos valores em altura, para comparar |
+| Percentual por unidade | quanto cada unidade avançou, agrupada pela onda |
+| Próximos passos | o que fazer em seguida, com quantas atividades sustentam cada linha |
+
+**Os percentuais somam 100%**, porque numerador e denominador saem do mesmo
+universo — as atividades válidas. No Status Report de referência eles somam
+**104,24%**: as contagens são feitas sobre todas as linhas e o denominador
+exclui as de criticidade `N/A`. A tela diz isso em voz alta, em vez de
+reproduzir o erro em silêncio.
+
+### Duas medidas por unidade, e as duas nomeadas
+
+O número grande é o **avanço ponderado** (peso × avanço, com a criticidade
+pesando), que credita progresso parcial; embaixo dele, a **conclusão** — a
+contagem simples, que é o percentual do Status Report (81,2% na 1ª onda, 77,0%
+na 2ª, reproduzidos exatamente). Mostrar uma chamando-a da outra faria o gestor
+procurar um erro que não existe.
+
+### Detalhes que decidem a leitura
+
+- **Fatia de valor zero não é desenhada.** Um arco de largura nula vira um
+  risco na borda e sugere uma fatia mínima onde não há nenhuma. Ela continua na
+  legenda, com o zero escrito.
+- **As canceladas ficam fora do cálculo** e aparecem na legenda marcadas como
+  tal — é o que o painel do cliente chama de "não entram no cálculo".
+- **Os próximos passos saem da base, com contador.** Uma lista escrita à mão
+  continuaria dizendo "preparar a 1ª virada" depois de ela acontecer.
+- **Sem base carregada o painel avisa, em vez de mostrar zeros.** Um painel
+  zerado faria a diretoria ler "nenhuma atividade concluída" onde o que há é
+  ausência de dado.
+- **Todo número abre os registros que o compõem**, ordenados pelo avanço
+  ponderado decrescente: por ID devolveria a ordem da planilha, que não
+  responde pergunta nenhuma.
+
 ## Projeto do grupo inteiro
 
 Um projeto pode ser do **contratante**, e não de uma empresa: a virada de um ERP

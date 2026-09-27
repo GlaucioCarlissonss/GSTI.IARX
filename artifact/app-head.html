@@ -223,6 +223,24 @@
 .liga-medias{display:inline-flex;align-items:center;gap:6px;margin-top:8px;
   font-size:11.5px;color:var(--tinta2);cursor:pointer}
 .liga-medias input{margin:0;flex:none}
+/* A rosca: o total no centro é o número que a pessoa veio ler, e por isso tem
+   o peso de um KPI; o rótulo abaixo dele é apoio. */
+.rosca-total{font-family:var(--sans);font-size:26px;font-weight:600;letter-spacing:-.03em;
+  fill:var(--tinta);font-variant-numeric:tabular-nums}
+.rosca-rot{font-family:var(--mono);font-size:8.5px;letter-spacing:.09em;fill:var(--tinta3)}
+/* A faixa de uma onda no gráfico por unidade: o fundo diz a que onda a coluna
+   pertence, e o rótulo diz qual é — a cor nunca é o único canal. */
+.faixa-onda{border-radius:9px;padding:10px 12px;margin-top:10px}
+.faixa-onda>b{display:block;font-size:11px;font-weight:600;margin-bottom:8px}
+.barras-unidade{display:flex;gap:10px;flex-wrap:wrap}
+.barra-unidade{flex:1 1 92px;display:flex;flex-direction:column;align-items:center;gap:4px;
+  min-width:80px;cursor:pointer;border:0;background:none;font:inherit;padding:4px 2px;border-radius:8px}
+.barra-unidade:hover{background:color-mix(in srgb,var(--tinta) 6%,transparent)}
+.barra-unidade:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+.barra-unidade>var{font-style:normal;font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
+.barra-unidade>span.pilar{width:38px;border-radius:6px;display:block}
+.barra-unidade>small{font-size:11px;color:var(--tinta2);font-weight:600}
+.barra-unidade>em{font-style:normal;font-size:10px;color:var(--tinta3)}
 /* A amostra hachurada da legenda: a mesma marca que a barra usa para
    investimento. Sem ela, a legenda prometeria uma cor lisa e o gráfico
    entregaria outra coisa. */

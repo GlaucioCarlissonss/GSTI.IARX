@@ -675,3 +675,333 @@ function removerBaseSpincare() {
     } }],
   });
 }
+
+// ===================================================================== //
+// O DASHBOARD DO SPINCARE nos Indicadores Gerais.
+//
+// Quatro leituras do mesmo universo: como as atividades se repartem por
+// situação, quantas em cada uma, quanto cada unidade avançou, e o que fazer
+// em seguida. Todas saem da base carregada — nenhum número é digitado.
+// ===================================================================== //
+
+/** As cores do Status Report, na ordem em que ele as apresenta. */
+const SPIN_ORDEM_PAINEL = ['Concluído', 'Em andamento', 'Não iniciado', 'Bloqueado', 'Cancelado'];
+const SPIN_ROTULO_PAINEL = {
+  'Concluído': 'Concluídas', 'Em andamento': 'Em andamento', 'Não iniciado': 'Não iniciadas',
+  'Bloqueado': 'Bloqueadas', 'Cancelado': 'Canceladas',
+};
+
+/** O recorte do bloco aplicado às atividades. Conjunto vazio = todas. */
+function spinNoRecorte(a, f) {
+  if (!f) return true;
+  const passa = (conj, valor) => !conj || conj.size === 0 || conj.has(valor);
+  if (f.ondas && f.ondas.size) {
+    // A onda de uma atividade são as unidades dela que têm situação: a mesma
+    // atividade pode estar na onda 1 e na 2 ao mesmo tempo.
+    const ondas = new Set(Object.keys(a.unidades || {})
+      .map((k) => (SPIN_UNIDADE_POR_CHAVE[k] || {}).onda).filter(Boolean));
+    if (![...f.ondas].some((o) => ondas.has(Number(o)))) return false;
+  }
+  if (f.unidades && f.unidades.size) {
+    if (![...f.unidades].some((u) => (a.unidades || {})[u])) return false;
+  }
+  if (!passa(f.frentes, a.frente)) return false;
+  if (!passa(f.status, a.statusConsolidado)) return false;
+  if (f.executantes && f.executantes.size) {
+    if (!a.executantes.some((p) => f.executantes.has(p))) return false;
+  }
+  return true;
+}
+
+/**
+ * O painel: distribuição, contagem por status, avanço por unidade e a lista
+ * do que fazer em seguida.
+ *
+ * As CANCELADAS ficam fora do universo válido, e é por isso que os
+ * percentuais somam 100%. No Status Report de referência eles somam 104,24%,
+ * porque as contagens são feitas sobre as 172 linhas e o denominador exclui
+ * as 7 de criticidade "N/A" — numerador e denominador de universos
+ * diferentes.
+ */
+function calcularSpincare(recorte) {
+  const todas = spinAtividades().filter((a) => spinNoRecorte(a, recorte));
+  const validas = todas.filter((a) => a.avanco !== null);
+  const porStatus = SPIN_ORDEM_PAINEL.map((st) => {
+    // Cancelada não entra no universo válido; ela é contada à parte, e é o
+    // que o painel do cliente chama de "não entram no cálculo".
+    const base = st === 'Cancelado' ? todas : validas;
+    const itens = base.filter((a) => a.statusConsolidado === st);
+    return { status: st, nome: SPIN_ROTULO_PAINEL[st], cor: SPIN_SITUACOES[st].cor,
+      valor: itens.length, itens, foraDoCalculo: st === 'Cancelado',
+      pct: st === 'Cancelado' ? 0 : pct(itens.length, validas.length) };
+  });
+
+  // O avanço de cada unidade: ponderado (peso × avanço da unidade) e, ao
+  // lado, a conclusão simples — que é o número do Status Report. São medidas
+  // diferentes, e mostrar uma chamando-a da outra faria o gestor procurar um
+  // erro que não existe.
+  const unidades = SPIN_UNIDADES.filter((u) => u.onda)
+    .filter((u) => validas.some((a) => (a.unidades || {})[u.k]))
+    .map((u) => {
+      const comSituacao = validas.filter((a) => (a.unidades || {})[u.k]);
+      const avancoDe = (s) => (s === 'Concluído' ? 1 : s === 'Em andamento' ? 0.5
+        : s === 'Bloqueado' ? 0.25 : 0);
+      const somaPeso = comSituacao.reduce((t, a) => t + (a.peso || 0), 0);
+      const somaPond = comSituacao.reduce((t, a) =>
+        t + (a.peso || 0) * avancoDe(a.unidades[u.k]), 0);
+      const concluidas = comSituacao.filter((a) => a.unidades[u.k] === 'Concluído');
+      return { ...u, itens: comSituacao, total: comSituacao.length,
+        concluidas: concluidas.length, itensConcluidos: concluidas,
+        pctConclusao: pct(concluidas.length, comSituacao.length),
+        pctPonderado: somaPeso ? Math.round((somaPond / somaPeso) * 1000) / 10 : 0 };
+    });
+
+  const porOnda = SPIN_ONDAS
+    .map((o) => ({ ...o, unidades: unidades.filter((u) => u.onda === o.n) }))
+    .filter((o) => o.unidades.length);
+
+  const semExecutante = validas.filter((a) => a.executantes.length === 0);
+  const emAndamento = validas.filter((a) => a.statusConsolidado === 'Em andamento');
+  const naoIniciadas = validas.filter((a) => a.statusConsolidado === 'Não iniciado');
+  const vencidas = validas.filter((a) => a.farol === 'VERMELHO' && a.statusConsolidado !== 'Concluído');
+  const primeiraOnda = SPIN_ONDAS[0].chaves;
+  const daPrimeira = validas.filter((a) => primeiraOnda.some((k) =>
+    (a.unidades || {})[k] && a.unidades[k] !== 'Concluído'));
+
+  return {
+    todas, validas, porStatus, unidades, porOnda,
+    // Os próximos passos SAEM DA BASE, com contador. Uma lista escrita à mão
+    // continuaria dizendo "preparar a 1ª virada" depois de ela acontecer.
+    passos: [
+      { texto: 'Avançar nas atividades em andamento', n: emAndamento.length, itens: emAndamento,
+        cor: SPIN_SITUACOES['Em andamento'].cor },
+      { texto: 'Iniciar as atividades planejadas', n: naoIniciadas.length, itens: naoIniciadas,
+        cor: SPIN_SITUACOES['Não iniciado'].cor },
+      { texto: 'Garantir executante para as atividades sem responsável', n: semExecutante.length,
+        itens: semExecutante, cor: 'var(--alerta)' },
+      { texto: 'Recuperar as atividades com prazo vencido', n: vencidas.length, itens: vencidas,
+        cor: 'var(--crit)' },
+      { texto: `Preparar a 1ª virada (${SPIN_ONDAS[0].chaves
+        .map((k) => SPIN_UNIDADE_POR_CHAVE[k].rotulo).join(', ')})`, n: daPrimeira.length,
+        itens: daPrimeira, cor: 'var(--s1)' },
+    ].filter((p) => p.n > 0),
+  };
+}
+
+/** As colunas da tela flutuante de atividades, do maior peso para o menor. */
+const COLUNAS_ATIVIDADE_SPIN = [
+  { rotulo: 'ID', campo: 'id' },
+  { rotulo: 'Atividade', campo: 'atividade', texto: true },
+  { rotulo: 'Grupo / Time', campo: 'grupoTime' },
+  { rotulo: 'Frente', campo: 'frente' },
+  { rotulo: 'Tipo de entrega', campo: 'tipoEntrega' },
+  { rotulo: 'Criticidade', campo: 'criticidade' },
+  { rotulo: 'Executante', valor: (a) => (a.executantes.length ? a.executantes.join(', ') : '—') },
+  { rotulo: 'Status', campo: 'statusConsolidado' },
+  { rotulo: 'Farol', campo: 'farol' },
+  { rotulo: 'Avanço', valor: (a) => (a.avanco === null ? '—' : pctTxt(a.avanco * 100)), n: true },
+  { rotulo: 'Peso', valor: (a) => (a.peso === null ? '—' : inteiro(a.peso)), n: true },
+  { rotulo: 'Ponderado', valor: (a) => (a.avancoPonderado === null ? '—'
+    : a.avancoPonderado.toLocaleString('pt-BR')), n: true },
+  { rotulo: 'Dias p/ prazo', valor: (a) => (a.diasParaPrazo === null ? '—'
+    : inteiro(a.diasParaPrazo)), n: true },
+];
+
+/**
+ * A tela flutuante com as atividades que compõem um número.
+ *
+ * A ordem é por AVANÇO PONDERADO decrescente — o peso vezes o avanço é o que
+ * diz onde está o volume de trabalho, e ordenar por ID devolveria a ordem da
+ * planilha, que não responde pergunta nenhuma.
+ */
+function abrirAtividadesSpin(titulo, itens, nota) {
+  const ordenadas = [...itens].sort((a, b) =>
+    (b.avancoPonderado || 0) - (a.avancoPonderado || 0)
+    || (b.peso || 0) - (a.peso || 0)
+    || String(a.id).localeCompare(String(b.id), 'pt-BR'));
+  abrirRegistros({
+    titulo, tipo: 'spincare-atividades', larga: true,
+    colunas: COLUNAS_ATIVIDADE_SPIN, itens: ordenadas, contagem: null,
+    nota: nota || `${inteiro(ordenadas.length)} atividade(s), da maior para a menor `
+      + 'contribuição ao avanço ponderado.',
+  });
+}
+
+/** A legenda da rosca: nome, valor e fatia, porque a cor nunca basta. */
+function legendaDaRoscaHtml(p) {
+  return `<div class="legenda-tipos" style="flex-direction:column;gap:6px;align-items:flex-start">
+    ${p.porStatus.map((s) => `<span data-fatia="${esc(s.status)}"
+        style="cursor:${s.valor ? 'pointer' : 'default'}">
+      <i style="background:${s.cor}"></i>
+      <strong style="color:var(--tinta)">${esc(s.nome)}</strong>
+      <span style="font-variant-numeric:tabular-nums">${inteiro(s.valor)}${
+        s.foraDoCalculo ? '' : ` (${pctTxt(s.pct)})`}</span>
+      ${s.foraDoCalculo ? '<em>não entram no cálculo</em>' : ''}
+    </span>`).join('')}
+  </div>`;
+}
+
+/** As barras por unidade, agrupadas por onda, com o fundo da onda. */
+function barrasPorUnidadeHtml(p) {
+  const fundo = (o) => (o.n === 1 ? 'color-mix(in srgb, var(--bom) 12%, transparent)'
+    : o.n === 2 ? 'color-mix(in srgb, var(--s2) 12%, transparent)'
+    : 'color-mix(in srgb, var(--tinta3) 10%, transparent)');
+  const corDaOnda = (o) => (o.n === 1 ? 'var(--bom)' : o.n === 2 ? 'var(--s2)' : 'var(--tinta3)');
+  return p.porOnda.map((o) => `
+    <div class="faixa-onda" style="background:${fundo(o)}">
+      <b style="color:${corDaOnda(o)}">${inteiro(o.n)}ª ONDA — ${esc(o.fase.toUpperCase())} ·
+        virada em ${esc(mesExib(o.mes))}</b>
+      <div class="barras-unidade">
+        ${o.unidades.map((u) => `<button type="button" class="barra-unidade"
+            data-unidade="${esc(u.k)}"
+            aria-label="${esc(`${u.rotulo}: ${pctTxt(u.pctPonderado)} de avanço ponderado, `
+              + `${pctTxt(u.pctConclusao)} concluído, ${inteiro(u.concluidas)} de ${inteiro(u.total)} atividades`)}">
+          <var style="color:${corDaOnda(o)}">${pctTxt(u.pctPonderado)}</var>
+          <span class="pilar" style="background:${corDaOnda(o)};height:${
+            Math.max(6, Math.round(u.pctPonderado * 0.62))}px"></span>
+          <small>${esc(u.rotulo)}</small>
+          <em>${pctTxt(u.pctConclusao)} concluído</em>
+        </button>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+/** Os indicadores do SpinCare dentro da Visão Micro. */
+function painelSpincareHtml(p) {
+  if (!p.todas.length) {
+    return `<div class="msg alerta"><strong>A base do Controle Único não foi carregada
+      para este cliente.</strong> Suba a planilha em
+      <strong>Gestão de Projetos › Projeto SpinCare</strong> — ou na tela de
+      <strong>Sistema › Dados</strong>, que também a reconhece — e os quatro indicadores
+      passam a ler dela.</div>`;
+  }
+  const maior = p.porStatus.filter((s) => !s.foraDoCalculo)
+    .reduce((m, s) => (s.valor > m.valor ? s : m), { valor: -1 });
+  return `
+    ${blocoIndicador({
+      chave: 'spin-distribuicao',
+      titulo: 'Distribuição das atividades',
+      descricao: 'Como as atividades válidas se repartem por situação. Canceladas ficam fora do cálculo.',
+      valor: inteiro(p.validas.length),
+      apoio: `atividade(s) válida(s) de ${inteiro(p.todas.length)} · maior fatia: ${
+        esc(maior.nome)} com ${pctTxt(maior.pct)}`,
+      corpo: `<div class="grade g2" style="margin-top:8px;align-items:center">
+          <div id="spin-rosca"></div>
+          ${legendaDaRoscaHtml(p)}
+        </div>`,
+      nota: 'Os percentuais somam <strong>100%</strong> porque numerador e denominador saem do '
+        + 'mesmo universo. No Status Report de referência eles somam <strong>104,24%</strong>: '
+        + 'as contagens são feitas sobre todas as linhas e o denominador exclui as de '
+        + 'criticidade <em>N/A</em>.',
+    })}
+
+    ${blocoIndicador({
+      chave: 'spin-status',
+      titulo: 'Atividades por status',
+      descricao: 'A mesma repartição em valores absolutos, para comparar altura em vez de fatia.',
+      valor: inteiro(p.porStatus.find((s) => s.status === 'Concluído').valor),
+      cor: 'var(--bomtxt)',
+      apoio: p.porStatus.filter((s) => !s.foraDoCalculo)
+        .map((s) => `${s.nome.toLowerCase()} ${inteiro(s.valor)}`).join(' · '),
+      corpo: '<div id="spin-colunas" style="margin-top:8px"></div>',
+    })}
+
+    ${blocoIndicador({
+      chave: 'spin-unidades',
+      titulo: 'Percentual por unidade',
+      descricao: 'O avanço de cada unidade acompanhada, agrupado pela onda de virada.',
+      valor: p.unidades.length ? pctTxt(p.unidades.reduce((s, u) => s + u.pctPonderado, 0)
+        / p.unidades.length) : '—',
+      apoio: `média do avanço ponderado de ${inteiro(p.unidades.length)} unidade(s)`,
+      corpo: `${barrasPorUnidadeHtml(p)}
+        <!-- Duas medidas, nomeadas: o ponderado credita avanço parcial e pesa
+             pela criticidade; a conclusão é a contagem simples, que é o número
+             do Status Report. Mostrar uma chamando-a da outra faria o gestor
+             procurar um erro que não existe. -->
+        <p class="nota" style="margin-top:10px">O número grande é o <strong>avanço
+          ponderado</strong> (peso × avanço, com a criticidade pesando); embaixo, a
+          <strong>conclusão</strong> — a contagem simples de atividades concluídas, que é o
+          percentual do Status Report.</p>`,
+    })}
+
+    ${blocoIndicador({
+      chave: 'spin-passos',
+      titulo: 'Próximos passos',
+      descricao: 'Gerado da base: cada linha traz quantas atividades a sustentam.',
+      valor: inteiro(p.passos.reduce((s, x) => s + x.n, 0)),
+      apoio: `${inteiro(p.passos.length)} frente(s) de trabalho em aberto`,
+      corpo: !p.passos.length
+        ? '<p class="vazio">Nada em aberto no recorte.</p>'
+        : `<div class="rol"><table>
+            <thead><tr><th>Passo</th><th class="n">Atividades</th></tr></thead>
+            <tbody>${p.passos.map((x, i) => `<tr data-passo="${i}" style="cursor:pointer">
+              <td><span class="pastilha" style="background:${x.cor}"></span>${esc(x.texto)}</td>
+              <td class="n" style="font-weight:700;color:${x.cor}">${inteiro(x.n)}</td>
+            </tr>`).join('')}</tbody></table></div>`,
+    })}`;
+}
+
+/** Desenha os gráficos e liga os cliques do painel. */
+function ligarPainelSpincare(p) {
+  if (!p.todas.length) return;
+  const alvoRosca = el('#spin-rosca');
+  if (alvoRosca) {
+    rosca(alvoRosca, p.porStatus.filter((s) => !s.foraDoCalculo), {
+      fmt: inteiro, total: p.validas.length,
+      legendaCentro: 'ATIVIDADES\nVÁLIDAS',
+      rotulo: 'distribuição das atividades por situação',
+      aoClicar: (f) => abrirAtividadesSpin(`${f.nome} — ${inteiro(f.valor)} atividade(s)`,
+        p.porStatus.find((s) => s.status === f.status).itens),
+    });
+  }
+  const alvoColunas = el('#spin-colunas');
+  if (alvoColunas) {
+    barras(alvoColunas,
+      p.porStatus.map((s) => ({ rot: s.nome, status: s.status, v: { n: s.valor } })),
+      [{ k: 'n', nome: 'Atividades', cor: 'var(--s1)' }],
+      'lado', inteiro, inteiro,
+      (ponto) => {
+        const s = p.porStatus.find((x) => x.status === ponto.status);
+        abrirAtividadesSpin(`${s.nome} — ${inteiro(s.valor)} atividade(s)`, s.itens);
+      });
+    // Cada coluna na cor do seu status: uma paleta só faria o gráfico dizer
+    // menos que a rosca ao lado, que já separa as situações por cor.
+    alvoColunas.querySelectorAll('svg g path[fill]').forEach((caminho, i) => {
+      const s = p.porStatus[i];
+      if (s) caminho.setAttribute('fill', s.cor);
+    });
+  }
+  el('#pagina').querySelectorAll('[data-fatia]').forEach((sp) => {
+    const s = p.porStatus.find((x) => x.status === sp.dataset.fatia);
+    if (!s || !s.valor) return;
+    sp.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      abrirAtividadesSpin(`${s.nome} — ${inteiro(s.valor)} atividade(s)`, s.itens);
+    });
+  });
+  el('#pagina').querySelectorAll('[data-unidade]').forEach((bt) => {
+    const u = p.unidades.find((x) => x.k === bt.dataset.unidade);
+    if (!u) return;
+    // `stopPropagation` porque o botão mora dentro do cartão, que é gatilho de
+    // drill-down: sem barrar, o clique abriria duas telas empilhadas.
+    bt.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      abrirAtividadesSpin(`${u.rotulo} — ${inteiro(u.total)} atividade(s)`, u.itens,
+        `${inteiro(u.concluidas)} concluída(s) de ${inteiro(u.total)} (${pctTxt(u.pctConclusao)}), `
+        + `com ${pctTxt(u.pctPonderado)} de avanço ponderado.`);
+    });
+    ligarDica(bt, () => ({ titulo: u.rotulo, linhas: [
+      { nome: 'Onda', valor: `${inteiro(u.onda)}ª — ${(SPIN_ONDAS[u.onda - 1] || {}).fase || ''}` },
+      { nome: 'Avanço ponderado', valor: pctTxt(u.pctPonderado) },
+      { nome: 'Conclusão', valor: `${pctTxt(u.pctConclusao)} (${inteiro(u.concluidas)} de ${inteiro(u.total)})` },
+    ] }));
+  });
+  el('#pagina').querySelectorAll('[data-passo]').forEach((tr) => {
+    const x = p.passos[Number(tr.dataset.passo)];
+    if (!x) return;
+    tr.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      abrirAtividadesSpin(`${x.texto} — ${inteiro(x.n)} atividade(s)`, x.itens);
+    });
+  });
+}

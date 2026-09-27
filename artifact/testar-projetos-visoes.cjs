@@ -46,11 +46,18 @@ const { irPara } = require('./ajuda-testes.cjs');
         .filter((b) => b.dataset.limpar).map((b) => b.textContent.trim()),
     };
   });
-  ok('período, empresa, filial e status',
-    JSON.stringify(f.rotulos) === JSON.stringify(['De', 'Até', 'Empresa (matriz)', 'Filial', 'Status da tarefa']),
+  // Os cinco últimos chegaram com o painel do SpinCare, que recorta por onda,
+  // unidade, frente, executante e situação — cortes que só a base do Controle
+  // Único tem.
+  ok('período, empresa, filial, status e os cortes do SpinCare',
+    JSON.stringify(f.rotulos) === JSON.stringify(['De', 'Até', 'Empresa (matriz)', 'Filial',
+      'Status da tarefa', 'Onda (SpinCare)', 'Unidade (SpinCare)', 'Frente (SpinCare)',
+      'Executante (SpinCare)', 'Situação (SpinCare)']),
     f.rotulos.join(' · '));
-  ok('os três seletores têm alvo próprio',
-    JSON.stringify(f.seletores) === JSON.stringify(['i-projetos-empresa', 'i-projetos-filial', 'i-projetos-status']),
+  ok('cada seletor tem alvo próprio',
+    JSON.stringify(f.seletores) === JSON.stringify(['i-projetos-empresa', 'i-projetos-filial',
+      'i-projetos-status', 'i-projetos-onda', 'i-projetos-unidade', 'i-projetos-frente',
+      'i-projetos-exec', 'i-projetos-spinstatus']),
     f.seletores.join(', '));
   ok('com o botão "Limpar filtros do bloco"',
     f.doBloco.length === 1 && f.doBloco[0] === 'Limpar filtros do bloco', JSON.stringify(f.doBloco));

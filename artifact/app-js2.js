@@ -365,3 +365,75 @@ function ranking(alvo, itens, fmt = brl, cor = 'var(--s1)', aoClicar = null) {
     if (aoClicar) comDrill(no, item.rotulo, () => { sumirDica(); aoClicar(item); });
   });
 }
+
+/**
+ * ROSCA: a distribuição de um total entre categorias.
+ *
+ * Existe porque a pergunta "como o todo se reparte" não se lê bem em barras
+ * empilhadas quando o que importa é a FATIA, e não a comparação entre meses.
+ * O centro carrega o total, que é o número que a pessoa veio ler.
+ *
+ * Fatia de valor zero NÃO é desenhada: um arco de largura nula vira um risco
+ * na borda e sugere uma fatia mínima onde não há nenhuma. Ela continua na
+ * legenda, com o zero escrito — é lá que a ausência se lê sem ambiguidade.
+ */
+function rosca(alvo, fatias, opcoes = {}) {
+  alvo.replaceChildren();
+  const validas = (fatias || []).filter((f) => Number.isFinite(f.valor) && f.valor > 0);
+  const total = validas.reduce((s, f) => s + f.valor, 0);
+  if (!total) { alvo.innerHTML = '<p class="vazio">Sem dados no período.</p>'; return; }
+
+  const L = 260, R = 110, r = 68, cx = L / 2, cy = L / 2;
+  const fmt = opcoes.fmt || inteiro;
+  const svg = svgEl('svg', { viewBox: `0 0 ${L} ${L}`, role: 'img',
+    'aria-label': opcoes.rotulo || 'distribuição', style: 'max-width:260px;margin:0 auto' });
+
+  // O VÃO entre fatias é angular e some quando a fatia é fina demais para
+  // suportá-lo: descontar 2° fixos de uma fatia de 1° a viraria negativa, e o
+  // arco daria a volta ao contrário.
+  const ponto = (ang, raio) => [cx + raio * Math.cos(ang), cy + raio * Math.sin(ang)];
+  let inicio = -Math.PI / 2;
+  validas.forEach((f, i) => {
+    const bruto = (f.valor / total) * Math.PI * 2;
+    const vao = bruto > 0.12 ? 0.02 : 0;
+    const a0 = inicio + vao / 2, a1 = inicio + bruto - vao / 2;
+    inicio += bruto;
+    const grande = a1 - a0 > Math.PI ? 1 : 0;
+    const [x0, y0] = ponto(a0, R), [x1, y1] = ponto(a1, R);
+    const [x2, y2] = ponto(a1, r), [x3, y3] = ponto(a0, r);
+    const d = `M${x0},${y0} A${R},${R} 0 ${grande} 1 ${x1},${y1} L${x2},${y2} `
+      + `A${r},${r} 0 ${grande} 0 ${x3},${y3} Z`;
+    const p = svgEl('path', { d, fill: f.cor, stroke: 'var(--sup)', 'stroke-width': 1 });
+    const pct = (f.valor / total) * 100;
+    const dica = { titulo: f.nome, linhas: [
+      { nome: 'Quantidade', valor: fmt(f.valor), cor: f.cor },
+      { nome: 'Fatia', valor: pctTxt(pct) },
+      ...(f.apoio ? [{ nome: 'O que é', valor: f.apoio }] : []),
+    ] };
+    p.setAttribute('role', 'img');
+    p.setAttribute('aria-label', `${f.nome}: ${fmt(f.valor)}, ${pctTxt(pct)}`);
+    p.addEventListener('mousemove', (ev) => mostrarDica(ev, dica.titulo, dica.linhas));
+    p.addEventListener('mouseleave', sumirDica);
+    if (opcoes.aoClicar) {
+      p.style.cursor = 'pointer';
+      p.setAttribute('tabindex', '0');
+      p.addEventListener('click', (ev) => { ev.stopPropagation(); sumirDica(); opcoes.aoClicar(f, i); });
+      p.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); sumirDica(); opcoes.aoClicar(f, i); }
+      });
+    }
+    svg.appendChild(p);
+  });
+
+  const n = svgEl('text', { x: cx, y: cy - 2, 'text-anchor': 'middle', class: 'rosca-total' });
+  n.textContent = fmt(opcoes.total === undefined ? total : opcoes.total);
+  svg.appendChild(n);
+  if (opcoes.legendaCentro) {
+    for (const [i, linha] of String(opcoes.legendaCentro).split('\n').entries()) {
+      const t = svgEl('text', { x: cx, y: cy + 16 + i * 12, 'text-anchor': 'middle', class: 'rosca-rot' });
+      t.textContent = linha;
+      svg.appendChild(t);
+    }
+  }
+  alvo.appendChild(svg);
+}

@@ -183,7 +183,11 @@ function metaDoCustoRecorrente(r, reducao) {
 // desenha: um filtro de status no Financeiro não teria sobre o que operar, e
 // um conjunto vazio significa "todos" em qualquer caso.
 const recorteVazio = () => ({ de: '', ate: '', filiais: new Set(), empresas: new Set(),
-  status: new Set(), somenteReconhecidas: false });
+  status: new Set(), somenteReconhecidas: false,
+  // Os cortes do Controle Único, usados só pelo painel do SpinCare. Conjunto
+  // vazio significa "todas", como em todo filtro deste sistema.
+  ondas: new Set(), unidades: new Set(), frentes: new Set(), executantes: new Set(),
+  spinStatus: new Set() });
 
 /**
  * O mês mais ANTIGO com lançamento no escopo — '' se a base ainda não chegou.
@@ -2351,7 +2355,19 @@ function filtrosDoBloco(bloco, r) {
         <div data-sel="i-${bloco}-filial"></div></div>
       ${bloco === 'projetos' ? `
       <div class="campo" style="min-width:190px"><label>Status da tarefa</label>
-        <div data-sel="i-${bloco}-status"></div></div>` : ''}
+        <div data-sel="i-${bloco}-status"></div></div>
+      <!-- Os cortes do Controle Único. Ficam no mesmo lugar dos demais porque
+           são do mesmo bloco: separá-los faria parecer que valem outra coisa. -->
+      <div class="campo" style="min-width:150px"><label>Onda (SpinCare)</label>
+        <div data-sel="i-${bloco}-onda"></div></div>
+      <div class="campo" style="min-width:170px"><label>Unidade (SpinCare)</label>
+        <div data-sel="i-${bloco}-unidade"></div></div>
+      <div class="campo" style="min-width:170px"><label>Frente (SpinCare)</label>
+        <div data-sel="i-${bloco}-frente"></div></div>
+      <div class="campo" style="min-width:190px"><label>Executante (SpinCare)</label>
+        <div data-sel="i-${bloco}-exec"></div></div>
+      <div class="campo" style="min-width:170px"><label>Situação (SpinCare)</label>
+        <div data-sel="i-${bloco}-spinstatus"></div></div>` : ''}
       ${bloco === 'financeiro' ? `
       <div class="campo" style="min-width:230px"><label for="i-rec">Despesas consideradas</label>
         <select id="i-rec">
@@ -2535,14 +2551,6 @@ const visaoMacroPendenteHtml = () => `<div class="msg">
     pendentes ao lado, que <strong>não alteram</strong> o status macro.
   </div>`;
 
-/** O que a visão Micro ainda vai ganhar da planilha, além do que já mostra. */
-const visaoMicroPendenteHtml = () => `<div class="msg">
-    <strong>Chega na Entrega 3.</strong> Os indicadores acima saem do modelo de tarefas que o sistema
-    já tem. A planilha do cliente traz uma estrutura mais rica — atividade por grupo/time, frente,
-    tipo de entrega, criticidade, situação <em>por unidade</em> e farol de prazo —, e é ela que vira
-    a visão micro completa, com o cadastro correspondente na Entrega 4.
-  </div>`;
-
 /**
  * A conta do Farol 4 escrita na tela, card a card, com os operadores entre eles.
  *
@@ -2648,6 +2656,8 @@ async function viewIndicadores() {
   const farol = calcularFarolCustos(rf);
   const farol3 = calcularFarol3(rf);
   const farol4 = calcularFarol4(rf);
+  const spin = calcularSpincare({ ondas: rp.ondas, unidades: rp.unidades,
+    frentes: rp.frentes, executantes: rp.executantes, status: rp.spinStatus });
   const obj3 = calcularObjetivo03(rf);
   const plano = calcularPlanoReducao(rf);
 
@@ -3177,7 +3187,7 @@ async function viewIndicadores() {
         ${arvoreDeUnidadesHtml('ind-tarefas-pendentes', q.tarefasPendentes, inteiro, semExtra)}`,
     })}
 
-    ${visaoMicroPendenteHtml()}
+    ${painelSpincareHtml(spin)}
 
     </section>
     </section>
@@ -3512,6 +3522,7 @@ async function viewIndicadores() {
   // O termômetro mora dentro do bloco de SLA, que abre fechado: desenhar num
   // elemento escondido é legítimo — o SVG tem `viewBox`, e aparece pronto
   // quando o bloco abre.
+  ligarPainelSpincare(spin);
   const alvoTermometro = el('#i-termometro');
   if (alvoTermometro) termometro(alvoTermometro, sla.total ? sla.pct : 0, sla.meta, 'Atendidos dentro do SLA');
 
@@ -3538,6 +3549,32 @@ async function viewIndicadores() {
         selecionados: r.empresas,
         aoMudar: (novo) => { r.empresas = novo; render(); },
       });
+    }
+    // Os cinco cortes do Controle Único. A lista de cada um sai DO QUE EXISTE
+    // na base: oferecer um valor sem nenhuma atividade é prometer um recorte
+    // que devolve vazio.
+    const daBase = (extrair) => {
+      const achados = new Set();
+      for (const a of spinAtividades()) for (const v of extrair(a)) if (v) achados.add(v);
+      return [...achados].sort((x, y) => String(x).localeCompare(String(y), 'pt-BR'));
+    };
+    const cortes = [
+      ['onda', 'ondas', 'Onda', () => SPIN_ONDAS.filter((o) => o.chaves.length)
+        .map((o) => ({ valor: String(o.n), rotulo: `${o.n}ª — ${o.fase}` }))],
+      ['unidade', 'unidades', 'Unidade', () => SPIN_UNIDADES.filter((u) => u.onda)
+        .map((u) => ({ valor: u.k, rotulo: u.rotulo }))],
+      ['frente', 'frentes', 'Frente', () => daBase((a) => [a.frente]).map((v) => ({ valor: v, rotulo: v }))],
+      ['exec', 'executantes', 'Executante', () => daBase((a) => a.executantes)
+        .map((v) => ({ valor: v, rotulo: v }))],
+      ['spinstatus', 'spinStatus', 'Situação', () => daBase((a) => [a.statusConsolidado])
+        .map((v) => ({ valor: v, rotulo: v }))],
+    ];
+    for (const [sufixo, campo, rotulo, itens] of cortes) {
+      const alvo = el(`[data-sel="i-${bloco}-${sufixo}"]`);
+      if (!alvo) continue;
+      if (!r[campo]) r[campo] = new Set();
+      seletorMulti(alvo, { id: `i-${bloco}-${sufixo}`, rotulo, itens: itens(),
+        selecionados: r[campo], aoMudar: (novo) => { r[campo] = novo; render(); } });
     }
     const alvoStatus = el(`[data-sel="i-${bloco}-status"]`);
     if (alvoStatus) {
@@ -4162,7 +4199,15 @@ function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga, a
       <div class="rol" style="margin-top:10px"><table${larga ? ' class="larga"' : ''}>
         <thead><tr>${colunas.map((c) => `<th${c.n ? ' class="n"' : ''}>${esc(c.rotulo)}</th>`).join('')}</tr></thead>
         <tbody>${itens.slice(0, 400).map((it) => `<tr>${colunas
-          .map((c) => `<td${c.n ? ' class="n"' : c.texto ? ' class="texto"' : ''}>${c.valor(it)}</td>`).join('')}</tr>`).join('')}</tbody>
+          .map((c) => `<td${c.n ? ' class="n"' : c.texto ? ' class="texto"' : ''}>${
+            // `campo` é o atalho para "o valor cru desta chave", e vale a mesma
+            // coisa aqui e no detalhamento de `app-js14`. Só `valor` — uma
+            // função — era aceito, e a divergência entre os dois helpers virava
+            // "c.valor is not a function" na primeira coluna simples.
+            // Pelo `campo` o texto é ESCAPADO; por `valor`, quem monta o HTML
+            // responde por ele, como os chamadores antigos já fazem.
+            c.valor ? c.valor(it) : esc(it[c.campo] == null ? '—' : it[c.campo])
+          }</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div>
       ${itens.length > 400 ? `<p class="nota" style="margin-top:8px">Exibindo os 400 primeiros de ${inteiro(itens.length)}.</p>` : ''}`}`,
     acoes: '<button type="button" class="bt" data-c>Fechar</button>',
