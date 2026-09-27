@@ -13,6 +13,12 @@ const ORIGENS = {
 };
 const origemDe = (l) => ORIGENS[l && l.origem] ? l.origem : 'manual';
 const STATUS_PROJ = { planejado:'Planejado', em_andamento:'Em andamento', concluido:'Concluído', cancelado:'Cancelado' };
+// O status de uma TAREFA, que não é o do projeto: a planilha do cliente e o
+// modelo do sistema usam vocabulários próximos, mas não iguais — ela diz
+// "Não iniciado" onde o sistema diz "Pendente", e traz um "Bloqueado" que aqui
+// não existe. Reconciliar os dois é trabalho do cadastro, não da leitura.
+const STATUS_TAREFA = { pendente:'Pendente', em_andamento:'Em andamento',
+  concluida:'Concluída', cancelada:'Cancelada' };
 const cent = (v) => Math.round((Number(v) || 0) * 100);
 const reais = (c) => c / 100;
 const somaC = (xs) => xs.reduce((a, b) => a + cent(b), 0);

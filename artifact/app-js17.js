@@ -179,7 +179,11 @@ function metaDoCustoRecorrente(r, reducao) {
 }
 
 /** Recorte em branco de um bloco: período livre, todas as filiais, tudo. */
-const recorteVazio = () => ({ de: '', ate: '', filiais: new Set(), somenteReconhecidas: false });
+// `empresas` e `status` existem para TODO bloco, mas só o de Projetos os
+// desenha: um filtro de status no Financeiro não teria sobre o que operar, e
+// um conjunto vazio significa "todos" em qualquer caso.
+const recorteVazio = () => ({ de: '', ate: '', filiais: new Set(), empresas: new Set(),
+  status: new Set(), somenteReconhecidas: false });
 
 /**
  * O mês mais ANTIGO com lançamento no escopo — '' se a base ainda não chegou.
@@ -241,6 +245,23 @@ function naJanela(comp, r) {
 }
 
 const naFilialDoBloco = (valor, r) => (r.filiais.size === 0 ? true : r.filiais.has(valor || '(empresa)'));
+/** Os status de tarefa que EXISTEM na base do escopo, na ordem do vocabulário. */
+function statusDeTarefaNaBase() {
+  const achados = new Set();
+  for (const e of escopoEmpresas()) {
+    for (const p of (E.projetos.get(e) || [])) {
+      for (const t of (p.tarefas || [])) achados.add(t.status || 'pendente');
+    }
+  }
+  const ordem = Object.keys(STATUS_TAREFA);
+  return [...achados].sort((a, b) => {
+    const ia = ordem.indexOf(a), ib = ordem.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || String(a).localeCompare(b, 'pt-BR');
+  });
+}
+/** Conjunto vazio = todas. A empresa entra pelo ID, que é o que o dado guarda. */
+const naEmpresaDoBloco = (id, r) => (!r.empresas || r.empresas.size === 0 ? true : r.empresas.has(id));
+const noStatusDoBloco = (st, r) => (!r.status || r.status.size === 0 ? true : r.status.has(st || 'pendente'));
 
 // ------------------------------------------------------------- cálculo
 /**
@@ -2240,10 +2261,12 @@ function calcularProjetos(r) {
   // para a meta poder ser medida mês a mês quando o recorte cruza vigências.
   const porMes = new Map();
   for (const e of escopoEmpresas()) {
+    if (!naEmpresaDoBloco(e, r)) continue;
     for (const p of (E.projetos.get(e) || [])) {
       if (!naFilialDoBloco(p.filial, r)) continue;
       for (const t of (p.tarefas || [])) {
         if (!naJanela(t.fimPlanejado, r)) continue;
+        if (!noStatusDoBloco(t.status, r)) continue;
         total += 1;
         if (t.status === 'cancelada') { canceladas += 1; continue; }
         if (t.status === 'concluida' && t.fimReal) {
@@ -2318,8 +2341,14 @@ function filtrosDoBloco(bloco, r) {
         <input id="i-${bloco}-de" value="${r.de ? mesExib(r.de) : ''}" placeholder="MM/AAAA"></div>
       <div class="campo" style="width:118px"><label for="i-${bloco}-ate">Até</label>
         <input id="i-${bloco}-ate" value="${r.ate ? mesExib(r.ate) : ''}" placeholder="MM/AAAA"></div>
+      ${bloco === 'projetos' ? `
+      <div class="campo" style="min-width:190px"><label>Empresa (matriz)</label>
+        <div data-sel="i-${bloco}-empresa"></div></div>` : ''}
       <div class="campo" style="min-width:190px"><label>Filial</label>
         <div data-sel="i-${bloco}-filial"></div></div>
+      ${bloco === 'projetos' ? `
+      <div class="campo" style="min-width:190px"><label>Status da tarefa</label>
+        <div data-sel="i-${bloco}-status"></div></div>` : ''}
       ${bloco === 'financeiro' ? `
       <div class="campo" style="min-width:230px"><label for="i-rec">Despesas consideradas</label>
         <select id="i-rec">
@@ -2477,6 +2506,39 @@ function subBlocoFarol4Html(f, corpo) {
       ${corpo}
     </section>`;
 }
+
+/* ===================================================================== *
+ * BLOCO PROJETOS — as duas visões da implantação
+ *
+ * MACRO responde uma pergunta só: a unidade planejada para virar no mês
+ * VIROU? Tarefa pendente não muda essa resposta — é informação de apoio, e
+ * confundir as duas foi o que motivou separar as visões.
+ *
+ * MICRO responde a outra: como anda a execução, atividade a atividade, por
+ * unidade.
+ *
+ * As duas nascem da planilha "Controle Único do Projeto SpinCare", que tem
+ * uma estrutura própria: a linha é uma ATIVIDADE, e cada unidade acompanhada
+ * tem uma coluna de situação nela. O modelo de projeto/tarefa que o sistema
+ * tem hoje não guarda isso — é a Entrega 4 que traz o cadastro.
+ * ===================================================================== */
+
+/** O que a visão Macro vai trazer, enquanto o cadastro da planilha não existe. */
+const visaoMacroPendenteHtml = () => `<div class="msg">
+    <strong>Chega na Entrega 2.</strong> Por mês de competência: quais unidades estavam
+    <strong>planejadas</strong> para virar, quais <strong>viraram</strong>, o percentual de aderência e
+    o status do prazo macro — verde quando todas as planejadas do mês viraram, vermelho quando alguma
+    ficou. A expansão vai de Empresa a Filial, com data planejada, data realizada e as tarefas
+    pendentes ao lado, que <strong>não alteram</strong> o status macro.
+  </div>`;
+
+/** O que a visão Micro ainda vai ganhar da planilha, além do que já mostra. */
+const visaoMicroPendenteHtml = () => `<div class="msg">
+    <strong>Chega na Entrega 3.</strong> Os indicadores acima saem do modelo de tarefas que o sistema
+    já tem. A planilha do cliente traz uma estrutura mais rica — atividade por grupo/time, frente,
+    tipo de entrega, criticidade, situação <em>por unidade</em> e farol de prazo —, e é ela que vira
+    a visão micro completa, com o cadastro correspondente na Entrega 4.
+  </div>`;
 
 /**
  * A conta do Farol 4 escrita na tela, card a card, com os operadores entre eles.
@@ -3065,6 +3127,20 @@ async function viewIndicadores() {
       </header>
       ${filtrosDoBloco('projetos', rp)}
 
+    <!-- As DUAS VISÕES do bloco. Elas agrupam, e não substituem: os dois
+         indicadores de execução que já existiam passam a viver dentro da visão
+         MICRO, que é o lugar deles — soltos ao lado da virada de sistema, a
+         tela não diria qual pergunta cada número responde. -->
+    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:14px">
+      <header><h2>Visão Macro — Virada de Sistema</h2>
+        <span class="nota">a unidade virou no mês planejado?</span></header>
+      ${visaoMacroPendenteHtml()}
+    </section>
+
+    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:14px">
+      <header><h2>Visão Micro — Execução do Projeto</h2>
+        <span class="nota">atividade a atividade, por unidade</span></header>
+
     ${blocoIndicador({
       chave: 'projetos-prazo',
       titulo: 'Tarefas entregues no prazo',
@@ -3094,6 +3170,10 @@ async function viewIndicadores() {
         ${legendaDeMatrizesHtml(fatiasDe(q.tarefasPendentes, inteiro))}
         ${arvoreDeUnidadesHtml('ind-tarefas-pendentes', q.tarefasPendentes, inteiro, semExtra)}`,
     })}
+
+    ${visaoMicroPendenteHtml()}
+
+    </section>
     </section>
 
     <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
@@ -3442,14 +3522,44 @@ async function viewIndicadores() {
       selecionados: r.filiais,
       aoMudar: (novo) => { r.filiais = novo; render(); },
     });
+    // Empresa e status são do bloco de Projetos. Os alvos nem existem nos
+    // outros, e `seletorMulti` num alvo nulo derrubaria a tela inteira.
+    const alvoEmpresa = el(`[data-sel="i-${bloco}-empresa"]`);
+    if (alvoEmpresa) {
+      seletorMulti(alvoEmpresa, {
+        id: `i-${bloco}-empresa`, rotulo: 'Empresa',
+        itens: escopoEmpresas().map((id) => ({ valor: id, rotulo: nomeEmpresa(id) })),
+        selecionados: r.empresas,
+        aoMudar: (novo) => { r.empresas = novo; render(); },
+      });
+    }
+    const alvoStatus = el(`[data-sel="i-${bloco}-status"]`);
+    if (alvoStatus) {
+      seletorMulti(alvoStatus, {
+        id: `i-${bloco}-status`, rotulo: 'Status',
+        // A lista sai do QUE EXISTE na base, e não de um vocabulário fixo:
+        // oferecer um status sem nenhuma tarefa é prometer um recorte que
+        // devolve vazio. A planilha do cliente traz ainda "Bloqueado", que o
+        // sistema não tem — é a Entrega 4 que reconcilia os dois vocabulários.
+        itens: statusDeTarefaNaBase().map((k) => ({ valor: k, rotulo: STATUS_TAREFA[k] || k })),
+        selecionados: r.status,
+        aoMudar: (novo) => { r.status = novo; render(); },
+      });
+    }
   }
   // Voltar ao PADRÃO, não ao vazio: no Financeiro o padrão é uma janela
   // (primeira competência → último mês fechado), e esvaziá-la traria de volta
   // os meses futuros que o padrão existe para deixar de fora.
-  el('#pagina').querySelectorAll('[data-limpar]').forEach((b) => b.onclick = () => {
-    E.filtrosInd[b.dataset.limpar] = recorteInicial(b.dataset.limpar);
-    render();
-  });
+  //
+  // O seletor de múltipla escolha tem um `data-limpar` PRÓPRIO, sem valor
+  // (`app-js12.js`), e o seletor de atributo pegava os dois: clicar no "Limpar"
+  // de dentro do painel de Filial escrevia `E.filtrosInd[""]` e disparava um
+  // render a mais. Por isso o casamento é pelo NOME do bloco.
+  for (const b of el('#pagina').querySelectorAll('[data-limpar]')) {
+    const bloco = b.dataset.limpar;
+    if (!BLOCOS_IND.includes(bloco)) continue;
+    b.onclick = () => { E.filtrosInd[bloco] = recorteInicial(bloco); render(); };
+  }
   // O switch recalcula o BLOCO inteiro: indicadores, série e tabela. Filtrar só
   // o gráfico deixaria o KPI dizendo uma coisa e a curva outra.
   const rec = el('#i-rec');

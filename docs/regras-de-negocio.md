@@ -1211,6 +1211,69 @@ engano. `calcularConsumo` continua existindo e é a fonte desse "antes". O
 equilíbrio mês a mês vinha pendurado no mesmo bloco e saiu junto: descrevia o
 mesmo consumo compartilhado, por outro ângulo.
 
+## Bloco Projetos: as duas visões da implantação
+
+O bloco fica na **ordem 2** da pilha dos Indicadores Gerais — Financeiro,
+Projetos, SLA — e tem filtros próprios: período, **empresa (matriz)**, filial e
+**status da tarefa**, com "Limpar filtros do bloco".
+
+**O período do bloco Projetos não tem padrão, e isso é deliberado.** No
+Financeiro o padrão termina no último mês fechado, porque mês futuro não tem
+custo realizado. Aqui o que interessa é justamente o futuro — o go-live —, e
+herdar aquele padrão esconderia a virada que o bloco existe para acompanhar.
+
+**A lista de status sai do que EXISTE na base**, e não de um vocabulário fixo:
+oferecer um status sem nenhuma tarefa é prometer um recorte que devolve vazio.
+
+### Duas visões, duas perguntas
+
+| visão | pergunta |
+| --- | --- |
+| **Macro — Virada de Sistema** | a unidade planejada para virar no mês **virou**? |
+| **Micro — Execução do Projeto** | como anda a execução, atividade a atividade, por unidade |
+
+**Tarefa pendente não muda a resposta da Macro.** Ela é informação de apoio, e
+confundir as duas é o que motivou separá-las: uma unidade pode virar com
+pendências, e uma unidade sem pendência nenhuma pode não ter virado.
+
+Os dois indicadores de execução que já existiam passaram a viver dentro da
+Micro. Soltos ao lado da virada de sistema, a tela não diria qual pergunta cada
+número responde.
+
+### A estrutura da planilha do cliente
+
+A base é o `Controle Único do Projeto SpinCare`, aba **Controle Mestre**
+(cabeçalho na linha 2, 172 atividades, 54 colunas). A linha **não é uma tarefa
+de uma unidade**: é uma **atividade do projeto**, e cada unidade acompanhada tem
+uma **coluna de situação própria** dentro dela — o inverso do modelo
+projeto → tarefa → filial que o sistema tem hoje. É a razão de o cadastro ser
+uma entrega à parte.
+
+Regras que estão nas fórmulas da planilha, e que a leitura tem de honrar:
+
+| campo | regra |
+| --- | --- |
+| % Avanço | Concluído 1 · Em andamento 0,5 · Bloqueado 0,25 · resto 0; **vazio** se cancelado ou criticidade `N/A` |
+| Peso | GO-LIVE 3 · ESTABILIZAÇÃO 2 · EVOLUÇÃO 1 |
+| Status Consolidado | o **pior** status entre as unidades (Bloqueado › Não iniciado › Em andamento › Concluído) |
+| Farol | VERMELHO se bloqueado ou prazo vencido sem conclusão; VERDE se concluído; senão AMARELO |
+
+**O vocabulário de status diverge.** A planilha usa
+`Concluído · Em andamento · Não iniciado · Bloqueado · Cancelado`; o sistema usa
+`Pendente · Em andamento · Concluída · Cancelada`. "Não iniciado" é o "Pendente"
+com outro nome, e **"Bloqueado" não existe** aqui.
+
+### Divergências medidas na planilha, ainda em aberto
+
+1. **Os percentuais do Status Report não fecham** (80,00 + 10,30 + 13,94 =
+   104,24%). "Atividades válidas" conta **165** (exclui as 7 de criticidade
+   `N/A`), mas os status contam sobre as **172** linhas. Sobre as 165 válidas os
+   números são **127 / 16 / 22**. Os percentuais por unidade (81,2% e 77,0%)
+   estão corretos.
+2. **Ondas 4 e 5 trocadas** entre a planilha e o cronograma — muda o mês
+   planejado de 8 filiais, que é exatamente o que a visão Macro mede.
+3. **Ondas 1 e 2 com a mesma data de virada** (01/10/2026) na planilha.
+
 ## Farol 4: projeção de economias e valor gerado pela TI
 
 Posiciona a TI como **centro de valor**, e não centro de custo: quanto a gestão
