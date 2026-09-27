@@ -562,6 +562,48 @@ function diagnosticoSpincareHtml(d) {
     </section>`;
 }
 
+/**
+ * O arquivo É o Controle Único? Devolve a aba mestre, ou `null`.
+ *
+ * Existe para a carga funcionar EM QUALQUER TELA: o gestor não deveria ter de
+ * descobrir qual das duas telas de importação aceita qual arquivo. A tela de
+ * Dados tenta este caminho primeiro e, não sendo, segue pelo modelo de sempre.
+ */
+async function abaDoControleUnico(bytes) {
+  const abas = await gradeDoXlsx(bytes);
+  const mestre = abas.find((a) => spinChaveNome(a.nome) === spinChaveNome('Controle Mestre'));
+  if (!mestre) return null;
+  const cel = (linha, i) => String((linha || [])[i] == null ? '' : (linha || [])[i]).trim();
+  // O nome da aba sozinho não basta: o que prova o layout é o cabeçalho na
+  // linha 2. Aceitar pelo nome faria uma planilha homônima entrar torta.
+  const cab = mestre.grade[1] || [];
+  return cel(cab, 0) === 'ID' && cel(cab, 5) === 'Atividade' ? mestre : null;
+}
+
+/**
+ * Lê, grava e devolve o relatório. É o ÚNICO caminho de carga do Controle
+ * Único — a tela do projeto e a de Dados chamam esta função, e duas
+ * implementações divergiriam na primeira correção.
+ */
+async function importarControleUnico(mestre, nomeArquivo) {
+  const lido = spinLerControleMestre(mestre.grade, E.clienteSel);
+  if (!lido.atividades.length) {
+    throw new Error('A aba "Controle Mestre" não trouxe nenhuma atividade com ID. '
+      + 'Confira se o cabeçalho está na linha 2 e se a coluna A tem os IDs.');
+  }
+  // As atividades de OUTROS clientes ficam: a base é uma só, e cada item
+  // carrega o dono — é a mesma convenção de metas e do plano de redução.
+  const outras = (E.spincare || []).filter((a) => a.cliente !== E.clienteSel);
+  await Loja.gravarCatalogo('spincare', [...outras, ...lido.atividades]);
+  await Loja.gravarConfiguracao({ spincareCarga: {
+    quando: new Date().toLocaleString('pt-BR'), total: lido.atividades.length,
+    arquivo: nomeArquivo, cliente: E.clienteSel } });
+  await Loja.auditar({ entidade: 'spincare', acao: 'importar',
+    descricao: `${lido.atividades.length} atividade(s) do Controle Único, de ${nomeArquivo}` });
+  E.spincareRelatorio = lido;
+  return lido;
+}
+
 /** Lê o arquivo escolhido, mostra o resultado e grava. */
 async function carregarSpincare(campo, botao) {
   const alvo = el('#spin-resultado');
@@ -570,27 +612,13 @@ async function carregarSpincare(campo, botao) {
   botao.disabled = true;
   alvo.innerHTML = '<p class="msg">Lendo a planilha…</p>';
   try {
-    const abas = await gradeDoXlsx(new Uint8Array(await arquivo.arrayBuffer()));
-    const mestre = abas.find((a) => spinChaveNome(a.nome) === spinChaveNome('Controle Mestre'));
+    const mestre = await abaDoControleUnico(new Uint8Array(await arquivo.arrayBuffer()));
     if (!mestre) {
-      throw new Error('O arquivo não tem a aba "Controle Mestre". '
-        + `Abas encontradas: ${abas.map((a) => a.nome).join(', ') || 'nenhuma'}.`);
+      throw new Error('O arquivo não tem a aba "Controle Mestre" com o cabeçalho esperado na '
+        + 'linha 2 ("ID" na coluna A e "Atividade" na coluna F). '
+        + 'Confira se é o Controle Único do Projeto SpinCare.');
     }
-    const lido = spinLerControleMestre(mestre.grade, E.clienteSel);
-    if (!lido.atividades.length) {
-      throw new Error('A aba "Controle Mestre" não trouxe nenhuma atividade com ID. '
-        + 'Confira se o cabeçalho está na linha 2 e se a coluna A tem os IDs.');
-    }
-    // As atividades de OUTROS clientes ficam: a base é uma só, e cada item
-    // carrega o dono — é a mesma convenção de metas e do plano de redução.
-    const outras = (E.spincare || []).filter((a) => a.cliente !== E.clienteSel);
-    await Loja.gravarCatalogo('spincare', [...outras, ...lido.atividades]);
-    const quando = new Date().toLocaleString('pt-BR');
-    await Loja.gravarConfiguracao({ spincareCarga: {
-      quando, total: lido.atividades.length, arquivo: arquivo.name, cliente: E.clienteSel } });
-    await Loja.auditar({ entidade: 'spincare', acao: 'importar',
-      descricao: `${lido.atividades.length} atividade(s) do Controle Único, de ${arquivo.name}` });
-    E.spincareRelatorio = lido;
+    await importarControleUnico(mestre, arquivo.name);
     await render();
   } catch (e) {
     // A mensagem do erro é a que a pessoa lê para decidir o que fazer: ela

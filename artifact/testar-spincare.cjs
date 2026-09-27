@@ -165,6 +165,23 @@ const ARQ = process.env.SPINCARE_XLSX || '';
       r.d.unidadesSemColuna.length === 11, `${r.d.unidadesSemColuna.length} unidade(s)`);
     ok('a base carregada é do cliente em foco', r.semOutroCliente);
 
+    // A MESMA planilha pela tela de Dados. O gestor não deveria ter de
+    // descobrir qual das duas telas aceita qual arquivo.
+    await irPara(pag, 'Dados', 1800);
+    await pag.setInputFiles('#d-arquivo', ARQ);
+    await pag.click('#d-importar');
+    await pag.waitForSelector('#d-saida-imp .msg.ok, #d-saida-imp .msg.erro', { timeout: 30000 });
+    await pag.waitForTimeout(2000);
+    const pelaDados = await pag.evaluate(() => ({
+      texto: (el('#d-saida-imp') || {}).textContent || '',
+      n: spinAtividades().length,
+    }));
+    ok('a tela de Dados reconhece o Controle Único',
+      /Controle Único do Projeto reconhecido/.test(pelaDados.texto),
+      pelaDados.texto.replace(/\s+/g, ' ').trim().slice(0, 80));
+    ok('e carrega as mesmas 172 atividades', pelaDados.n === 172, String(pelaDados.n));
+    await irPara(pag, 'Projeto SpinCare', 1500);
+
     // Recarregar o mesmo arquivo não duplica: a carga SUBSTITUI a base do
     // cliente, e um segundo clique não pode virar 344 atividades.
     await pag.setInputFiles('#spin-arq', ARQ);

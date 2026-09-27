@@ -343,7 +343,27 @@ async function viewDados() {
     try {
       let abas;
       if (/\.xlsx$/i.test(arq.name)) {
-        abas = await lerXlsx(new Uint8Array(await arq.arrayBuffer()));
+        const bytes = new Uint8Array(await arq.arrayBuffer());
+        // O CONTROLE ÚNICO DO PROJETO entra por AQUI também. O gestor não
+        // deveria ter de descobrir qual das duas telas de importação aceita
+        // qual arquivo: esta reconhece o layout e segue o caminho certo.
+        const mestre = await abaDoControleUnico(bytes);
+        if (mestre) {
+          const lido = await importarControleUnico(mestre, arq.name);
+          // O relatório é escrito DEPOIS do repintar, e num elemento buscado de
+          // novo: `render()` reconstrói a tela, e o texto escrito antes some no
+          // mesmo instante em que a pessoa ia lê-lo.
+          await render();
+          const novo = el('#d-saida-imp');
+          if (novo) {
+            novo.innerHTML = `<div class="msg ok"><strong>Controle Único do Projeto reconhecido.</strong>
+                ${inteiro(lido.atividades.length)} atividade(s) carregada(s). O detalhamento fica em
+                <strong>Gestão de Projetos › Projeto SpinCare</strong>.</div>
+              ${relatorioSpincareHtml(lido)}`;
+          }
+          return;
+        }
+        abas = await lerXlsx(bytes);
       } else {
         const texto = await lerTextoDoArquivo(arq);
         const { colunas, linhas } = lerCsv(texto);
