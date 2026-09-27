@@ -34,7 +34,7 @@ const ARQ = process.env.SPINCARE_XLSX || '';
     const micro = [...document.querySelectorAll('section.bloco-grupo')]
       .find((g) => /Visão Micro/.test(g.querySelector('h2').textContent));
     return { aviso: /não foi carregada/.test(micro.textContent),
-      indicadores: micro.querySelectorAll('[data-kpi^="spin-"]').length };
+      indicadores: micro.querySelectorAll('[data-quadro]').length };
   });
   // Um painel zerado faria a diretoria ler "nenhuma atividade concluída" onde
   // o que há é ausência de base.
@@ -62,7 +62,15 @@ const ARQ = process.env.SPINCARE_XLSX || '';
     const micro = [...document.querySelectorAll('section.bloco-grupo')]
       .find((g) => /Visão Micro/.test(g.querySelector('h2').textContent));
     return {
-      kpis: [...micro.querySelectorAll('[data-kpi^="spin-"]')].map((k) => k.dataset.kpi),
+      kpis: [...micro.querySelectorAll('[data-quadro]')].map((k) => k.dataset.quadro),
+      // UM painel, e não quatro acordeões: os quatro quadros são leituras do
+      // mesmo universo, e comparar a fatia da rosca com a altura da coluna
+      // exigia abrir duas caixas e rolar entre elas.
+      painelUnico: micro.querySelectorAll('.painel-spin').length === 1,
+      semDobra: [...micro.querySelectorAll('[data-quadro]')]
+        .every((q) => !q.querySelector('.bloco-dobra')),
+      visiveisJuntos: [...micro.querySelectorAll('[data-quadro]')]
+        .every((q) => q.getBoundingClientRect().height > 40),
       rosca: micro.querySelectorAll('#spin-rosca svg path[fill]').length,
       centro: (micro.querySelector('.rosca-total') || {}).textContent,
       colunas: micro.querySelectorAll('#spin-colunas svg g').length,
@@ -75,6 +83,9 @@ const ARQ = process.env.SPINCARE_XLSX || '';
   ok('os quatro estão na tela',
     JSON.stringify(tela.kpis) === JSON.stringify(['spin-distribuicao', 'spin-status',
       'spin-unidades', 'spin-passos']), tela.kpis.join(', '));
+  ok('numa visão só, e não em quatro caixas', tela.painelUnico);
+  ok('nenhum quadro tem dobra própria', tela.semDobra);
+  ok('e os quatro estão visíveis ao mesmo tempo', tela.visiveisJuntos);
   // Fatia de valor zero não é desenhada: um arco de largura nula vira um
   // risco na borda e sugere uma fatia mínima onde não há nenhuma.
   ok('a rosca desenha só as fatias com valor', tela.rosca === 3, `${tela.rosca} arco(s)`);

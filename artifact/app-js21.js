@@ -866,7 +866,18 @@ function barrasPorUnidadeHtml(p) {
     </div>`).join('');
 }
 
-/** Os indicadores do SpinCare dentro da Visão Micro. */
+/**
+ * O PAINEL, em uma visão só.
+ *
+ * Os quatro gráficos ficam lado a lado, e não em quatro acordeões: eles são
+ * leituras do MESMO universo, e um painel é justamente o lugar onde elas se
+ * confrontam de relance. Em caixas separadas, comparar a fatia da rosca com a
+ * altura da coluna exigia abrir duas e rolar entre elas — o que desfaz a razão
+ * de o painel existir.
+ *
+ * Cada quadro continua com título e descrição próprios: o que saiu foi a
+ * dobra, não a identificação.
+ */
 function painelSpincareHtml(p) {
   if (!p.todas.length) {
     return `<div class="msg alerta"><strong>A base do Controle Único não foi carregada
@@ -877,68 +888,59 @@ function painelSpincareHtml(p) {
   }
   const maior = p.porStatus.filter((s) => !s.foraDoCalculo)
     .reduce((m, s) => (s.valor > m.valor ? s : m), { valor: -1 });
+  const media = p.unidades.length
+    ? pctTxt(p.unidades.reduce((s, u) => s + u.pctPonderado, 0) / p.unidades.length) : '—';
+  const quadro = (chave, titulo, apoio, corpo, largo) => `
+    <section class="quadro${largo ? ' quadro-largo' : ''}" data-quadro="${esc(chave)}">
+      <header><h3>${esc(titulo)}</h3><span>${esc(apoio)}</span></header>
+      <div class="quadro-corpo">${corpo}</div>
+    </section>`;
+
   return `
-    ${blocoIndicador({
-      chave: 'spin-distribuicao',
-      titulo: 'Distribuição das atividades',
-      descricao: 'Como as atividades válidas se repartem por situação. Canceladas ficam fora do cálculo.',
-      valor: inteiro(p.validas.length),
-      apoio: `atividade(s) válida(s) de ${inteiro(p.todas.length)} · maior fatia: ${
-        esc(maior.nome)} com ${pctTxt(maior.pct)}`,
-      corpo: `<div class="grade g2" style="margin-top:8px;align-items:center">
+    <div class="painel-spin">
+      ${quadro('spin-distribuicao', 'Distribuição das atividades',
+        `${inteiro(p.validas.length)} válidas de ${inteiro(p.todas.length)} · maior fatia: `
+          + `${maior.nome} com ${pctTxt(maior.pct)}`,
+        `<div class="quadro-rosca">
           <div id="spin-rosca"></div>
           ${legendaDaRoscaHtml(p)}
-        </div>`,
-      nota: 'Os percentuais somam <strong>100%</strong> porque numerador e denominador saem do '
-        + 'mesmo universo. No Status Report de referência eles somam <strong>104,24%</strong>: '
-        + 'as contagens são feitas sobre todas as linhas e o denominador exclui as de '
-        + 'criticidade <em>N/A</em>.',
-    })}
+        </div>`)}
 
-    ${blocoIndicador({
-      chave: 'spin-status',
-      titulo: 'Atividades por status',
-      descricao: 'A mesma repartição em valores absolutos, para comparar altura em vez de fatia.',
-      valor: inteiro(p.porStatus.find((s) => s.status === 'Concluído').valor),
-      cor: 'var(--bomtxt)',
-      apoio: p.porStatus.filter((s) => !s.foraDoCalculo)
-        .map((s) => `${s.nome.toLowerCase()} ${inteiro(s.valor)}`).join(' · '),
-      corpo: '<div id="spin-colunas" style="margin-top:8px"></div>',
-    })}
+      ${quadro('spin-status', 'Atividades por status',
+        p.porStatus.filter((s) => !s.foraDoCalculo)
+          .map((s) => `${s.nome.toLowerCase()} ${inteiro(s.valor)}`).join(' · '),
+        '<div id="spin-colunas"></div>')}
 
-    ${blocoIndicador({
-      chave: 'spin-unidades',
-      titulo: 'Percentual por unidade',
-      descricao: 'O avanço de cada unidade acompanhada, agrupado pela onda de virada.',
-      valor: p.unidades.length ? pctTxt(p.unidades.reduce((s, u) => s + u.pctPonderado, 0)
-        / p.unidades.length) : '—',
-      apoio: `média do avanço ponderado de ${inteiro(p.unidades.length)} unidade(s)`,
-      corpo: `${barrasPorUnidadeHtml(p)}
+      ${quadro('spin-unidades', 'Percentual por unidade',
+        `média ponderada de ${media} em ${inteiro(p.unidades.length)} unidade(s)`,
+        `${barrasPorUnidadeHtml(p)}
         <!-- Duas medidas, nomeadas: o ponderado credita avanço parcial e pesa
              pela criticidade; a conclusão é a contagem simples, que é o número
              do Status Report. Mostrar uma chamando-a da outra faria o gestor
              procurar um erro que não existe. -->
-        <p class="nota" style="margin-top:10px">O número grande é o <strong>avanço
-          ponderado</strong> (peso × avanço, com a criticidade pesando); embaixo, a
-          <strong>conclusão</strong> — a contagem simples de atividades concluídas, que é o
-          percentual do Status Report.</p>`,
-    })}
+        <p class="nota" style="margin-top:8px">Número grande: <strong>avanço ponderado</strong>
+          (peso × avanço). Embaixo: <strong>conclusão</strong> — a contagem simples, que é o
+          percentual do Status Report.</p>`, true)}
 
-    ${blocoIndicador({
-      chave: 'spin-passos',
-      titulo: 'Próximos passos',
-      descricao: 'Gerado da base: cada linha traz quantas atividades a sustentam.',
-      valor: inteiro(p.passos.reduce((s, x) => s + x.n, 0)),
-      apoio: `${inteiro(p.passos.length)} frente(s) de trabalho em aberto`,
-      corpo: !p.passos.length
-        ? '<p class="vazio">Nada em aberto no recorte.</p>'
-        : `<div class="rol"><table>
-            <thead><tr><th>Passo</th><th class="n">Atividades</th></tr></thead>
-            <tbody>${p.passos.map((x, i) => `<tr data-passo="${i}" style="cursor:pointer">
-              <td><span class="pastilha" style="background:${x.cor}"></span>${esc(x.texto)}</td>
-              <td class="n" style="font-weight:700;color:${x.cor}">${inteiro(x.n)}</td>
-            </tr>`).join('')}</tbody></table></div>`,
-    })}`;
+      ${quadro('spin-passos', 'Próximos passos',
+        `${inteiro(p.passos.length)} frente(s) em aberto · ${
+          inteiro(p.passos.reduce((s, x) => s + x.n, 0))} atividade(s)`,
+        !p.passos.length
+          ? '<p class="vazio">Nada em aberto no recorte.</p>'
+          : `<ul class="lista-passos">${p.passos.map((x, i) => `<li data-passo="${i}"
+              role="button" tabindex="0"
+              aria-label="${esc(`${x.texto}: ${x.n} atividade(s). Abrir a lista.`)}">
+            <span class="pastilha" style="background:${x.cor}"></span>
+            <span>${esc(x.texto)}</span>
+            <var style="color:${x.cor}">${inteiro(x.n)}</var>
+          </li>`).join('')}</ul>`, true)}
+    </div>
+
+    <p class="nota" style="margin-top:12px">Os percentuais somam <strong>100%</strong> porque
+      numerador e denominador saem do mesmo universo. No Status Report de referência eles somam
+      <strong>104,24%</strong>: as contagens são feitas sobre todas as linhas e o denominador
+      exclui as de criticidade <em>N/A</em>. Clique em qualquer número para ver as atividades
+      que o compõem.</p>`;
 }
 
 /** Desenha os gráficos e liga os cliques do painel. */
@@ -996,12 +998,16 @@ function ligarPainelSpincare(p) {
       { nome: 'Conclusão', valor: `${pctTxt(u.pctConclusao)} (${inteiro(u.concluidas)} de ${inteiro(u.total)})` },
     ] }));
   });
-  el('#pagina').querySelectorAll('[data-passo]').forEach((tr) => {
-    const x = p.passos[Number(tr.dataset.passo)];
+  el('#pagina').querySelectorAll('[data-passo]').forEach((li) => {
+    const x = p.passos[Number(li.dataset.passo)];
     if (!x) return;
-    tr.addEventListener('click', (ev) => {
+    const abrir = (ev) => {
       ev.stopPropagation();
       abrirAtividadesSpin(`${x.texto} — ${inteiro(x.n)} atividade(s)`, x.itens);
+    };
+    li.addEventListener('click', abrir);
+    li.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrir(ev); }
     });
   });
 }

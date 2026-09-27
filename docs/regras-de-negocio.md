@@ -1216,6 +1216,13 @@ mesmo consumo compartilhado, por outro ângulo.
 Quatro leituras do mesmo universo, dentro de **Projetos › Visão Micro**, todas
 saindo da base carregada — nenhum número é digitado.
 
+**Os quatro ficam em UMA visão, lado a lado, e não em quatro acordeões.** Eles
+medem o mesmo universo, e um painel é justamente o lugar onde essas leituras se
+confrontam de relance: em caixas separadas, comparar a fatia da rosca com a
+altura da coluna exigia abrir duas e rolar entre elas — o que desfaz a razão de
+o painel existir. Cada quadro mantém título e descrição; o que saiu foi a dobra,
+não a identificação.
+
 | indicador | responde |
 | --- | --- |
 | Distribuição das atividades | como o todo se reparte por situação (rosca) |

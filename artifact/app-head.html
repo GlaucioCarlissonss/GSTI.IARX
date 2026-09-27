@@ -241,6 +241,32 @@
 .barra-unidade>span.pilar{width:38px;border-radius:6px;display:block}
 .barra-unidade>small{font-size:11px;color:var(--tinta2);font-weight:600}
 .barra-unidade>em{font-style:normal;font-size:10px;color:var(--tinta3)}
+/* O PAINEL DO SPINCARE em uma visão só: os quatro quadros lado a lado.
+   Eles são leituras do MESMO universo, e um painel é o lugar onde elas se
+   confrontam de relance — em acordeões separados, comparar a fatia da rosca
+   com a altura da coluna exigia abrir duas e rolar entre elas. */
+.painel-spin{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px}
+.painel-spin .quadro{border:1px solid var(--linha);border-radius:11px;background:var(--sup2);
+  display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.painel-spin .quadro-largo{grid-column:1 / -1}
+.painel-spin .quadro>header{padding:9px 13px;background:var(--sup3);border-bottom:1px solid var(--linha)}
+.painel-spin .quadro>header h3{font-size:13px;font-weight:600;letter-spacing:-.01em}
+.painel-spin .quadro>header span{display:block;font-size:11.5px;color:var(--tinta2);margin-top:1px}
+.painel-spin .quadro-corpo{padding:12px 13px;flex:1 1 auto;min-width:0}
+/* A rosca e a legenda dela convivem lado a lado enquanto couberem. */
+.quadro-rosca{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.quadro-rosca>div:first-child{flex:0 1 220px;min-width:170px}
+.quadro-rosca>.legenda-tipos{flex:1 1 180px}
+/* Os próximos passos: linha clicável, com o contador à direita. */
+.lista-passos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.lista-passos li{display:flex;align-items:center;gap:9px;padding:8px 4px;cursor:pointer;
+  border-bottom:1px solid var(--linha);font-size:13px}
+.lista-passos li:last-child{border-bottom:0}
+.lista-passos li:hover{background:color-mix(in srgb,var(--tinta) 5%,transparent)}
+.lista-passos li:focus-visible{outline:2px solid var(--s1);outline-offset:-2px;border-radius:6px}
+.lista-passos li>span:nth-child(2){flex:1 1 auto;min-width:0}
+.lista-passos li>var{font-style:normal;font-weight:700;font-size:16px;font-variant-numeric:tabular-nums}
+@media (max-width:820px){.painel-spin{grid-template-columns:1fr}}
 /* A amostra hachurada da legenda: a mesma marca que a barra usa para
    investimento. Sem ela, a legenda prometeria uma cor lisa e o gráfico
    entregaria outra coisa. */
