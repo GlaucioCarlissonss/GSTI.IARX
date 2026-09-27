@@ -2260,8 +2260,11 @@ function calcularProjetos(r) {
   // Por competência de entrega planejada — a mesma que a janela do bloco usa —,
   // para a meta poder ser medida mês a mês quando o recorte cruza vigências.
   const porMes = new Map();
-  for (const e of escopoEmpresas()) {
-    if (!naEmpresaDoBloco(e, r)) continue;
+  for (const e of escopoProjetos()) {
+    // O filtro de empresa do bloco não alcança o projeto do grupo: ele vale
+    // para todas, e escondê-lo ao filtrar por uma delas seria retirá-lo
+    // justamente de quem ele também rege.
+    if (!ehChaveDeGrupo(e) && !naEmpresaDoBloco(e, r)) continue;
     for (const p of (E.projetos.get(e) || [])) {
       if (!naFilialDoBloco(p.filial, r)) continue;
       for (const t of (p.tarefas || [])) {
@@ -2624,7 +2627,10 @@ function barrasComparativasHtml(antes, depois, corAntes, corDepois, teto, detalh
 
 async function viewIndicadores() {
   await Loja.configuracao();
-  for (const e of escopoEmpresas()) { await Loja.slaDa(e); await Loja.projetosDa(e); }
+  for (const e of escopoEmpresas()) await Loja.slaDa(e);
+  // O balde do GRUPO entra junto: um projeto do contratante inteiro não
+  // pertence a empresa nenhuma, e sem esta linha ele sumiria dos indicadores.
+  for (const e of escopoProjetos()) await Loja.projetosDa(e);
 
   const rf = recorteDoBloco('financeiro');
   const rs = recorteDoBloco('sla');
@@ -4112,7 +4118,7 @@ function ticketsDoRecorte(r) {
 /** `quais`: 'entregues' (com fim real) ou 'pendentes' (sem, e não cancelada). */
 function tarefasDoRecorte(r, quais) {
   const saida = [];
-  for (const e of escopoEmpresas()) {
+  for (const e of escopoProjetos()) {
     for (const p of (E.projetos.get(e) || [])) {
       if (!naFilialDoBloco(p.filial, r)) continue;
       for (const t of (p.tarefas || [])) {

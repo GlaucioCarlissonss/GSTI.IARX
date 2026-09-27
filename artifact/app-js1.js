@@ -363,7 +363,24 @@ function exigirEmpresaUnica() {
   }
   return e;
 }
-const nomeEmpresa = (id) => (E.empresas.find((e) => e.id === id) || {}).nome || id;
+/**
+ * PROJETO DO GRUPO: um projeto pode valer para o contratante inteiro.
+ *
+ * A virada de um ERP não é da HR PB nem da HM PB — é do grupo, e criar uma
+ * cópia por empresa produziria cinco projetos que precisam ser atualizados
+ * cinco vezes e que somam cinco onde há um.
+ *
+ * Ele mora num balde próprio, com a mesma forma dos outros (`projetos/<chave>`),
+ * e o que o distingue é a chave: `grupo__<cliente>`. Assim nenhum leitor
+ * precisa de um caminho especial — basta incluir a chave na lista de baldes.
+ */
+const PREFIXO_GRUPO = 'grupo__';
+const chaveDoGrupo = (cliente = E.clienteSel) => PREFIXO_GRUPO + cliente;
+const ehChaveDeGrupo = (chave) => String(chave || '').startsWith(PREFIXO_GRUPO);
+const NOME_DO_GRUPO = 'Todas as empresas';
+
+const nomeEmpresa = (id) => (ehChaveDeGrupo(id) ? NOME_DO_GRUPO
+  : (E.empresas.find((e) => e.id === id) || {}).nome || id);
 
 /** As matrizes do cliente aberto — o escopo de leitura de toda tela. */
 function matrizesDoClienteAtivo() {
@@ -815,6 +832,15 @@ function unicoPorNome(lista, chave = 'nome') {
   return [...vistos.values()].sort((a, b) => String(a[chave]).localeCompare(String(b[chave]), 'pt-BR'));
 }
 const filiaisDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(filiaisDa));
+
+/**
+ * Os baldes de projeto do recorte: o do GRUPO e os das empresas em foco.
+ *
+ * Existe porque projeto é a única entidade que pode não ter empresa. Todo
+ * lugar que enumera projetos usa esta lista — esquecer um faria o projeto do
+ * grupo sumir daquela tela sem nenhum aviso.
+ */
+const escopoProjetos = () => (E.clienteSel ? [chaveDoGrupo(), ...escopoEmpresas()] : escopoEmpresas());
 const tiposDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(tiposDa));
 const filasDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(filasDa));
 const cenariosDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(cenariosDa), 'chave');
@@ -924,6 +950,9 @@ function ordemDasMatrizes() {
 
 /** A cor desta matriz. Fora das oito primeiras, a cor de "Outras". */
 function corDaMatriz(empresaId) {
+  // O grupo não é uma matriz: dar-lhe uma das oito cores faria a legenda
+  // prometer uma empresa que não existe. Cinza, como toda vaga sem cor.
+  if (ehChaveDeGrupo(empresaId)) return 'var(--tinta3)';
   const i = ordemDasMatrizes().indexOf(empresaId);
   return i >= 0 && i < CORES_MATRIZ ? `var(--m${i + 1})` : 'var(--tinta3)';
 }

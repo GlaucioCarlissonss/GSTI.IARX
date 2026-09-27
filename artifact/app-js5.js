@@ -213,7 +213,8 @@ function pintarGantt(linhas, meses, larg, iHoje) {
             <strong>${esc(p.nome)}</strong>
             ${p.atrasado ? `<span class="tag crit">${p.meses} mês(es) de atraso</span>` : ''}
           </div>
-          <div style="font-size:11.5px;color:var(--tinta3);padding-left:26px">${p.filial ? esc(p.filial) : 'empresa'}
+          <div style="font-size:11.5px;color:var(--tinta3);padding-left:26px">${
+            ehChaveDeGrupo(p.empresa) ? esc(NOME_DO_GRUPO) : (p.filial ? esc(p.filial) : 'empresa')}
             · ${esc(STATUS_PROJ[p.status] || p.status)}${p.ordenadas.length ? ` · ${inteiro(p.ordenadas.length)} tarefa(s)` : ''}</div></td>
         <td class="faixa" colspan="${meses.length}">${marcaHoje}
           <div class="barra" style="left:${b.left}px;width:${b.width}px;${p.atrasado ? 'background:var(--crit)' : ''}"></div>
@@ -254,10 +255,11 @@ async function viewProjetos() {
   const emp = empresaAtiva();
   // Com várias empresas o quadro consolida; cada projeto carrega a sua.
   const carregados = [];
-  for (const e of escopoEmpresas()) {
+  for (const e of escopoProjetos()) {
     for (const p of await Loja.projetosDa(e)) carregados.push({ ...p, empresa: e });
   }
-  const projetos = carregados.filter((p) => passaNoFiltro(E.filiaisSel, p.filial || '(empresa)'));
+  const projetos = carregados.filter((p) => ehChaveDeGrupo(p.empresa)
+    || passaNoFiltro(E.filiaisSel, p.filial || '(empresa)'));
   const comAtraso = projetos.map((p) => ({ ...p, ...atrasoDe(p.fimPlanejado, p.fimReal, p.status) }));
   const tarefas = projetos.flatMap((p) => (p.tarefas||[]).map((t)=>({ ...t, projeto:p.nome })));
   const carga = {};
@@ -314,7 +316,9 @@ async function viewProjetos() {
         <th>Fim real</th><th>Situação</th><th class="n">Tarefas</th><th></th></tr></thead>
         <tbody>${comAtraso.map((p)=>`<tr data-id="${esc(p.id)}">
           <td><strong>${esc(p.nome)}</strong>${p.descricao?`<div style="color:var(--tinta3);font-size:12px">${esc(p.descricao)}</div>`:''}</td>
-          <td>${p.filial?esc(p.filial):'<em style="color:var(--tinta3)">empresa</em>'}</td>
+          <td>${ehChaveDeGrupo(p.empresa)
+            ? `<span class="tag">${esc(NOME_DO_GRUPO)}</span>`
+            : (p.filial ? esc(p.filial) : '<em style="color:var(--tinta3)">empresa</em>')}</td>
           <td>${mesExib(p.inicio)}</td><td>${mesExib(p.fimPlanejado)}</td><td>${p.fimReal?mesExib(p.fimReal):'—'}</td>
           <td>${p.atrasado?`<span class="tag crit">Atrasado (${p.meses}m)</span>`
             :`<span class="tag ${p.status==='concluido'?'bom':''}">${STATUS_PROJ[p.status]||p.status}</span>`}</td>
@@ -472,21 +476,35 @@ function mostrarRelatorioDeLote(relatorio, substantivo) {
 
 function formProjeto(existente) {
   const dono = (existente && existente.empresa) || (E.empresasSel.size ? [...E.empresasSel][0] : (E.empresas[0] || {}).id);
-  const fils = filiaisDa(dono), ed = !!existente;
+  const doGrupo = ehChaveDeGrupo(dono);
+  const fils = doGrupo ? [] : filiaisDa(dono), ed = !!existente;
   const v = existente || { nome:'', descricao:'', filial:null, inicio:mesHoje(), fimPlanejado:'', fimReal:null, status:'planejado' };
   abrirModal({
     titulo: ed ? 'Editar projeto' : 'Novo projeto',
     corpo: `
       <div class="campo"><label for="q-nome">Nome do projeto</label><input id="q-nome" name="nome" value="${esc(v.nome)}"></div>
       <div class="campo"><label for="q-desc">Descrição</label><textarea id="q-desc" name="descricao">${esc(v.descricao||'')}</textarea></div>
-      ${ed ? `
+      ${ed ? (doGrupo ? `
+      <div class="msg"><strong>Projeto do grupo inteiro.</strong> Ele vale para todas as empresas do
+        contratante e não tem filial — por isso não há unidade a escolher aqui.</div>
+      <div class="grade g3" style="margin-top:12px">`
+      : `
       <div class="grade g3">
         <div class="campo"><label for="q-fil">Filial</label><select id="q-fil" name="filial">
-          <option value="">— empresa —</option>${fils.map((f)=>`<option${f.nome===v.filial?' selected':''}>${esc(f.nome)}</option>`).join('')}</select></div>`
+          <option value="">— empresa —</option>${fils.map((f)=>`<option${f.nome===v.filial?' selected':''}>${esc(f.nome)}</option>`).join('')}</select></div>`)
       : `
       <div class="msg">Onde criar não depende do filtro do topo: escolha aqui as empresas e filiais. Marcando mais de
         uma, o projeto nasce replicado — um por unidade, com vínculo próprio.</div>
-      <div class="grade g2" style="margin-top:12px">
+      <!-- A ALTERNATIVA À RÉPLICA. Um projeto pode ser do contratante inteiro —
+           a virada de um ERP não é da HR PB nem da HM PB. Marcar as cinco
+           empresas criaria CINCO projetos, que precisam ser atualizados cinco
+           vezes e somam cinco onde há um. Marcando esta caixa nasce UM. -->
+      <label class="liga-medias" style="margin-top:12px">
+        <input type="checkbox" id="q-grupo">
+        <span>Projeto do <strong>grupo inteiro</strong> — vale para todas as empresas do contratante,
+          e nasce um só</span>
+      </label>
+      <div class="grade g2" style="margin-top:12px" id="q-unidades">
         <div class="campo"><label>Empresas</label><div data-sel="q-emp"></div></div>
         <div class="campo"><label>Filiais</label><div data-sel="q-fil-multi"></div></div>
       </div>
@@ -538,6 +556,16 @@ function formProjeto(existente) {
           },
         });
         pintarFiliais(); repintarResumo();
+        const caixaGrupo = raiz.querySelector('#q-grupo');
+        const blocoUnidades = raiz.querySelector('#q-unidades');
+        if (caixaGrupo) {
+          caixaGrupo.addEventListener('change', () => {
+            // Escondido, e não só ignorado: deixar os seletores à vista com o
+            // grupo marcado ofereceria uma escolha sem efeito.
+            blocoUnidades.hidden = caixaGrupo.checked;
+            repintarResumo();
+          });
+        }
       }
       raiz.querySelector('[data-s]').onclick = async (ev) => {
         ev.target.disabled = true; erro('');
@@ -563,6 +591,21 @@ function formProjeto(existente) {
             itens[i] = { ...itens[i], ...corpo };
             await Loja.gravarProjetos(dono, itens);
             await Loja.auditar({ acao:'atualizar', entidade:'projeto', id: existente.id, depois: corpo }, dono);
+            fechar(); render();
+            return;
+          }
+
+          const caixaGrupo = raiz.querySelector('#q-grupo');
+          if (caixaGrupo && caixaGrupo.checked) {
+            const balde = chaveDoGrupo();
+            const itens = [...(await Loja.projetosDa(balde))];
+            if (itens.some((x) => x.nome.toLowerCase() === nome.toLowerCase())) {
+              throw new Error('Já existe um projeto do grupo com este nome.');
+            }
+            itens.push({ id: novoId(), ...base, filial: null, escopo: 'grupo', tarefas: [], envolvidos: [] });
+            await Loja.gravarProjetos(balde, itens);
+            await Loja.auditar({ acao: 'criar', entidade: 'projeto', id: nome,
+              depois: { ...base, escopo: 'grupo' } }, balde);
             fechar(); render();
             return;
           }

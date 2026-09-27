@@ -1211,6 +1211,30 @@ engano. `calcularConsumo` continua existindo e é a fonte desse "antes". O
 equilíbrio mês a mês vinha pendurado no mesmo bloco e saiu junto: descrevia o
 mesmo consumo compartilhado, por outro ângulo.
 
+## Projeto do grupo inteiro
+
+Um projeto pode ser do **contratante**, e não de uma empresa: a virada de um ERP
+não é da HR PB nem da HM PB. Marcar as cinco empresas criaria **cinco** projetos
+— que precisam ser atualizados cinco vezes e somam cinco onde há um.
+
+No formulário, a caixa **"Projeto do grupo inteiro"** faz nascer **um só**. Com
+ela marcada os seletores de empresa e filial ficam escondidos: deixá-los à vista
+ofereceria uma escolha sem efeito.
+
+**Onde ele mora.** Num balde próprio, com a mesma forma dos outros
+(`projetos/<chave>`); o que o distingue é a chave, `grupo__<cliente>`. Assim
+nenhum leitor precisa de um caminho especial — basta incluir a chave na lista de
+baldes, que é o que `escopoProjetos()` faz. **É a lista única que todo leitor
+usa**: esquecer um faria o projeto do grupo sumir daquela tela sem nenhum aviso.
+
+**Os filtros não o escondem.** Nem o de filial na tela de Projetos, nem o de
+empresa no bloco dos Indicadores: ele vale para todas, e retirá-lo ao filtrar
+por uma seria tirá-lo justamente de quem ele também rege.
+
+**Ele não ganha cor de matriz.** Na faixa e na legenda aparece em cinza, como
+toda vaga sem cor: dar-lhe uma das oito cores faria a legenda prometer uma
+empresa que não existe.
+
 ## Projeto SpinCare: o Controle Único como cadastro próprio
 
 A planilha `Controle Único do Projeto SpinCare` é a fonte da verdade da
