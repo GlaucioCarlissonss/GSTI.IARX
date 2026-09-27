@@ -82,6 +82,8 @@ seguintes ficam em TDZ quando ele executa.
 | `app-js18.js` | clientes: a escolha do contratante, antes de qualquer tela |
 | `app-js19.js` | tela de seleção de cliente e boas-vindas |
 | `app-js20.js` | cadastros de leitura: metas, acordos de SLA, plano de redução, quem reconhece despesa, e a reclassificação de prioridade |
+| `app-js21.js` | o Projeto SpinCare: leitura do Controle Único, regras derivadas, cronograma da virada, painel dos Indicadores e a listagem fiel das 54 colunas |
+| `app-js22.js` | o motor de horas úteis do SLA (expediente, feriados, prazo e consumo), o semáforo de conformidade e o cadastro de feriados |
 | `app-js7.js` | abas, seletores globais e inicialização |
 
 ## Testar
@@ -339,6 +341,7 @@ Vinte e uma suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-projetos-visoes.cjs` | o bloco Projetos: ordem 2 na pilha, os filtros próprios (período, empresa, filial e status) independentes do Financeiro, o "Limpar filtros do bloco" que não colide com o do seletor de múltipla escolha, e as duas visões — Macro e Micro — com os indicadores de execução dentro da Micro |
 | `testar-spincare.cjs` | o Controle Único do Projeto SpinCare: as regras derivadas (pior status, avanço, peso, farol, critério de aceite), a normalização de nomes e datas, e — com `SPINCARE_XLSX` apontando para o arquivo do cliente — a carga real: 172 atividades sem perda (inclusive o ID repetido), 165 válidas, 127/16/22, e o diagnóstico do que falta |
 | `testar-projeto-grupo.cjs` | o projeto do grupo inteiro: nasce um e não uma cópia por empresa, aparece rotulado como "Todas as empresas", sobrevive ao filtro de filial e soma nos indicadores |
+| `testar-horas-uteis.cjs` | o motor de horas úteis: a janela do contrato (sexta de 9 h), chamado aberto sexta 17h30, atravessando fim de semana e feriado, aberto fora do expediente, o inverso fechando com o direto, dado torto sem número absurdo, o semáforo, e o cadastro de feriados ligando no cálculo sem parâmetro |
 | `testar-spincare-painel.cjs` | o painel do SpinCare nos Indicadores: os quatro indicadores, a rosca sem fatia de valor zero, as barras por onda, a aritmética (165 válidas, partes somando 100%, 81,2% e 77,0% por unidade como no Status Report), o drill-down ordenado e os filtros do Controle Único |
 | `testar-objetivo03.cjs` | o Objetivo 03: só reconhecida entra, as três faixas são disjuntas e somam o total, o teto do mês é a soma dos vigentes, mês sem teto não recebe veredicto, e a situação vem escrita |
 | `testar-metas-teto.cjs` | o tipo de meta no Financeiro e o teto do Objetivo 03: o campo de R$ só aparece nele, zero e vazio são recusados com mensagem que nomeia o campo, dois tetos vigentes no mesmo contexto são barrados, e o teto não vira alvo percentual dos outros objetivos |

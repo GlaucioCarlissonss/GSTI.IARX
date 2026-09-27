@@ -2294,9 +2294,90 @@ O prazo da origem **não é descartado**: fica em `tickets_sla.prazo_origem`, e 
 ficha do chamado mostra os dois, dizendo de qual deles o prazo vigente saiu.
 Sem isso, quem contesta um "fora do SLA" não teria contra o que comparar.
 
-São **horas corridas**, e não horas úteis: não há calendário de expediente
-cadastrado, e inventar um (segunda a sexta, 9 às 18) criaria um prazo que
-nenhum contrato assinou.
+O prazo do acordo ainda é contado em **horas corridas**. O calendário de
+expediente passou a existir (ver *O relógio do SLA*, abaixo), mas trocar a
+conta do prazo é mudança de número em chamado já medido, e vai na entrega que
+trata da conformidade — não como efeito colateral de cadastrar feriado.
+
+---
+
+## O relógio do SLA: horas úteis, expediente e feriados
+
+Prazo de SLA não corre em horas de relógio: corre dentro do expediente. Um
+chamado aberto na **sexta às 17h30** com 4 horas de prazo não vence às 21h30 de
+sexta — vence na **segunda ao meio-dia**, porque ninguém trabalhou no meio.
+Medir em horas corridas reprova a equipe por horas em que ela não estava.
+
+A janela é a do contrato:
+
+| dia | expediente | horas |
+| --- | --- | --- |
+| segunda a quinta | 08:00 – 18:00 | 10 |
+| sexta | 08:00 – **17:00** | **9** |
+| sábado, domingo, feriado | — | 0 |
+
+A sexta curta é o detalhe que mais se perde numa reimplementação, e é o que faz
+a semana valer **49 h**, e não 50.
+
+**Chamado aberto fora do expediente não começa a contar ali.** Abrir às 22h de
+terça e abrir às 8h de quarta dão exatamente o mesmo prazo — nem se perde tempo
+por abrir de madrugada, nem se ganha.
+
+Três decisões que o motor toma, e por quê:
+
+- **Fim antes do início devolve 0**, nunca um número negativo. Data invertida é
+  erro de dado, e um consumo negativo se espalharia pela conformidade inteira
+  disfarçado de "dentro do prazo".
+- **A data é lida no fuso local**, não em UTC. `toISOString()` daria o dia em
+  UTC, e no Brasil (UTC−3) um chamado das 22h de segunda viraria terça,
+  deslocando o expediente de um dia.
+- **A varredura tem teto** (3.660 dias, ~10 anos). Pontas absurdamente
+  distantes por erro de dado param o laço em vez de travar a tela.
+
+O inverso (`prazoEmHorasUteis`) e o direto (`horasUteis`) fecham um no outro:
+medir o prazo devolvido dá exatamente as horas pedidas. Se divergissem, a tela
+mostraria um prazo que o próprio sistema não conseguiria reproduzir ao medir o
+consumo.
+
+### Feriados
+
+Os feriados são do **cliente**, não da unidade, e ficam em
+Sistema › Cadastro › Feriados. Feriado municipal de uma filial não tira o
+expediente da matriz em outro estado — mas o cadastro por unidade multiplicaria
+por dezessete uma lista que é quase sempre a mesma. Quem precisar de um feriado
+local o inclui com a descrição dizendo de onde é.
+
+O cadastro recusa **data inexistente** (31/02 casa com a máscara e não existe no
+calendário; sem a conferência entraria como 03/03 e tiraria um dia útil de
+verdade), **descrição vazia** (sem ela, ninguém sabe depois por que aquele dia
+saiu do cálculo) e **o mesmo dia duas vezes**, nomeando o feriado que já existe.
+
+Um feriado pode ser **desconsiderado** em vez de apagado: ele continua na lista
+e volta a contar como dia útil. É como se corrige um cadastro errado sem perder
+o registro de que ele existiu.
+
+A tela diz em que dia da semana cada feriado cai, e avisa quando ele cai num
+sábado ou domingo — nesse caso não tira hora útil nenhuma, e sem o aviso alguém
+o cadastraria esperando um efeito que não vem.
+
+### O semáforo da conformidade
+
+Conformidade = **resolvidos dentro do SLA ÷ total de resolvidos × 100**.
+
+| faixa | leitura |
+| --- | --- |
+| ≥ 90% | Excelente |
+| 70 – 89,9% | Bom (atenção necessária) |
+| < 70% | Crítico (requer ação imediata) |
+
+A faixa do meio existe porque "abaixo da meta" não distingue 89% de 40%, e as
+duas situações pedem reações diferentes. **A borda pertence à faixa de cima**:
+90% é excelente, 89,9% já é atenção. Sem base — nenhum chamado resolvido no
+recorte — não há faixa: o selo diz "sem base", em vez de mostrar 0% e sugerir
+um desempenho péssimo onde não houve medição.
+
+O selo carrega **símbolo e palavra** além da cor (✓ excelente, ! atenção,
+✗ crítico): a cor nunca é o único canal.
 
 ### Vigência: quem escolhe o acordo é a abertura do chamado
 
