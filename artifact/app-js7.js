@@ -13,7 +13,7 @@ const MODULOS_NAV = [
   // gestor procurar SLA dentro de Financeiro.
   { id:'indicadores', rotulo:'Indicadores Gerais',  abas:['indicadores_gerais'] },
   { id:'financeiro', rotulo:'Controle Financeiro',  abas:['painel', 'lancamentos', 'relatorio', 'conferencia'] },
-  { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos'] },
+  { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos', 'spincare'] },
   { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados', 'OSTICK', 'BITRIX24', 'integracoes'] },
   { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'clientes', 'cadastros', 'metas', 'slas', 'reducao', 'reconhecedores', 'acessos', 'auditoria'] },
 ];
@@ -25,6 +25,7 @@ const ABAS = [
   { id:'relatorio',   rotulo:'Relatório',    view: viewRelatorio },
   { id:'conferencia', rotulo:'Conferência',  view: viewConferencia },
   { id:'projetos',    rotulo:'Projetos',     view: viewProjetos },
+  { id:'spincare',    rotulo:'Projeto SpinCare', view: viewSpincare },
   { id:'sla',         rotulo:'Indicadores',  view: () => viewSla('indicadores') },
   { id:'chamados',    rotulo:'Chamados',     view: () => viewSla('chamados') },
   // As duas entradas por sistema de origem são a MESMA tela de chamados, com a
@@ -48,7 +49,8 @@ const ABAS = [
 // olham a unidade em foco, trocável na própria tela; Clientes e unidades,
 // Usuários e acessos e Auditoria olham o cliente inteiro. Um selo único no
 // grupo seria impreciso — por isso o ponto vai por aba, só nestas três.
-const ESCOPO_CLIENTE = new Set(['clientes', 'metas', 'reducao', 'reconhecedores', 'acessos', 'auditoria']);
+const ESCOPO_CLIENTE = new Set(['clientes', 'metas', 'reducao', 'reconhecedores', 'acessos',
+  'auditoria', 'spincare']);
 
 /** Módulo a que a aba pertence. */
 const moduloDaAba = (aba) => MODULOS_NAV.find((m) => m.abas.includes(aba)) || MODULOS_NAV[0];
@@ -161,6 +163,10 @@ const FILTROS_DA_TELA = {
   relatorio:   { empresa: true, filial: true, base: true },
   conferencia: { empresa: true, filial: true, base: true },
   projetos:    { empresa: true, filial: true, base: false },
+  // O Controle Único é do PROJETO, que é do cliente: não há unidade em
+  // foco a escolher, e oferecer o seletor sugeriria um recorte que a tela
+  // não tem — as unidades são colunas dentro de cada atividade.
+  spincare:    {},
   sla:         { empresa: true, filial: true, base: false },
   chamados:    { empresa: true, filial: true, base: false },
   OSTICK:      { empresa: true, filial: true, base: false },

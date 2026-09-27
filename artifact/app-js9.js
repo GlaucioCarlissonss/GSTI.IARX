@@ -215,6 +215,44 @@ const desescapar = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(
 const colunaDe = (ref) => { const m = /^([A-Z]+)/.exec(ref); if (!m) return 0;
   let n = 0; for (const ch of m[1]) n = n * 26 + (ch.charCodeAt(0) - 64); return n - 1; };
 
+/**
+ * A GRADE CRUA de cada aba: linhas e células, sem supor onde está o cabeçalho.
+ *
+ * `lerXlsx` toma a primeira linha como cabeçalho, o que serve para os modelos
+ * do sistema. A planilha de controle do projeto SpinCare tem a primeira linha
+ * ocupada pelos rótulos de onda e o cabeçalho só na segunda — ler por ela
+ * devolveria colunas chamadas "ONDA 1" e perderia as 54 de verdade.
+ */
+async function gradeDoXlsx(bytes) {
+  const partes = await abrirZip(bytes);
+  const texto = (n) => partes.has(n) ? new TextDecoder().decode(partes.get(n)) : '';
+
+  const compartilhadas = [...texto('xl/sharedStrings.xml').matchAll(/<si>([\s\S]*?)<\/si>/g)]
+    .map((m) => desescapar([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((x) => x[1]).join('')));
+
+  const rels = new Map([...texto('xl/_rels/workbook.xml.rels')
+    .matchAll(/<Relationship\s[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g)].map((m) => [m[1], m[2].replace(/^\/?xl\//, '')]));
+  const folhas = [...texto('xl/workbook.xml').matchAll(/<sheet\s[^>]*?name="([^"]*)"[^>]*?r:id="([^"]+)"/g)]
+    .map((m) => ({ nome: desescapar(m[1]), caminho: 'xl/' + (rels.get(m[2]) || '') }));
+  if (!folhas.length) {
+    for (const n of partes.keys()) if (/^xl\/worksheets\/sheet\d+\.xml$/.test(n)) folhas.push({ nome: n, caminho: n });
+  }
+
+  return folhas.map(({ nome, caminho }) => {
+    const xml = texto(caminho);
+    const linhasXml = [...xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)].map((m) => m[1]);
+    const grade = linhasXml.map((conteudo) => {
+      const celulas = [];
+      for (const m of conteudo.matchAll(/<c\s([^>]*?)(\/>|>([\s\S]*?)<\/c>)/g)) {
+        const ref = /r="([A-Z]+\d+)"/.exec(m[1]);
+        celulas[ref ? colunaDe(ref[1]) : celulas.length] = textoCelula(m[1] + '>' + (m[3] || ''), compartilhadas);
+      }
+      return celulas;
+    });
+    return { nome, grade };
+  });
+}
+
 async function lerXlsx(bytes) {
   const partes = await abrirZip(bytes);
   const texto = (n) => partes.has(n) ? new TextDecoder().decode(partes.get(n)) : '';

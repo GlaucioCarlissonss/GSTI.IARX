@@ -1211,6 +1211,70 @@ engano. `calcularConsumo` continua existindo e é a fonte desse "antes". O
 equilíbrio mês a mês vinha pendurado no mesmo bloco e saiu junto: descrevia o
 mesmo consumo compartilhado, por outro ângulo.
 
+## Projeto SpinCare: o Controle Único como cadastro próprio
+
+A planilha `Controle Único do Projeto SpinCare` é a fonte da verdade da
+implantação, e a estrutura dela não cabe no modelo projeto → tarefa → filial:
+**a linha é uma ATIVIDADE**, e cada unidade acompanhada tem uma **coluna de
+situação** dentro dela. Uma atividade concluída em três unidades e não iniciada
+em outras três é **uma** linha, não seis — forçá-la no modelo antigo criaria
+172 × 6 tarefas e faria a contagem de atividades, que é o número que vai à
+diretoria, deixar de bater com a planilha.
+
+### O que se guarda é a fonte, nunca o derivado
+
+A planilha traz oito colunas calculadas. Nenhuma é gravada — todas são
+recalculadas, pelo mesmo motivo que "fora do SLA" nunca é gravado: um valor
+guardado pode divergir da regra que diz produzi-lo.
+
+| derivado | regra |
+| --- | --- |
+| Critério de Aceite | o específico quando existe; senão o padrão do tipo de entrega (conferido: 172 de 172) |
+| Status Consolidado | o **pior** entre as unidades: Bloqueado › Não iniciado › Em andamento › Concluído |
+| % Avanço | Concluído 1 · Em andamento 0,5 · Bloqueado 0,25 · resto 0 |
+| Peso | GO-LIVE 3 · ESTABILIZAÇÃO 2 · EVOLUÇÃO 1 |
+| Avanço Ponderado | peso × avanço |
+| Farol | VERMELHO bloqueado ou vencido em aberto; VERDE concluído; senão AMARELO |
+| Dias p/ Prazo | prazo repactuado, ou data-base da onda + deslocamento da criticidade, menos **hoje** |
+
+**A data de referência é a de hoje, não a congelada na planilha.** Um painel que
+mede atraso contra uma data antiga envelhece em silêncio.
+
+**Cancelada e criticidade `N/A` ficam fora do universo válido** — é o que faz as
+172 linhas virarem 165 válidas, e é de onde vem o único número que o Status
+Report do cliente erra.
+
+### O ID da planilha não é único
+
+`PRE-11` nomeia **duas atividades diferentes** ("Cadastro de Usuário Externos" e
+"…Internos"). A identidade interna é **ID + atividade**: mesmo ID com atividade
+diferente são duas, e a segunda ganha `#2` na chave mantendo o ID na tela; mesmo
+ID com a mesma atividade é linha repetida de fato, e aí a segunda é recusada —
+das duas, não há como saber qual é a boa.
+
+### Normalização de nomes
+
+A coluna Executante traz variantes da mesma pessoa. A grafia que vale é a da
+coluna **Líder do Grupo**, que é a cadastrada na aba Parâmetros — escolher por
+frequência faria "Rodrigo Sideaux" (18 linhas) vencer a grafia do cadastro. A
+célula pode trazer **mais de uma pessoa**, separadas por quebra de linha, e
+`-` é ausência escrita de propósito, contada junto com o branco.
+
+### Nada é inventado; o vazio é contado
+
+Campo vazio continua vazio e entra no diagnóstico da carga: 19 atividades sem
+responsável (17 em branco e 2 com `-`), 18 sem caminho no sistema, 7 com
+criticidade `N/A`. É a diferença entre uma carga que informa o que falta e uma
+que preenche o buraco com um palpite indistinguível do dado real.
+
+### As ondas 4 e 5 seguem o cronograma, não a planilha
+
+A aba Parâmetros troca as listas de dezembro e janeiro em relação ao cronograma
+apresentado. Vale o **cronograma**, que é o documento levado à diretoria. As
+unidades das ondas 3 a 5 ainda não têm coluna na planilha: elas aparecem como
+**pendentes**, e não como não iniciadas — a planilha não diz que não começaram,
+ela ainda não pergunta.
+
 ## Bloco Projetos: as duas visões da implantação
 
 O bloco fica na **ordem 2** da pilha dos Indicadores Gerais — Financeiro,

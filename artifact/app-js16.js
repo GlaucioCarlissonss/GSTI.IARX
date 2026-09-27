@@ -17,7 +17,7 @@
 const MODULOS_ACESSO = [
   { id:'financeiro',        rotulo:'Financeiro',        abas:['painel','lancamentos','conferencia'] },
   { id:'relatorios',        rotulo:'Relatórios',        abas:['relatorio', 'indicadores_gerais'] },
-  { id:'projetos',          rotulo:'Projetos',          abas:['projetos'] },
+  { id:'projetos',          rotulo:'Projetos',          abas:['projetos','spincare'] },
   { id:'suporte_ostick',    rotulo:'Suporte (OStick)',  abas:['sla','chamados','OSTICK'] },
   { id:'suporte_bitrix24',  rotulo:'Suporte (Bitrix24)',abas:['BITRIX24'] },
   { id:'integracoes',       rotulo:'Integrações',       abas:['integracoes'] },

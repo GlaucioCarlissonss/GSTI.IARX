@@ -65,6 +65,8 @@ const E = {
   slasCad: [],              // acordos de SLA (horas por tópico e prioridade), por unidade
   reducao: [],              // plano de redução: despesa escolhida e valor-alvo, por cliente
   reconhecedores: [],       // quem, na origem, lança despesa que já chega conferida
+  spincare: [],             // atividades do Controle Único do Projeto SpinCare, por cliente
+  spincareRelatorio: null,  // o relatório da última carga, para sobreviver ao repintar
   aba: 'painel',
   lanc: new Map(),          // 'empresa__comp' -> {itens:[...]}
   mesesCarregados: new Set(),
@@ -411,9 +413,10 @@ Object.defineProperty(E, 'filiaisSel', {
 const Loja = {
   async catalogos() {
     const ler = async (p) => { const s = await E.db.doc('catalogo/' + p).get(); return s.exists ? (s.data().itens || []) : []; };
-    const [empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao, reconhecedores] = await Promise.all(
-      ['empresas','filiais','tipos','filas','cenarios','metas','slasCad','reducao','reconhecedores'].map(ler));
-    Object.assign(E, { empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao, reconhecedores });
+    const [empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao, reconhecedores, spincare] =
+      await Promise.all(['empresas','filiais','tipos','filas','cenarios','metas','slasCad','reducao',
+        'reconhecedores','spincare'].map(ler));
+    Object.assign(E, { empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao, reconhecedores, spincare });
   },
   async lancDaEmpresa(empresa) {
     const snap = await E.db.collection('lanc').where('empresa','==',empresa).get();
