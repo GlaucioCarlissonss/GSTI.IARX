@@ -35,9 +35,15 @@ const { irPara } = require('./ajuda-testes.cjs');
     await Loja.slaDa(emp);
     const itens = [
       // Fechou 3h depois: dentro de um acordo de 24h, fora de um de 1h.
+      //
+      // TERÇA-FEIRA, de propósito. O prazo passou a ser contado em horas
+      // ÚTEIS, e a data original desta base — 10/02/2024 — é um sábado: o
+      // relógio só começaria na segunda, o chamado fecharia antes de vencer e
+      // a suíte deixaria de provar o que foi escrita para provar. O caso do
+      // fim de semana é conferido à parte, logo abaixo.
       { id: 'ac1', filial: null, fila: 'Infraestrutura', topico: 'Rede', total: 1, dentro: 1,
         prioridade: 'high', status: 'Resolvido',
-        criadoEm: comp + '-10T09:00:00Z', fechadoEm: comp + '-10T12:00:00Z', prazoEm: null },
+        criadoEm: comp + '-13T09:00:00Z', fechadoEm: comp + '-13T12:00:00Z', prazoEm: null },
       // Sem prioridade: o acordo não tem como alcançá-lo.
       { id: 'ac2', filial: null, fila: 'Infraestrutura', topico: 'Rede', total: 1, dentro: 1,
         prioridade: null, status: 'Resolvido',
@@ -64,12 +70,20 @@ const { irPara } = require('./ajuda-testes.cjs');
     return {
       antes: horasDoAcordo(emp, 'high', null, comp + '-05T09:00:00Z'),
       depois: horasDoAcordo(emp, 'high', null, comp + '-10T09:00:00Z'),
-      prazo: prazoDoAcordo(emp, comp + '-10T09:00:00Z', 'high', null),
+      prazo: prazoDoAcordo(emp, comp + '-13T09:00:00Z', 'high', null),
+      // 10/02/2024 é um SÁBADO: o relógio do SLA não corre, e o prazo de 1 h
+      // cai na abertura da segunda.
+      noSabado: prazoDoAcordo(emp, comp + '-10T09:00:00Z', 'high', null),
     };
   }, COMP);
   ok('chamado aberto antes da troca usa o acordo antigo', vigencia.antes === 24, String(vigencia.antes));
   ok('chamado aberto depois usa o novo', vigencia.depois === 1, String(vigencia.depois));
-  ok('e o prazo sai de abertura + horas', vigencia.prazo === '2024-02-10T10:00:00.000Z', String(vigencia.prazo));
+  ok('e o prazo sai de abertura + horas ÚTEIS', vigencia.prazo === '2024-02-13T10:00:00.000Z',
+    String(vigencia.prazo));
+  // A mudança de regra, escrita: em horas corridas este prazo seria sábado às
+  // 10h, e o chamado seria julgado por uma hora em que ninguém trabalhou.
+  ok('aberto no sábado, o prazo de 1 h vence segunda às 9h',
+    vigencia.noSabado === '2024-02-12T09:00:00.000Z', String(vigencia.noSabado));
 
   // ----------------------------------------------------------- a tela
   console.log('\nTELA — a vigência aparece, e o bloco de reaplicação existe');
@@ -127,7 +141,7 @@ const { irPara } = require('./ajuda-testes.cjs');
     };
   }, COMP);
   ok('a tela confirma a aplicação', /Acordo aplicado/i.test(aplicado.texto));
-  ok('o chamado ganhou o prazo do acordo', aplicado.prazo === '2024-02-10T10:00:00.000Z', String(aplicado.prazo));
+  ok('o chamado ganhou o prazo do acordo', aplicado.prazo === '2024-02-13T10:00:00.000Z', String(aplicado.prazo));
   ok('e passou a contar FORA', aplicado.dentro === 0, String(aplicado.dentro));
   ok('a ficha sabe que o prazo é nosso', aplicado.doAcordo === true, String(aplicado.doAcordo));
   ok('o chamado sem prioridade ficou intocado',
@@ -178,7 +192,7 @@ const { irPara } = require('./ajuda-testes.cjs');
     return { antes: antes.prazoEm, depois: medida && medida.prazoEm, dentro: medida && medida.dentro };
   }, COMP);
   ok('o prazo encurta com a prioridade nova',
-    reclass.depois === '2024-02-10T09:30:00.000Z', String(reclass.depois));
+    reclass.depois === '2024-02-13T09:30:00.000Z', String(reclass.depois));
   ok('e o chamado segue fora, agora por 2h30 de atraso', reclass.dentro === 0, String(reclass.dentro));
 
   console.log(`\n=== falhas: ${falhas.length ? falhas.join(' | ') : 'nenhuma'} ===`);

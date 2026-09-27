@@ -2641,6 +2641,7 @@ async function viewIndicadores() {
   // bloco que as exibia soltas.
   const pendente = calcularPorReconhecer(rf);
   const sla = calcularSla(rs);
+  const conf = conformidadeSegmentada(rs, E.slaSeg.conformidade);
   const proj = calcularProjetos(rp);
   const rateio = calcularRateio(rf);
   const adequacao = calcularAdequacao(rf);
@@ -3212,7 +3213,8 @@ async function viewIndicadores() {
       cor: sla.total === 0 ? null : sla.atinge ? 'var(--bomtxt)' : 'var(--crit)',
       apoio: sla.total
         ? `${sla.atinge ? '✓ atinge' : '✗ abaixo d'}a meta de ${sla.meta}% · ${
-            sla.distancia > 0 ? '+' : ''}${sla.distancia.toLocaleString('pt-BR')} p.p.`
+            sla.distancia > 0 ? '+' : ''}${sla.distancia.toLocaleString('pt-BR')} p.p.
+           · semáforo do contrato: ${seloConformidadeHtml(sla.pct)}`
         : 'sem chamado no recorte',
       corpo: `${metaHtml(sla.leitura)}
         ${faixaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
@@ -3240,6 +3242,25 @@ async function viewIndicadores() {
       nota: `<strong>Vencido</strong> atravessa aberto e em andamento — é o chamado cujo prazo passou e ninguém
         resolveu. Por isso não soma com os outros três.${sla.semStatus > 0
           ? ` ${inteiro(sla.semStatus)} atendimento(s) vêm de registro agregado do mês, que não tem situação.` : ''}`,
+    })}
+
+    ${blocoIndicador({
+      chave: 'sla-painel',
+      titulo: 'Visão Geral (Dashboard)',
+      descricao: 'Conformidade mês a mês, volume de chamados e situação da fila — as três '
+        + 'leituras do mesmo universo, numa visão só. Cada uma segmenta por fila, criticidade '
+        + 'ou nível, e o clique abre os chamados que formaram o número.',
+      valor: conf.resumo.resolvidos
+        ? seloConformidadeHtml(conf.resumo.pct)
+        : '<span class="nota">sem resolvido no recorte</span>',
+      apoio: conf.resumo.resolvidos
+        ? `${inteiro(conf.resumo.dentro)} de ${inteiro(conf.resumo.resolvidos)} resolvido(s) dentro do prazo`
+        : 'a conformidade só se mede sobre chamado resolvido',
+      corpo: painelSlaHtml(),
+      nota: `A conformidade é <strong>resolvidos dentro do SLA ÷ total de resolvidos</strong>, com o tempo
+        medido em <strong>horas úteis</strong>. O chamado ainda aberto fica fora da conta — ele não tem
+        tempo de resolução —, e aparece como <strong>vencido</strong> quando o prazo já passou:
+        ${inteiro(conf.resumo.vencidos)} no recorte.`,
     })}
     </section>`;
 
@@ -3532,6 +3553,8 @@ async function viewIndicadores() {
   ligarCronograma(crono);
   const alvoTermometro = el('#i-termometro');
   if (alvoTermometro) termometro(alvoTermometro, sla.total ? sla.pct : 0, sla.meta, 'Atendidos dentro do SLA');
+  desenharPainelSla(rs);
+  ligarPainelSla(rs);
 
   // ----------------------------------------------------------- ligações
   for (const bloco of BLOCOS_IND) {
@@ -3705,6 +3728,13 @@ async function viewIndicadores() {
         titulo: 'Despesas por reconhecer', tipo: 'indicadores',
         itens: linhasPendentes(), esperado: pendente.valor,
       }),
+    },
+    'sla-painel': {
+      dica: 'Conformidade em horas úteis: resolvidos dentro do prazo sobre o total de resolvidos. '
+        + 'Clique para ver todos os chamados do recorte, do que mais demorou para o que menos.',
+      abrir: () => abrirChamadosSla('Chamados do recorte — SLA',
+        chamadosMedidos(rs),
+        'Todos os chamados individuais do recorte. A conformidade se mede só sobre os resolvidos.'),
     },
     'sla-conformidade': {
       dica: `Atendidos dentro do prazo sobre o total de atendimentos do recorte, contra a meta de ${sla.meta}%. `
@@ -3989,9 +4019,13 @@ function quebraDeSla(registros, meta = META_SLA) {
 /** Dentro ou fora da meta, com o percentual — o canal que não é só a cor. */
 function rotuloConformidade(x) {
   if (!x.total) return '<span class="tag">sem chamado</span>';
-  return x.atinge
+  // Duas leituras, e elas respondem perguntas diferentes: "atinge a meta
+  // cadastrada?" e "em que faixa do contrato este percentual cai?". Mostrar só
+  // a primeira esconderia que 71% e 89% pedem reações diferentes.
+  const alvo = x.atinge
     ? `<span class="dentro">✓ ${x.pct.toLocaleString('pt-BR')}% · dentro</span>`
     : `<span class="fora">✗ ${x.pct.toLocaleString('pt-BR')}% · fora (${inteiro(x.fora)} chamado(s))</span>`;
+  return `${alvo} ${seloConformidadeHtml(x.pct)}`;
 }
 
 /**

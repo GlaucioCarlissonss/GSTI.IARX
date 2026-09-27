@@ -2418,6 +2418,87 @@ uma única opção.
 
 ---
 
+## Conformidade de SLA: a conta e os dashboards
+
+    conformidade = resolvidos dentro do SLA ÷ TOTAL DE RESOLVIDOS × 100
+
+**O denominador são os resolvidos**, e não todos os chamados. O chamado ainda
+aberto não tem tempo de resolução: contá-lo diluiria o percentual com casos que
+ainda podem terminar dentro do prazo, e contá-lo como "fora" condenaria um
+chamado de ontem. Ele aparece à parte, como **vencido** quando o prazo já
+passou — que é a leitura que pede ação.
+
+O tempo é medido em **horas úteis** e comparado com as horas do acordo
+cadastrado para a criticidade e o tópico do chamado. Quando não há acordo
+vigente, vale a data-limite que a origem informou; quando não há nem isso, vale
+o que a base trouxe. A ordem é sempre essa, e a tela de detalhamento mostra as
+horas úteis consumidas ao lado das horas do acordo, para a conta ser conferível
+linha a linha.
+
+**Nada disso é gravado.** Consumo e dentro/fora são derivados a cada leitura,
+pela mesma razão que "fora do SLA" nunca foi gravado: um derivado guardado
+começa a discordar da conta na primeira vez que a regra muda.
+
+### Os três dashboards
+
+No bloco SLA dos Indicadores Gerais, numa visão só — eles são leituras do mesmo
+universo, e compará-los em acordeões separados exigiria abrir três caixas e
+rolar entre elas.
+
+| dashboard | o que mostra |
+| --- | --- |
+| **Conformidade de SLA ao Longo do Tempo** | o percentual mês a mês, com a meta de 80% como linha tracejada (série constante, para entrar na escala do eixo) |
+| **Volume de Tickets ao Longo do Tempo** | Total, Resolvidos e Abertos por mês |
+| **Distribuição por Status** | a rosca das situações do recorte |
+
+Os três têm **seletor de segmentação** — Geral, Por fila, Por criticidade, Por
+nível —, que troca as séries **sem recarregar a página**. As séries saem do que
+existe na base, e não de uma lista fixa: na base do cliente as filas são
+*Dados*, *Fora de TI*, *Infraestrutura*, *Outros* e *Sistema*.
+
+Duas decisões de desenho que valem registrar:
+
+- **No volume, segmentar dá uma série por grupo**, com o volume dele — manter
+  Total/Resolvidos/Abertos por fila daria quinze linhas ilegíveis.
+- **Na rosca, o seletor RECORTA em vez de multiplicar**: cinco roscas lado a
+  lado não se comparam de relance, e a pergunta é "como está *esta* fila".
+
+Clicar num mês da linha, ou numa fatia da rosca, abre os chamados que formaram
+o número — **do maior tempo de resolução para o menor**, com fila, criticidade,
+prazo, horas do acordo, horas úteis consumidas e situação. O que não tem tempo
+medido vai para o fim: ele não tem posição nessa ordem.
+
+> **Cuidado recorrente:** o cartão inteiro é gatilho de drill-down, e os
+> gráficos e seletores moram dentro dele. Todo clique interno barra a
+> propagação — sem isso, clicar num mês abriria duas telas empilhadas.
+
+### O que mudou com as horas úteis — medido na base de teste
+
+| | antes (horas corridas) | depois (horas úteis) |
+| --- | --- | --- |
+| conformidade do período | 65,4% sobre 10.116 chamados | **67,1%** sobre 9.811 **resolvidos** |
+| chamados fora da conta | nenhum | 305 em aberto, dos quais 305 vencidos |
+| chamados que atravessam fim de semana ou feriado | contados por inteiro | **4.772**, com o tempo fora do expediente descontado |
+
+O percentual sobe 1,7 ponto, e por dois motivos somados: o denominador deixou de
+incluir os chamados em aberto, e 4.772 chamados deixaram de ser cobrados por
+horas em que ninguém trabalhou.
+
+Por fila, a leitura que a média escondia:
+
+| fila | conformidade | resolvidos |
+| --- | --- | --- |
+| Outros | 72,4% | 1.027 |
+| Sistema | 67,9% | 3.070 |
+| Infraestrutura | 66,8% | 5.222 |
+| Dados | 57,6% | 337 |
+| Fora de TI | 45,2% | 155 |
+
+Nenhuma delas atinge os 90% da faixa verde, e *Fora de TI* e *Dados* estão em
+**crítico** — o que a conformidade geral de 67,1% não distinguia.
+
+---
+
 ### O semáforo da conformidade
 
 Conformidade = **resolvidos dentro do SLA ÷ total de resolvidos × 100**.

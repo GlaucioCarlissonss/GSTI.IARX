@@ -41,7 +41,11 @@ const { irPara } = require('./ajuda-testes.cjs');
         [...g.querySelectorAll('section.bloco-indicador')].every((s) => !!s.querySelector('.bloco-dobra'))),
     };
   });
-  ok('existem os dois grupos', grupos.nomes.join(' · ') === 'Objetivos · Faróis', grupos.nomes.join(' · '));
+  // Os dois primeiros da PÁGINA, e não os dois únicos: o módulo Projetos
+  // trouxe as visões Macro e Micro, que também são grupos. Exigir a lista
+  // inteira fazia esta suíte quebrar a cada grupo novo em outro módulo.
+  ok('existem os dois grupos do Financeiro',
+    grupos.nomes.slice(0, 2).join(' · ') === 'Objetivos · Faróis', grupos.nomes.join(' · '));
   ok('dentro do módulo Financeiro', grupos.dentroDoModulo);
   ok('os três objetivos estão em "Objetivos"',
     JSON.stringify(grupos.objetivos) === JSON.stringify(['plano-reducao', 'rateio', 'teto-gasto']),

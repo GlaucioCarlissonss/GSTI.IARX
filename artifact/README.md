@@ -83,7 +83,7 @@ seguintes ficam em TDZ quando ele executa.
 | `app-js19.js` | tela de seleção de cliente e boas-vindas |
 | `app-js20.js` | cadastros de leitura: metas, acordos de SLA, plano de redução, quem reconhece despesa, e a reclassificação de prioridade |
 | `app-js21.js` | o Projeto SpinCare: leitura do Controle Único, regras derivadas, cronograma da virada, painel dos Indicadores e a listagem fiel das 54 colunas |
-| `app-js22.js` | o motor de horas úteis do SLA (expediente, feriados, prazo e consumo), o semáforo de conformidade, o cadastro de feriados e a criticidade padrão dos chamados importados |
+| `app-js22.js` | o módulo SLA: o motor de horas úteis (expediente, feriados, prazo e consumo), o semáforo de conformidade, o cadastro de feriados, a criticidade padrão dos importados e os três dashboards segmentáveis do bloco SLA |
 | `app-js7.js` | abas, seletores globais e inicialização |
 
 ## Testar
@@ -342,6 +342,8 @@ Vinte e uma suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-spincare.cjs` | o Controle Único do Projeto SpinCare: as regras derivadas (pior status, avanço, peso, farol, critério de aceite), a normalização de nomes e datas, e — com `SPINCARE_XLSX` apontando para o arquivo do cliente — a carga real: 172 atividades sem perda (inclusive o ID repetido), 165 válidas, 127/16/22, e o diagnóstico do que falta |
 | `testar-projeto-grupo.cjs` | o projeto do grupo inteiro: nasce um e não uma cópia por empresa, aparece rotulado como "Todas as empresas", sobrevive ao filtro de filial e soma nos indicadores |
 | `testar-criticidade-padrao.cjs` | a criticidade padrão dos chamados importados: sem padrão nada muda, o que vem classificado é marcado como da origem, o padrão é por cliente, o chamado ganha prazo do acordo, e a carga de retaguarda classifica todos sem perder chamado nenhum |
+| `testar-conformidade-sla.cjs` | a conformidade em horas úteis e os três dashboards: a fórmula sobre os resolvidos, as segmentações sem perder chamado, o seletor trocando as séries sem recarregar, o drill-down ordenado por tempo de resolução e a rosca recortando em vez de multiplicar |
+| `testar-sla-consistencia.cjs` | a revisão final: motor ↔ conformidade ↔ dashboards ↔ detalhamento dizendo o mesmo número, o semáforo idêntico em todo ponto, acessibilidade, responsividade em 390px e o detalhamento montado só ao clicar |
 | `testar-horas-uteis.cjs` | o motor de horas úteis: a janela do contrato (sexta de 9 h), chamado aberto sexta 17h30, atravessando fim de semana e feriado, aberto fora do expediente, o inverso fechando com o direto, dado torto sem número absurdo, o semáforo, e o cadastro de feriados ligando no cálculo sem parâmetro |
 | `testar-spincare-painel.cjs` | o painel do SpinCare nos Indicadores: os quatro indicadores, a rosca sem fatia de valor zero, as barras por onda, a aritmética (165 válidas, partes somando 100%, 81,2% e 77,0% por unidade como no Status Report), o drill-down ordenado e os filtros do Controle Único |
 | `testar-objetivo03.cjs` | o Objetivo 03: só reconhecida entra, as três faixas são disjuntas e somam o total, o teto do mês é a soma dos vigentes, mês sem teto não recebe veredicto, e a situação vem escrita |

@@ -72,9 +72,18 @@ const { irPara } = require('./ajuda-testes.cjs');
   await pag.waitForTimeout(500);
   const ficha = await pag.evaluate(() => ({
     atual: (document.querySelector('.modal .msg') || {}).textContent || '',
-    historico: (document.querySelector('.modal .ficha') || {}).textContent || '',
+    // Pelo `data-historico`, e não pela primeira `.ficha` do modal: a ficha do
+    // PRAZO vem antes dela, e casar por posição fazia a conferência ler o
+    // bloco errado.
+    historico: (document.querySelector('.modal [data-historico]') || {}).textContent || '',
+    prazo: (document.querySelector('.modal [data-prazo]') || {}).textContent.replace(/\s+/g, ' ') || '',
   }));
   conferir('o modal diz a prioridade vigente', /Alta/.test(ficha.atual), ficha.atual.replace(/\s+/g, ' ').trim());
+  // A ficha do prazo, que entrou com a criticidade padrão: ela diz contra o
+  // que o chamado corre, que é o que falta a quem contesta um "fora do SLA".
+  conferir('e mostra o prazo com a origem dele',
+    /informado pelo helpdesk|acordo cadastrado/.test(ficha.prazo) || /não tem prazo/.test(ficha.atual),
+    ficha.prazo.trim().slice(0, 90));
   conferir('o histórico registra de onde partiu',
     /sem prioridade\s*→\s*Alta/.test(ficha.historico.replace(/\s+/g, ' ')),
     ficha.historico.replace(/\s+/g, ' ').trim().slice(0, 140));

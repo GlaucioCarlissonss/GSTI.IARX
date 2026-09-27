@@ -45,7 +45,11 @@ const { chromium } = require('playwright');
 
   const cardFin = () => pag.evaluate(() => {
     const b = [...document.querySelectorAll('#pagina section.bloco')]
-      .find((x) => /Custo recorrente — variação/.test((x.querySelector('header h2') || {}).textContent || ''));
+      // O cartão foi renomeado na entrega dos Faróis: "Custo recorrente —
+      // variação" virou "Farol 1". A suíte procurava o título antigo e não
+      // achava cartão nenhum, então passava a conferir a ausência da meta em
+      // vez da meta.
+      .find((x) => /Farol 1 - Variação dos custos/.test((x.querySelector('header h2') || {}).textContent || ''));
     const k = b && b.querySelector('.meta-kpi');
     return k ? k.textContent.replace(/\s+/g, ' ').trim() : '(sem meta no card)';
   });

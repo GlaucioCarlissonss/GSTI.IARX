@@ -570,3 +570,413 @@ function ligarCriticidadePadrao(emp) {
     }
   });
 }
+
+// ===========================================================================
+// CONFORMIDADE DE SLA — o cálculo em horas úteis e os dashboards do módulo.
+// ===========================================================================
+//
+// A conta que o contrato define:
+//
+//   conformidade = resolvidos dentro do SLA ÷ TOTAL DE RESOLVIDOS × 100
+//
+// O denominador são os RESOLVIDOS, e não todos os chamados. O chamado ainda
+// aberto não tem tempo de resolução: contá-lo no denominador diluiria o
+// percentual com casos que ainda podem terminar dentro do prazo, e contá-lo
+// como "fora" condenaria um chamado de ontem. Ele aparece à parte, como
+// vencido, que é a leitura que pede ação.
+//
+// O tempo é medido em HORAS ÚTEIS (o motor no topo deste arquivo) e comparado
+// com as horas do acordo cadastrado para a criticidade e o tópico do chamado.
+
+const RESOLVIDO = /resolvid|fechad|closed|resolved/i;
+const ehResolvido = (c) => RESOLVIDO.test(String(c.status || '')) || (!c.status && !!c.fechadoEm);
+
+/**
+ * O que o motor mede num chamado. Nada disto é gravado: consumo e
+ * dentro/fora são derivados a cada leitura, pela mesma razão que "fora do
+ * SLA" nunca foi gravado — um derivado guardado começa a discordar da conta.
+ */
+function medidaDoChamado(c, feriados) {
+  const resolvido = ehResolvido(c);
+  const consumo = c.criadoEm && c.fechadoEm ? horasUteis(c.criadoEm, c.fechadoEm, feriados) : null;
+  const acordo = c.criadoEm ? horasDoAcordo(c.empresa, c.prioridade, c.topico, c.criadoEm) : null;
+  let dentro = null;
+  let base = 'sem base';
+  if (resolvido) {
+    if (acordo !== null && consumo !== null) { dentro = consumo <= acordo; base = 'horas úteis × acordo'; }
+    else if (c.prazoEm && c.fechadoEm) { dentro = c.fechadoEm <= c.prazoEm; base = 'data-limite da origem'; }
+    else { dentro = Number(c.dentro) === 1; base = 'como veio na base'; }
+  }
+  // O chamado ABERTO com prazo vencido: não entra na conformidade (não foi
+  // resolvido), mas é o que pede ação hoje.
+  const vencido = !resolvido && !!c.prazoEm && c.prazoEm < new Date().toISOString();
+  return { resolvido, consumo, acordo, dentro, base, vencido };
+}
+
+/** Os chamados INDIVIDUAIS do recorte, já com a empresa e a medida. */
+function chamadosMedidos(r) {
+  const feriados = feriadosDoCliente();
+  const fora = [];
+  for (const e of escopoEmpresas()) {
+    for (const c of (E.sla.get(e) || [])) {
+      if (Number(c.total) !== 1) continue;      // registro agregado não tem chamado
+      if (!naFilialDoBloco(c.filial, r)) continue;
+      if (!naJanela(c.competencia, r)) continue;
+      const com = { ...c, empresa: c.empresa || e };
+      fora.push({ ...com, m: medidaDoChamado(com, feriados) });
+    }
+  }
+  return fora;
+}
+
+// ------------------------------------------------------------ segmentações
+const SEM = (v, rot) => (v ? String(v) : rot);
+const SEGMENTOS_SLA = {
+  geral: { rotulo: 'Geral', chave: () => 'geral', nome: () => 'Conformidade' },
+  fila: { rotulo: 'Por fila', chave: (c) => SEM(c.fila, '(sem fila)'), nome: (k) => k },
+  criticidade: { rotulo: 'Por criticidade',
+    chave: (c) => SEM(c.prioridade, '(sem criticidade)'),
+    nome: (k) => ROTULO_PRIORIDADE_SLA[k] || k },
+  nivel: { rotulo: 'Por nível', chave: (c) => SEM(c.nivel, '(sem nível)'), nome: (k) => k },
+};
+
+/** A cor de uma série da segmentação — a paleta de matrizes, que já existe. */
+const CORES_SEG = ['var(--m1)', 'var(--m2)', 'var(--m3)', 'var(--m4)',
+  'var(--m5)', 'var(--m6)', 'var(--m7)', 'var(--m8)'];
+const corDaSerie = (i) => CORES_SEG[i % CORES_SEG.length];
+
+/**
+ * A conformidade mês a mês, por segmento.
+ *
+ * Devolve as séries prontas para `linhas` e o universo de cada ponto, para o
+ * clique poder abrir exatamente os chamados que formaram o número.
+ */
+function conformidadeSegmentada(r, segId = 'geral') {
+  const seg = SEGMENTOS_SLA[segId] || SEGMENTOS_SLA.geral;
+  const chamados = chamadosMedidos(r);
+  const meses = [...new Set(chamados.map((c) => c.competencia).filter(Boolean))].sort();
+  const chaves = [...new Set(chamados.map(seg.chave))]
+    .sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+
+  const celula = () => ({ dentro: 0, fora: 0, resolvidos: 0, abertos: 0, vencidos: 0, itens: [] });
+  const grade = new Map();   // "comp|chave" → célula
+  const geral = new Map();   // chave → célula (o período inteiro)
+  for (const c of chamados) {
+    const k = seg.chave(c);
+    for (const alvo of [grade, geral]) {
+      const id = alvo === grade ? `${c.competencia}|${k}` : k;
+      if (!alvo.has(id)) alvo.set(id, celula());
+      const cel = alvo.get(id);
+      cel.itens.push(c);
+      if (c.m.resolvido) {
+        cel.resolvidos += 1;
+        if (c.m.dentro) cel.dentro += 1; else cel.fora += 1;
+      } else {
+        cel.abertos += 1;
+        if (c.m.vencido) cel.vencidos += 1;
+      }
+    }
+  }
+  const conformidade = (cel) => (cel && cel.resolvidos
+    ? Math.round((cel.dentro / cel.resolvidos) * 1000) / 10 : null);
+
+  const series = chaves.map((k, i) => ({
+    k, nome: seg.nome(k), cor: segId === 'geral' ? 'var(--s1)' : corDaSerie(i),
+    total: geral.get(k), pct: conformidade(geral.get(k)),
+  }));
+  const pontos = meses.map((comp) => ({
+    rot: mesExib(comp), comp,
+    v: Object.fromEntries(chaves.map((k) => [k, conformidade(grade.get(`${comp}|${k}`))])),
+    celulas: Object.fromEntries(chaves.map((k) => [k, grade.get(`${comp}|${k}`) || celula()])),
+  }));
+  const tudo = [...geral.values()].reduce((s, c) => ({
+    dentro: s.dentro + c.dentro, fora: s.fora + c.fora, resolvidos: s.resolvidos + c.resolvidos,
+    abertos: s.abertos + c.abertos, vencidos: s.vencidos + c.vencidos,
+  }), { dentro: 0, fora: 0, resolvidos: 0, abertos: 0, vencidos: 0 });
+
+  return { seg: segId, meses, series, pontos, chamados,
+    resumo: { ...tudo, pct: conformidade(tudo), total: chamados.length } };
+}
+
+// --------------------------------------------------------- os dashboards
+/**
+ * A segmentação escolhida em cada dashboard — só na sessão.
+ *
+ * Não é filtro de recorte: não muda quais chamados entram na conta, só como
+ * eles são agrupados. Guardá-la junto dos filtros do bloco faria uma escolha
+ * de leitura parecer um corte de dados.
+ */
+E.slaSeg = E.slaSeg || { conformidade: 'geral', volume: 'geral', status: 'geral' };
+
+const META_CONFORMIDADE = 80;   // a linha de referência do contrato
+
+function seletorSegmentoHtml(id, atual, rotulo = 'Segmentar por') {
+  return `<label class="liga-medias" style="gap:8px">
+    <span>${esc(rotulo)}</span>
+    <select data-seg="${esc(id)}" style="width:auto;padding:4px 26px 4px 8px;font-size:12.5px"
+      aria-label="${esc(rotulo)}">
+      ${Object.entries(SEGMENTOS_SLA).map(([k, s]) => `<option value="${esc(k)}"${
+        k === atual ? ' selected' : ''}>${esc(s.rotulo)}</option>`).join('')}
+    </select></label>`;
+}
+
+/** A legenda nomeada das séries — a cor nunca é o único canal. */
+const legendaSeriesHtml = (series) => (series.length <= 1 ? '' : `<div class="legenda-tipos">
+  ${series.map((s) => `<span><i style="background:${s.cor}"></i>${esc(s.nome)}${
+    s.pct === null ? '' : ` <b>${pctTxt(s.pct)}</b>`}</span>`).join('')}
+  <span class="legenda-proj"><i></i>meta ${META_CONFORMIDADE}%</span></div>`);
+
+/** Colunas da tela flutuante de chamados — a ficha que o drill-down abre. */
+const COLUNAS_CHAMADO = [
+  { rotulo: 'Chamado', valor: (c) => '#' + esc(c.numero || c.ticketId || c.id) },
+  { rotulo: 'Competência', valor: (c) => esc(mesExib(c.competencia)) },
+  { rotulo: 'Fila', campo: 'fila' },
+  { rotulo: 'Criticidade', valor: (c) => esc(ROTULO_PRIORIDADE_SLA[c.prioridade] || '—') },
+  { rotulo: 'Tópico', campo: 'topico', texto: true },
+  { rotulo: 'Assunto', campo: 'assunto', texto: true },
+  { rotulo: 'Status', campo: 'status' },
+  { rotulo: 'Aberto em', valor: (c) => esc(prazoEmTexto(c.criadoEm) || '—') },
+  { rotulo: 'Prazo', valor: (c) => esc(prazoEmTexto(c.prazoEm) || '—') },
+  { rotulo: 'Acordo (h)', n: true,
+    valor: (c) => (c.m.acordo === null ? '—' : c.m.acordo.toLocaleString('pt-BR')) },
+  { rotulo: 'Horas úteis', n: true,
+    valor: (c) => (c.m.consumo === null ? '—' : c.m.consumo.toLocaleString('pt-BR', { maximumFractionDigits: 1 })) },
+  { rotulo: 'SLA', valor: (c) => (c.m.dentro === null
+    ? (c.m.vencido ? '<span class="tag crit">vencido, em aberto</span>' : '<span class="tag">em aberto</span>')
+    : `<span class="tag ${c.m.dentro ? 'bom' : 'crit'}">${c.m.dentro ? 'dentro' : 'fora'}</span>`) },
+];
+
+/**
+ * Abre os chamados que formaram um número.
+ *
+ * A ordem é do MAIOR tempo de resolução para o menor, como o enunciado pede:
+ * quem abre este detalhamento quer ver primeiro o que demorou. Chamado sem
+ * tempo medido vai para o fim — ele não tem posição nessa ordem.
+ */
+function abrirChamadosSla(titulo, itens, nota) {
+  const ord = [...itens].sort((a, b) => {
+    const x = a.m.consumo, y = b.m.consumo;
+    if (x === null && y === null) return 0;
+    if (x === null) return 1;
+    if (y === null) return -1;
+    return y - x;
+  });
+  abrirRegistros({ titulo, colunas: COLUNAS_CHAMADO, itens: ord, larga: true,
+    nota: nota || 'Ordenados do maior para o menor tempo de resolução, em horas úteis.' });
+}
+
+/** O painel de SLA: os três dashboards, numa visão só. */
+function painelSlaHtml() {
+  const s = E.slaSeg;
+  return `
+    <div class="painel-spin" style="margin-top:4px">
+      <div class="quadro quadro-largo" data-quadro="sla-conformidade-tempo">
+        <header><h3>Conformidade de SLA ao Longo do Tempo</h3>
+          <span><strong>O que mostra:</strong> a cada mês, quantos dos chamados RESOLVIDOS
+            ficaram dentro do prazo, medidos em horas úteis.
+            <strong>Como interpretar:</strong> a linha tracejada é a meta de
+            ${META_CONFORMIDADE}%; abaixo dela o mês não cumpriu o compromisso.</span></header>
+        <div class="quadro-corpo">
+          ${seletorSegmentoHtml('conformidade', s.conformidade)}
+          <div id="sla-g-conf" style="margin-top:8px"></div>
+          <div id="sla-l-conf"></div>
+        </div>
+      </div>
+
+      <div class="quadro" data-quadro="sla-volume">
+        <header><h3>Volume de Tickets ao Longo do Tempo</h3>
+          <span><strong>O que mostra:</strong> quantos chamados entraram e quantos foram
+            resolvidos em cada mês. <strong>Como usar:</strong> picos de demanda e meses em
+            que a fila cresceu.</span></header>
+        <div class="quadro-corpo">
+          ${seletorSegmentoHtml('volume', s.volume)}
+          <div id="sla-g-vol" style="margin-top:8px"></div>
+          <div id="sla-l-vol"></div>
+        </div>
+      </div>
+
+      <div class="quadro" data-quadro="sla-status">
+        <header><h3>Distribuição por Status</h3>
+          <span><strong>O que mostra:</strong> em que situação estão os chamados do recorte.
+            <strong>Como interpretar:</strong> ajuda a ver o equilíbrio entre o que entra e o
+            que sai.</span></header>
+        <div class="quadro-corpo">
+          ${seletorSegmentoHtml('status', s.status, 'Recortar por')}
+          <div id="sla-f-status" style="margin-top:8px"></div>
+          <div class="quadro-rosca" style="margin-top:8px">
+            <div id="sla-g-status"></div>
+            <div id="sla-l-status" class="legenda-tipos"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/** Desenha os três dashboards. Chamada de novo quando o seletor muda. */
+function desenharPainelSla(r) {
+  desenharConformidade(r);
+  desenharVolume(r);
+  desenharStatus(r);
+}
+
+function desenharConformidade(r) {
+  const alvo = el('#sla-g-conf');
+  if (!alvo) return;
+  const d = conformidadeSegmentada(r, E.slaSeg.conformidade);
+  el('#sla-l-conf').innerHTML = d.pontos.length ? legendaSeriesHtml(d.series) : '';
+  if (!d.pontos.length) { alvo.innerHTML = '<p class="vazio">Sem chamado individual no recorte.</p>'; return; }
+
+  // A meta é uma SÉRIE constante, e não um traço à parte: assim ela entra na
+  // escala do eixo. O tracejado é o vocabulário do sistema para compromisso.
+  const series = [...d.series.map((s) => ({ k: s.k, nome: s.nome, cor: s.cor })),
+    { k: 'meta', nome: `Meta ${META_CONFORMIDADE}%`, cor: 'var(--tinta3)',
+      tracejada: true, semPontos: true, rotulo: 'meta' }];
+  const pontos = d.pontos.map((p) => ({
+    rot: p.rot, comp: p.comp, v: { ...p.v, meta: META_CONFORMIDADE },
+    extra: d.series.flatMap((s) => {
+      const c = p.celulas[s.k];
+      if (!c || !c.resolvidos) return [];
+      const f = faixaDaConformidade(Math.round((c.dentro / c.resolvidos) * 1000) / 10);
+      return [{ nome: `${s.nome} — ${f.curto}`, cor: f.cor,
+        valor: `${inteiro(c.dentro)} dentro · ${inteiro(c.fora)} fora de ${inteiro(c.resolvidos)} resolvido(s)` }];
+    }),
+  }));
+  linhas(alvo, pontos, series, (v) => pctTxt(v), (v) => inteiro(v), '%', (p) => {
+    const cels = d.pontos.find((x) => x.comp === p.comp);
+    const itens = Object.values(cels.celulas).flatMap((c) => c.itens);
+    abrirChamadosSla(`Conformidade de ${mesExib(p.comp)}`, itens);
+  });
+}
+
+function desenharVolume(r) {
+  const alvo = el('#sla-g-vol');
+  if (!alvo) return;
+  const segId = E.slaSeg.volume;
+  const d = conformidadeSegmentada(r, segId);
+  if (!d.pontos.length) {
+    alvo.innerHTML = '<p class="vazio">Sem chamado individual no recorte.</p>';
+    el('#sla-l-vol').innerHTML = '';
+    return;
+  }
+  const conta = (c) => (c ? c.resolvidos + c.abertos : 0);
+  // Em "Geral" as três séries de sempre; segmentado, uma série por grupo com
+  // o VOLUME dele — três séries por fila dariam nove linhas ilegíveis.
+  const series = segId === 'geral'
+    ? [{ k: 'total', nome: 'Total', cor: 'var(--s1)' },
+       { k: 'resolvidos', nome: 'Resolvidos', cor: 'var(--bom)' },
+       { k: 'abertos', nome: 'Abertos', cor: 'var(--s2)' }]
+    : d.series.map((s) => ({ k: s.k, nome: s.nome, cor: s.cor }));
+  const pontos = d.pontos.map((p) => {
+    const cels = Object.values(p.celulas);
+    const v = segId === 'geral'
+      ? { total: cels.reduce((s, c) => s + conta(c), 0),
+          resolvidos: cels.reduce((s, c) => s + c.resolvidos, 0),
+          abertos: cels.reduce((s, c) => s + c.abertos, 0) }
+      : Object.fromEntries(Object.entries(p.celulas).map(([k, c]) => [k, conta(c)]));
+    const vencidos = cels.reduce((s, c) => s + c.vencidos, 0);
+    return { rot: p.rot, comp: p.comp, v,
+      extra: [
+        ...(segId === 'geral' ? [] : Object.entries(p.celulas).filter(([, c]) => conta(c))
+          .map(([k, c]) => ({ nome: `${SEGMENTOS_SLA[segId].nome(k)} — resolvidos`,
+            valor: `${inteiro(c.resolvidos)} de ${inteiro(conta(c))}` }))),
+        ...(vencidos ? [{ nome: 'Vencidos, ainda em aberto', valor: inteiro(vencidos),
+          cor: 'var(--crit)' }] : []),
+      ] };
+  });
+  el('#sla-l-vol').innerHTML = segId === 'geral' ? '' : legendaSeriesHtml(
+    d.series.map((s) => ({ ...s, pct: null })));
+  linhas(alvo, pontos, series, inteiro, inteiro, '', (p) => {
+    const cels = d.pontos.find((x) => x.comp === p.comp);
+    abrirChamadosSla(`Chamados de ${mesExib(p.comp)}`,
+      Object.values(cels.celulas).flatMap((c) => c.itens));
+  });
+}
+
+/** Os status como a base os escreve, agrupados no vocabulário da tela. */
+const GRUPOS_STATUS = [
+  { id: 'resolvido', nome: 'Resolvido', cor: 'var(--bom)', teste: /resolvid|resolved/i },
+  { id: 'fechado', nome: 'Fechado', cor: 'var(--s1)', teste: /fechad|closed/i },
+  { id: 'andamento', nome: 'Em andamento', cor: 'var(--m4)', teste: /andamento|progress|process/i },
+  { id: 'pausado', nome: 'Pausado', cor: 'var(--tinta3)', teste: /pausad|espera|hold|aguard/i },
+  { id: 'aberto', nome: 'Aberto', cor: 'var(--s2)', teste: /./ },
+];
+const grupoDoStatus = (c) => (c.status
+  ? (GRUPOS_STATUS.find((g) => g.teste.test(String(c.status))) || GRUPOS_STATUS[4]).id
+  : null);
+
+function desenharStatus(r) {
+  const alvo = el('#sla-g-status');
+  if (!alvo) return;
+  const segId = E.slaSeg.status;
+  const d = conformidadeSegmentada(r, segId);
+  // O seletor aqui RECORTA em vez de multiplicar a rosca: cinco roscas lado a
+  // lado não se comparam de relance, e a pergunta é "como está ESTA fila".
+  const escolhido = E.slaSeg.statusChave;
+  const validos = d.series.map((s) => s.k);
+  const chave = validos.includes(escolhido) ? escolhido : null;
+  const filtro = el('#sla-f-status');
+  if (filtro) {
+    filtro.innerHTML = segId === 'geral' ? '' : `<label class="liga-medias" style="gap:8px">
+      <span>Mostrar</span>
+      <select data-seg-chave style="width:auto;padding:4px 26px 4px 8px;font-size:12.5px"
+        aria-label="Recorte da distribuição">
+        <option value="">Tudo somado</option>
+        ${d.series.map((s) => `<option value="${esc(s.k)}"${s.k === chave ? ' selected' : ''}
+          >${esc(s.nome)}</option>`).join('')}
+      </select></label>`;
+  }
+  const seg = SEGMENTOS_SLA[segId];
+  const universo = chave ? d.chamados.filter((c) => seg.chave(c) === chave) : d.chamados;
+  const comStatus = universo.filter((c) => grupoDoStatus(c));
+  const fatias = GRUPOS_STATUS.map((g) => ({
+    nome: g.nome, cor: g.cor, id: g.id,
+    valor: comStatus.filter((c) => grupoDoStatus(c) === g.id).length,
+  }));
+  rosca(alvo, fatias, {
+    fmt: inteiro, rotulo: 'distribuição por status',
+    legendaCentro: 'CHAMADOS\nCOM SITUAÇÃO',
+    aoClicar: (f) => abrirChamadosSla(`${f.nome} — ${chave ? seg.nome(chave) : 'todos'}`,
+      comStatus.filter((c) => grupoDoStatus(c) === GRUPOS_STATUS.find((g) => g.nome === f.nome).id),
+      'Chamados nesta situação, do maior para o menor tempo de resolução.'),
+  });
+  const total = comStatus.length;
+  el('#sla-l-status').innerHTML = `${fatias.filter((f) => f.valor).map((f) =>
+    `<span data-fatia><i style="background:${f.cor}"></i>${esc(f.nome)}:
+      <b>${inteiro(f.valor)}</b> · ${pctTxt(pct(f.valor, total))}</span>`).join('')}
+    ${universo.length > total ? `<span><em>${inteiro(universo.length - total)} sem situação
+      na base</em></span>` : ''}`;
+}
+
+/** Liga os seletores. Redesenha só o gráfico — a página não recarrega. */
+function ligarPainelSla(r) {
+  const raiz = el('#pagina');
+  if (!raiz) return;
+  for (const sel of raiz.querySelectorAll('[data-seg]')) {
+    sel.addEventListener('click', (ev) => ev.stopPropagation());   // o cartão é gatilho de drill
+    sel.addEventListener('change', () => {
+      E.slaSeg[sel.dataset.seg] = sel.value;
+      if (sel.dataset.seg === 'status') E.slaSeg.statusChave = null;
+      desenharPainelSla(r);
+      ligarPainelSla(r);      // a rosca refaz o próprio seletor de recorte
+    });
+  }
+  const chave = raiz.querySelector('[data-seg-chave]');
+  if (chave) {
+    chave.addEventListener('click', (ev) => ev.stopPropagation());
+    chave.addEventListener('change', () => {
+      E.slaSeg.statusChave = chave.value || null;
+      desenharStatus(r);
+      ligarPainelSla(r);
+    });
+  }
+  for (const rot of raiz.querySelectorAll('.liga-medias')) {
+    rot.addEventListener('click', (ev) => ev.stopPropagation());
+  }
+  // O CARTÃO INTEIRO é gatilho de drill-down, e os gráficos moram dentro dele:
+  // sem barrar a subida, clicar num mês da linha abriria DUAS telas empilhadas
+  // — a do mês e a do cartão. O ouvinte do gráfico é mais interno e já disparou
+  // quando este corta a propagação.
+  for (const id of ['#sla-g-conf', '#sla-g-vol', '#sla-g-status']) {
+    raiz.querySelector(id)?.addEventListener('click', (ev) => ev.stopPropagation());
+  }
+}

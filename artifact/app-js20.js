@@ -328,18 +328,20 @@ function horasDoAcordo(empresa, prioridade, topico, abertoEm) {
 }
 
 /**
- * O prazo que o acordo dá a este chamado: abertura + horas, em ISO.
+ * O prazo que o acordo dá a este chamado, em HORAS ÚTEIS.
  *
- * Horas corridas, como no servidor: não há calendário de expediente
- * cadastrado, e inventar um criaria prazo que nenhum contrato assinou.
+ * Não é abertura + horas de relógio: o relógio do SLA corre dentro do
+ * expediente (seg–qui 08–18, sex 08–17), e fim de semana e feriado do cliente
+ * não contam. Um chamado aberto na sexta às 17h30 com 4 h vence na segunda ao
+ * meio-dia, e não às 21h30 de sexta — medi-lo em horas corridas reprovaria a
+ * equipe por horas em que ninguém trabalhou. O motor está em `app-js22.js`.
  */
 function prazoDoAcordo(empresa, abertoEm, prioridade, topico) {
   if (!abertoEm) return null;
   const horas = horasDoAcordo(empresa, prioridade, topico, abertoEm);
   if (horas === null) return null;
-  const inicio = new Date(abertoEm);
-  if (Number.isNaN(inicio.getTime())) return null;
-  return new Date(inicio.getTime() + horas * 3600000).toISOString();
+  if (Number.isNaN(new Date(abertoEm).getTime())) return null;
+  return prazoEmHorasUteis(abertoEm, horas);
 }
 
 /**
@@ -397,15 +399,18 @@ async function viewSlas() {
       <div style="margin-top:12px"><button class="bt" data-novo-sla>Cadastrar acordo</button></div>
       <p class="nota" style="margin-top:10px">O acordo do tópico ganha do geral, e o acordo cadastrado
         ganha do prazo que o helpdesk informou — o da origem fica guardado e aparece na ficha do chamado.
-        São horas corridas: o sistema não tem calendário de expediente, e inventar um criaria um prazo que
-        nenhum contrato assinou. Chamado já gravado só muda pela reaplicação abaixo.</p>
+        As horas são <strong>úteis</strong>: correm dentro do expediente (seg–qui 08h–18h, sex 08h–17h) e
+        pulam fim de semana e os <a href="#" data-ir-feriados>feriados cadastrados</a>. Chamado já gravado
+        só muda pela reaplicação abaixo.</p>
     </section>
 
     <section class="bloco">
       <header><h2>Aplicar o acordo a uma competência</h2></header>
       <p class="nota">O acordo decide o prazo na ENTRADA do chamado. Para alcançar o que já está
         gravado — a base carregada por planilha, por exemplo — escolha o mês e veja o que mudaria
-        antes de aplicar. Mês fechado é recusado; mês passado exige justificativa.</p>
+        antes de aplicar. Mês fechado é recusado; mês passado exige justificativa.
+        <strong>O prazo agora é contado em horas úteis</strong>, então reaplicar move números:
+        chamado que atravessava fim de semana ou feriado ganha prazo mais folgado.</p>
       <div class="grade g3" style="margin-top:10px">
         <div class="campo"><label for="r-comp">Competência</label>
           <select id="r-comp">${competenciasComChamados(emp)
@@ -657,7 +662,7 @@ function abrirReclassificacao(empresa, competencia, id) {
             + 'Sem criticidade não há acordo que o alcance, e sem acordo o helpdesk também '
             + 'não informou data-limite: ele fica fora da conta de conformidade.</div>';
         }
-        return `<dl class="ficha">
+        return `<dl class="ficha" data-prazo>
           <dt>Prazo</dt><dd><strong>${esc(sit.prazo)}</strong> · ${esc(sit.fonte)}</dd>
           <dt>Situação</dt><dd><span class="tag ${sit.classe}">${esc(sit.texto)}</span></dd>
         </dl>`;
@@ -667,7 +672,7 @@ function abrirReclassificacao(empresa, competencia, id) {
         <header><h2>Histórico</h2><span class="nota">${inteiro(historico.length)}</span></header>
         ${historico.length === 0
           ? '<p class="vazio">A prioridade nunca foi alterada desde que o chamado entrou.</p>'
-          : `<dl class="ficha">${historico.slice().reverse().map((h) => `
+          : `<dl class="ficha" data-historico>${historico.slice().reverse().map((h) => `
               <dt>${esc(quandoEmTexto(h.quando))}</dt>
               <dd>${esc(rotuloPrioridade(h.de) || 'sem prioridade')}${
                 h.origemDe ? ' (' + esc(ORIGEM_CURTA[h.origemDe] || h.origemDe) + ')' : ''
