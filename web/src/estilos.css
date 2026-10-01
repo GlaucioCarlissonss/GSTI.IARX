@@ -1,0 +1,726 @@
+/* ==========================================================================
+   GSTI.IARX — tokens de superfície, tinta e paleta de dados.
+   A paleta categórica e as cores de status foram validadas para visão normal
+   e para deficiências de cor (deutan/protan/tritan) nos dois modos.
+   ========================================================================== */
+:root {
+  color-scheme: light;
+
+  --plano:            #f9f9f7;
+  --superficie:       #fcfcfb;
+  --superficie-2:     #f2f2ef;
+  --tinta:            #0b0b0b;
+  --tinta-2:          #52514e;
+  --tinta-fraca:      #898781;
+  --grade:            #e1e0d9;
+  --eixo:             #c3c2b7;
+  --borda:            rgba(11, 11, 11, 0.10);
+  --borda-forte:      rgba(11, 11, 11, 0.18);
+
+  /* Categóricas — ordem fixa, nunca reciclada */
+  --serie-1: #2a78d6;
+  --serie-2: #eb6834;
+  --serie-3: #1baf7a;
+
+  /* Uma cor por empresa matriz — ordem fixa, atribuída pela posição da matriz
+     na lista do cliente, e nunca reciclada dentro de uma tela. Da nona em
+     diante a tela agrupa em "Outras", como o ranking já faz com a cauda.
+     A cor nunca é o único canal: legenda, tooltip e tabela dizem o nome. */
+  --matriz-1: #2a78d6;
+  --matriz-2: #eb6834;
+  --matriz-3: #1baf7a;
+  --matriz-4: #8e5ad6;
+  --matriz-5: #c9315e;
+  --matriz-6: #0f8f9e;
+  --matriz-7: #a8720f;
+  --matriz-8: #5b6b7d;
+
+  /* Status — reservadas, sempre acompanhadas de rótulo */
+  --bom:      #0ca30c;
+  --atencao:  #fab219;
+  --grave:    #ec835a;
+  --critico:  #d03b3b;
+  --positivo-texto: #006300;
+
+  --sombra: 0 1px 2px rgba(11, 11, 11, 0.04), 0 4px 16px rgba(11, 11, 11, 0.05);
+  --raio: 10px;
+  --fonte: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema='claro']) {
+    color-scheme: dark;
+    --plano:        #0d0d0d;
+    --superficie:   #1a1a19;
+    --superficie-2: #232322;
+    --tinta:        #ffffff;
+    --tinta-2:      #c3c2b7;
+    --tinta-fraca:  #898781;
+    --grade:        #2c2c2a;
+    --eixo:         #383835;
+    --borda:        rgba(255, 255, 255, 0.10);
+    --borda-forte:  rgba(255, 255, 255, 0.18);
+    --serie-1: #3987e5;
+    --serie-2: #d95926;
+    --serie-3: #199e70;
+
+    --matriz-1: #3987e5;
+    --matriz-2: #d95926;
+    --matriz-3: #199e70;
+    --matriz-4: #a273e8;
+    --matriz-5: #e0526f;
+    --matriz-6: #22a7b8;
+    --matriz-7: #d9a13c;
+    --matriz-8: #8a97a8;
+    --positivo-texto: #0ca30c;
+    --sombra: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+  }
+}
+
+:root[data-tema='escuro'] {
+  color-scheme: dark;
+  --plano:        #0d0d0d;
+  --superficie:   #1a1a19;
+  --superficie-2: #232322;
+  --tinta:        #ffffff;
+  --tinta-2:      #c3c2b7;
+  --tinta-fraca:  #898781;
+  --grade:        #2c2c2a;
+  --eixo:         #383835;
+  --borda:        rgba(255, 255, 255, 0.10);
+  --borda-forte:  rgba(255, 255, 255, 0.18);
+  --serie-1: #3987e5;
+  --serie-2: #d95926;
+  --serie-3: #199e70;
+
+  --matriz-1: #3987e5;
+  --matriz-2: #d95926;
+  --matriz-3: #199e70;
+  --matriz-4: #a273e8;
+  --matriz-5: #e0526f;
+  --matriz-6: #22a7b8;
+  --matriz-7: #d9a13c;
+  --matriz-8: #8a97a8;
+  --positivo-texto: #0ca30c;
+  --sombra: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--fonte);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--tinta);
+  background: var(--plano);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: 20px; }
+h2 { font-size: 16px; }
+h3 { font-size: 14px; }
+a { color: var(--serie-1); }
+
+/* ------------------------------------------------------------------ layout */
+.app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+
+.lateral {
+  background: var(--superficie);
+  border-right: 1px solid var(--borda);
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.marca { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; }
+.marca strong { font-size: 15px; letter-spacing: -0.02em; }
+.marca span { font-size: 11px; color: var(--tinta-fraca); text-transform: uppercase; letter-spacing: 0.08em; }
+
+/* O cliente em contexto: destacado porque governa tudo o que vem abaixo. */
+.cliente-atual {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 12px 0 4px; padding: 8px 10px;
+  border: 1px solid var(--borda); border-radius: 8px;
+  background: var(--superficie-2, var(--superficie));
+}
+.cliente-atual span { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tinta-fraca); }
+.cliente-atual strong { font-size: 13.5px; line-height: 1.25; }
+.cliente-atual button { align-self: flex-start; margin-top: 4px; padding-left: 0; }
+
+.menu { display: flex; flex-direction: column; gap: 2px; }
+.menu-grupo { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tinta-fraca); padding: 12px 8px 4px; }
+.menu a {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 8px; border-radius: 7px;
+  color: var(--tinta-2); text-decoration: none; font-size: 13.5px;
+}
+.menu a:hover { background: var(--superficie-2); color: var(--tinta); }
+.menu a.ativo { background: var(--superficie-2); color: var(--tinta); font-weight: 550; }
+.menu a:focus-visible { outline: 2px solid var(--serie-1); outline-offset: -2px; }
+.menu a .glifo { width: 16px; text-align: center; opacity: 0.75; }
+/* Submenu: rótulo do agrupamento e as entradas indentadas sob ele. */
+.menu-sub { font-size: 11px; color: var(--tinta-fraca); padding: 8px 8px 2px 30px; }
+.menu a.aninhado { padding-left: 30px; font-size: 13px; }
+/* Discreto: diz se o item olha a unidade em foco ou o cliente inteiro, sem
+   competir visualmente com o rótulo do módulo. */
+.menu-escopo { margin-left: auto; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tinta-fraca); }
+
+.conteudo { display: flex; flex-direction: column; min-width: 0; }
+
+.topo {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 14px 24px;
+  background: var(--superficie);
+  border-bottom: 1px solid var(--borda);
+  position: sticky; top: 0; z-index: 20;
+}
+.topo .titulo { display: flex; flex-direction: column; margin-right: auto; min-width: 180px; }
+/* Alinha com os campos ao lado, que têm o rótulo acima do controle. */
+.bt-tema { align-self: flex-end; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.topo .titulo small { color: var(--tinta-fraca); font-size: 12px; }
+
+.pagina { padding: 24px; display: flex; flex-direction: column; gap: 20px; max-width: 1500px; }
+
+/* ---------------------------------------------------------------- controles */
+.campo { display: flex; flex-direction: column; gap: 4px; }
+.campo > label { font-size: 11.5px; color: var(--tinta-fraca); font-weight: 550; }
+
+input, select, textarea, .botao {
+  font-family: inherit; font-size: 13.5px;
+  padding: 7px 10px;
+  border: 1px solid var(--borda-forte);
+  border-radius: 7px;
+  background: var(--superficie);
+  color: var(--tinta);
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+  outline: 2px solid var(--serie-1); outline-offset: 1px;
+}
+textarea { resize: vertical; min-height: 62px; }
+
+.botao { cursor: pointer; font-weight: 550; white-space: nowrap; }
+.botao:hover:not(:disabled) { background: var(--superficie-2); }
+.botao:disabled { opacity: 0.5; cursor: not-allowed; }
+.botao.primario { background: var(--serie-1); border-color: var(--serie-1); color: #fff; }
+.botao.primario:hover:not(:disabled) { filter: brightness(1.08); }
+.botao.perigo { color: var(--critico); border-color: var(--critico); background: transparent; }
+.botao.discreto { border-color: transparent; background: transparent; color: var(--tinta-2); padding: 5px 8px; }
+.botao.discreto:hover:not(:disabled) { background: var(--superficie-2); }
+.botao.pequeno { padding: 4px 8px; font-size: 12.5px; }
+
+/* ------------------------------------------------- seletor de múltipla escolha */
+.seletor-multi { position: relative; min-width: 0; }
+.seletor-multi .gatilho {
+  font-family: inherit; font-size: 13.5px; padding: 7px 26px 7px 10px;
+  border: 1px solid var(--borda-forte); border-radius: 7px;
+  background: var(--superficie); color: var(--tinta); width: 100%;
+  text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23898781' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+}
+.seletor-multi .gatilho:hover { background-color: var(--superficie-2); }
+.seletor-multi .gatilho[aria-expanded='true'] { border-color: var(--serie-1); }
+.seletor-multi .painel {
+  position: absolute; z-index: 40; top: calc(100% + 4px); left: 0;
+  min-width: 100%; max-width: min(320px, 92vw);
+  background: var(--superficie); border: 1px solid var(--borda-forte); border-radius: 9px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.2); padding: 8px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.seletor-multi .busca { font-size: 13px; padding: 6px 9px; }
+.seletor-multi .acoes { display: flex; gap: 6px; }
+.seletor-multi .acoes .botao { flex: 1; }
+.seletor-multi .aviso-seletor { margin: 0; padding: 0 4px; font-size: 11.5px; color: var(--atencao); }
+.seletor-multi .lista { max-height: 250px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.seletor-multi .lista label {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: 6px; font-size: 13.5px; cursor: pointer; white-space: nowrap;
+}
+.seletor-multi .lista label:hover { background: var(--superficie-2); }
+.seletor-multi .lista label input { width: auto; accent-color: var(--serie-1); }
+.seletor-multi .lista label .rot { overflow: hidden; text-overflow: ellipsis; }
+.seletor-multi .lista label .ap { margin-left: auto; font-size: 11.5px; color: var(--tinta-fraca); }
+.seletor-multi .nada { padding: 10px 8px; font-size: 12.5px; color: var(--tinta-fraca); text-align: center; }
+
+/* Gatilho de drill-down: qualquer indicador ou item que abre os registros por
+   trás do número. Afordância visível, foco de teclado e alvo inteiro. */
+.drill { cursor: pointer; position: relative; }
+.drill:hover { background: var(--superficie-2); }
+.cartao.indicador.drill:hover { border-color: var(--borda-forte); }
+.drill:focus-visible { outline: 2px solid var(--serie-1); outline-offset: 2px; }
+.drill::after {
+  content: '↗'; position: absolute; top: 6px; right: 8px;
+  font-size: 11px; color: var(--tinta-fraca); opacity: 0; transition: opacity 0.12s;
+}
+.drill:hover::after, .drill:focus-visible::after { opacity: 1; }
+
+/* ------------------------------------------------------- tabela dinâmica */
+/* Hierarquia por peso e fundo, não só por indentação: a linha de grupo precisa
+   se distinguir do detalhe mesmo com a coluna de rótulos fixa à esquerda. */
+.pivot tr.grupo-1 > th, .pivot tr.grupo-1 > td { background: var(--superficie-2); }
+.pivot tr.grupo-1 > th { background: var(--superficie-2) !important; }
+.pivot tr.lancamento { cursor: pointer; }
+.pivot tr.lancamento:hover > th, .pivot tr.lancamento:hover > td { background: var(--superficie-2); }
+.pivot tr.lancamento:hover > th { background: var(--superficie-2) !important; }
+.pivot tr.soma-detalhe > th, .pivot tr.soma-detalhe > td { border-top: 1px solid var(--eixo); font-size: 12.5px; }
+.pivot tfoot tr.total-geral > th, .pivot tfoot tr.total-geral > td {
+  background: var(--superficie-2); font-weight: 600; border-top: 2px solid var(--eixo);
+}
+/* O relatório tem dezenas de colunas de mês e centenas de linhas: rolar a tela
+   faz perder de vista de que competência é a coluna e quanto dá o total.
+   Cabeçalho, rodapé e a coluna de rótulos ficam presos no lugar.
+
+   A caixa precisa de altura própria para rolar por dentro — sem isso quem rola
+   é a página, e não há de que grudar. */
+.tabela-envolucro.rol-fixo { overflow: auto; max-height: calc(100vh - 320px); min-height: 260px; }
+.pivot thead th { position: sticky; top: 0; z-index: 3; background: var(--superficie); }
+.pivot tfoot th, .pivot tfoot td { position: sticky; bottom: 0; z-index: 3; }
+.pivot thead th:first-child, .pivot tbody th:first-child, .pivot tbody td:first-child,
+.pivot tfoot th:first-child { position: sticky; left: 0; background: var(--superficie); }
+/* Os quatro cantos se cruzam: os da esquerda precisam ficar acima das duas
+   faixas, ou um deles passa por baixo da outra. */
+.pivot thead th:first-child { z-index: 4; }
+.pivot tfoot th:first-child, .pivot tfoot td:first-child { z-index: 4; background: var(--superficie-2); }
+/* `border-collapse: collapse` descola a borda da célula presa; a sombra faz o
+   papel da linha sem depender disso. */
+.pivot thead th { box-shadow: inset 0 -1px 0 var(--eixo); }
+.pivot tfoot th, .pivot tfoot td { box-shadow: inset 0 2px 0 var(--eixo); }
+.pivot tbody th:first-child, .pivot tbody td:first-child { box-shadow: inset -1px 0 0 var(--grade); }
+.pivot thead th:first-child { box-shadow: inset -1px 0 0 var(--grade), inset 0 -1px 0 var(--eixo); }
+.pivot tfoot th:first-child { box-shadow: inset -1px 0 0 var(--grade), inset 0 2px 0 var(--eixo); }
+
+/* Tela cheia: a mesa inteira para analisar, sem o cabeçalho do sistema. */
+.cartao.tela-cheia {
+  position: fixed; inset: 0; z-index: 60; margin: 0; border-radius: 0;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.cartao.tela-cheia .tabela-envolucro.rol-fixo { max-height: none; flex: 1 1 auto; }
+
+.pivot-grupo {
+  flex: none; width: 18px; height: 18px; padding: 0; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 600 14px/1 var(--fonte); cursor: pointer;
+  color: var(--tinta-2); background: var(--superficie); 
+  border: 1px solid var(--borda-forte); border-radius: 4px;
+}
+.pivot-grupo:hover { color: var(--tinta); border-color: var(--tinta-fraca); }
+.pivot-grupo:focus-visible { outline: 2px solid var(--serie-1); outline-offset: 1px; }
+
+/* Ficha de detalhe: rótulo e valor em duas colunas, empilhando no estreito. */
+.ficha { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 4px 0; }
+.ficha dt { color: var(--tinta-fraca); font-size: 12.5px; }
+.ficha dd { margin: 0; font-size: 13.5px; }
+@media (max-width: 560px) {
+  .ficha { grid-template-columns: 1fr; gap: 0 0; }
+  .ficha dd { margin-bottom: 8px; }
+}
+
+.fichas { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fichas .bloco-fichas { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fichas .rotulo-grupo {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tinta-fraca);
+}
+.fichas .ficha {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 5px 3px 9px; border-radius: 999px;
+  border: 1px solid var(--borda-forte); background: var(--superficie-2);
+  font-size: 12px; color: var(--tinta-2); max-width: 220px;
+}
+.fichas .ficha > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fichas .ficha button {
+  border: 0; background: transparent; color: var(--tinta-fraca);
+  cursor: pointer; font-size: 14px; line-height: 1; padding: 0 3px; border-radius: 50%;
+}
+.fichas .ficha button:hover { background: var(--borda-forte); color: var(--tinta); }
+
+.barra-filtros {
+  display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+  padding: 12px 14px;
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+}
+
+/* A linha de apoio de cada filtro: o que ele filtra, sobre quais dados atua e o
+   efeito esperado. É texto de leitura, não decoração — por isso tem contraste
+   de corpo de texto e não some em telas estreitas; só encurta a largura. */
+.campo.filtro { max-width: 260px; }
+.dica-filtro {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--tinta-2);
+  max-width: 260px;
+}
+
+/* -------------------------------------------------------------------- cartões */
+.cartao {
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 16px 18px;
+  box-shadow: var(--sombra);
+}
+/* MÓDULO nos Indicadores Gerais: Financeiro, SLA e Projetos, cada um um cartão
+   que abre e fecha com os indicadores dele dentro.
+
+   Antes os indicadores eram irmãos, numa pilha de nove cartões iguais em que
+   não se via a que negócio cada número pertencia. Agora a hierarquia está no
+   DOM, e fechar o módulo fecha os indicadores dele.
+
+   O indicador DENTRO do módulo perde fundo, borda e sombra: cartão dentro de
+   cartão vira moldura dupla, e a leitura passa a ser sobre as caixas em vez de
+   sobre os números. O que separa um do seguinte é uma linha fina. */
+.cartao-modulo > .cartao-corpo > .grade > .cartao,
+.cartao-modulo > .cartao-corpo > .cartao {
+  background: none; border: 0; border-radius: 0; box-shadow: none;
+  padding: 14px 0 0; border-top: 1px solid var(--borda); margin-top: 14px;
+}
+.cartao-modulo > .cartao-corpo > .cartao:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+/* sem wrap, título + descrição + botão de ação não cabem em telas estreitas
+   e o botão vaza para fora da página */
+.cartao > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.cartao > header h2 { margin-right: auto; }
+.cartao > header small { color: var(--tinta-fraca); font-size: 12px; }
+/* Título que abre e fecha o bloco. Parece título, funciona como botão: o alvo
+   é a frase inteira, e não um ícone de 12px ao lado dela. */
+.cartao-dobra {
+  display: inline-flex; align-items: center; gap: 8px;
+  font: inherit; color: inherit; background: none; border: 0; padding: 0;
+  cursor: pointer; text-align: left;
+}
+.cartao-dobra:hover { color: var(--serie-1); }
+.cartao-dobra:focus-visible { outline: 2px solid var(--serie-1); outline-offset: 3px; border-radius: 4px; }
+.cartao-seta {
+  flex: none; width: 18px; height: 18px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; line-height: 1;
+  color: var(--tinta-2); background: var(--superficie-2); border: 1px solid var(--borda-forte);
+}
+/* Fechado, o cabeçalho é a única coisa no cartão: sem a margem, ele fica com
+   um vão embaixo que parece conteúdo faltando. */
+.cartao.dobrado > header { margin-bottom: 0; }
+.cartao-corpo { animation: abrir-bloco 0.14s ease-out; }
+@keyframes abrir-bloco { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .cartao-corpo { animation: none; } }
+
+.grade { display: grid; gap: 16px; }
+.grade.c2 { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+.grade.c3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.grade.c4 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+
+/* ----------------------------------------------------------------- indicador */
+.indicador { display: flex; flex-direction: column; gap: 3px; }
+.indicador .rotulo { font-size: 11.5px; color: var(--tinta-fraca); text-transform: uppercase; letter-spacing: 0.05em; }
+.indicador .numero { font-size: 26px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.indicador .apoio { font-size: 12px; color: var(--tinta-2); }
+.indicador .delta { font-size: 12px; font-weight: 550; display: inline-flex; align-items: center; gap: 4px; }
+
+/* A divisão do número por empresa matriz. Fina de propósito: informa a
+   composição sem competir com o número, que é o que a pessoa veio ler. */
+.faixa-matrizes { display: flex; gap: 2px; height: 4px; margin-top: 6px; border-radius: 2px; overflow: hidden; }
+.faixa-matrizes i { display: block; min-width: 3px; border-radius: 2px; }
+
+/* Meta vs Resultado. A barra preenche o resultado e o traço marca o alvo — a
+   mesma leitura do termômetro que o artifact já usa, no tamanho de um card.
+   A cor nunca é o único canal: o ✓/✗ e o texto dizem o mesmo. */
+.meta-indicador { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 12px; }
+.meta-indicador.sem-dado { color: var(--tinta-fraca); }
+.meta-barra { position: relative; display: block; height: 4px; border-radius: 2px; background: var(--borda); overflow: hidden; }
+.meta-barra i { display: block; height: 100%; border-radius: 2px; background: currentColor; }
+.meta-barra b { position: absolute; top: -2px; width: 2px; height: 8px; background: var(--tinta-2); border-radius: 1px; }
+.meta-indicador.dentro { color: var(--positivo-texto); }
+.meta-indicador.fora { color: var(--critico); }
+.meta-indicador .meta-texto { font-weight: 550; }
+
+/* A sanfona matriz -> filial. Botão próprio, porque o corpo do card já abre o
+   detalhamento — dois gestos no mesmo alvo brigariam. */
+.indicador-unidades { margin-top: 8px; }
+.indicador-unidades-corpo { margin-top: 8px; max-height: 240px; overflow: auto; }
+.indicador-unidades-corpo table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.indicador-unidades-corpo th,
+.indicador-unidades-corpo td { padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--borda); }
+.indicador-unidades-corpo td.n, .indicador-unidades-corpo th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.indicador-unidades-corpo .matriz { font-weight: 600; }
+.indicador-unidades-corpo .filial td:first-child { padding-left: 18px; color: var(--tinta-2); }
+.indicador-unidades-corpo .dentro { color: var(--positivo-texto); }
+.indicador-unidades-corpo .fora { color: var(--critico); font-weight: 600; }
+/* A árvore de três níveis. A indentação é o canal da hierarquia; o botão de
+   cada nó é o que a torna operável, e `aria-expanded` é o que a anuncia. */
+.arvore-unidades { width: 100%; border-collapse: collapse; font-size: 12px; }
+.arvore-unidades th,
+.arvore-unidades td { padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--borda); }
+.arvore-unidades td.n, .arvore-unidades th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.arvore-unidades tr.nivel-1 > td { font-weight: 600; }
+.arvore-unidades tr.nivel-2 > td:first-child { padding-left: 20px; color: var(--tinta-2); }
+.arvore-unidades tr.nivel-3 > td { color: var(--tinta-fraca); }
+.arvore-unidades tr.nivel-3 > td:first-child { padding-left: 20px; font-size: 11.5px; }
+.arvore-unidades td:first-child { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.arv-abrir {
+  flex: none; width: 17px; height: 17px; padding: 0;
+  border: 1px solid var(--borda-forte); border-radius: 5px;
+  background: var(--superficie-2); color: var(--tinta-2);
+  font: inherit; font-size: 12px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.arv-abrir:hover { border-color: var(--serie-1); color: var(--serie-1); }
+.arv-abrir:focus-visible { outline: 2px solid var(--serie-1); outline-offset: 2px; }
+/* O espaço de um botão que não existe, para os rótulos alinharem por nível. */
+.arv-vazio { flex: none; display: inline-block; width: 17px; }
+.ponto-matriz { flex: none; width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.arv-comp { color: var(--tinta-fraca); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.vazio-no { color: var(--tinta-fraca); font-style: italic; }
+/* Indicador de largura inteira: um por linha, sem vizinho lateral. */
+.grade.empilhada { grid-template-columns: 1fr; }
+/* Antes → depois: duas barras na mesma escala, uma sobre a outra. Escalas
+   diferentes fariam a segunda parecer maior por acidente de largura. */
+.comparativo { display: flex; flex-direction: column; gap: 3px; min-width: 180px; }
+.comparativo-linha { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.comparativo-linha > b {
+  flex: none; width: 42px; color: var(--tinta-fraca); font-weight: 500;
+  text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.06em;
+}
+.comparativo-linha > span {
+  flex: 1 1 auto; height: 7px; border-radius: 3px;
+  background: color-mix(in srgb, var(--tinta-fraca) 16%, transparent); overflow: hidden;
+}
+.comparativo-linha > span > i { display: block; height: 100%; border-radius: 3px; min-width: 2px; }
+.comparativo-linha > var {
+  flex: none; font-style: normal; font-size: 10.5px;
+  font-variant-numeric: tabular-nums; color: var(--tinta-2);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .indicador-unidades-corpo { animation: abrir-unidades 0.16s ease-out; }
+  @keyframes abrir-unidades { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+}
+.delta.sobe { color: var(--critico); }   /* despesa subindo é ruim */
+.delta.desce { color: var(--positivo-texto); }
+.delta.neutro { color: var(--tinta-fraca); }
+
+/* -------------------------------------------------------------------- tabela */
+.tabela-envolucro { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  text-align: left; font-weight: 550; font-size: 11.5px;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--tinta-fraca);
+  padding: 7px 10px; border-bottom: 1px solid var(--eixo); white-space: nowrap;
+}
+tbody td { padding: 8px 10px; border-bottom: 1px solid var(--grade); vertical-align: top; }
+tbody tr:hover td { background: var(--superficie-2); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tfoot td { padding: 8px 10px; font-weight: 600; border-top: 1px solid var(--eixo); }
+
+/* ------------------------------------------------------------------ etiquetas */
+.etiqueta {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 7px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 550; white-space: nowrap;
+  border: 1px solid var(--borda-forte); color: var(--tinta-2);
+}
+.etiqueta .ponto { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.etiqueta.bom { color: var(--positivo-texto); border-color: color-mix(in srgb, var(--bom) 45%, transparent); }
+.etiqueta.critico { color: var(--critico); border-color: color-mix(in srgb, var(--critico) 45%, transparent); }
+.etiqueta.atencao { color: var(--tinta); border-color: color-mix(in srgb, var(--atencao) 55%, transparent); }
+/* Despesa compartilhada: a cor da EMPRESA em tom escuro, passada em `--cor`
+   por quem monta (depende de qual matriz paga, então não cabe num token fixo).
+   A etiqueta traz o texto junto — a cor nunca é o único canal. */
+.etiqueta.compartilhada {
+  color: var(--cor); border-color: var(--cor);
+  background: color-mix(in srgb, var(--cor) 12%, transparent);
+}
+.etiqueta.compartilhada i { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--cor); }
+.legenda-consumo { font-size: 11.5px; margin-top: 10px; }
+/* No pivô a etiqueta não cabe: a linha do lançamento recebe um filete na cor
+   escura da empresa, à esquerda, onde o olho já corre. O `title` da linha
+   continua dizendo por extenso quem consome. */
+tr.lancamento[data-compartilhada] > th:first-child { box-shadow: inset 3px 0 0 var(--cor); }
+/* A barra de representatividade de uma filial dentro da empresa. O percentual
+   vai escrito ao lado: a barra é redundância visual, não o dado. */
+.barra-rep { display: inline-flex; align-items: center; gap: 6px; width: 100%; min-width: 90px; }
+.barra-rep > span {
+  position: relative; flex: 1 1 auto; height: 6px; border-radius: 3px;
+  background: color-mix(in srgb, var(--tinta-fraca) 18%, transparent); overflow: hidden;
+}
+.barra-rep > span > i { display: block; height: 100%; border-radius: 3px; min-width: 2px; }
+.barra-rep > b {
+  flex: none; font-weight: 600; font-size: 11px;
+  font-variant-numeric: tabular-nums; color: var(--tinta-2);
+}
+
+/* -------------------------------------------------------------------- avisos */
+/* Texto corrido: `display:flex` transformava cada <strong> e <a> em coluna,
+   o que só passava despercebido enquanto os avisos cabiam numa linha. */
+.aviso {
+  padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.55;
+  border: 1px solid var(--borda-forte); background: var(--superficie-2);
+}
+.aviso > p:first-child { margin-top: 0; }
+.aviso > p:last-child { margin-bottom: 0; }
+.aviso.erro { border-color: color-mix(in srgb, var(--critico) 50%, transparent); color: var(--critico); }
+.aviso.ok { border-color: color-mix(in srgb, var(--bom) 50%, transparent); color: var(--positivo-texto); }
+.vazio { color: var(--tinta-fraca); font-size: 13px; padding: 22px; text-align: center; }
+
+/* -------------------------------------------------------------------- modal */
+/* --------------------------------------------------------- telas flutuantes */
+/* Toda tela flutuante é a mesma peça: cabeçalho preso em cima, rodapé preso
+   embaixo e só a área de dados rolando. Quem rola é o miolo justamente para
+   que o título — que carrega o recorte — e as ações nunca saiam de vista. */
+.sobreposicao {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(11, 11, 11, 0.45);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 40px 16px; overflow: hidden;
+}
+.modal {
+  position: relative;
+  background: var(--superficie); border-radius: 12px; border: 1px solid var(--borda);
+  width: min(660px, 100%); max-width: 100%; max-height: calc(100vh - 80px);
+  padding: 20px 22px; box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
+  display: flex; flex-direction: column; gap: 16px;
+}
+.modal > header { display: flex; align-items: center; gap: 10px; flex: none; }
+.modal > header h2 { margin-right: auto; }
+.modal .acoes { display: flex; gap: 8px; justify-content: flex-end; }
+.modal > .modal-corpo {
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.modal > .modal-acoes { flex: none; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.modal.cheia { width: 100% !important; height: 100% !important; max-height: 100%; border-radius: 0; }
+/* Ações que vivem dentro de um `<form>` não podem sair dele — o submit
+   depende disso. Em vez de movê-las para o rodapé, elas grudam no fundo da
+   área de dados, o que dá o mesmo resultado: ficam sempre à vista. */
+.modal-corpo .acoes {
+  position: sticky; bottom: 0; z-index: 2;
+  background: var(--superficie); padding: 10px 0;
+  box-shadow: inset 0 1px 0 var(--grade);
+}
+
+/* Redimensionar: borda direita, borda de baixo e o canto entre as duas. A
+   esquerda e o topo ficam de fora de propósito — a tela é centralizada, e
+   arrastar por lá a faria andar em vez de crescer. */
+.puxador { position: absolute; z-index: 2; touch-action: none; }
+.puxador.dir { top: 10px; right: -3px; width: 8px; bottom: 14px; cursor: ew-resize; }
+.puxador.baixo { left: 10px; right: 14px; bottom: -3px; height: 8px; cursor: ns-resize; }
+.puxador.canto { right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; }
+/* O canto ganha a marca de riscos: sem ela ninguém descobre que arrasta. */
+.puxador.canto::after {
+  content: ''; position: absolute; right: 3px; bottom: 3px; width: 9px; height: 9px;
+  background: linear-gradient(135deg, transparent 42%, var(--tinta-fraca) 42%, var(--tinta-fraca) 52%,
+    transparent 52%, transparent 68%, var(--tinta-fraca) 68%, var(--tinta-fraca) 78%, transparent 78%);
+}
+.puxador:hover, .puxador.arrastando { background: color-mix(in srgb, var(--serie-1) 35%, transparent); border-radius: 4px; }
+
+/* Dentro da tela flutuante, o cabeçalho da tabela também fica preso: rolar
+   centenas de registros sem os nomes das colunas é ler número sem rótulo. */
+.modal .tabela-envolucro thead th {
+  position: sticky; top: 0; z-index: 2; background: var(--superficie);
+  box-shadow: inset 0 -1px 0 var(--eixo);
+}
+
+/* Barra de rolagem no tom do tema: a do navegador entra branca no escuro e
+   corta o fundo da tela flutuante. */
+.modal-corpo, .modal .tabela-envolucro, .tabela-envolucro.rol-fixo {
+  scrollbar-width: thin; scrollbar-color: var(--eixo) transparent;
+}
+.modal-corpo::-webkit-scrollbar, .modal .tabela-envolucro::-webkit-scrollbar,
+.tabela-envolucro.rol-fixo::-webkit-scrollbar { width: 11px; height: 11px; }
+.modal-corpo::-webkit-scrollbar-track, .modal .tabela-envolucro::-webkit-scrollbar-track,
+.tabela-envolucro.rol-fixo::-webkit-scrollbar-track { background: transparent; }
+.modal-corpo::-webkit-scrollbar-thumb, .modal .tabela-envolucro::-webkit-scrollbar-thumb,
+.tabela-envolucro.rol-fixo::-webkit-scrollbar-thumb {
+  background: var(--eixo); border-radius: 6px; border: 3px solid transparent; background-clip: content-box;
+}
+.modal-corpo::-webkit-scrollbar-thumb:hover, .modal .tabela-envolucro::-webkit-scrollbar-thumb:hover,
+.tabela-envolucro.rol-fixo::-webkit-scrollbar-thumb:hover {
+  background: var(--tinta-fraca); background-clip: content-box;
+}
+
+/* Coluna ajustável: a alça fica dentro da célula, não sobre a divisa — a caixa
+   de rolagem recorta o que passa da borda e a deixaria inalcançável. */
+th.ajustavel { position: relative; }
+th .puxa-col { position: absolute; top: 0; right: 0; width: 9px; height: 100%; cursor: col-resize; touch-action: none; }
+th .puxa-col:hover, th .puxa-col.arrastando { background: color-mix(in srgb, var(--serie-1) 45%, transparent); }
+/* Texto longo deixa de ser cortado quando a tela cresce: em vez de reticências
+   numa largura fixa, a célula quebra em linha e usa o espaço que houver. */
+.modal table td.texto { white-space: normal; word-break: break-word; min-width: 150px; }
+
+/* -------------------------------------------------------------------- login */
+.login { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.login .cartao { width: min(420px, 100%); display: flex; flex-direction: column; gap: 14px; }
+
+/* -------------------------------------------------------------------- gráfico */
+.legenda { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--tinta-2); }
+.legenda span { display: inline-flex; align-items: center; gap: 6px; }
+.legenda i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.dica {
+  position: fixed; z-index: 60; pointer-events: none;
+  background: var(--superficie); border: 1px solid var(--borda-forte);
+  border-radius: 8px; padding: 8px 10px; font-size: 12.5px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16); min-width: 130px;
+}
+.dica strong { display: block; margin-bottom: 4px; font-size: 12px; }
+.dica .linha { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+.dica .linha b { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.alternar-tabela { display: flex; justify-content: flex-end; margin-top: 6px; }
+
+/* --------------------------------------------------------------------- gantt */
+.gantt { overflow-x: auto; }
+.gantt table { border-collapse: separate; border-spacing: 0; }
+.gantt th.mes { font-size: 10px; padding: 4px 2px; text-align: center; min-width: 34px; letter-spacing: 0; }
+.gantt th.mes.virada { border-left: 1px solid var(--eixo); }
+.gantt td.celula { padding: 0; height: 26px; border-bottom: 1px solid var(--grade); position: relative; }
+.gantt td.faixa { padding: 0 0 0 0; position: relative; height: 26px; border-bottom: 1px solid var(--grade); }
+.gantt .barra { position: absolute; height: 9px; top: 5px; border-radius: 4px; }
+.gantt .barra.real { height: 6px; top: 16px; border-radius: 3px; }
+.gantt .nome { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.gantt .nome.tarefa { color: var(--tinta-2); font-size: 12.5px; }
+/* Botão de expandir/comprimir grupo: alvo de 20px, foco visível, contraste AA
+   sobre a superfície do cabeçalho fixo. */
+.gantt-grupo {
+  flex: none; width: 20px; height: 20px; padding: 0; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 600 15px/1 var(--fonte, inherit); cursor: pointer;
+  color: var(--tinta-2); background: var(--superficie-2);
+  border: 1px solid var(--borda-forte); border-radius: 5px;
+}
+.gantt-grupo:hover { color: var(--tinta); border-color: var(--tinta-fraca); }
+.gantt-grupo:focus-visible { outline: 2px solid var(--serie-1); outline-offset: 1px; }
+/* Reserva o mesmo espaço numa linha sem grupo, para os nomes alinharem. */
+.gantt-vazio { flex: none; width: 20px; height: 20px; display: inline-block; }
+.gantt .hoje { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--serie-2); opacity: 0.55; }
+
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .lateral { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .menu { flex-direction: row; flex-wrap: wrap; }
+  .menu-grupo { display: none; }
+}
+
+/* "Última atualização": discreto, encostado à direita da barra de filtros.
+   É contexto do número, não um número a mais — por isso não compete com eles. */
+.ultima-carga {
+  margin-left: auto; align-self: center;
+  font-size: 11.5px; color: var(--tinta-fraca); white-space: nowrap;
+}
+.ultima-carga strong { color: var(--tinta-2); font-weight: 600; }
+
+/* Seletor de modo: três estados exclusivos, encostados um no outro para
+   lerem-se como um controle só, e não como três botões soltos. */
+.modo-visao { display: inline-flex; border: 1px solid var(--borda-forte); border-radius: 7px; overflow: hidden; align-self: flex-end; }
+.modo-visao button {
+  font-family: inherit; font-size: 12.5px; font-weight: 550;
+  padding: 6px 11px; border: 0; border-right: 1px solid var(--borda);
+  background: var(--superficie); color: var(--tinta-2); cursor: pointer; white-space: nowrap;
+}
+.modo-visao button:last-child { border-right: 0; }
+.modo-visao button:hover { background: var(--superficie-2); color: var(--tinta); }
+.modo-visao button.ativo { background: var(--serie-1); color: #fff; }
+.modo-visao button:focus-visible { outline: 2px solid var(--serie-1); outline-offset: -2px; }
