@@ -52,13 +52,23 @@ continua sendo do servidor, sob `configuracoes.create`, e quem cria passa a
 enxergar o cliente — sem o vínculo, criar seria a forma mais rápida de produzir
 um contratante que ninguém abre.
 
-A escolha fica no `localStorage`, o que faz a tela aparecer uma vez por
-navegador e não a cada recarregamento. O que fica guardado é a última escolha,
-nunca uma permissão: se o vínculo tiver sido revogado, a escolha guardada é
-descartada e a pergunta volta. Três estados são distintos na tela, porque as
-saídas são opostas: carregando, **nenhum cliente vinculado** (peça acesso) e
-**falha ao buscar** (tentar de novo) — duas telas vazias iguais esconderiam essa
-diferença.
+**A pergunta vem a cada abertura**, mesmo havendo uma escolha guardada. A
+sessão já reabria no último contratante, e isso deixou de valer por decisão do
+usuário: quem atende vários clientes seguidos entrava direto no recorte do
+anterior e lia aqueles números sem perceber a troca. Perguntar custa um clique;
+adivinhar custa uma reunião com o número errado.
+
+A última escolha continua no `localStorage` — ela serve ao cadastro, para saber
+de quem é o que se edita —, mas **não reabre a sessão sozinha**. O que fica
+guardado nunca foi uma permissão: vínculo revogado a descarta. Três estados são
+distintos na tela, porque as saídas são opostas: carregando, **nenhum cliente
+vinculado** (peça acesso) e **falha ao buscar** (tentar de novo) — duas telas
+vazias iguais esconderiam essa diferença.
+
+**Escolhido o cliente, a primeira tela é Indicadores Gerais**, e não o painel
+operacional: quem abre o sistema quer ver como o contratante está, e só depois
+desce ao lançamento. Se o perfil não enxergar essa aba, a navegação cai na
+primeira que ele vê — a preferência não fura a permissão.
 
 ### Onde uma unidade entra: quem decide é o CNPJ
 

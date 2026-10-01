@@ -388,10 +388,14 @@ function semBanco(motivo) {
     await purgarFolhaTI();
     // O cliente vem antes de tudo: é o recorte mais externo, e abrir uma tela
     // antes de escolhê-lo mostraria números de um contratante que ninguém pediu.
+    //
+    // A ESCOLHA É SEMPRE EXPLÍCITA, mesmo havendo uma guardada. Retomar o
+    // último contratante abria a sessão já dentro de um recorte que ninguém
+    // pediu naquele momento — e quem atende vários clientes seguidos lia os
+    // números do anterior sem perceber a troca. Perguntar custa um clique;
+    // adivinhar custa uma reunião com o número errado.
     await garantirClientes();
-    const guardado = clienteGuardado();
-    if (guardado && clientePorId(guardado)) await abrirCliente(guardado, false);
-    else viewBoasVindas();
+    viewBoasVindas();
   } catch (e) {
     semBanco('Erro ao carregar: ' + (e.message || e));
   }

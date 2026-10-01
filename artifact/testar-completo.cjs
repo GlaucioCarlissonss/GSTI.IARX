@@ -11,7 +11,7 @@ const { usarEmpresas, usarBase, usarCompetencias, irPara, todasAsAbas } = requir
   pag.on('console', (m) => { if (m.type() === 'error' && !/ERR_|net::/.test(m.text())) erros.push('console: ' + m.text()); });
 
   await pag.goto('file://' + __dirname + '/teste-local.html');
-  await pag.waitForSelector('#abas button', { timeout: 15000 });
+  await pag.waitForSelector('#modulos button', { timeout: 15000 });
 
   const empresas = await pag.$$eval('#f-empresa option', (os) => os.map((o) => ({ id: o.value, nome: o.textContent })));
   const abas = await todasAsAbas(pag);

@@ -19,7 +19,7 @@ const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||''));
   };
 
   await pag.goto('file://' + __dirname + '/teste-local.html');
-  await pag.waitForSelector('#abas button', { timeout: 15000 });
+  await pag.waitForSelector('#modulos button', { timeout: 15000 });
   const ir = (r) => irPara(pag, r, 450);
 
   // abre um seletor pelo id do gatilho e marca/desmarca valores

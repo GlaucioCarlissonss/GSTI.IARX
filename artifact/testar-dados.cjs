@@ -26,7 +26,7 @@ const fs = require('fs');
   });
 
   await pag.goto('file://' + __dirname + '/teste-local.html');
-  await pag.waitForSelector('#abas button', { timeout: 10000 });
+  await pag.waitForSelector('#modulos button', { timeout: 10000 });
   const ir = (r) => irPara(pag, r, 400);
 
   const totalDe = async () => { await ir('Conferência'); return pag.$eval('.kpi:nth-child(3) .n', (n) => n.textContent); };

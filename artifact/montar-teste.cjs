@@ -48,11 +48,19 @@ function _col(c) {
 window.claude = { use: async (n) => n === 'db' ? { doc: _doc, collection: _col } : null };
 window.__mem = _mem;
 // As suítes abrem uma tela de dentro do sistema, e a escolha de cliente é
-// anterior a ela. Guardar a escolha aqui deixa o gate de fora do caminho dessas
-// suítes sem colocar atalho de teste no sistema. Com ?boasVindas=1 nada é
-// guardado, que é como a suíte de clientes exercita a tela de verdade.
+// anterior a ela. O mock entra CLICANDO no cartão, que é o caminho real —
+// guardar a escolha deixou de servir, porque a abertura passou a sempre
+// perguntar. Um atalho dentro do sistema esconderia justamente o gate que as
+// suítes atravessam. Com ?boasVindas=1 o mock não clica, que é como a suíte de
+// clientes exercita a tela de verdade.
 if (!new URLSearchParams(location.search).has('boasVindas')) {
-  try { localStorage.setItem('iarx-cliente', 'grupo-brasil-home-care'); } catch (e) {}
+  const entrar = () => {
+    const b = document.querySelector('.cartao-cliente[data-cliente="grupo-brasil-home-care"]')
+      || document.querySelector('.cartao-cliente');
+    if (b) { b.click(); return; }
+    setTimeout(entrar, 60);
+  };
+  setTimeout(entrar, 60);
 }
 </script>`;
 const html = fs.readFileSync('sistema.html', 'utf8');

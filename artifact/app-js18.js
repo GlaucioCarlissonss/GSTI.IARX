@@ -88,6 +88,12 @@ async function garantirClientes() {
 
 // ------------------------------------------------------------- persistência
 
+/**
+ * A última escolha, guardada para o cadastro saber de quem é o que se edita.
+ *
+ * NÃO é usada para reabrir a sessão: a abertura sempre pergunta. Ver o
+ * comentário em `app-js7.js`, onde a escolha explícita é a regra.
+ */
 function clienteGuardado() {
   try { return localStorage.getItem(CHAVE_CLIENTE); } catch (e) { return null; }
 }
@@ -255,6 +261,11 @@ async function abrirCliente(id, guardar = true) {
   await garantirEscopo();
   E.cenariosSel = new Set(['oficial']);
   E.competencias = new Set([competenciaPadrao()]);
+  // A primeira tela do cliente é a LEITURA ESTRATÉGICA, e não o painel
+  // operacional: quem abre o sistema quer ver como o contratante está, e só
+  // depois desce ao lançamento. Se o perfil não enxergar essa aba, a
+  // navegação escolhe a primeira que ele vê — ver `abaVisivel` em app-js7.
+  E.aba = 'indicadores_gerais';
   pintarCliente();
   pintarFiltrosDaTela();
   await restaurarPrevia();

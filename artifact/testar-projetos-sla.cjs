@@ -23,7 +23,7 @@ const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-te
     }, 5);
   });
   await pag.goto('file://' + __dirname + '/teste-local.html');
-  await pag.waitForSelector('#abas button', { timeout: 15000 });
+  await pag.waitForSelector('#modulos button', { timeout: 15000 });
   const ir = (r) => irPara(pag, r, 450);
   const confere = (nome, obtido, esperado) => {
     const ok = String(obtido) === String(esperado);

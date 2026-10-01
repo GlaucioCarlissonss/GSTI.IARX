@@ -85,15 +85,35 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
     doSeletor.doCliente.length === doSeletor.todas.length, doSeletor.doCliente.join(', '));
 
   // ------------------------------------------------------------ persistência
-  console.log('\nVOLTAR — a escolha é lembrada, e trocar desfaz');
+  console.log('\nVOLTAR — a pergunta vem sempre, mesmo com escolha guardada');
   await pag.goto(URL_LIMPA);
-  await pag.waitForSelector('#modulos button', { timeout: 15000 });
-  const semPerguntar = await pag.evaluate(() => ({
+  await pag.waitForSelector('.boas-vindas', { timeout: 15000 });
+  const aoVoltar = await pag.evaluate(() => ({
     cliente: E.clienteSel,
     boasVindas: !!document.querySelector('.boas-vindas'),
+    guardado: localStorage.getItem('iarx-cliente'),
   }));
-  conferir('quem já escolheu não é perguntado de novo',
-    semPerguntar.cliente === 'grupo-brasil-home-care' && !semPerguntar.boasVindas, JSON.stringify(semPerguntar));
+  // A REGRA MUDOU, por decisão do usuário: antes a sessão reabria no último
+  // contratante. Quem atende vários clientes seguidos lia os números do
+  // anterior sem perceber a troca — perguntar custa um clique, adivinhar custa
+  // uma reunião com o número errado.
+  conferir('abrir de novo pergunta outra vez, mesmo com escolha guardada',
+    aoVoltar.boasVindas && aoVoltar.cliente === null, JSON.stringify(aoVoltar));
+  conferir('e a escolha anterior continua guardada, só não reabre sozinha',
+    aoVoltar.guardado === 'grupo-brasil-home-care', String(aoVoltar.guardado));
+
+  // Escolher leva direto à leitura estratégica: quem abre o sistema quer ver
+  // como o contratante está, e só depois desce ao lançamento.
+  await pag.click('.cartao-cliente');
+  await pag.waitForSelector('#modulos button', { timeout: 15000 });
+  await pag.waitForTimeout(800);
+  const primeiraTela = await pag.evaluate(() => ({
+    aba: E.aba,
+    modulo: (document.querySelector('#modulos button[aria-current="page"]') || {}).textContent.trim(),
+  }));
+  conferir('e entra direto em Indicadores Gerais',
+    primeiraTela.aba === 'indicadores_gerais' && /Indicadores Gerais/.test(primeiraTela.modulo),
+    JSON.stringify(primeiraTela));
 
   // O botão aparece SEMPRE, inclusive com um cliente só: quem ganha acesso a
   // um segundo contratante no meio da semana precisa achar a saída sem
@@ -184,6 +204,10 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
 
   // O recolhimento é por localStorage: sobrevive a um F5 na mesma tela.
   await pag.reload();
+  // O F5 volta à pergunta do cliente — é a regra nova, e o caminho até a tela
+  // passa por ela como passaria para qualquer pessoa.
+  await pag.waitForSelector('.cartao-cliente', { timeout: 15000 });
+  await pag.click('.cartao-cliente');
   await pag.waitForSelector('#modulos button', { timeout: 15000 });
   await pag.click('#modulos button:text-is("Sistema")');
   await pag.waitForTimeout(200);

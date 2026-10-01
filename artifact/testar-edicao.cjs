@@ -13,7 +13,7 @@ const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-te
   pag.on('console', (m) => { if (m.type() === 'error' && !/ERR_|net::/.test(m.text())) erros.push('console: ' + m.text()); });
 
   await pag.goto('file://' + __dirname + '/teste-local.html');
-  await pag.waitForSelector('#abas button', { timeout: 15000 });
+  await pag.waitForSelector('#modulos button', { timeout: 15000 });
   const ir = (r) => irPara(pag, r, 450);
   const conta = () => pag.evaluate(() => Loja.todos(empresaAtiva()).length);
   const soma = () => pag.evaluate(() => Loja.todos(empresaAtiva()).reduce((s, l) => s + Math.round(l.valor * 100), 0));

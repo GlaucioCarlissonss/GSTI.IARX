@@ -19,7 +19,7 @@ const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-te
   };
 
   await pag.goto('file://' + __dirname + '/teste-local.html');
-  await pag.waitForSelector('#abas button', { timeout: 15000 });
+  await pag.waitForSelector('#modulos button', { timeout: 15000 });
   const ir = (r) => irPara(pag, r, 450);
 
   // totais de referência, cada empresa carregada sozinha

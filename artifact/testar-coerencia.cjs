@@ -16,7 +16,7 @@ const centavos = (txt) => {
   pag.on('pageerror', (e) => falhas.push('pageerror: ' + e.message));
 
   await pag.goto('file://' + __dirname + '/teste-local.html');
-  await pag.waitForSelector('#abas button', { timeout: 15000 });
+  await pag.waitForSelector('#modulos button', { timeout: 15000 });
   const ir = (r) => irPara(pag, r, 420);
   const confere = (rotulo, a, b) => {
     const ok = a === b;
