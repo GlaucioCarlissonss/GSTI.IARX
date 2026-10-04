@@ -40,36 +40,51 @@ montada por `montar.sh`, que concatena 22 arquivos `app-js*.js` num único
 
 ## 2. Achados, por prioridade
 
-### 🔴 CRÍTICO — 10 testes de servidor falhando hoje
+### 🔴 CRÍTICO — 10 testes que o CI nunca executa
 
-`npm test` dá **412 de 422**. As dez falhas são todas do mesmo mecanismo:
+`npm test` dá **412 de 422** nesta máquina. O CI dá **verde**, rodando o mesmo
+comando. As duas coisas são verdade ao mesmo tempo, e a explicação é o achado:
 
 ```
-not ok 182 - com as decisões tomadas, as 110 linhas entram...
-  error: 'Alterações em competências passadas (09/2026) exigem justificativa.'
-  garantirCompetenciaEditavel (domain/fechamento.ts:38)
+server/test/importacao-foc.test.ts:22
+const semBase = { skip: existsSync(ARQUIVO) ? false : 'base real ausente...' };
 ```
 
-A fixture do FOC está presa a **09/2026** (`importacao-foc.test.ts`, linhas 156,
-189, 210, 266). A regra de negócio recusa escrita em competência passada sem
-justificativa — regra **certa**, que a suíte não acompanha: ela envelhece
-sozinha quando o relógio passa do mês da fixture.
+Os dez testes da carga FOC só rodam **quando o arquivo real do cliente está
+presente** em `dados-origem/`, que é ignorado pelo Git de propósito (contém
+nome, matrícula e salário). No CI o diretório não existe: os dez são
+**pulados**, e o verde não diz nada sobre eles.
 
-**O CI está verde no último commit** (`b7ae00d`, 01/10 15:49 UTC) e roda
-exatamente este `npm test`. Como estas falhas são de calendário, **o próximo
-push vai encontrar o CI vermelho** sem ninguém ter mudado uma linha. Vale
-conferir isso antes de qualquer outra coisa: um CI que fica vermelho por conta
-própria é um CI que as pessoas param de ler.
+Aqui eles rodam — e falham, todos pela mesma razão:
 
-**Três suítes do artifact têm o mesmo mal** — `testar-multi`,
-`testar-adequacao` e `testar-reducao` —, e já reportei que falhavam antes da
-última entrega. A base de teste vai de 01/2026 a 12/2027, e elas comparam
-contra totais de um mês fixo.
+```
+error: 'Alterações em competências passadas (09/2026) exigem justificativa.'
+garantirCompetenciaEditavel (domain/fechamento.ts:38)
+```
 
-> **Correção proposta:** a fixture deixa de citar um mês e passa a derivá-lo do
-> relógio (`mesHoje()`, ou o mês corrente do ambiente de teste). Onde o teste
-> precisa de competência passada *de propósito*, ele passa a informar
-> justificativa, que é o que a regra pede. É conserto de teste, não de regra.
+A planilha real é de **09/2026** e o relógio virou outubro. A regra está
+certa; o teste é que supõe estar sempre dentro do mês do arquivo.
+
+São **dois problemas empilhados**, e vale separá-los:
+
+1. **Os dez testes mais caros do projeto — carga real de ponta a ponta — não
+   são verificados por ninguém automaticamente.** Eles só rodam na máquina de
+   quem tem a base do cliente, e lá quebram sozinhos com a virada do mês. Na
+   prática, deixaram de ser rede de segurança.
+2. **A suíte envelhece.** Três suítes do artifact (`testar-multi`,
+   `testar-adequacao`, `testar-reducao`) têm o mesmo mal, e essas eu já tinha
+   reportado como pré-existentes.
+
+> **Os testes NÃO tocam a base real do cliente** — conferi: `test/apoio.ts`
+> abre `:memory:`. O que vem de `dados-origem/` é só o arquivo de entrada da
+> carga, lido para dentro de um banco descartável.
+
+> **Correção proposta:** o teste deixa de supor o mês corrente — passa a
+> informar justificativa onde a competência é passada, que é o que a regra
+> pede, ou a derivar a competência do próprio arquivo. E a decisão maior, que
+> é sua: ou se aceita que essa carga não é coberta pelo CI, ou se cria uma
+> fixture anonimizada do FOC para que ela passe a ser — como já foi feito para
+> o Contas a Pagar (`test/dados/contas-pagar-exemplo.csv`).
 
 ### 🔴 CRÍTICO — nenhum code splitting na web
 
@@ -194,7 +209,7 @@ não saber se a limpeza quebrou algo.
 
 | # | entrega | o que entra | risco |
 | --- | --- | --- | --- |
-| **1.5** | **Destravar a verificação** | as 10 fixtures de servidor e as 3 suítes do artifact deixam de depender do mês corrente | baixo — só teste |
+| **1.5** | **Destravar a verificação** | os 10 testes do FOC e as 3 suítes do artifact deixam de depender do mês corrente; decidir se a carga FOC ganha fixture anonimizada para entrar no CI | baixo — só teste |
 | 2 | Limpeza | os 17 símbolos mortos, o `zod`, os 74 `export` de tipo; consolidar os cinco caminhos de detalhamento num só contrato | médio — o detalhamento tem 43 chamadores |
 | 3 | Padronização | tokens de espaçamento e raio; os 305 `px` literais; camada de dados | baixo |
 | 4 | Design system | tipografia, refino do dark mode, motion, componentes | médio — visual em 23 telas |
