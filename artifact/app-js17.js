@@ -3968,10 +3968,6 @@ function arvoreDeUnidadesHtml(id, quebra, formatar, extra) {
       <tbody>${linhas}</tbody></table></div></div>`;
 }
 
-/** Compatibilidade: as telas que ainda pedem a sanfona recebem a árvore. */
-function sanfonaHtml(id, quebra, formatar, extra) {
-  return arvoreDeUnidadesHtml(id, quebra, formatar, extra);
-}
 
 /**
  * A quebra do SLA por unidade.
@@ -4161,10 +4157,6 @@ function montarNivelDeLancamentos(tabela, linha, no) {
   }
 }
 
-/** Compatibilidade: o nome antigo continua valendo para quem o chama. */
-function ligarSanfonasDeUnidade() {
-  ligarArvoresDeUnidade();
-}
 
 /**
  * Os REGISTROS de cada indicador, com o mesmo recorte do bloco.
@@ -4296,14 +4288,6 @@ const COLUNAS_TAREFA = [
   { rotulo: 'Status', valor: (t) => esc(STATUS_PROJ[t.status] || t.status || '') },
 ];
 
-const COLUNAS_LANCAMENTO_SIMPLES = [
-  { rotulo: 'Competência', valor: (l) => mesExib(l.competencia) },
-  { rotulo: 'Unidade', valor: (l) => esc(nomeEmpresa(l.empresa)) },
-  { rotulo: 'Filial', valor: (l) => esc(l.filial || 'empresa') },
-  { rotulo: 'Centro de custo', valor: (l) => esc(l.tipo || '') },
-  { rotulo: 'Descrição', valor: (l) => esc(l.descricao || '') },
-  { rotulo: 'Valor', n: true, valor: (l) => brl(l.valor) },
-];
 
 /**
  * A ficha COMPLETA do lançamento, para quando o clique num gráfico é o pedido

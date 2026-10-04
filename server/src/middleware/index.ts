@@ -144,14 +144,6 @@ function registrarTentativa(req: Request, clienteId: number, motivo: string) {
   }
 }
 
-/** Somente gestores escrevem; leitores têm acesso de consulta. */
-export function somenteGestor(req: Request, _res: Response, next: NextFunction) {
-  if (req.contexto?.papel !== 'gestor') {
-    return next(erroSemPermissao('Esta operação exige o papel de gestor na empresa.'));
-  }
-  next();
-}
-
 /**
  * Autorização por módulo e ação, conferida no SERVIDOR. O que o front esconde
  * é conveniência; a regra é esta. Uma recusa vira 403 e entra na auditoria.

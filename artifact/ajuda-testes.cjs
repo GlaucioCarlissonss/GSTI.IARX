@@ -95,4 +95,37 @@ const todasAsAbas = (pag) =>
   pag.evaluate(() => MODULOS_NAV.flatMap((m) =>
     m.abas.map((id) => ({ modulo: m.rotulo, aba: ABAS.find((a) => a.id === id).rotulo }))));
 
-module.exports = { usarEmpresas, usarBase, usarCompetencias, rotuloSeletor, irPara, todasAsAbas, abrirBlocos };
+
+/**
+ * Para o relógio da página num instante fixo, antes de qualquer script rodar.
+ *
+ * Várias suítes afirmam totais de um mês concreto — "mês único (08/2026) =
+ * R$ 16.028,84" — e o sistema escolhe a competência padrão a partir de HOJE
+ * (`competenciaPadrao`: a última competência encerrada). Em setembro de 2026
+ * o padrão era 08/2026 e as contas fechavam; em outubro virou 09/2026 e as
+ * mesmas suítes passaram a comparar números de meses diferentes, sem ninguém
+ * ter mudado uma linha.
+ *
+ * Congelar diz em voz alta o que a suíte sempre pressupôs: ela descreve o
+ * sistema visto de setembro de 2026. A alternativa — recalcular o esperado a
+ * partir da base — faria o teste repetir a conta do código, e um teste que
+ * refaz a conta do código não prova conta nenhuma.
+ *
+ * O relógio ANDA: o que se fixa é o ponto de partida, por deslocamento
+ * constante. Parar o tempo de vez quebraria animação, `setTimeout` e a
+ * medição de "prazo estourado".
+ */
+async function congelarRelogio(pag, iso = '2026-09-15T12:00:00Z') {
+  await pag.addInitScript((isoFixo) => {
+    const Real = Date;
+    const desvio = new Real(isoFixo).getTime() - Real.now();
+    class Fingido extends Real {
+      constructor(...a) { if (a.length === 0) super(Real.now() + desvio); else super(...a); }
+      static now() { return Real.now() + desvio; }
+    }
+    window.Date = Fingido;
+  }, iso);
+}
+
+module.exports = { usarEmpresas, usarBase, usarCompetencias, rotuloSeletor, irPara, todasAsAbas,
+  abrirBlocos, congelarRelogio };

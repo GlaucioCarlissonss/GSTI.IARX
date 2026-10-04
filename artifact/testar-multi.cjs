@@ -1,7 +1,7 @@
 // Filtros de múltipla escolha: marcar mais de uma opção tem de refletir nos
 // números, e a escolha tem de aparecer na tela sem reabrir o seletor.
 const { chromium } = require('playwright');
-const { irPara } = require('./ajuda-testes.cjs');
+const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
 
 const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||'')); 
   return m ? Math.round(Number(m[0].replace(/\./g,'').replace(',','.')) * 100) : null; };
@@ -18,9 +18,15 @@ const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||''));
     if (!ok) falhas.push(nome);
   };
 
+  // Os totais abaixo são do sistema visto de setembro de 2026.
+  await congelarRelogio(pag);
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#modulos button', { timeout: 15000 });
   const ir = (r) => irPara(pag, r, 450);
+  // A tela é dita em voz alta, e não herdada da abertura: o sistema passou a
+  // abrir em Indicadores Gerais, e uma suíte que supõe a tela inicial quebra
+  // na primeira vez que essa escolha muda.
+  await ir('Painel');
 
   // abre um seletor pelo id do gatilho e marca/desmarca valores
   const marcar = async (id, valores, ligar = true) => {

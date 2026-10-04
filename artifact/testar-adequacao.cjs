@@ -8,7 +8,7 @@
 // compartilhada, e o indicador tem de dizer isso e oferecer a saída, em vez de
 // mostrar um zero que se lê como "não há problema".
 const { chromium } = require('playwright');
-const { irPara } = require('./ajuda-testes.cjs');
+const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
 
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
@@ -26,6 +26,8 @@ const { irPara } = require('./ajuda-testes.cjs');
   const preencher = (sel, v) => ultima().locator(sel).fill(v);
   const clicar = (sel) => ultima().locator(sel).click();
 
+  // Os números abaixo são do sistema visto de setembro de 2026.
+  await congelarRelogio(pag);
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#modulos button', { timeout: 20000 });
   await irPara(pag, 'Indicadores Gerais', 1800);

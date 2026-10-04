@@ -130,15 +130,6 @@ function obterConfig(clienteId: number, sistema: SistemaOrigem): LinhaConfig {
   return linha;
 }
 
-/** Endereço base do sistema de origem configurado para o cliente, se houver. */
-export function urlBaseDoCliente(clienteId: number | null, sistema: string | null): string | null {
-  if (!clienteId) return null;
-  const linha = db()
-    .prepare('SELECT url_base FROM integracao_config WHERE cliente_id = ? AND source_system = ?')
-    .get(clienteId, sistema ?? 'OSTICK') as { url_base: string | null } | undefined;
-  return linha?.url_base || null;
-}
-
 /**
  * Gira o segredo e devolve o valor em claro — a ÚNICA vez em que ele existe
  * fora do N8N. A rotação não derruba nada: o segredo anterior deixa de valer

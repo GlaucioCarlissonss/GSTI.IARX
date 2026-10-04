@@ -413,8 +413,6 @@ function escopoEmpresas(tela = E.aba) {
   return local.length ? local : doCliente;
 }
 
-/** As filiais em foco NESTA tela. Vazio = todas. */
-const filiaisDaTela = (tela = E.aba) => filtroDaTela(tela).filiais;
 
 // `E.empresasSel` e `E.filiaisSel` passam a ser VISTAS do filtro da tela em
 // foco. São dezenas de usos espalhados pelas telas, e trocar cada um por uma
@@ -815,14 +813,6 @@ function dobrarBlocos(raiz) {
   });
 }
 
-/** Abre um bloco pela chave — usado por quem precisa levar a pessoa até ele. */
-function abrirBloco(chave) {
-  const atuais = blocosAbertos();
-  atuais.add(chave);
-  gravarBlocosAbertos(atuais);
-  const bloco = document.querySelector(`.bloco[data-dobra="${chave}"]`);
-  if (bloco) aplicarDobra(bloco, true);
-}
 
 const filiaisDa = (e) => E.filiais.filter((f) => f.empresa === e);
 const tiposDa = (e) => E.tipos.filter((t) => t.empresa === e);
@@ -846,7 +836,6 @@ const filiaisDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(filiaisDa));
  */
 const escopoProjetos = () => (E.clienteSel ? [chaveDoGrupo(), ...escopoEmpresas()] : escopoEmpresas());
 const tiposDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(tiposDa));
-const filasDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(filasDa));
 const cenariosDoEscopo = () => unicoPorNome(escopoEmpresas().flatMap(cenariosDa), 'chave');
 
 // --------------------------------------------------------------- escopo da operação

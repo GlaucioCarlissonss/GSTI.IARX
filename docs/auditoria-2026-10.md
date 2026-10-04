@@ -201,6 +201,83 @@ também não é memorável — e a mono já cumpre bem o papel de rótulo técni
 
 ---
 
+## 2.1 Entrega 1.5 — executada
+
+| | antes | depois |
+| --- | --- | --- |
+| `npm test` (servidor) | 412 / 422 | **422 / 422** |
+| suítes do artifact | 38 verdes, 3 vermelhas | **41 verdes** |
+
+**O conserto foi o mesmo nos dois lados: dizer em voz alta de quando a suíte
+fala.** Nenhuma regra de negócio mudou, e nenhum número esperado foi relaxado
+para caber no resultado.
+
+- **Servidor** — `importacao-foc.test.ts` congela `Date` em 15/09/2026 com
+  `mock.timers`. A planilha real é de setembro, a carga grava naquela
+  competência, e a regra recusa escrita em competência passada sem
+  justificativa. A suíte sempre pressupôs estar dentro do mês do arquivo; agora
+  isso está escrito. Só `Date` é fingido — temporizadores seguem reais, e o
+  SQLite calcula o `datetime('now')` dele por conta própria.
+- **Artifact** — `congelarRelogio()` novo em `ajuda-testes.cjs`, aplicado a
+  `testar-multi`, `testar-adequacao` e `testar-reducao`. O sistema escolhe a
+  competência padrão como *a última encerrada* (`competenciaPadrao`), então em
+  setembro o padrão era 08/2026 e em outubro virou 09/2026 — e as suítes
+  passaram a comparar totais de meses diferentes. O relógio **anda**; o que se
+  fixa é o ponto de partida, por deslocamento constante, para não quebrar
+  animação, `setTimeout` nem a medição de "prazo estourado".
+
+**Um defeito que esta entrega revelou e que era meu:** `testar-multi` lia o KPI
+da tela inicial sem navegar até ela. Quando a abertura passou a cair em
+Indicadores Gerais, a suíte passou a ler uma tela que não era a que ela
+descrevia — e o sintoma virou `null` em cima de um erro que já existia. A suíte
+passou a dizer a tela (`irPara('Painel')`) em vez de herdá-la.
+
+**O que NÃO foi feito, e continua sendo decisão sua:** a carga FOC segue
+coberta por dez testes que o CI **pula**, porque dependem do arquivo real em
+`dados-origem/`. Criar uma fixture anonimizada do FOC — como existe para o
+Contas a Pagar — é o que os traria para dentro do CI, e é trabalho de outra
+ordem. Enquanto isso não acontece, o verde do CI não diz nada sobre essa carga.
+
+---
+
+## 2.2 Entrega 2 — limpeza de código morto (executada)
+
+**Os 17 símbolos saíram**, e `node --check` mais a varredura de declarações
+confirmam: **zero declarações de topo sem uso no artifact** (eram 10 de 619).
+
+| superfície | removido | efeito medido |
+| --- | --- | --- |
+| artifact | 10 símbolos | `sistema.html` de 970.334 → **968.183 bytes** (−2.151) |
+| servidor | 6 símbolos (≈56 linhas) + a dependência `zod` | 422/422 testes, `tsc` limpo |
+| web | `Detalhavel` (33 linhas) | bundle **byte a byte idêntico** |
+
+Dois resultados que merecem ser ditos em voz alta, porque contrariam o que se
+esperaria:
+
+- **O bundle da web não encolheu um byte.** `index-DKC7fpBb.js` saiu do build
+  com 546.716 bytes e o mesmo hash de conteúdo de antes. O Vite já descartava
+  `Detalhavel` por *tree-shaking*: a limpeza vale para quem lê o código, não
+  para quem baixa a página. Qualquer promessa de "reduzir o bundle removendo
+  código morto" seria falsa — o ganho de bundle virá do *code splitting*, na
+  Entrega 6.
+- **Dois dos dez símbolos do artifact eram meus**, das duas semanas
+  anteriores: `horaDecimal` nasceu sem chamador no motor de horas úteis, e
+  `clienteGuardado` ficou órfã quando a abertura passou a sempre perguntar —
+  carregando um comentário meu que afirmava que ela "serve ao cadastro". Não
+  servia. O comentário saiu junto com a função.
+
+Outros dois eram **atalhos de compatibilidade cujos chamadores não existem
+mais**: `sanfonaHtml` e `ligarSanfonasDeUnidade` apenas repassavam para
+`arvoreDeUnidadesHtml` e `ligarArvoresDeUnidade`, com o comentário "para quem
+o chama" — e ninguém chamava desde a entrega da árvore de três níveis.
+
+**O que ficou de fora desta entrega, de propósito:** a consolidação dos cinco
+caminhos de detalhamento. São 43 chamadores, e misturar isso com a remoção de
+código morto tiraria de qualquer um dos dois a chance de ser verificado em
+separado. Fica para uma entrega própria.
+
+---
+
 ## 3. Plano de ação
 
 A ordem abaixo difere do enunciado em um ponto, e é de propósito: **a suíte
@@ -210,7 +287,7 @@ não saber se a limpeza quebrou algo.
 | # | entrega | o que entra | risco |
 | --- | --- | --- | --- |
 | **1.5** | **Destravar a verificação** | os 10 testes do FOC e as 3 suítes do artifact deixam de depender do mês corrente; decidir se a carga FOC ganha fixture anonimizada para entrar no CI | baixo — só teste |
-| 2 | Limpeza | os 17 símbolos mortos, o `zod`, os 74 `export` de tipo; consolidar os cinco caminhos de detalhamento num só contrato | médio — o detalhamento tem 43 chamadores |
+| 2 | Limpeza | ✅ os 17 símbolos mortos e o `zod`. **Pendente:** os 74 `export` de tipo e a consolidação dos cinco caminhos de detalhamento | médio — o detalhamento tem 43 chamadores |
 | 3 | Padronização | tokens de espaçamento e raio; os 305 `px` literais; camada de dados | baixo |
 | 4 | Design system | tipografia, refino do dark mode, motion, componentes | médio — visual em 23 telas |
 | 5 | UX | estado de carregando, feedback, foco, responsividade | baixo |

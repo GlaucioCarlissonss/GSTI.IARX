@@ -45,10 +45,6 @@ export function paraReais(centavos: number): number {
   return Math.round(centavos) / 100;
 }
 
-export function formatarBRL(centavos: number): string {
-  return paraReais(centavos).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
 /**
  * Rateia um total em N parcelas sem perder centavos.
  * O resto é distribuído nas primeiras parcelas (padrão contábil brasileiro).

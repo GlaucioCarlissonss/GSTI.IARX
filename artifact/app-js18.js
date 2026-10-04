@@ -88,15 +88,6 @@ async function garantirClientes() {
 
 // ------------------------------------------------------------- persistência
 
-/**
- * A última escolha, guardada para o cadastro saber de quem é o que se edita.
- *
- * NÃO é usada para reabrir a sessão: a abertura sempre pergunta. Ver o
- * comentário em `app-js7.js`, onde a escolha explícita é a regra.
- */
-function clienteGuardado() {
-  try { return localStorage.getItem(CHAVE_CLIENTE); } catch (e) { return null; }
-}
 
 function guardarCliente(id) {
   try { id ? localStorage.setItem(CHAVE_CLIENTE, id) : localStorage.removeItem(CHAVE_CLIENTE); }
@@ -292,7 +283,6 @@ function trocarCliente() {
 const digitosCnpj = (v) => String(v || '').replace(/\D/g, '');
 /** A raiz — oito primeiros dígitos — é o que diz que duas unidades são a mesma. */
 const raizCnpj = (v) => digitosCnpj(v).slice(0, 8);
-const ehMatrizCnpj = (v) => digitosCnpj(v).slice(8, 12) === '0001';
 
 /**
  * A matriz do cliente que já tem esta raiz — pela dela ou pela de uma filial.

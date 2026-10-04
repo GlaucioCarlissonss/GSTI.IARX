@@ -184,39 +184,6 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
 }
 
 /**
- * Envolve um indicador ou item de gráfico, tornando-o um gatilho de
- * drill-down: clicável, alcançável por teclado e anunciado como botão. Um
- * `div` com `onClick` não é nada disso.
- */
-export function Detalhavel({
-  rotulo,
-  aoAbrir,
-  children,
-}: {
-  rotulo: string;
-  aoAbrir: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className="drill"
-      role="button"
-      tabIndex={0}
-      aria-label={`${rotulo} — abrir os registros que compõem este número`}
-      onClick={aoAbrir}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          aoAbrir();
-        }
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-/**
  * Número do chamado como link para o sistema de origem. O endereço vem pronto
  * do servidor (`url_externa`), que conhece a base configurada de cada
  * helpdesk — remontá-lo aqui faria a tela divergir da listagem.

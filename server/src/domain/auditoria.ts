@@ -80,16 +80,6 @@ export function registrarAcessoNegado(tentativa: TentativaNegada): void {
     );
 }
 
-/** As tentativas recusadas, da mais recente para a mais antiga. */
-export function listarAcessosNegados(limite = 100) {
-  return db()
-    .prepare(
-      `SELECT id, cliente_id, usuario_id, usuario_email, rota, metodo, motivo, criado_em
-         FROM acesso_negado ORDER BY id DESC LIMIT ?`,
-    )
-    .all(Math.min(limite, 500));
-}
-
 export interface FiltroAuditoria {
   /** Filtro local de matriz. Vazio: o cliente inteiro. */
   empresas?: number[];

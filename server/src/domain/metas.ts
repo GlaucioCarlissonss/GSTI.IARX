@@ -21,13 +21,6 @@ export type ModuloMeta = 'financeiro' | 'sla' | 'projetos' | 'equilibrio';
 
 export const MODULOS_META: ModuloMeta[] = ['financeiro', 'sla', 'projetos', 'equilibrio'];
 
-export const ROTULO_MODULO_META: Record<ModuloMeta, string> = {
-  financeiro: 'Financeiro',
-  sla: 'SLA',
-  projetos: 'Projetos',
-  equilibrio: 'Equilíbrio de despesas',
-};
-
 /**
  * Os alvos que valem quando ninguém cadastrou nada.
  *

@@ -54,8 +54,6 @@ function janelaDoDia(d, feriados) {
   return EXPEDIENTE[d.getDay()];
 }
 
-/** A hora decimal do instante dentro do dia: 17:30 → 17,5. */
-const horaDecimal = (d) => d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
 
 /** O mesmo dia, à hora decimal pedida. */
 function noDiaAs(d, hora) {

@@ -8,7 +8,7 @@
 // E a segunda promessa, mais silenciosa: sem cadastro, o indicador diz que
 // está vazio e por quê, em vez de mostrar um alvo inventado.
 const { chromium } = require('playwright');
-const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
+const { irPara, abrirBlocos, congelarRelogio } = require('./ajuda-testes.cjs');
 
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
@@ -19,6 +19,8 @@ const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
   pag.on('console', (m) => { if (m.type() === 'error' && !/ERR_|net::/.test(m.text())) erros.push(m.text()); });
   const ok = (r, b, d = '') => { console.log(`  ${b ? '✓' : '✗'} ${r}${d ? ': ' + d : ''}`); if (!b) falhas.push(r); };
 
+  // Os números abaixo são do sistema visto de setembro de 2026.
+  await congelarRelogio(pag);
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#modulos button', { timeout: 20000 });
 

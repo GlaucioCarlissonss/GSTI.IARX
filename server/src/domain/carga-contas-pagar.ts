@@ -30,24 +30,6 @@
 import { paraCentavos } from './dinheiro.js';
 import type { ProblemaLinha } from './carga-foc.js';
 
-/** As colunas de que este leitor depende. O arquivo traz 86; usamos 14. */
-export const COLUNAS_USADAS = [
-  'ID',
-  'GLBCOMPANYCOMMERCIALNAME',
-  'SUPPLIERNAME',
-  'DOCNUMBER',
-  'DOCEMISSIONDATE',
-  'ACTUALDUEDATE',
-  'DOCPAIDDATE',
-  'ORIGINALVALUE',
-  'LISTOFPRORATEBYCC',
-  'MOTIVE',
-  'INSTALLMENT',
-  'INSTALLMENTQTY',
-  'CREATIONUSER',
-  'DOCISSUBSTITUTE',
-] as const;
-
 /**
  * As âncoras do realinhamento, por NOME e não por índice.
  *

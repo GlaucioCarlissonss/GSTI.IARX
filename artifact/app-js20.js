@@ -888,14 +888,6 @@ function formPlanoReducao() {
   });
 }
 
-/** Os itens do plano que regem esta competência. */
-function planosVigentes(competencia) {
-  const comp = competencia || mesHoje();
-  return planosDoCliente().filter((p) =>
-    p.ativo !== false &&
-    (!p.vigenciaInicio || p.vigenciaInicio <= comp) &&
-    (!p.vigenciaFim || p.vigenciaFim >= comp));
-}
 
 // ===========================================================================
 // QUEM RECONHECE DESPESA

@@ -5,7 +5,7 @@
  * que o sistema mostra deixou de bater com o que ele fecha no Excel — e é por
  * isso que eles estão escritos aqui em vez de serem lidos do próprio código.
  */
-import { test } from 'node:test';
+import { test, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,6 +20,27 @@ import type { Contexto } from '../src/domain/contexto.js';
 
 const ARQUIVO = join(import.meta.dirname, '..', '..', 'dados-origem', 'Base_setembro_Rodrigo_15092026H20M10.xlsx');
 const semBase = { skip: existsSync(ARQUIVO) ? false : 'base real ausente (dados-origem/ não versionado)' };
+
+/**
+ * O RELÓGIO FICA PARADO DENTRO DO MÊS DA PLANILHA.
+ *
+ * O arquivo é de setembro de 2026, e a carga grava lançamentos nessa
+ * competência. `garantirCompetenciaEditavel` recusa escrita em competência
+ * PASSADA sem justificativa — regra certa, e a carga não tem onde informar
+ * uma. O resultado é que esta suíte passava em setembro de 2026 e começou a
+ * falhar sozinha em outubro, sem ninguém mudar uma linha.
+ *
+ * Congelar o relógio diz em voz alta o que a suíte sempre pressupôs: ela
+ * descreve a carga de setembro, feita em setembro. A alternativa — trocar a
+ * planilha de mês a cada virada — faria os totais do anexo do gestor
+ * deixarem de ser conferíveis, que é a razão de esta suíte existir.
+ *
+ * Só `Date` é fingido; temporizadores continuam reais, e o SQLite calcula o
+ * `datetime('now')` dele por conta própria.
+ */
+const DENTRO_DO_MES = new Date('2026-09-15T12:00:00Z');
+before(() => mock.timers.enable({ apis: ['Date'], now: DENTRO_DO_MES }));
+after(() => mock.timers.reset());
 
 const TOTAL_DESPESAS = 8608925; // R$ 86.089,25 — "Vr. Gasto" do anexo
 const TOTAL_APROVACAO = 882141; // R$ 8.821,41 — "Pgto de Hoje" do anexo
