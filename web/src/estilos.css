@@ -11,7 +11,13 @@
   --superficie-2:     #f2f2ef;
   --tinta:            #0b0b0b;
   --tinta-2:          #52514e;
-  --tinta-fraca:      #898781;
+  /* --tinta-fraca carrega TODO rótulo pequeno do app — cabeçalho de tabela,
+     rótulo de campo, legenda de eixo, grupo do menu. No tom anterior
+     (#898781) dava 3,50:1 sobre o cartão e 3,20:1 sobre a superfície recuada:
+     reprovado em AA, e justamente no texto pequeno, onde a régua é mais
+     exigente. Mesma matiz e mesma saturação, só mais escuro, até 4,54:1 na
+     pior superfície do tema claro. O tema escuro já passava (4,85:1). */
+  --tinta-fraca:      #706e69;
   --grade:            #e1e0d9;
   --eixo:             #c3c2b7;
   --borda:            rgba(11, 11, 11, 0.10);
@@ -21,6 +27,20 @@
   --serie-1: #2a78d6;
   --serie-2: #eb6834;
   --serie-3: #1baf7a;
+
+  /* --serie-1 é cor de SÉRIE: ela pinta barra e linha, onde a régua é a de
+     componente (3:1). Texto e preenchimento de ação medem-se pela régua de
+     TEXTO (4,5:1), e nela o mesmo azul reprovava: o link dava 4,3:1 sobre a
+     superfície recuada e o branco sobre o botão primário, 4,42:1 no tema claro
+     e 3,64:1 no escuro. Dois tokens a mais resolvem sem mexer na série — e sem
+     mexer nas cores por unidade, que são identidade do cliente.
+       --elo  : azul de TEXTO (link), legível sobre qualquer superfície;
+       --acao : azul de PREENCHIMENTO, escuro o bastante para o branco em cima.
+     A borda do botão primário é --elo, mais claro que o preenchimento: é ela
+     que marca o limite do controle contra o fundo, porque um azul que atende
+     o branco por dentro fica perto demais do fundo por fora. */
+  --elo: #256abe;
+  --acao: #2772cd;
 
   /* Uma cor por empresa matriz — ordem fixa, atribuída pela posição da matriz
      na lista do cliente, e nunca reciclada dentro de uma tela. Da nona em
@@ -43,6 +63,13 @@
   --positivo-texto: #006300;
 
   --sombra: 0 1px 2px rgba(11, 11, 11, 0.04), 0 4px 16px rgba(11, 11, 11, 0.05);
+  /* A profundidade do que está LEVANTADO — o cartão apontado pelo cursor —,
+     ao lado da sombra de repouso. */
+  --sombra-alta: 0 2px 4px rgba(11, 11, 11, 0.06), 0 12px 28px rgba(11, 11, 11, 0.11);
+  /* A seta do seletor é um data URI, e data URI não enxerga currentColor: a
+     cor fica cozida no SVG. Como token, ela acompanha o tema — antes era um
+     cinza fixo, que no tema escuro sumia contra o campo. */
+  --seta-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23706e69' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
   /* ESCALA DE ESPAÇAMENTO E RAIO — a mesma nos dois aplicativos.
      
      Os valores são EXATAMENTE os que já estavam espalhados pelo código: esta
@@ -59,7 +86,33 @@
   /* Raio: o cartão, o controle e a pastilha. */
     --raio-p: 5px; --raio-m: 8px; --raio-g: 12px; --raio-redondo: 999px;
   --raio: 10px;
-  --fonte: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* TRÊS VOZES, as mesmas da versão hospedada, e cada uma com um trabalho.
+     Display identifica (marca, título de tela, número grande de cartão);
+     Plex Sans é a voz de leitura; Plex Mono é a voz de número, porque largura
+     fixa é o que faz uma coluna de dinheiro alinhar. `--fonte` continua
+     existindo como apelido de `--sans`: era o nome usado pelas três regras que
+     já liam este token, e renomeá-las não muda pixel nenhum. */
+  --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --display: 'Space Grotesk', 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --fonte: var(--sans);
+  /* ESCALA TIPOGRÁFICA — a mesma nos dois aplicativos.
+     Sete degraus, e nenhum a menos de 1,5px do vizinho: dois tamanhos quase
+     iguais na mesma tela não leem como hierarquia, leem como descuido. */
+  --txt-0: 9.5px;  --txt-1: 10.5px; --txt-2: 12px;   --txt-3: 13.5px;
+  --txt-4: 15px;   --txt-5: 18px;   --txt-6: 22px;   --txt-7: 28px;
+  --peso-reg: 400; --peso-med: 500; --peso-forte: 600; --peso-max: 700;
+  --alt-apertada: 1.2; --alt-normal: 1.5;
+  /* MOVIMENTO — o suficiente para a mudança ser percebida, não para ser
+     esperada. 110ms no que responde ao dedo, 180ms no que abre ou fecha. */
+  --mov-rapido: 110ms; --mov: 180ms; --curva: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* Quem pede menos movimento no sistema operacional está dizendo que animação
+   lhe custa. Zerar os tokens apaga TODA transição de uma vez, inclusive as que
+   vierem depois desta entrega, sem que nenhuma regra precise lembrar. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --mov-rapido: 0ms; --mov: 0ms; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -70,7 +123,7 @@
     --superficie-2: #232322;
     --tinta:        #ffffff;
     --tinta-2:      #c3c2b7;
-    --tinta-fraca:  #898781;
+    --tinta-fraca:  #8c8b85;
     --grade:        #2c2c2a;
     --eixo:         #383835;
     --borda:        rgba(255, 255, 255, 0.10);
@@ -78,6 +131,8 @@
     --serie-1: #3987e5;
     --serie-2: #d95926;
     --serie-3: #199e70;
+    --elo: #5296e8;
+    --acao: #1c70d6;
 
     --matriz-1: #3987e5;
     --matriz-2: #d95926;
@@ -89,6 +144,8 @@
     --matriz-8: #8a97a8;
     --positivo-texto: #0ca30c;
     --sombra: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+    --sombra-alta: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 28px rgba(0, 0, 0, 0.45);
+    --seta-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238c8b85' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
   }
 }
 
@@ -99,7 +156,7 @@
   --superficie-2: #232322;
   --tinta:        #ffffff;
   --tinta-2:      #c3c2b7;
-  --tinta-fraca:  #898781;
+  --tinta-fraca:  #8c8b85;
   --grade:        #2c2c2a;
   --eixo:         #383835;
   --borda:        rgba(255, 255, 255, 0.10);
@@ -107,6 +164,8 @@
   --serie-1: #3987e5;
   --serie-2: #d95926;
   --serie-3: #199e70;
+  --elo: #5296e8;
+  --acao: #1c70d6;
 
   --matriz-1: #3987e5;
   --matriz-2: #d95926;
@@ -118,6 +177,8 @@
   --matriz-8: #8a97a8;
   --positivo-texto: #0ca30c;
   --sombra: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+  --sombra-alta: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 28px rgba(0, 0, 0, 0.45);
+  --seta-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238c8b85' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
 * { box-sizing: border-box; }
@@ -132,11 +193,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
-h1 { font-size: 20px; }
-h2 { font-size: 16px; }
-h3 { font-size: 14px; }
-a { color: var(--serie-1); }
+/* Título é identidade, e por isso fala na voz de display. O corpo do texto
+   NÃO: Space Grotesk tem personalidade demais para um parágrafo, e cansaria
+   quem lê uma tabela de lançamentos por uma hora. */
+h1, h2, h3, h4 {
+  margin: 0; font-family: var(--display); font-weight: var(--peso-forte);
+  letter-spacing: -0.02em; line-height: var(--alt-apertada);
+}
+h1 { font-size: var(--txt-6); }
+h2 { font-size: var(--txt-4); }
+h3 { font-size: var(--txt-3); }
+a { color: var(--elo); }
 
 /* ------------------------------------------------------------------ layout */
 .app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
@@ -154,8 +221,8 @@ a { color: var(--serie-1); }
   overflow-y: auto;
 }
 .marca { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; }
-.marca strong { font-size: 15px; letter-spacing: -0.02em; }
-.marca span { font-size: 11px; color: var(--tinta-fraca); text-transform: uppercase; letter-spacing: 0.08em; }
+.marca strong { font-family: var(--display); font-size: var(--txt-4); font-weight: var(--peso-max); letter-spacing: -0.02em; }
+.marca span { font-family: var(--mono); font-size: var(--txt-1); color: var(--tinta-fraca); text-transform: uppercase; letter-spacing: 0.1em; }
 
 /* O cliente em contexto: destacado porque governa tudo o que vem abaixo. */
 .cliente-atual {
@@ -164,12 +231,17 @@ a { color: var(--serie-1); }
   border: 1px solid var(--borda); border-radius: 8px;
   background: var(--superficie-2, var(--superficie));
 }
-.cliente-atual span { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tinta-fraca); }
+/* O cartão inteiro é o caminho de saída do contratante, não só o botão: quem
+   quer trocar clica no nome do cliente, que é onde a mão vai. */
+.cliente-atual { cursor: pointer; }
+.cliente-atual:hover { border-color: var(--serie-1); }
+.cliente-atual:focus-visible { outline: 2px solid var(--serie-1); outline-offset: 2px; }
+.cliente-atual span { font-family: var(--mono); font-size: var(--txt-0); text-transform: uppercase; letter-spacing: 0.12em; color: var(--tinta-fraca); }
 .cliente-atual strong { font-size: 13.5px; line-height: 1.25; }
 .cliente-atual button { align-self: flex-start; margin-top: 4px; padding-left: 0; }
 
 .menu { display: flex; flex-direction: column; gap: 2px; }
-.menu-grupo { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tinta-fraca); padding: 12px 8px 4px; }
+.menu-grupo { font-family: var(--mono); font-size: var(--txt-1); text-transform: uppercase; letter-spacing: 0.09em; color: var(--tinta-fraca); padding: 12px 8px 4px; }
 .menu a {
   display: flex; align-items: center; gap: 9px;
   padding: 7px 8px; border-radius: 7px;
@@ -204,7 +276,10 @@ a { color: var(--serie-1); }
 
 /* ---------------------------------------------------------------- controles */
 .campo { display: flex; flex-direction: column; gap: 4px; }
-.campo > label { font-size: 11.5px; color: var(--tinta-fraca); font-weight: 550; }
+.campo > label {
+  font-family: var(--mono); font-size: var(--txt-1); text-transform: uppercase;
+  letter-spacing: 0.09em; color: var(--tinta-fraca); font-weight: var(--peso-med);
+}
 
 input, select, textarea, .botao {
   font-family: inherit; font-size: 13.5px;
@@ -222,12 +297,43 @@ textarea { resize: vertical; min-height: 62px; }
 .botao { cursor: pointer; font-weight: 550; white-space: nowrap; }
 .botao:hover:not(:disabled) { background: var(--superficie-2); }
 .botao:disabled { opacity: 0.5; cursor: not-allowed; }
-.botao.primario { background: var(--serie-1); border-color: var(--serie-1); color: #fff; }
+.botao.primario { background: var(--acao); border-color: var(--elo); color: #fff; }
 .botao.primario:hover:not(:disabled) { filter: brightness(1.08); }
 .botao.perigo { color: var(--critico); border-color: var(--critico); background: transparent; }
 .botao.discreto { border-color: transparent; background: transparent; color: var(--tinta-2); padding: 5px 8px; }
 .botao.discreto:hover:not(:disabled) { background: var(--superficie-2); }
 .botao.pequeno { padding: 4px 8px; font-size: 12.5px; }
+
+/* ---------------------------------------------- movimento e acabamento
+   Uma mudança de estado que acontece de um quadro para o outro não é lida
+   como resposta ao clique: é lida como a tela ter trocado sozinha. O que
+   responde ao dedo anda em 110ms; o que abre, fecha ou levanta, em 180ms.
+   Tudo aqui passa pelos tokens --mov-*, que prefers-reduced-motion zera.
+
+   A lista é nominal de propósito. `transition: all` nesses mesmos elementos
+   animaria também largura e altura, e uma tabela que recalcula coluna durante
+   a transição pisca. */
+.botao, input, select, textarea, .menu a, .cliente-atual,
+.seletor-multi .gatilho, .cartao button, .indicador.drill {
+  transition:
+    background-color var(--mov-rapido) var(--curva),
+    border-color var(--mov-rapido) var(--curva),
+    color var(--mov-rapido) var(--curva),
+    box-shadow var(--mov) var(--curva),
+    transform var(--mov-rapido) var(--curva),
+    filter var(--mov-rapido) var(--curva);
+}
+/* O botão afunda um pixel ao ser pressionado. É o retorno tátil que diz "o
+   clique chegou" antes de a ação terminar — e some sozinho sob
+   prefers-reduced-motion, porque o deslocamento também é movimento. */
+@media (prefers-reduced-motion: no-preference) {
+  .botao:active:not(:disabled) { transform: translateY(1px); }
+  .cliente-atual:hover { transform: translateY(-1px); }
+}
+/* O campo em foco não depende só do anel do sistema: ganha a borda da série,
+   que é o que se enxerga quando o anel fica atrás de um elemento vizinho. */
+input:focus-visible, select:focus-visible, textarea:focus-visible { border-color: var(--serie-1); }
+.cliente-atual:hover { box-shadow: var(--sombra-alta); }
 
 /* ------------------------------------------------- seletor de múltipla escolha */
 .seletor-multi { position: relative; min-width: 0; }
@@ -236,7 +342,7 @@ textarea { resize: vertical; min-height: 62px; }
   border: 1px solid var(--borda-forte); border-radius: 7px;
   background: var(--superficie); color: var(--tinta); width: 100%;
   text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23898781' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-image: var(--seta-select);
   background-repeat: no-repeat; background-position: right 9px center;
 }
 .seletor-multi .gatilho:hover { background-color: var(--superficie-2); }
@@ -409,7 +515,7 @@ textarea { resize: vertical; min-height: 62px; }
   font: inherit; color: inherit; background: none; border: 0; padding: 0;
   cursor: pointer; text-align: left;
 }
-.cartao-dobra:hover { color: var(--serie-1); }
+.cartao-dobra:hover { color: var(--elo); }
 .cartao-dobra:focus-visible { outline: 2px solid var(--serie-1); outline-offset: 3px; border-radius: 4px; }
 .cartao-seta {
   flex: none; width: 18px; height: 18px; border-radius: 5px;
@@ -432,7 +538,12 @@ textarea { resize: vertical; min-height: 62px; }
 /* ----------------------------------------------------------------- indicador */
 .indicador { display: flex; flex-direction: column; gap: 3px; }
 .indicador .rotulo { font-size: 11.5px; color: var(--tinta-fraca); text-transform: uppercase; letter-spacing: 0.05em; }
-.indicador .numero { font-size: 26px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+/* O número do cartão é o que a pessoa veio ver: fala na voz de display,
+   com figuras de largura fixa para a coluna de cartões alinhar. */
+.indicador .numero {
+  font-family: var(--display); font-size: 26px; font-weight: var(--peso-forte);
+  letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
+}
 .indicador .apoio { font-size: 12px; color: var(--tinta-2); }
 .indicador .delta { font-size: 12px; font-weight: 550; display: inline-flex; align-items: center; gap: 4px; }
 
@@ -506,7 +617,7 @@ textarea { resize: vertical; min-height: 62px; }
 }
 .comparativo-linha > span > i { display: block; height: 100%; border-radius: 3px; min-width: 2px; }
 .comparativo-linha > var {
-  flex: none; font-style: normal; font-size: 10.5px;
+  flex: none; font-style: normal; font-family: var(--mono); font-size: var(--txt-1);
   font-variant-numeric: tabular-nums; color: var(--tinta-2);
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -520,14 +631,17 @@ textarea { resize: vertical; min-height: 62px; }
 /* -------------------------------------------------------------------- tabela */
 .tabela-envolucro { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
+/* O cabeçalho de tabela é rótulo, não texto: caixa-alta, entreletra aberta e
+   a voz de número, que é o que o alinha com a coluna que ele nomeia. */
 thead th {
-  text-align: left; font-weight: 550; font-size: 11.5px;
-  text-transform: uppercase; letter-spacing: 0.05em; color: var(--tinta-fraca);
+  text-align: left; font-family: var(--mono); font-weight: var(--peso-med);
+  font-size: var(--txt-1); text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--tinta-fraca);
   padding: 7px 10px; border-bottom: 1px solid var(--eixo); white-space: nowrap;
 }
 tbody td { padding: 8px 10px; border-bottom: 1px solid var(--grade); vertical-align: top; }
 tbody tr:hover td { background: var(--superficie-2); }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 tfoot td { padding: 8px 10px; font-weight: 600; border-top: 1px solid var(--eixo); }
 
 /* ------------------------------------------------------------------ etiquetas */
@@ -563,7 +677,7 @@ tr.lancamento[data-compartilhada] > th:first-child { box-shadow: inset 3px 0 0 v
 }
 .barra-rep > span > i { display: block; height: 100%; border-radius: 3px; min-width: 2px; }
 .barra-rep > b {
-  flex: none; font-weight: 600; font-size: 11px;
+  flex: none; font-family: var(--mono); font-weight: var(--peso-forte); font-size: 11px;
   font-variant-numeric: tabular-nums; color: var(--tinta-2);
 }
 
@@ -737,5 +851,5 @@ th .puxa-col:hover, th .puxa-col.arrastando { background: color-mix(in srgb, var
 }
 .modo-visao button:last-child { border-right: 0; }
 .modo-visao button:hover { background: var(--superficie-2); color: var(--tinta); }
-.modo-visao button.ativo { background: var(--serie-1); color: #fff; }
+.modo-visao button.ativo { background: var(--acao); color: #fff; }
 .modo-visao button:focus-visible { outline: 2px solid var(--serie-1); outline-offset: -2px; }

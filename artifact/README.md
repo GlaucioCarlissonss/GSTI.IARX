@@ -354,6 +354,7 @@ Vinte e uma suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-adequacao.cjs` | o Objetivo 02: a base nasce sem nada classificado e o indicador diz isso; classificar em lote o acende; o marco de adequação move valor de "compartilhado" para "regularizado" no mês certo; e os dois percentuais têm bases diferentes |
 | `testar-acordos.cjs` | o acordo de SLA que decide: a vigência escolhe pela abertura do chamado, a prévia não grava, a reaplicação vira dentro/fora, agregado e sem-prioridade ficam de fora, e mês fechado recusa |
 | `testar-reconhecedores.cjs` | quem reconhece despesa: o mesmo nome escrito de outro jeito é a mesma pessoa, a prévia não grava, aplicar marca só quem o cadastro alcança, e desativar não desfaz o passado |
+| `testar-contraste.cjs` | a régua de contraste do design system: percorre cada nó de texto visível em 11 telas × 2 temas, sobe até o primeiro fundo opaco e exige 4,5:1 (texto) ou 3:1 (texto grande). É a rede da repaginada visual — token de tinta clareado sem medir cai aqui, e não no olho de quem lê |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

@@ -339,6 +339,91 @@ curtos.
 
 ---
 
+## 2.4 Entrega 4 — design system e repaginada visual (executada, nas duas pontas)
+
+### 4.1 Três vozes, as mesmas nos dois aplicativos
+
+| papel | fonte | onde |
+| --- | --- | --- |
+| **display** | Space Grotesk | marca, `h1`–`h3`, número grande de cartão, total da rosca |
+| **corpo** | IBM Plex Sans | todo texto corrido |
+| **número** | IBM Plex Mono | cabeçalho de tabela, rótulo de campo, célula numérica, eixo |
+
+O artifact já tinha Plex Sans e Plex Mono; **a web não tinha fonte nenhuma**
+além da do sistema operacional, e nenhum token de monoespaçada. Era o que
+fazia as duas metades do GSTI parecerem dois produtos. A voz de display é
+nova nos dois.
+
+Escala em tokens, igual nas duas pontas — `--txt-0` 9,5px a `--txt-7` 28px,
+sete degraus com no mínimo 1,5px entre vizinhos; `--peso-reg/med/forte/max`;
+`--alt-apertada` 1,2 e `--alt-normal` 1,5.
+
+**A pilha de reserva é funcional.** Nada depende de a fonte ter chegado: sem
+rede, a página cai em `system-ui` e continua legível.
+
+### 4.2 Movimento
+
+`--mov-rapido` 110ms (o que responde ao dedo), `--mov` 180ms (o que abre,
+fecha ou levanta) e `--curva` `cubic-bezier(.2,.7,.3,1)`. Transições
+**nominais** em botões, campos, abas, cartões e sanfonas — `transition:all`
+animaria largura e altura, e uma tabela que recalcula coluna durante a
+transição pisca.
+
+`@media (prefers-reduced-motion:reduce)` **zera os tokens**, o que apaga toda
+transição do sistema de uma vez, inclusive as que vierem depois desta entrega.
+
+### 4.3 Contraste: 39 pares reprovados, medidos no navegador
+
+Esta é a parte que não estava no enunciado e que a entrega encontrou. Duas
+varreduras novas — `artifact/testar-contraste.cjs` e
+`web/verificar-contraste.cjs` — percorrem **cada nó de texto visível** em 11
+telas do artifact e 8 da web, nos dois temas, sobem até o primeiro fundo opaco
+e aplicam a régua da WCAG (4,5:1 no texto comum, 3:1 no texto grande).
+
+Elas acharam **39 pares reprovados, todos anteriores a esta entrega**:
+
+| token | era | virou | o que ele carrega |
+| --- | ---: | ---: | --- |
+| `--tinta3` (artifact, claro) | 2,67:1 | 4,52:1 | TODO rótulo de 9,5–11,5px |
+| `--tinta3` (artifact, escuro) | 3,76:1 | 4,63:1 | idem, sobre a superfície recuada |
+| `--tinta-fraca` (web, claro) | 3,20:1 | 4,54:1 | idem |
+| `--tinta-fraca` (web, escuro) | 4,38:1 | 4,60:1 | idem |
+| `--alerta` (claro) | 3,61:1 | 4,66:1 | aviso, etiqueta, valor de cabeçalho |
+| `--proj` (claro) | 1,76:1 | 3,11:1 | linha tracejada da projeção **e** o número do cartão |
+| paleta de tipos (5 de 8) | 2,71:1 | 4,6:1 | valor de cartão pintado com a cor do tipo |
+| botão de módulo ativo (3 de 4) | 2,10:1 | 4,6:1 | branco sobre a cor do módulo |
+| link (`--s1`/`--serie-1`) | 3,94:1 | 4,60:1 | todo link de texto |
+| botão primário (branco em cima) | 3,64:1 | 4,80:1 | a ação principal de cada tela |
+
+**Três decisões de desenho saíram daí**, e as três estão no CSS por extenso:
+
+1. **`--elo` e `--acao` ao lado de `--s1`.** Cor de série e cor de texto são
+   réguas diferentes — 3:1 para uma barra, 4,5:1 para uma palavra —, e o mesmo
+   azul servia às duas. A borda do botão primário é `--elo`, mais clara que o
+   preenchimento: é ela que marca o limite do controle contra o fundo, porque
+   um azul que atende o branco por dentro fica perto demais do fundo por fora.
+2. **Rampa de TEXTO da paleta de tipos** (`--t1t`…`--t8t`), com a mesma matiz e
+   a mesma ordem da rampa de preenchimento. Escurecer a rampa única resolveria
+   o texto e deixaria os gráficos pesados. Separação reconferida depois de
+   escurecer: **ΔE mínimo entre quaisquer duas é 14,4**, acima do piso de 8 que
+   a rampa de preenchimento já cumpria. `corDeTexto()` faz a troca num ponto só.
+3. **`--seta-select` como token.** A seta dos seletores é um data URI, e data
+   URI não enxerga `currentColor`: a cor ficava cozida no SVG, num cinza-claro
+   fixo que sumia no tema escuro.
+
+**As cores por unidade não foram tocadas** — `--m1`…`--m8` são identidade do
+cliente, e o enunciado pede preservá-las.
+
+### 4.4 O que ficou medido
+
+| | artifact | web |
+| --- | --- | --- |
+| telas varridas | 11 × 2 temas | 8 × 2 temas |
+| pares abaixo da régua, antes | 21 | 18 |
+| pares abaixo da régua, depois | **0** | **0** |
+
+---
+
 ## 3. Plano de ação
 
 A ordem abaixo difere do enunciado em um ponto, e é de propósito: **a suíte

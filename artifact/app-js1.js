@@ -975,6 +975,19 @@ function corDoTipo(nome) {
 }
 
 /**
+ * A MESMA cor, no tom que o TEXTO exige.
+ *
+ * Preenchimento e texto medem-se por réguas diferentes: 3:1 contra a
+ * superfície para uma fatia de rosca, 4,5:1 para uma palavra. A paleta de
+ * tipos foi desenhada para a primeira régua, e o sistema a usa nas duas — o
+ * mesmo verde que pinta a fatia escreve o valor do cartão ao lado dela. Esta
+ * função troca `var(--tN)` pela rampa de texto `var(--tNt)`, que tem a mesma
+ * matiz e a mesma ordem; qualquer outra cor passa intacta, porque só a paleta
+ * de tipos tem segundo tom.
+ */
+const corDeTexto = (cor) => (/^var\(--t[1-8]\)$/.test(String(cor)) ? String(cor).replace(')', 't)') : cor);
+
+/**
  * A mesma cor da matriz, em tom mais ESCURO: a despesa que ela paga e o grupo
  * consome.
  *

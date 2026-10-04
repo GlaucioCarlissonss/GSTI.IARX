@@ -579,7 +579,7 @@ function cardsDoFarolHtml(f) {
     : g.variacaoTotal < 0 ? 'var(--bomtxt)' : g.variacaoTotal > 0 ? 'var(--crit)' : null);
   const card = (rot, valor, apoio, c) => `<div class="card-plano">
     <span class="card-rot">${esc(rot)}</span>
-    <strong${c ? ` style="color:${c}"` : ''}>${valor}</strong>
+    <strong${c ? ` style="color:${corDeTexto(c)}"` : ''}>${valor}</strong>
     <span class="card-apoio">${esc(apoio)}</span></div>`;
   const apoioDe = (g) => `${brl(g.valorInicial)} → ${brl(g.valorFinal)}`
     + ` · tendência ${SETA_TENDENCIA[g.tendencia]} ${PALAVRA_TENDENCIA[g.tendencia]}`
@@ -1080,7 +1080,7 @@ const COR_REGULARIZADO = 'var(--bom)';
 function cardsDaAdequacaoHtml(a) {
   const card = (rot, valor, apoio, cor, forte) => `<div class="card-plano${forte ? ' forte' : ''}">
     <span class="card-rot">${esc(rot)}</span>
-    <strong${cor ? ` style="color:${cor}"` : ''}>${valor}</strong>
+    <strong${cor ? ` style="color:${corDeTexto(cor)}"` : ''}>${valor}</strong>
     ${apoio ? `<span class="card-apoio">${esc(apoio)}</span>` : ''}</div>`;
   return `<div class="cards-plano" role="group" aria-label="Adequação em ${esc(mesExib(a.referencia))}">
     ${card('Ainda compartilhado', brl(a.compartilhado),
@@ -1524,7 +1524,7 @@ function cardsDoPlanoHtml({ custo, meta, esperado, atinge, rotulo }) {
   const corFim = atinge === null ? 'var(--tinta3)' : atinge ? 'var(--bomtxt)' : 'var(--crit)';
   const card = (r, v, cor, forte) => `<div class="card-plano${forte ? ' forte' : ''}">
     <span class="card-rot">${esc(r)}</span>
-    <strong${cor ? ` style="color:${cor}"` : ''}>${v}</strong></div>`;
+    <strong${cor ? ` style="color:${corDeTexto(cor)}"` : ''}>${v}</strong></div>`;
   return `<div class="cards-plano"${rotulo ? ` aria-label="${esc(rotulo)}"` : ''}>
     ${card('Custo fixo total', brl(custo))}
     <span class="card-op" aria-hidden="true">−</span>
@@ -2417,11 +2417,11 @@ function blocoIndicador({ chave, titulo, descricao, valor, cor, apoio, corpo, no
   return `
     <section class="bloco bloco-indicador" style="margin-top:var(--esp-7)">
       <header><h2>${esc(titulo)}</h2>
-        <span class="nota valor-cabecalho"${cor ? ` style="color:${cor}"` : ''}>${valor}</span>
+        <span class="nota valor-cabecalho"${cor ? ` style="color:${corDeTexto(cor)}"` : ''}>${valor}</span>
         ${descricao ? `<p class="descricao-indicador">${esc(descricao)}</p>` : ''}</header>
       <div class="kpi kpi-largo" data-kpi="${esc(chave)}">
         <span class="r">${esc(titulo)}</span>
-        <span class="n"${cor ? ` style="color:${cor}"` : ''}>${valor}</span>
+        <span class="n"${cor ? ` style="color:${corDeTexto(cor)}"` : ''}>${valor}</span>
         ${apoio ? `<span class="a">${apoio}</span>` : ''}
         ${corpo || ''}
       </div>
@@ -2520,7 +2520,7 @@ function subBlocoFarol4Html(f, corpo) {
   return `
     <section class="bloco bloco-sub" data-sub-farol4="${esc(f.k)}" style="margin-top:var(--esp-6)">
       <header><h2>${esc(f.titulo)}</h2>
-        <span class="nota valor-cabecalho" style="color:${f.cor}">${
+        <span class="nota valor-cabecalho" style="color:${corDeTexto(f.cor)}">${
           f.pronto ? brl(f.valor) : '<span class="vazio2">sem cadastro</span>'}</span></header>
       ${corpo}
     </section>`;
@@ -2553,7 +2553,7 @@ function subBlocoFarol4Html(f, corpo) {
 function cardsDoFarol4Html(f4) {
   const card = (rot, valor, apoio, cor, forte) => `<div class="card-plano${forte ? ' forte' : ''}">
     <span class="card-rot">${esc(rot)}</span>
-    <strong${cor ? ` style="color:${cor}"` : ''}>${valor}</strong>
+    <strong${cor ? ` style="color:${corDeTexto(cor)}"` : ''}>${valor}</strong>
     <span class="card-apoio">${esc(apoio)}</span></div>`;
   const op = (sinal) => `<span class="card-op" aria-hidden="true">${sinal}</span>`;
   // Frente sem cadastro mostra travessão, e não R$ 0,00: zero afirmaria que a

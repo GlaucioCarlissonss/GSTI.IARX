@@ -13,14 +13,47 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<!-- TRÊS VOZES, e cada uma com um trabalho.
+     Space Grotesk é a voz de TÍTULO: as formas dela — o "a" de uma perna, o
+     "g" de bico — dão ao sistema um rosto que nenhuma fonte de sistema dá.
+     Vai só onde identifica (marca, título de tela, número grande de cartão).
+     IBM Plex Sans é a voz de LEITURA, e carrega tudo o que se lê corrido.
+     IBM Plex Mono é a voz de NÚMERO: largura fixa é o que faz uma coluna de
+     dinheiro alinhar sem que ninguém conte casa decimal.
+     Se a rede não entregar as três, a pilha de reserva mantém a página legível
+     — nada aqui depende de a fonte ter chegado. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
 :root{
   color-scheme: light;
   --plano:#eef1f6; --sup:#fff; --sup2:#f5f7fa; --sup3:#e9edf4;
-  --tinta:#111721; --tinta2:#4a5464; --tinta3:#8892a4;
+  /* --tinta3 carrega TODO rótulo de 9,5 a 11,5px do sistema — cabeçalho de
+     tabela, rótulo de campo, legenda de eixo, data de competência. No tom
+     anterior (#8892a4) ele dava 3,14:1 sobre o cartão branco e 2,67:1 sobre a
+     superfície recuada: reprovado em AA, e justamente no texto pequeno, que é
+     onde a régua é mais exigente. Mesma matiz e mesma saturação, só mais
+     escuro, até 4,52:1 na pior superfície do tema claro. O tema escuro já
+     passava (4,68:1) e fica como está. */
+  --tinta:#111721; --tinta2:#4a5464; --tinta3:#616c7f;
   --linha:#dfe4ec; --linha2:#c4ccd9;
   --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+  /* --s1 é cor de SÉRIE: ela pinta barra e linha, onde a régua é a de
+     componente (3:1). Texto e preenchimento de ação medem-se pela régua de
+     TEXTO (4,5:1), e nela o mesmo azul reprovava: o link dava 3,94:1 sobre a
+     superfície recuada e o branco sobre o botão primário, 4,42:1. Dois tokens
+     a mais resolvem sem mexer na série — e sem mexer nas cores por unidade,
+     que são identidade do cliente.
+       --elo  : azul de TEXTO (link), legível sobre qualquer superfície;
+       --acao : azul de PREENCHIMENTO, escuro o bastante para o branco em cima.
+     A borda do botão primário é --elo, mais claro que o preenchimento: é ela
+     que marca o limite do controle contra o fundo, porque um azul que atende
+     o branco por dentro fica perto demais do fundo por fora. */
+  --elo:#256abe; --acao:#2772cd;
+  /* Cada módulo tem a sua cor quando está aberto, e o rótulo em cima é branco.
+     Pela régua de texto o branco reprovava em todos: 3,2:1 no laranja do
+     suporte, 2,82:1 no verde dos projetos, 2,1:1 no cinza do Sistema. Mesma
+     matiz, só mais escura, até o branco passar. */
+  --acao-projetos:#15855d; --acao-suporte:#cd4914; --acao-sistema:#4a5464;
   /* Uma cor por empresa matriz: ordem fixa pela posição da matriz no cliente,
      nunca reciclada na mesma tela. Da nona em diante, "Outras". A cor nunca é o
      único canal — legenda, tooltip e tabela dizem o nome. */
@@ -37,12 +70,26 @@
      anterior não cumpria em três vagas no tema claro. */
   --t1:#4f46e5; --t2:#d97706; --t3:#0d9488; --t4:#e11d48;
   --t5:#0284c7; --t6:#ea580c; --t7:#059669; --t8:#7c3aed;
-  --bom:#0ca30c; --bomtxt:#056605; --alerta:#b26a00; --crit:#c0392f;
+  /* A MESMA paleta, no tom que o TEXTO exige. São duas réguas diferentes: um
+     preenchimento de rosca ou de barra precisa de 3:1 contra a superfície, e
+     texto precisa de 4,5:1. Cinco das oito cores passavam na primeira e
+     reprovavam na segunda — e o sistema usa a cor do tipo nos dois lugares, no
+     mesmo cartão. Escurecer a rampa inteira resolveria o texto e deixaria os
+     gráficos pesados; daí a segunda rampa, com a mesma matiz e a mesma ordem.
+     Separação reconferida depois de escurecer: ΔE mínimo entre quaisquer duas
+     é 14,4 — acima do piso de 8 que a rampa de preenchimento já cumpria. */
+  --t1t:#4f46e5; --t2t:#9f5704; --t3t:#0a776e; --t4t:#ce1b42;
+  --t5t:#0270a8; --t6t:#b74509; --t7t:#047955; --t8t:#7c3aed;
+  --bom:#0ca30c; --bomtxt:#056605; --alerta:#9a5b00; --crit:#c0392f;
   /* O tom da PROJEÇÃO: o azul do custo fixo, clareado. É o mesmo dado visto
      adiante, então tem de ser reconhecível como parente da linha realizada —
      uma cor de outra família leria como uma quarta série. O tracejado é o
      segundo canal, para não depender do tom. */
-  --proj:#8fb8e8;
+  /* O tom da projeção subiu de 1,76:1 para 3,11:1 contra a pior superfície do
+     tema claro: ele pinta a linha tracejada E o número grande do cartão, e no
+     tom anterior nenhum dos dois se enxergava. Continua mais claro que --s1
+     (luminância 0,238 contra 0,188), que é o parentesco que a leitura usa. */
+  --proj:#4388d8;
   /* ESCALA DE ESPAÇAMENTO E RAIO — a mesma nos dois aplicativos.
      
      Os valores são EXATAMENTE os que já estavam espalhados pelo código: esta
@@ -59,36 +106,72 @@
   /* Raio: o cartão, o controle e a pastilha. */
   --raio-p:5px; --raio-m:8px; --raio-g:12px; --raio-redondo:999px;
   --sombra:0 1px 2px rgba(17,23,33,.05),0 8px 24px rgba(17,23,33,.06);
+  --sombra-alta:0 2px 4px rgba(17,23,33,.06),0 12px 28px rgba(17,23,33,.11);
   --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  --display:'Space Grotesk','IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  /* A seta do select é um data URI, e data URI não enxerga currentColor: a cor
+     fica cozida no SVG. Como token, ela acompanha o tema — antes era um
+     cinza-claro fixo, que no tema escuro sumia contra o campo. */
+  --seta-select:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23616c7f' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  /* ESCALA TIPOGRÁFICA — a mesma nos dois aplicativos.
+     Sete degraus, e nenhum a menos de 1,5px do vizinho: dois tamanhos quase
+     iguais na mesma tela não leem como hierarquia, leem como descuido. O piso
+     é 9,5px e existe só para o rótulo em caixa-alta com entreletra aberta, que
+     é a única coisa no sistema que se lê sem se ler. */
+  --txt-0:9.5px;  --txt-1:10.5px; --txt-2:12px;   --txt-3:13.5px;
+  --txt-4:15px;   --txt-5:18px;   --txt-6:22px;   --txt-7:28px;
+  --peso-reg:400; --peso-med:500; --peso-forte:600; --peso-max:700;
+  --alt-apertada:1.2; --alt-normal:1.5;
+  /* MOVIMENTO — o suficiente para a mudança ser percebida, não para ser
+     esperada. 110ms no que responde ao dedo, 180ms no que abre ou fecha.
+     A curva sai mais rápido do que entra, que é como as coisas param. */
+  --mov-rapido:110ms; --mov:180ms; --curva:cubic-bezier(.2,.7,.3,1);
 }
+/* Quem pede menos movimento no sistema operacional está dizendo que animação
+   lhe custa — enjoo, distração, dor de cabeça. Zerar os tokens apaga TODA
+   transição do sistema de uma vez, inclusive as que vierem depois desta
+   entrega, sem que nenhuma regra precise lembrar de perguntar. */
+@media (prefers-reduced-motion:reduce){:root{--mov-rapido:0ms;--mov:0ms}}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   color-scheme:dark;
   --plano:#0b0e14; --sup:#141a24; --sup2:#1b2230; --sup3:#232c3c;
-  --tinta:#eef2f8; --tinta2:#a9b4c4; --tinta3:#7a8597;
+  --tinta:#eef2f8; --tinta2:#a9b4c4; --tinta3:#8b95a4;
+  --seta-select:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b95a4' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
   --linha:#27303f; --linha2:#39455a;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --elo:#5296e8; --acao:#1c70d6;
+  --acao-projetos:#15855f; --acao-suporte:#c45022; --acao-sistema:#647691;
   --m1:#3987e5; --m2:#d95926; --m3:#199e70; --m4:#a273e8;
   --m5:#e0526f; --m6:#22a7b8; --m7:#d9a13c; --m8:#8a97a8;
   --t1:#6366f1; --t2:#cc7a05; --t3:#0d9e8f; --t4:#f0355a;
   --t5:#0b90cc; --t6:#e35f12; --t7:#0ca176; --t8:#8b5cf6;
+  --t1t:#8789f4; --t2t:#d58005; --t3t:#0ea696; --t4t:#f3637f;
+  --t5t:#0c9dde; --t6t:#ee6e23; --t7t:#0ca87b; --t8t:#a37ef8;
   --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
   --proj:#6d93c4;
   --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  --sombra-alta:0 2px 4px rgba(0,0,0,.5),0 12px 28px rgba(0,0,0,.45);
 }}
 :root[data-theme="dark"]{
   color-scheme:dark;
   --plano:#0b0e14; --sup:#141a24; --sup2:#1b2230; --sup3:#232c3c;
-  --tinta:#eef2f8; --tinta2:#a9b4c4; --tinta3:#7a8597;
+  --tinta:#eef2f8; --tinta2:#a9b4c4; --tinta3:#8b95a4;
+  --seta-select:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b95a4' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
   --linha:#27303f; --linha2:#39455a;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --elo:#5296e8; --acao:#1c70d6;
+  --acao-projetos:#15855f; --acao-suporte:#c45022; --acao-sistema:#647691;
   --m1:#3987e5; --m2:#d95926; --m3:#199e70; --m4:#a273e8;
   --m5:#e0526f; --m6:#22a7b8; --m7:#d9a13c; --m8:#8a97a8;
   --t1:#6366f1; --t2:#cc7a05; --t3:#0d9e8f; --t4:#f0355a;
   --t5:#0b90cc; --t6:#e35f12; --t7:#0ca176; --t8:#8b5cf6;
+  --t1t:#8789f4; --t2t:#d58005; --t3t:#0ea696; --t4t:#f3637f;
+  --t5t:#0c9dde; --t6t:#ee6e23; --t7t:#0ca87b; --t8t:#a37ef8;
   --bomtxt:#35c135; --alerta:#e0a02a; --crit:#e2685c;
   --proj:#6d93c4;
   --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  --sombra-alta:0 2px 4px rgba(0,0,0,.5),0 12px 28px rgba(0,0,0,.45);
 }
 /* A divisão do número por empresa matriz. Fina de propósito: informa a
    composição sem competir com o número, que é o que a pessoa veio ler. */
@@ -240,7 +323,7 @@
 .liga-medias input{margin:0;flex:none}
 /* A rosca: o total no centro é o número que a pessoa veio ler, e por isso tem
    o peso de um KPI; o rótulo abaixo dele é apoio. */
-.rosca-total{font-family:var(--sans);font-size:26px;font-weight:600;letter-spacing:-.03em;
+.rosca-total{font-family:var(--display);font-size:26px;font-weight:600;letter-spacing:-.03em;
   fill:var(--tinta);font-variant-numeric:tabular-nums}
 .rosca-rot{font-family:var(--mono);font-size:8.5px;letter-spacing:.09em;fill:var(--tinta3)}
 /* A faixa de uma onda no gráfico por unidade: o fundo diz a que onda a coluna
@@ -366,26 +449,36 @@
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--plano);color:var(--tinta);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
-h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.02em}
-a{color:var(--s1)}
+/* Título é identidade, e por isso fala na voz de display. O corpo do texto
+   NÃO: Space Grotesk tem personalidade demais para um parágrafo, e cansaria
+   quem lê uma tabela de lançamentos por uma hora. */
+h1,h2,h3{margin:0;font-family:var(--display);font-weight:var(--peso-forte);letter-spacing:-.02em;line-height:var(--alt-apertada)}
+h1{font-size:var(--txt-6)}
+h2{font-size:var(--txt-5)}
+h3{font-size:var(--txt-4)}
+a{color:var(--elo)}
 code{font-family:var(--mono);font-size:.92em;background:var(--sup2);padding:1px 5px;border-radius:4px}
 
 /* ---------------------------------------------------------------- topo */
 .barra{position:sticky;top:0;z-index:20;background:var(--sup);border-bottom:1px solid var(--linha)}
 .barra .linha1{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 20px 0}
 .marca{display:flex;flex-direction:column;margin-right:auto}
-.marca b{font-size:15px;letter-spacing:-.02em}
+.marca b{font-family:var(--display);font-size:var(--txt-4);font-weight:var(--peso-max);letter-spacing:-.02em}
 .marca span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--tinta3)}
 
 /* Cliente em contexto: fica junto da marca porque governa TODAS as telas. */
-.cliente-atual{display:flex;flex-direction:column;gap:1px;padding:6px 10px;border:1px solid var(--linha2);
+/* O cartão inteiro é o caminho para trocar de contratante: ele se comporta
+   como botão, então mostra que é clicável e aceita o foco do teclado. */
+.cliente-atual{cursor:pointer;display:flex;flex-direction:column;gap:1px;padding:6px 10px;border:1px solid var(--linha2);
   border-radius:9px;background:var(--sup2);max-width:280px}
 .cliente-atual span{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--tinta3)}
 .cliente-atual b{font-size:13px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cliente-atual small{font-size:10.5px;color:var(--tinta3)}
-.cliente-atual button{align-self:flex-start;margin-top:3px;padding:0;border:0;background:none;color:var(--s1);
+.cliente-atual button{align-self:flex-start;margin-top:3px;padding:0;border:0;background:none;color:var(--elo);
   font-size:11.5px;cursor:pointer}
 .cliente-atual button:hover{text-decoration:underline}
+.cliente-atual:hover{border-color:var(--s1)}
+.cliente-atual:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
 
 /* Antes de escolher o cliente não há recorte: filtro e navegação não têm
    sobre o que operar, e mostrá-los ofereceria escolha sem efeito. */
@@ -412,7 +505,7 @@ body[data-sem-cliente] #abas{display:none!important}
 body[data-sem-cliente] #ultima-carga{display:none!important}
 
 .boas-vindas{max-width:620px;margin:40px auto;display:flex;flex-direction:column;gap:14px}
-.boas-vindas h1{font-size:23px;letter-spacing:-.03em}
+.boas-vindas h1{font-size:26px;letter-spacing:-.03em}
 .boas-vindas p{color:var(--tinta2);font-size:13.5px;margin:-6px 0 4px}
 .lista-clientes{display:flex;flex-direction:column;gap:8px}
 .cartao-cliente{display:flex;flex-direction:column;gap:3px;align-items:flex-start;text-align:left;
@@ -430,15 +523,15 @@ body[data-sem-cliente] #ultima-carga{display:none!important}
   display:inline-flex;align-items:center;gap:7px;
 }
 .modulos button:hover{border-color:var(--linha2);color:var(--tinta)}
-.modulos button[aria-current="page"]{background:var(--s1);border-color:var(--s1);color:#fff}
+.modulos button[aria-current="page"]{background:var(--acao);border-color:var(--elo);color:#fff}
 .modulos button .pt{width:7px;height:7px;border-radius:50%;background:var(--s1);flex:none}
 .modulos button[aria-current="page"] .pt{background:#fff}
 .modulos button[data-mod="projetos"] .pt{background:var(--s3)}
 .modulos button[data-mod="suporte"] .pt{background:var(--s2)}
 .modulos button[data-mod="sistema"] .pt{background:var(--tinta3)}
-.modulos button[aria-current="page"][data-mod="projetos"]{background:var(--s3);border-color:var(--s3)}
-.modulos button[aria-current="page"][data-mod="suporte"]{background:var(--s2);border-color:var(--s2)}
-.modulos button[aria-current="page"][data-mod="sistema"]{background:var(--tinta2);border-color:var(--tinta2)}
+.modulos button[aria-current="page"][data-mod="projetos"]{background:var(--acao-projetos);border-color:var(--s3)}
+.modulos button[aria-current="page"][data-mod="suporte"]{background:var(--acao-suporte);border-color:var(--s2)}
+.modulos button[aria-current="page"][data-mod="sistema"]{background:var(--acao-sistema);border-color:var(--tinta3)}
 
 .bt-tema{
   font-family:inherit;font-size:13px;font-weight:500;padding:7px 12px;border:1px solid var(--linha);
@@ -546,7 +639,7 @@ body[data-sem-cliente] #ultima-carga{display:none!important}
 }
 .modo-visao button:last-child{border-right:0}
 .modo-visao button:hover{background:var(--sup2);color:var(--tinta)}
-.modo-visao button.ativo{background:var(--s1);color:#fff}
+.modo-visao button.ativo{background:var(--acao);color:#fff}
 .modo-visao button:focus-visible{outline:2px solid var(--s1);outline-offset:-2px}
 /* Ponto discreto: esta aba vale para o cliente inteiro, não só a unidade em
    foco. O `title` no botão explica por extenso ao passar o mouse. */
@@ -563,19 +656,52 @@ input,select,textarea{
   background:var(--sup);color:var(--tinta);width:100%;
 }
 select{appearance:none;padding-right:28px;cursor:pointer;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238892a4' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-image:var(--seta-select);
   background-repeat:no-repeat;background-position:right 10px center}
 textarea{min-height:62px;resize:vertical}
 input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
 .bt{font-family:inherit;font-size:13.5px;font-weight:550;padding:8px 13px;border:1px solid var(--linha2);border-radius:8px;background:var(--sup);color:var(--tinta);cursor:pointer;white-space:nowrap}
 .bt:hover:not(:disabled){background:var(--sup2)}
 .bt:disabled{opacity:.5;cursor:not-allowed}
-.bt.pri{background:var(--s1);border-color:var(--s1);color:#fff}
+.bt.pri{background:var(--acao);border-color:var(--elo);color:#fff}
 .bt.pri:hover:not(:disabled){filter:brightness(1.08)}
 .bt.peq{padding:5px 9px;font-size:12.5px}
 .bt.fant{border-color:transparent;background:transparent;color:var(--tinta2)}
 .bt.fant:hover:not(:disabled){background:var(--sup2)}
 .bt.perigo{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 40%,transparent)}
+
+/* ---------------------------------------------- movimento e acabamento
+   Uma mudança de estado que acontece de um quadro para o outro não é lida
+   como resposta ao clique: é lida como a tela ter trocado sozinha. O que
+   responde ao dedo anda em 110ms; o que abre, fecha ou levanta, em 180ms.
+   Tudo aqui passa pelos tokens --mov-*, que prefers-reduced-motion zera.
+
+   A lista é nominal de propósito. `transition:all` nesses mesmos elementos
+   animaria também largura e altura, e uma tabela que recalcula coluna durante
+   a transição pisca. */
+.bt,.modulos button,.abas button,.modo-visao button,.cartao-cliente,.cliente-atual,
+input,select,textarea,.kpi.drill,.gantt-grupo{
+  transition:background-color var(--mov-rapido) var(--curva),
+             border-color var(--mov-rapido) var(--curva),
+             color var(--mov-rapido) var(--curva),
+             box-shadow var(--mov) var(--curva),
+             transform var(--mov-rapido) var(--curva),
+             filter var(--mov-rapido) var(--curva);
+}
+/* O botão afunda um pixel ao ser pressionado. É o retorno tátil que diz "o
+   clique chegou" antes de a ação terminar — e some sozinho sob
+   prefers-reduced-motion, porque o deslocamento também é movimento. */
+@media (prefers-reduced-motion:no-preference){
+  .bt:active:not(:disabled),.modulos button:active,.modo-visao button:active{transform:translateY(1px)}
+  .cartao-cliente:hover{transform:translateY(-1px)}
+}
+/* O campo em foco não depende só do anel do sistema: ganha a borda da série,
+   que é o que se enxerga quando o anel fica atrás de um elemento vizinho. */
+input:focus-visible,select:focus-visible,textarea:focus-visible{border-color:var(--s1)}
+/* O cartão de cliente ganha profundidade ao ser apontado — a sombra diz que
+   ele sai da folha, e é por isso que ele parece clicável antes de o cursor
+   virar mãozinha. */
+.cartao-cliente:hover{box-shadow:var(--sombra-alta)}
 
 .filtros{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;background:var(--sup);border:1px solid var(--linha);border-radius:12px;padding:12px 14px;box-shadow:var(--sombra)}
 .filtros .campo{flex:0 1 auto;max-width:100%}
@@ -597,7 +723,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
   font-family:var(--sans);font-size:13.5px;padding:8px 28px 8px 10px;border:1px solid var(--linha2);
   border-radius:8px;background:var(--sup);color:var(--tinta);width:100%;text-align:left;cursor:pointer;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238892a4' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-image:var(--seta-select);
   background-repeat:no-repeat;background-position:right 10px center;
 }
 .multi>button:hover{background-color:var(--sup2)}
@@ -650,7 +776,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
   display:inline-flex;align-items:center;gap:8px;
   font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left;
 }
-.bloco-dobra:hover{color:var(--s1)}
+.bloco-dobra:hover{color:var(--elo)}
 .bloco-dobra:focus-visible{outline:2px solid var(--s1);outline-offset:3px;border-radius:4px}
 .bloco-seta{
   flex:none;width:18px;height:18px;border-radius:5px;
@@ -672,7 +798,9 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .kpi{padding:15px 17px;border-right:1px solid var(--linha);display:flex;flex-direction:column;gap:2px}
 .kpi:last-child{border-right:0}
 .kpi .r{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tinta3)}
-.kpi .n{font-size:25px;font-weight:600;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+/* O número do cartão é o que a pessoa veio ver: fala na voz de display,
+   com figuras de largura fixa para a coluna de cartões alinhar. */
+.kpi .n{font-family:var(--display);font-size:25px;font-weight:var(--peso-forte);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .kpi .a{font-size:12px;color:var(--tinta2)}
 .delta{font-size:12px;font-weight:600}
 .delta.sobe{color:var(--crit)} .delta.desce{color:var(--bomtxt)} .delta.zero{color:var(--tinta3)}
@@ -745,7 +873,7 @@ tr[data-sem-reconhecer] td.n{color:var(--alerta);font-weight:700}
 .caixa-categorias .lista-categorias{margin:7px 0 8px;padding-left:20px;display:flex;flex-wrap:wrap;gap:2px 22px}
 .caixa-categorias .lista-categorias li{font-size:12.5px;line-height:1.7}
 .caixa-categorias strong{color:var(--tinta)}
-.caixa-categorias a{color:var(--s1);font-size:12.5px}
+.caixa-categorias a{color:var(--elo);font-size:12.5px}
 input[type=file]{font:inherit;font-size:13px;color:var(--tinta2)}
 input[type=file]::file-selector-button{font:inherit;font-size:13px;margin-right:10px;padding:6px 12px;border-radius:8px;border:1px solid var(--linha2);background:var(--sup2);color:var(--tinta);cursor:pointer}
 input[type=checkbox]{width:auto;accent-color:var(--s1)}
