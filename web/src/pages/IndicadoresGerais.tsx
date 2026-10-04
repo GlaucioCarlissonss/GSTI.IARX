@@ -306,7 +306,7 @@ export function PaginaIndicadoresGerais() {
                 )} da despesa do grupo`}
                 dica="O valor atual sai dos lançamentos do recorte; o alvo, do cadastro. O percentual de redução é (atual − alvo) / atual."
               />
-              <div className="tabela-envolucro" style={{ marginTop: 12 }}>
+              <div className="tabela-envolucro" style={{ marginTop: 'var(--esp-6)' }}>
                 <table>
                   <thead>
                     <tr>
@@ -375,7 +375,7 @@ export function PaginaIndicadoresGerais() {
                   </tbody>
                 </table>
               </div>
-              <p className="dica-filtro" style={{ marginTop: 10 }}>
+              <p className="dica-filtro" style={{ marginTop: 'var(--esp-5)' }}>
                 Passe o cursor sobre a barra para ver o peso da despesa em cada filial — é o peso
                 dentro <strong>daquela unidade</strong>, e não no grupo.
               </p>
@@ -402,7 +402,7 @@ export function PaginaIndicadoresGerais() {
           ) : (
             <>
               <LegendaDeConsumo cor={cores.get(v.rateio.por_empresa[0]!.empresa_id)?.cor} />
-              <div className="tabela-envolucro" style={{ marginTop: 10 }}>
+              <div className="tabela-envolucro" style={{ marginTop: 'var(--esp-5)' }}>
                 <table>
                   <thead>
                     <tr>
@@ -426,7 +426,7 @@ export function PaginaIndicadoresGerais() {
                           {e.pagadora && (
                             <span
                               className="etiqueta"
-                              style={{ marginLeft: 6 }}
+                              style={{ marginLeft: 'var(--esp-3)' }}
                               title="Esta empresa paga ao menos uma despesa compartilhada do grupo"
                             >
                               pagadora
@@ -483,7 +483,7 @@ export function PaginaIndicadoresGerais() {
                   </tbody>
                 </table>
               </div>
-              <p className="dica-filtro" style={{ marginTop: 10 }}>
+              <p className="dica-filtro" style={{ marginTop: 'var(--esp-5)' }}>
                 O <strong>antes</strong> é como a unidade aparece hoje: o que é dela mais 100% do que
                 ela paga. O <strong>depois</strong> é o que é dela mais a parcela que lhe cabe. O
                 critério do rateio é {v.rateio.criterio}
@@ -576,14 +576,14 @@ export function PaginaIndicadoresGerais() {
                 </tbody>
               </table>
             </div>
-            <p className="dica-filtro" style={{ marginTop: 10 }}>
+            <p className="dica-filtro" style={{ marginTop: 'var(--esp-5)' }}>
               O valor é o que a unidade pagadora desembolsa por inteiro. Não há divisão por filial
               beneficiada: somar as linhas daria mais que o total, porque a mesma despesa serve a
               várias. A leitura <strong>rateada</strong> dessa mesma despesa está no indicador de
               despesas compartilhadas regularizadas, acima.
             </p>
             {v.equilibrio.atual && (
-              <p style={{ marginTop: 10, fontSize: 13 }}>
+              <p style={{ marginTop: 'var(--esp-5)', fontSize: 13 }}>
                 <strong>Equilíbrio de despesas:</strong> {percentual(v.equilibrio.atual.pct)} em{' '}
                 {v.equilibrio.atual.competencia}
                 {v.equilibrio.anterior && (

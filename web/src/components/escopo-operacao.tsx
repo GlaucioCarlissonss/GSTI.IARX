@@ -203,9 +203,9 @@ export function SeletorEscopo({
         <strong className="contador-escopo">{resumoEscopo(escopo, empresas, filiais)}</strong>
       </legend>
 
-      <div className="opcoes-escopo" style={{ display: 'flex', flexWrap: 'wrap', gap: 14, margin: '6px 0' }}>
+      <div className="opcoes-escopo" style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--esp-7)', margin: '6px 0' }}>
         {MODOS.map((m) => (
-          <label key={m.chave} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }} title={m.apoio}>
+          <label key={m.chave} style={{ display: 'flex', gap: 'var(--esp-3)', alignItems: 'center', fontSize: 13 }} title={m.apoio}>
             <input
               type="radio"
               name="escopo-operacao"
@@ -219,7 +219,7 @@ export function SeletorEscopo({
       </div>
 
       {escopo.modo !== 'cliente' && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--esp-6)', alignItems: 'flex-end' }}>
           <Filtro rotulo="Empresas (matrizes)" explicacao="As matrizes que entram na operação.">
             <SeletorMulti
               rotulo="Empresas (matrizes)"

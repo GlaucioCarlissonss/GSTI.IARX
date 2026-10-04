@@ -112,7 +112,7 @@ export function PlanilhaDeChamados({
 
   return (
     <Cartao titulo="Planilha de chamados" descricao="Exportar o recorte, ou importar em lote">
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap', alignItems: 'center' }}>
         <button
           type="button"
           className="botao"
@@ -210,7 +210,7 @@ export function PlanilhaDeChamados({
             </>
           }
         >
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap' }}>
             <Etiqueta texto={`${inteiro(previa.total)} linha(s) no arquivo`} />
             <Etiqueta texto={`${inteiro(previa.a_criar)} a criar`} tom={previa.a_criar > 0 ? 'bom' : 'neutro'} />
             <Etiqueta texto={`${inteiro(previa.a_atualizar)} a atualizar`} />

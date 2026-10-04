@@ -180,7 +180,7 @@ async function viewSla(secao = 'indicadores') {
             <td class="n">${r.horas === null || r.horas === undefined ? '—' : r.horas.toLocaleString('pt-BR',{maximumFractionDigits:1})}</td>
             <td><span class="tag ${ok ? 'bom' : 'crit'}">${ok ? 'Dentro' : 'Fora'}</span></td></tr>`;
         }).join('')}</tbody></table></div>
-      <p class="nota" style="margin-top:10px">O número do chamado abre o registro no osTicket.
+      <p class="nota" style="margin-top:var(--esp-5)">O número do chamado abre o registro no osTicket.
         O prazo sai do <strong>acordo de SLA cadastrado</strong> para a criticidade do chamado; onde
         não há acordo, vale o que o helpdesk informou. A linha diz de onde veio a criticidade —
         <em>da origem</em>, <em>padrão</em> do cadastro ou <em>à mão</em> —, e o botão Prioridade
@@ -470,7 +470,7 @@ async function viewCadastros() {
       ${itens.length===0 ? '<p class="vazio">Nenhum registro.</p>' : `<div style="display:flex;gap:7px;flex-wrap:wrap">
         ${itens.map((i)=>`<span class="tag">${esc(i)}</span>`).join('')}</div>`}
       ${extra||''}
-      <div style="margin-top:12px"><button class="bt" data-novo="${acaoNovo}">Adicionar</button></div></section>`;
+      <div style="margin-top:var(--esp-6)"><button class="bt" data-novo="${acaoNovo}">Adicionar</button></div></section>`;
 
   el('#pagina').innerHTML = `
     <div class="msg"><strong>Cadastros da empresa ${esc(E.empresas.find((x)=>x.id===emp)?.nome || '')}.</strong>
@@ -486,25 +486,25 @@ async function viewCadastros() {
     <section class="bloco"><header><h2>Endereço do osTicket</h2></header>
       <div class="msg">O número do chamado, na aba SLA, vira link para o sistema de origem. O id interno entra no
         fim do endereço — <code>tickets.php?id=<strong>21734</strong></code>.</div>
-      <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
+      <div class="filtros" style="margin-top:var(--esp-6);box-shadow:none;border:0;padding:0">
         <div class="campo" style="flex:1 1 340px"><label for="cfg-url">Base do endereço</label>
           <input id="cfg-url" value="${esc((E.config && E.config.urlOsTicket) || URL_OSTICKET_PADRAO)}"></div>
         <button class="bt" id="cfg-salvar">Salvar</button>
       </div>
-      <div class="msg" id="cfg-ok" hidden style="margin-top:10px"></div>
+      <div class="msg" id="cfg-ok" hidden style="margin-top:var(--esp-5)"></div>
     </section>
 
     <section class="bloco"><header><h2>Fechamento de competência</h2></header>
       <div class="msg">Uma competência fechada não aceita novo lançamento nem alteração. Reabrir exige justificativa,
         e tudo fica na trilha de auditoria.</div>
-      <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
+      <div class="filtros" style="margin-top:var(--esp-6);box-shadow:none;border:0;padding:0">
         <div class="campo" style="width:120px"><label for="fc-comp">Competência</label>
           <input id="fc-comp" value="${mesExib(ordenado(E.competencias).pop() || mesHoje())}"></div>
         <button class="bt pri" id="fc-fechar">Fechar competência</button>
       </div>
-      <div class="msg erro" id="fc-erro" hidden style="margin-top:10px"></div>
+      <div class="msg erro" id="fc-erro" hidden style="margin-top:var(--esp-5)"></div>
       ${fechadas.length===0 ? '<p class="vazio">Nenhuma competência fechada.</p>' : `
-      <div class="rol" style="margin-top:10px"><table><thead><tr><th>Competência</th><th>Fechada em</th><th></th></tr></thead>
+      <div class="rol" style="margin-top:var(--esp-5)"><table><thead><tr><th>Competência</th><th>Fechada em</th><th></th></tr></thead>
         <tbody>${fechadas.map((f)=>`<tr data-fc="${esc(compDoFechamento(f))}">
           <td><span class="tag alerta">${mesExib(compDoFechamento(f))}</span></td>
           <td>${f.quando?new Date(f.quando).toLocaleString('pt-BR'):'—'}</td>

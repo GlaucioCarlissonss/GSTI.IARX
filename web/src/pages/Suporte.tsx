@@ -432,7 +432,7 @@ function PaginaChamados({ sistema }: { sistema: SistemaOrigem }) {
             </div>
 
             {consulta.dados.paginacao.paginas > 1 && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
+              <div style={{ display: 'flex', gap: 'var(--esp-4)', alignItems: 'center', marginTop: 'var(--esp-5)' }}>
                 <button
                   type="button"
                   className="botao pequeno"
@@ -523,14 +523,14 @@ function HistoricoPrioridade({ id, podeEditar }: { id: number; podeEditar: boole
 
   const linhas = historico.dados ?? [];
   return (
-    <div style={{ marginTop: 14, borderTop: '1px solid var(--borda)', paddingTop: 12 }}>
+    <div style={{ marginTop: 'var(--esp-7)', borderTop: '1px solid var(--borda)', paddingTop: 'var(--esp-6)' }}>
       <strong>Histórico de prioridade</strong>
       {linhas.length === 0 ? (
         <p className="dica-filtro" style={{ margin: '4px 0 0' }}>
           A prioridade nunca foi alterada desde que o chamado entrou.
         </p>
       ) : (
-        <dl className="ficha" style={{ marginTop: 6 }}>
+        <dl className="ficha" style={{ marginTop: 'var(--esp-3)' }}>
           {linhas.map((r) => (
             <Linha
               key={r.id}
@@ -552,7 +552,7 @@ function HistoricoPrioridade({ id, podeEditar }: { id: number; podeEditar: boole
 
       {podeEditar &&
         (abrindo ? (
-          <form onSubmit={enviar} style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+          <form onSubmit={enviar} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--esp-5)', marginTop: 'var(--esp-5)' }}>
             <div className="grade c2">
               <Campo rotulo="Nova prioridade">
                 <select
@@ -580,7 +580,7 @@ function HistoricoPrioridade({ id, podeEditar }: { id: number; podeEditar: boole
             <Campo rotulo="Motivo">
               <input value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} />
             </Campo>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 'var(--esp-4)' }}>
               <button type="submit" className="botao">
                 Reclassificar
               </button>
@@ -594,7 +594,7 @@ function HistoricoPrioridade({ id, podeEditar }: { id: number; podeEditar: boole
             </small>
           </form>
         ) : (
-          <button type="button" className="botao discreto pequeno" style={{ marginTop: 10 }} onClick={() => setAbrindo(true)}>
+          <button type="button" className="botao discreto pequeno" style={{ marginTop: 'var(--esp-5)' }} onClick={() => setAbrindo(true)}>
             Reclassificar prioridade
           </button>
         ))}
@@ -615,7 +615,7 @@ function DetalheChamado({ id, aoFechar }: { id: number; aoFechar: () => void }) 
         <Carregando />
       ) : (
         <>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap', alignItems: 'center' }}>
             <Etiqueta texto={ROTULO_SISTEMA[c.source_system]} />
             <Etiqueta
               texto={ROTULO_STATUS_CHAMADO[c.status ?? ''] ?? c.status ?? '—'}
@@ -629,7 +629,7 @@ function DetalheChamado({ id, aoFechar }: { id: number; aoFechar: () => void }) 
           </div>
 
           {c.descricao && (
-            <p style={{ whiteSpace: 'pre-wrap', color: 'var(--tinta-2)', marginTop: 4 }}>{c.descricao}</p>
+            <p style={{ whiteSpace: 'pre-wrap', color: 'var(--tinta-2)', marginTop: 'var(--esp-2)' }}>{c.descricao}</p>
           )}
 
           <dl className="ficha">
@@ -682,7 +682,7 @@ function DetalheChamado({ id, aoFechar }: { id: number; aoFechar: () => void }) 
                 <pre
                   style={{
                     background: 'var(--superficie-2)',
-                    padding: 10,
+                    padding: 'var(--esp-5)',
                     borderRadius: 8,
                     fontSize: 12,
                     overflowX: 'auto',

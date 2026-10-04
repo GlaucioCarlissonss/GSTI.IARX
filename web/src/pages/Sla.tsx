@@ -518,7 +518,7 @@ function FormularioSla({
 
   return (
     <Modal titulo="Registrar tickets do mês" aberto={aberto} aoFechar={aoFechar}>
-      <form onSubmit={submeter} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <form onSubmit={submeter} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--esp-7)' }}>
         <div className="grade c3">
           {empresas.length > 1 && (
             <Campo rotulo="Empresa (matriz)" dica="Onde o registro vai nascer. Independe do filtro da tela.">

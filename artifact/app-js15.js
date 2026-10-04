@@ -281,10 +281,10 @@ async function viewIntegracoes() {
           : '<span class="vazio2">nenhum</span>'}</dd>
       </dl>
       ${s.pendencias.length
-        ? `<div class="msg ${s.erros ? 'erro' : 'alerta'}" style="margin-top:10px"><strong>Falta resolver:</strong>
+        ? `<div class="msg ${s.erros ? 'erro' : 'alerta'}" style="margin-top:var(--esp-5)"><strong>Falta resolver:</strong>
              ${s.pendencias.map((p)=>esc(p)).join(' · ')}</div>`
-        : '<div class="msg bom" style="margin-top:10px">Conexão definida e recebendo. Nada pendente.</div>'}
-      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        : '<div class="msg bom" style="margin-top:var(--esp-5)">Conexão definida e recebendo. Nada pendente.</div>'}
+      <div style="margin-top:var(--esp-6);display:flex;gap:var(--esp-4);flex-wrap:wrap">
         <button class="bt" data-editar="${s.sistema}">Editar conexão</button>
         <button class="bt" data-contrato="${s.sistema}">Contrato do payload</button>
         <button class="bt pri" data-teste="${s.sistema}">Enviar payload de teste</button>
@@ -315,14 +315,14 @@ async function viewIntegracoes() {
       ${kpi('Nas últimas 24h', inteiro(ultimas24), 'sinal de que o fluxo está vivo')}
     </div>
 
-    <div class="grade g2" style="margin-top:16px">${situacao.map(cartaoSituacao).join('')}</div>
+    <div class="grade g2" style="margin-top:var(--esp-8)">${situacao.map(cartaoSituacao).join('')}</div>
 
-    <section class="bloco" style="margin-top:16px">
+    <section class="bloco" style="margin-top:var(--esp-8)">
       <header><h2>Simular o recebimento de um evento</h2>
         <span class="nota">mesmo tratamento do webhook do servidor</span></header>
       <div class="msg">Cole o JSON que o fluxo do N8N vai postar. O que entrar aqui é gravado como chamado de
         verdade nesta base — use o payload de teste enquanto estiver validando o contrato.</div>
-      <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
+      <div class="filtros" style="margin-top:var(--esp-6);box-shadow:none;border:0;padding:0">
         <div class="campo" style="width:220px"><label for="ev-destino">Unidade de destino</label>
           <select id="ev-destino">${unidades.map((u)=>`<option value="${esc(u.id)}"${u.id===emp?' selected':''}>${esc(u.nome)}</option>`).join('')}</select>
           <small class="dica-filtro">Em qual unidade o chamado será criado. Não muda a configuração — só o destino deste envio.</small></div>
@@ -334,13 +334,13 @@ async function viewIntegracoes() {
         <button class="bt" id="ev-baixar">Baixar o exemplo (.json)</button>
         <button class="bt pri" id="ev-enviar">Processar</button>
       </div>
-      <div class="campo" style="margin-top:10px"><label for="ev-payload">Payload (JSON)</label>
+      <div class="campo" style="margin-top:var(--esp-5)"><label for="ev-payload">Payload (JSON)</label>
         <textarea id="ev-payload" rows="9" spellcheck="false"
           style="font-family:var(--mono);font-size:12.5px">${esc(JSON.stringify(payloadDeExemplo('OSTICK'), null, 2))}</textarea></div>
-      <div class="msg" id="ev-saida" hidden style="margin-top:10px"></div>
+      <div class="msg" id="ev-saida" hidden style="margin-top:var(--esp-5)"></div>
     </section>
 
-    <section class="bloco" style="margin-top:16px">
+    <section class="bloco" style="margin-top:var(--esp-8)">
       <header><h2>Eventos recebidos</h2><span class="nota">${inteiro(eventos.length)} registro(s), mais recentes primeiro</span></header>
       ${eventos.length === 0 ? '<p class="vazio">Nenhum evento registrado neste cliente.</p>' : `
       <div class="rol"><table><thead><tr>
@@ -430,7 +430,7 @@ async function viewIntegracoes() {
       titulo: 'Payload do evento', tipo: 'payload-integracao',
       corpo: `<div class="msg">Recebido em ${new Date(evento.quando).toLocaleString('pt-BR')} ·
           ${esc(SISTEMAS_SUPORTE[evento.sistema] || evento.sistema)} · <code>${esc(evento.tipo)}</code></div>
-        <pre style="margin-top:10px;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12.5px">${esc(JSON.stringify(evento.payload, null, 2))}</pre>`,
+        <pre style="margin-top:var(--esp-5);white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12.5px">${esc(JSON.stringify(evento.payload, null, 2))}</pre>`,
       acoes: '<button type="button" class="bt" data-c>Fechar</button>',
       aoMontar({ raiz, fechar }) { raiz.querySelector('[data-c]').onclick = fechar; },
     });
@@ -472,7 +472,7 @@ function formConexao(cliente, conexao) {
         <input id="cx-fluxo" name="fluxo" value="${esc(conexao.fluxo)}"></div>
       <div class="campo"><label for="cx-obs">Observação</label>
         <textarea id="cx-obs" name="obs" rows="2">${esc(conexao.observacao || '')}</textarea></div>
-      <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px">
+      <label style="display:flex;gap:var(--esp-4);align-items:center;margin-top:var(--esp-5);font-size:13px">
         <input type="checkbox" id="cx-ativa" name="ativa"${conexao.ativa ? ' checked' : ''}> Conexão ativa</label>`,
     acoes: '<button type="button" class="bt" data-c>Cancelar</button><button type="button" class="bt pri" data-s>Salvar</button>',
     aoMontar({ raiz, fechar, erro, campo }) {
@@ -515,14 +515,14 @@ function verContrato(sistema) {
     corpo: `
       <div class="msg">Cada campo do sistema aceita mais de um nome na origem: o fluxo pode mandar o nome do
         helpdesk ou o nome já traduzido. O primeiro preenchido vence, na ordem em que aparecem.</div>
-      <div class="rol" style="margin-top:10px"><table><thead><tr>
+      <div class="rol" style="margin-top:var(--esp-5)"><table><thead><tr>
         <th>Campo do sistema</th><th>Significado</th><th>Nomes aceitos no payload</th></tr></thead><tbody>
         ${CAMPOS_PAYLOAD.map((l)=>`<tr>
           <td><code>${esc(l.campo)}</code>${l.obrigatorio?' <span class="tag crit">obrigatório</span>':''}</td>
           <td>${esc(l.rotulo)}</td>
           <td><code>${esc(chavesDe(l, sistema).join(', '))}</code></td></tr>`).join('')}
       </tbody></table></div>
-      <div class="msg" style="margin-top:10px"><strong>Identidade do chamado:</strong>
+      <div class="msg" style="margin-top:var(--esp-5)"><strong>Identidade do chamado:</strong>
         <code>(empresa, ${esc(sistema)}, external_id)</code>. Reenviar o mesmo evento atualiza o registro em vez de
         criar um segundo — é o que permite ao N8N reentregar sem medo.</div>`,
     acoes: '<button type="button" class="bt" data-c>Fechar</button>',

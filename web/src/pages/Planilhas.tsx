@@ -465,7 +465,7 @@ export function PaginaPlanilhas() {
           {!podeEditar ? (
             <Aviso>Somente gestores podem importar dados nesta empresa.</Aviso>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--esp-7)' }}>
               <div className="grade c2">
                 <Campo rotulo="Módulo">
                   <select value={modulo} onChange={(e) => setModulo(e.target.value)}>
@@ -500,12 +500,12 @@ export function PaginaPlanilhas() {
                 </Campo>
               </div>
 
-              <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+              <label style={{ display: 'flex', gap: 'var(--esp-4)', alignItems: 'center', fontSize: 13 }}>
                 <input type="checkbox" checked={criarCadastros} onChange={(e) => setCriarCadastros(e.target.checked)} />
                 Cadastrar automaticamente tipos de despesa, tópicos e filiais ausentes
               </label>
 
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 'var(--esp-4)' }}>
                 <button
                   type="button"
                   className="botao"
@@ -550,14 +550,14 @@ export function PaginaPlanilhas() {
               {resultadoFoc.duplicadas > 0 && ` · ${resultadoFoc.duplicadas} já existia(m)`}
               {resultadoFoc.rejeitadas > 0 && ` · ${resultadoFoc.rejeitadas} recusada(s)`}
               {resultadoFoc.cadastros_criados.centros_custo.length > 0 && (
-                <div style={{ fontSize: 12.5, marginTop: 4 }}>
+                <div style={{ fontSize: 12.5, marginTop: 'var(--esp-2)' }}>
                   Centros de custo criados: {resultadoFoc.cadastros_criados.centros_custo.join(', ')}
                 </div>
               )}
             </Aviso>
           )}
 
-          <div className="barra-filtros" style={{ marginBottom: 12 }}>
+          <div className="barra-filtros" style={{ marginBottom: 'var(--esp-6)' }}>
             <Campo rotulo="Planilha do cliente (.xlsx)">
               <input
                 type="file"
@@ -603,24 +603,24 @@ export function PaginaPlanilhas() {
               {resultadoAp.duplicadas > 0 && ` · ${resultadoAp.duplicadas} já estava(m) igual(is)`}
               {resultadoAp.rejeitadas > 0 && ` · ${resultadoAp.rejeitadas} recusada(s)`}
               {resultadoAp.reconhecidos > 0 && (
-                <div style={{ fontSize: 12.5, marginTop: 4 }}>
+                <div style={{ fontSize: 12.5, marginTop: 'var(--esp-2)' }}>
                   {resultadoAp.reconhecidos} já entrou como reconhecido, pelo cadastro de quem reconhece despesa.
                 </div>
               )}
               {resultadoAp.vinculos_guardados > 0 && (
-                <div style={{ fontSize: 12.5, marginTop: 4 }}>
+                <div style={{ fontSize: 12.5, marginTop: 'var(--esp-2)' }}>
                   {resultadoAp.vinculos_guardados} vínculo(s) guardado(s) — a próxima carga não vai perguntar de novo.
                 </div>
               )}
               {resultadoAp.cadastros_criados.filiais.length > 0 && (
-                <div style={{ fontSize: 12.5, marginTop: 4 }}>
+                <div style={{ fontSize: 12.5, marginTop: 'var(--esp-2)' }}>
                   Unidades criadas: {resultadoAp.cadastros_criados.filiais.join(', ')}
                 </div>
               )}
             </Aviso>
           )}
 
-          <div className="barra-filtros" style={{ marginBottom: 12 }}>
+          <div className="barra-filtros" style={{ marginBottom: 'var(--esp-6)' }}>
             <Campo rotulo="Arquivo do ERP (.csv)">
               <input
                 type="file"
@@ -689,7 +689,7 @@ export function PaginaPlanilhas() {
             descricao="Apaga lançamentos do cliente. Cadastro nenhum é tocado — centro de custo, filial e fornecedor ficam."
           >
             {erroLimpeza && <Aviso tipo="erro">{erroLimpeza}</Aviso>}
-            <div className="barra-filtros" style={{ marginBottom: 10 }}>
+            <div className="barra-filtros" style={{ marginBottom: 'var(--esp-5)' }}>
               <Campo rotulo="De (MM/AAAA)" dica="Em branco nos dois campos = a base inteira do cliente.">
                 <input value={limpeza.de} onChange={(e) => trocarLimpeza('de', e.target.value)} placeholder="09/2026" style={{ width: 100 }} />
               </Campo>
@@ -747,8 +747,8 @@ export function PaginaPlanilhas() {
         )}
 
         <Cartao titulo="Exportar" descricao="Mesmo layout da importação — serve de backup e migração">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--esp-6)' }}>
+            <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap' }}>
               {MODULOS.map((m) => (
                 <button
                   key={m.chave}
@@ -765,11 +765,11 @@ export function PaginaPlanilhas() {
                 </button>
               ))}
             </div>
-            <div style={{ borderTop: '1px solid var(--grade)', paddingTop: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--tinta-fraca)', marginBottom: 8 }}>
+            <div style={{ borderTop: '1px solid var(--grade)', paddingTop: 'var(--esp-6)' }}>
+              <div style={{ fontSize: 12, color: 'var(--tinta-fraca)', marginBottom: 'var(--esp-4)' }}>
                 Template em branco (mesmas colunas, sem dados)
               </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap' }}>
                 {MODULOS.map((m) => (
                   <button
                     key={m.chave}
@@ -796,7 +796,7 @@ export function PaginaPlanilhas() {
           titulo="Relatório da importação"
           descricao={`${resultado.arquivo ?? 'arquivo'} · template ${resultado.template_versao}`}
         >
-          <div className="grade c4" style={{ marginBottom: 14 }}>
+          <div className="grade c4" style={{ marginBottom: 'var(--esp-7)' }}>
             <div className="indicador">
               <span className="rotulo">Linhas lidas</span>
               <span className="numero">{inteiro(resultado.total_linhas)}</span>
@@ -819,7 +819,7 @@ export function PaginaPlanilhas() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap', marginBottom: 'var(--esp-6)' }}>
             {resultado.abas_processadas.map((a) => (
               <Etiqueta key={a} texto={`aba processada: ${a}`} tom="bom" />
             ))}
@@ -842,7 +842,7 @@ export function PaginaPlanilhas() {
           ))}
 
           {resultado.erros.length > 0 && (
-            <div className="tabela-envolucro" style={{ marginTop: 12 }}>
+            <div className="tabela-envolucro" style={{ marginTop: 'var(--esp-6)' }}>
               <table>
                 <thead>
                   <tr>
@@ -870,7 +870,7 @@ export function PaginaPlanilhas() {
         titulo="Histórico de cargas"
         descricao="Toda tentativa entra aqui — inclusive a recusada, que é a que se investiga"
       >
-        <div className="barra-filtros" style={{ marginBottom: 12 }}>
+        <div className="barra-filtros" style={{ marginBottom: 'var(--esp-6)' }}>
           <Campo rotulo="Tipo">
             <select value={fHist.modo} onChange={(e) => trocarHist('modo', e.target.value)}>
               <option value="">Todos</option>
@@ -1043,7 +1043,7 @@ export function PaginaPlanilhas() {
         </Aviso>
 
         {(adaptador.dados?.mapeamentos ?? []).length > 0 && (
-          <div className="tabela-envolucro" style={{ marginTop: 12 }}>
+          <div className="tabela-envolucro" style={{ marginTop: 'var(--esp-6)' }}>
             <table>
               <thead>
                 <tr>
@@ -1074,7 +1074,7 @@ export function PaginaPlanilhas() {
         )}
 
         {podeEditar && (
-          <div className="barra-filtros" style={{ marginTop: 12 }}>
+          <div className="barra-filtros" style={{ marginTop: 'var(--esp-6)' }}>
             <Campo rotulo="Aba">
               <select
                 value={novoMapa.aba}
@@ -1119,9 +1119,9 @@ export function PaginaPlanilhas() {
 
       <Cartao titulo="Layout do template" descricao={`Módulo ${modulo} — versão ${templates.dados?.versao ?? '—'}`}>
         {abas.map((aba) => (
-          <div key={aba.aba} style={{ marginBottom: 14 }}>
+          <div key={aba.aba} style={{ marginBottom: 'var(--esp-7)' }}>
             <h3>{aba.aba}</h3>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+            <div style={{ display: 'flex', gap: 'var(--esp-3)', flexWrap: 'wrap', marginTop: 'var(--esp-3)' }}>
               {aba.colunas.map((c) => (
                 <Etiqueta key={c} texto={c} tom={aba.obrigatorias.includes(c) ? 'atencao' : 'neutro'} />
               ))}
@@ -1159,7 +1159,7 @@ function ConfrontoDeLancamentos({
   return (
     <div>
       <h3 style={{ margin: '0 0 8px', fontSize: 15 }}>O que esta carga faria na base</h3>
-      <div className="barra-filtros" style={{ gap: 18, marginBottom: 10 }}>
+      <div className="barra-filtros" style={{ gap: 18, marginBottom: 'var(--esp-5)' }}>
         <Etiqueta texto={`${inteiro(dados.novo)} novo(s)`} tom={dados.novo > 0 ? 'atencao' : 'neutro'} />
         <Etiqueta texto={`${inteiro(dados.atualiza)} completado(s)`} tom="bom" />
         <Etiqueta texto={`${inteiro(dados.igual)} já igual(is)`} tom="neutro" />
@@ -1189,7 +1189,7 @@ function ConfrontoDeLancamentos({
         </Aviso>
       )}
 
-      <div className="barra-filtros" style={{ marginTop: 12 }}>
+      <div className="barra-filtros" style={{ marginTop: 'var(--esp-6)' }}>
         <button type="button" className="botao discreto" disabled={enviando} onClick={aoVoltar}>
           Voltar às decisões
         </button>

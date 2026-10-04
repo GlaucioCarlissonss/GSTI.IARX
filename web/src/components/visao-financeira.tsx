@@ -185,7 +185,7 @@ export function BlocosPorUnidade({
             </table>
           </div>
           {colunas.length > 1 && (
-            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--tinta-fraca)' }}>
+            <div style={{ marginTop: 'var(--esp-4)', fontSize: 12, color: 'var(--tinta-fraca)' }}>
               {colunas.map((c) => `${c}: ${moeda((g.meses[c] ?? 0) / 100)}`).join(' · ')}
             </div>
           )}

@@ -299,7 +299,7 @@ async function viewAcessos() {
       ${kpi('Sem perfil válido', inteiro(semPerfil), semPerfil ? 'não entram até receber um' : 'nenhum pendente', semPerfil ? 'crit' : '')}
     </div>
 
-    <section class="bloco" style="margin-top:16px">
+    <section class="bloco" style="margin-top:var(--esp-8)">
       <header><h2>Usuários</h2><span class="nota">${inteiro(usuarios.length)} cadastrado(s)</span>
         <button class="bt pri" id="u-novo">Novo usuário</button></header>
       ${usuarios.length === 0 ? '<p class="vazio">Nenhum usuário cadastrado neste cliente.</p>' : `
@@ -323,7 +323,7 @@ async function viewAcessos() {
       </tbody></table></div>`}
     </section>
 
-    <section class="bloco" style="margin-top:16px">
+    <section class="bloco" style="margin-top:var(--esp-8)">
       <header><h2>Perfis de acesso</h2><span class="nota">${inteiro(MODULOS_ACESSO.length * ACOES_ACESSO.length)} combinações por perfil</span>
         <button class="bt pri" id="p-novo">Novo perfil</button></header>
       <div class="rol"><table><thead><tr>
@@ -530,7 +530,7 @@ function formPermissoes(cliente, perfil) {
     corpo: `
       <div class="msg">Cada linha é um módulo; cada coluna, uma ação. Sem <strong>Ver</strong>, o módulo some da
         navegação de quem tem este perfil — as outras ações da linha ficam sem efeito.</div>
-      <div class="rol" style="margin-top:10px"><table><thead><tr><th>Módulo</th>
+      <div class="rol" style="margin-top:var(--esp-5)"><table><thead><tr><th>Módulo</th>
         ${ACOES_ACESSO.map((a)=>`<th style="text-align:center">${esc(a.rotulo)}</th>`).join('')}
         <th style="text-align:center">Linha</th></tr></thead><tbody>
         ${MODULOS_ACESSO.map((m)=>`<tr data-mod="${m.id}"><td>${esc(m.rotulo)}</td>

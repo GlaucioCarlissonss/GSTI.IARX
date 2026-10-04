@@ -166,7 +166,7 @@ export function PaginaPainelExecutivo() {
           A empresa já nasceu com os nove tipos de despesa padrão e com você como gestor. Há dois caminhos para
           começar:
         </p>
-        <ol style={{ color: 'var(--tinta-2)', lineHeight: 1.8, paddingLeft: 20 }}>
+        <ol style={{ color: 'var(--tinta-2)', lineHeight: 1.8, paddingLeft: 'var(--esp-9)' }}>
           <li>
             <strong>Importar uma planilha</strong> — baixe o template em <Link to="/planilhas">Importar / Exportar</Link>,
             preencha e envie. Linhas inválidas voltam em relatório, sem travar o lote.
@@ -416,7 +416,7 @@ export function PaginaPainelExecutivo() {
                       {e.pagadora && (
                         <span
                           className="etiqueta"
-                          style={{ marginLeft: 6 }}
+                          style={{ marginLeft: 'var(--esp-3)' }}
                           title="Esta empresa paga ao menos uma despesa compartilhada do grupo"
                         >
                           pagadora
@@ -448,7 +448,7 @@ export function PaginaPainelExecutivo() {
             </table>
           </div>
           <LegendaDeConsumo cor={cores.get(v.rateio.por_empresa[0]!.empresa_id)?.cor} />
-          <p className="dica-filtro" style={{ marginTop: 10 }}>
+          <p className="dica-filtro" style={{ marginTop: 'var(--esp-5)' }}>
             O <strong>antes</strong> é como a unidade aparece hoje: o que é dela mais 100% do que ela
             paga. O <strong>depois</strong> é o que é dela mais a parcela que lhe cabe. O bloco
             abaixo mostra a leitura integral, que é o antes deste comparativo.
@@ -493,13 +493,13 @@ export function PaginaPainelExecutivo() {
               </tbody>
             </table>
           </div>
-          <p className="dica-filtro" style={{ marginTop: 8 }}>
+          <p className="dica-filtro" style={{ marginTop: 'var(--esp-4)' }}>
             O valor é o que a unidade pagadora desembolsa por inteiro. Não há divisão por filial
             beneficiada: somar as linhas daria mais que o total, porque a mesma despesa serve a várias.
           </p>
 
           {v.equilibrio.atual && (
-            <div style={{ marginTop: 14, borderTop: '1px solid var(--borda)', paddingTop: 12 }}>
+            <div style={{ marginTop: 'var(--esp-7)', borderTop: '1px solid var(--borda)', paddingTop: 'var(--esp-6)' }}>
               <strong>Equilíbrio de despesas, mês a mês</strong>
               <p style={{ margin: '4px 0 0', fontSize: 13 }}>
                 {percentual(v.equilibrio.atual.pct)} em {v.equilibrio.atual.competencia}

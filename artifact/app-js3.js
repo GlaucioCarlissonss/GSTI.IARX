@@ -184,7 +184,7 @@ function colunasAjustaveis(tabela) {
 function confirmar({ titulo, mensagem, rotulo = 'Confirmar', exigeJustificativa, aoConfirmar }) {
   abrirModal({
     titulo,
-    corpo: `<p style="margin:0 0 12px;color:var(--tinta2)">${mensagem}</p>
+    corpo: `<p style="margin:0 0 var(--esp-6);color:var(--tinta2)">${mensagem}</p>
       <div class="campo"><label for="just">Justificativa${exigeJustificativa ? ' (obrigatória)' : ' (opcional)'}</label>
       <textarea id="just" name="just" placeholder="Fica registrada na trilha de auditoria"></textarea></div>`,
     acoes: `<button type="button" class="bt" data-nao>Cancelar</button>
@@ -358,7 +358,7 @@ function viewPainel() {
     </div>
 
     ${comparando ? '' : `
-    <section class="bloco bloco-indicador" style="margin-top:14px">
+    <section class="bloco bloco-indicador" style="margin-top:var(--esp-7)">
       <header><h2>Despesas por reconhecer</h2>
         <span class="nota valor-cabecalho" style="color:${
           pendente.quantidade ? 'var(--alerta)' : 'var(--bomtxt)'}">${brl(pendente.valor)}</span></header>
@@ -379,7 +379,7 @@ function viewPainel() {
         <h3 class="titulo-mini">Não reconhecido, por centro de custo</h3>
         ${porCentroDeCustoHtml(pendente)}
       </div>
-      <p class="nota" style="margin-top:10px">Despesa que veio por carga <strong>não foi conferida por
+      <p class="nota" style="margin-top:var(--esp-5)">Despesa que veio por carga <strong>não foi conferida por
         ninguém</strong>: ausente vale como não reconhecida, porque tratá-la como reconhecida apagaria o
         trabalho a fazer. O recorte é o desta tela — competências e cenários escolhidos acima.</p>
     </section>`}

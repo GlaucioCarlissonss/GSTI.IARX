@@ -271,7 +271,7 @@ export function PaginaProjetos() {
         titulo="Cronograma (Gantt mensal)"
         descricao={`${d.escopo.linha_do_tempo.inicio} a ${d.escopo.linha_do_tempo.fim} · ${inteiro(linhas.length)} linha(s)`}
         acoes={
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 'var(--esp-3)' }}>
             <button type="button" className="botao discreto pequeno" onClick={() => grupos.expandirTudo(todosOsGrupos)}>
               Expandir tudo
             </button>
@@ -290,7 +290,7 @@ export function PaginaProjetos() {
           className="gantt"
           ref={caixa}
           onScroll={(e) => virtualizar && setRolagem(e.currentTarget.scrollTop)}
-          style={{ marginTop: 10, ...(virtualizar ? { maxHeight: 640, overflowY: 'auto' } : null) }}
+          style={{ marginTop: 'var(--esp-5)', ...(virtualizar ? { maxHeight: 640, overflowY: 'auto' } : null) }}
         >
           <table>
             <thead>
@@ -471,7 +471,7 @@ function LinhaProjeto({
   return (
     <tr>
       <td className="nome" style={{ position: 'sticky', left: 0, background: 'var(--superficie)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--esp-3)' }}>
           {projeto.tarefas.length > 0 ? (
             <BotaoGrupo aberto={aberto} rotulo={`as tarefas de ${projeto.nome}`} aoAlternar={aoAlternar} />
           ) : (
@@ -543,9 +543,9 @@ function LinhaTarefa({
     <tr>
       <td
         className="nome tarefa"
-        style={{ position: 'sticky', left: 0, background: 'var(--superficie)', paddingLeft: 14 + tarefa.nivel * 14 }}
+        style={{ position: 'sticky', left: 0, background: 'var(--superficie)', paddingLeft: 'var(--esp-7)' + tarefa.nivel * 14 }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--esp-3)' }}>
           {temFilhas ? (
             <BotaoGrupo aberto={!comprimida} rotulo={`as subtarefas de ${tarefa.nome}`} aoAlternar={aoAlternar} />
           ) : (
@@ -553,7 +553,7 @@ function LinhaTarefa({
           )}
           <span style={temFilhas ? { fontWeight: 550, color: 'var(--tinta)' } : undefined}>{tarefa.nome}</span>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--tinta-fraca)', paddingLeft: 24 }}>
+        <div style={{ fontSize: 11, color: 'var(--tinta-fraca)', paddingLeft: 'var(--esp-10)' }}>
           {tarefa.responsavel ?? 'sem responsável'}
           {temFilhas && ` · ${inteiro(tarefa.total_subtarefas)} subtarefa(s)`}
         </div>

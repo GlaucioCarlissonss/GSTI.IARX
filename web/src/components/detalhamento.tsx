@@ -122,7 +122,7 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
         <Aviso tipo="erro">{estado.erro}</Aviso>
       ) : (
         <>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap' }}>
             <Etiqueta
               texto={
                 cortada

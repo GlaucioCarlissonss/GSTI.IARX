@@ -133,9 +133,9 @@ function viewBoasVindas() {
         : `<div class="msg">Nenhum cliente cadastrado nesta base. Cadastre o primeiro aqui mesmo —
              as telas do sistema só existem dentro de um contratante.</div>`}
       ${E.somenteLeitura
-        ? `<p class="nota" style="margin-top:4px">Este acesso é de leitura: dá para abrir qualquer
+        ? `<p class="nota" style="margin-top:var(--esp-2)">Este acesso é de leitura: dá para abrir qualquer
              contratante acima, mas não para cadastrar um novo.</p>`
-        : `<div style="margin-top:4px"><button type="button" class="bt pri" id="bv-novo">Cadastrar novo cliente</button></div>`}
+        : `<div style="margin-top:var(--esp-2)"><button type="button" class="bt pri" id="bv-novo">Cadastrar novo cliente</button></div>`}
       ${(() => {
         // Os contratantes que o enunciado pediu e ainda não estão aqui. O aviso
         // fica NESTA tela porque é onde a ausência se nota — dentro de
@@ -144,10 +144,10 @@ function viewBoasVindas() {
         // alguém, não algo que a abertura da página faça sozinha.
         const faltam = CLIENTES_INICIAIS.filter((n) => !E.clientes.some((c) => c.nome === n));
         return faltam.length
-          ? `<div class="msg alerta" style="margin-top:4px">
+          ? `<div class="msg alerta" style="margin-top:var(--esp-2)">
                <strong>${esc(faltam.join(' e '))} ainda não ${faltam.length > 1 ? 'estão' : 'está'} nesta base.</strong>
                Cadastrar cria o contratante e a matriz de mesmo nome — nada é sobrescrito, e repetir não duplica.
-               <div style="margin-top:8px"><button type="button" class="bt" id="bv-iniciais">Cadastrar
+               <div style="margin-top:var(--esp-4)"><button type="button" class="bt" id="bv-iniciais">Cadastrar
                  ${esc(faltam.join(' e '))}</button></div></div>`
           : '';
       })()}
@@ -168,7 +168,7 @@ function viewBoasVindas() {
       catch (e) {
         btIniciais.disabled = false;
         btIniciais.insertAdjacentHTML('afterend',
-          `<p class="msg erro" style="margin-top:8px">${esc(e.message || e)}</p>`);
+          `<p class="msg erro" style="margin-top:var(--esp-4)">${esc(e.message || e)}</p>`);
       }
     };
   }
@@ -428,7 +428,7 @@ async function viewClientes() {
     const filiais = filiaisDa(m.id);
     const aberta = matrizAberta(m.id);
     return [
-      `<tr><td><div style="display:flex;align-items:center;gap:6px">
+      `<tr><td><div style="display:flex;align-items:center;gap:var(--esp-3)">
           ${filiais.length
             ? `<button type="button" class="gantt-grupo" data-mgrupo="${esc(m.id)}"
                  aria-expanded="${aberta}" aria-label="${aberta ? 'Comprimir' : 'Expandir'} as filiais de ${esc(m.nome)}"
@@ -452,24 +452,24 @@ async function viewClientes() {
       <header><h2>Clientes</h2><span class="nota">${inteiro(E.clientes.length)}</span></header>
       <div class="msg">O contratante é o recorte mais externo: toda matriz, toda filial e todo registro
         pertencem a um cliente, e nenhuma tela soma dois.</div>
-      <div class="rol" style="margin-top:12px"><table>
+      <div class="rol" style="margin-top:var(--esp-6)"><table>
         <thead><tr><th>Cliente</th><th>Documento</th><th class="num">Matrizes</th><th class="num">Filiais</th>
           <th>Situação</th><th></th></tr></thead>
         <tbody>${E.clientes.map(linhaCliente).join('') || '<tr><td colspan="6" class="vazio">Nenhum cliente.</td></tr>'}</tbody>
       </table></div>
-      <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
+      <div class="filtros" style="margin-top:var(--esp-6);box-shadow:none;border:0;padding:0">
         <div class="campo"><label for="cl-nome">Novo cliente</label><input id="cl-nome" style="min-width:220px"></div>
         <div class="campo"><label for="cl-doc">CNPJ (opcional)</label><input id="cl-doc" style="width:180px"></div>
         <button class="bt primario" id="cl-criar" data-escreve="create">Cadastrar cliente</button>
         ${faltam.length ? `<button class="bt" id="cl-iniciais" data-escreve="create">Cadastrar ${esc(faltam.join(' e '))}</button>` : ''}
       </div>
-      <div class="msg erro" id="cl-erro" hidden style="margin-top:10px"></div>
+      <div class="msg erro" id="cl-erro" hidden style="margin-top:var(--esp-5)"></div>
     </section>
 
     <section class="bloco">
       <header><h2>Estrutura${alvo ? ' de ' + esc((clientePorId(alvo) || {}).nome || '') : ''}</h2>
         ${matrizes.length > 1
-          ? `<div style="display:flex;gap:8px;margin-left:auto">
+          ? `<div style="display:flex;gap:var(--esp-4);margin-left:auto">
                <button type="button" class="bt pequeno" id="cl-expandir-tudo">Expandir tudo</button>
                <button type="button" class="bt pequeno" id="cl-comprimir-tudo">Comprimir tudo</button>
              </div>`
@@ -477,7 +477,7 @@ async function viewClientes() {
       </header>
       <div class="msg">Matriz é a pessoa jurídica; filial é a unidade dela. É o CNPJ que diz qual é qual:
         mesma raiz, mesma matriz.</div>
-      <div class="rol" style="margin-top:12px"><table>
+      <div class="rol" style="margin-top:var(--esp-6)"><table>
         <thead><tr><th>Unidade</th><th>Tipo</th><th>Código</th><th>CNPJ</th><th>Endereço</th><th>CEP</th></tr></thead>
         <tbody>${linhasEstrutura.join('') || '<tr><td colspan="6" class="vazio">Nenhuma matriz cadastrada.</td></tr>'}</tbody>
       </table></div>
@@ -485,7 +485,7 @@ async function viewClientes() {
       <!-- O formulário é montado UMA vez e atualizado no lugar. Remontá-lo a
            cada tecla trocaria os elementos sob o cursor, e o clique no botão
            se perderia entre o "mouse desce" e o "mouse sobe". -->
-      <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
+      <div class="filtros" style="margin-top:var(--esp-6);box-shadow:none;border:0;padding:0">
         <div class="campo"><label for="un-tipo">Tipo</label><select id="un-tipo">
           <option value="MATRIZ"${rascunho.tipo==='MATRIZ'?' selected':''}>Matriz</option>
           <option value="FILIAL"${rascunho.tipo==='FILIAL'?' selected':''}>Filial</option></select></div>
@@ -503,8 +503,8 @@ async function viewClientes() {
           <label for="un-uf">UF</label><input id="un-uf" value="${esc(rascunho.uf)}" maxlength="2" style="width:60px"></div>
         <button class="bt primario" id="un-criar" data-escreve="create">Cadastrar unidade</button>
       </div>
-      <div class="msg" id="un-aviso" hidden style="margin-top:10px"></div>
-      <div class="msg erro" id="un-erro" hidden style="margin-top:10px"></div>
+      <div class="msg" id="un-aviso" hidden style="margin-top:var(--esp-5)"></div>
+      <div class="msg erro" id="un-erro" hidden style="margin-top:var(--esp-5)"></div>
     </section>`;
 
   // ------------------------------------------------------------- interação

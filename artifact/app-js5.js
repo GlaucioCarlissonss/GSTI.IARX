@@ -208,7 +208,7 @@ function pintarGantt(linhas, meses, larg, iHoje) {
       const b = barra(p.inicio, p.fimPlanejado);
       const r = p.fimReal ? barra(p.inicio, p.fimReal) : null;
       return `<tr><td class="nome" title="${esc(p.nome)}">
-          <div style="display:flex;align-items:center;gap:6px">
+          <div style="display:flex;align-items:center;gap:var(--esp-3)">
             ${p.ordenadas.length ? botao(linha.chave, aberto, 'as tarefas de ' + p.nome) : semBotao}
             <strong>${esc(p.nome)}</strong>
             ${p.atrasado ? `<span class="tag crit">${p.meses} mês(es) de atraso</span>` : ''}
@@ -234,7 +234,7 @@ function pintarGantt(linhas, meses, larg, iHoje) {
       : `${mesExib(t.inicio)} → ${mesExib(t.fimPlanejado)}`;
 
     return `<tr><td class="nome tarefa" title="${esc(t.nome)}" style="padding-left:${10 + t.nivel * 14}px">
-        <div style="display:flex;align-items:center;gap:6px">
+        <div style="display:flex;align-items:center;gap:var(--esp-3)">
           ${t.filhas ? botao(linha.chave, !linha.comprimida, 'as subtarefas de ' + t.nome) : semBotao}
           <span${t.filhas ? ' style="font-weight:600;color:var(--tinta)"' : ''}>${esc(t.nome)}</span>
         </div>
@@ -300,7 +300,7 @@ async function viewProjetos() {
     ${comAtraso.length === 0 ? '<section class="bloco"><p class="vazio">Nenhum projeto cadastrado nesta empresa.</p></section>' : `
     <section class="bloco"><header><h2>Cronograma</h2>
       <span class="nota">${mesExib(meses[0])} a ${mesExib(meses[meses.length-1])} · ${inteiro(linhasGantt.length)} linha(s)</span>
-      <span style="margin-left:auto;display:flex;gap:6px">
+      <span style="margin-left:auto;display:flex;gap:var(--esp-3)">
         <button type="button" class="bt fant peq" id="p-abrir">Expandir tudo</button>
         <button type="button" class="bt fant peq" id="p-fechar">Comprimir tudo</button></span></header>
       <div class="leg"><span><i style="background:var(--s1)"></i>Planejado</span>
@@ -419,7 +419,7 @@ function resumoDeLote(unidades, substantivo) {
   const porEmpresa = new Map();
   for (const u of unidades) porEmpresa.set(u.empresa, (porEmpresa.get(u.empresa) || 0) + 1);
   const empresas = [...porEmpresa.keys()].map((e) => nomeEmpresa(e)).join(', ');
-  return `<div class="msg alerta" style="margin-top:10px"><strong>${inteiro(unidades.length)} ${substantivo}</strong>,
+  return `<div class="msg alerta" style="margin-top:var(--esp-5)"><strong>${inteiro(unidades.length)} ${substantivo}</strong>,
     um por unidade, em ${inteiro(porEmpresa.size)} empresa(s): ${esc(empresas)}.
     Cada um nasce com vínculo próprio — nada é compartilhado entre unidades.</div>`;
 }
@@ -444,7 +444,7 @@ async function executarLote(unidades, faz, barra) {
     if (barra) {
       const pct = Math.round(((i + 1) / unidades.length) * 100);
       barra.innerHTML = `<div class="msg"><strong>${inteiro(i + 1)} de ${inteiro(unidades.length)}</strong>
-        <div style="margin-top:6px;height:8px;border-radius:4px;background:var(--sup2);overflow:hidden">
+        <div style="margin-top:var(--esp-3);height:8px;border-radius:4px;background:var(--sup2);overflow:hidden">
           <div style="height:100%;width:${pct}%;background:var(--s1)"></div></div></div>`;
       barra.hidden = false;
       // Um quadro por unidade: sem isto a barra só apareceria pronta no fim.
@@ -462,7 +462,7 @@ function mostrarRelatorioDeLote(relatorio, substantivo) {
     corpo: `<div class="msg ${erros.length ? 'alerta' : 'bom'}">
         <strong>${inteiro(relatorio.length - erros.length)} de ${inteiro(relatorio.length)} ${substantivo} criado(s).</strong>
         ${erros.length ? `${inteiro(erros.length)} unidade(s) recusada(s) — abaixo, o motivo de cada uma.` : ''}</div>
-      <div class="rol" style="margin-top:10px"><table>
+      <div class="rol" style="margin-top:var(--esp-5)"><table>
         <thead><tr><th>Unidade</th><th>Resultado</th></tr></thead>
         <tbody>${relatorio.map((r) => `<tr>
           <td>${esc(r.onde)}</td>
@@ -487,7 +487,7 @@ function formProjeto(existente) {
       ${ed ? (doGrupo ? `
       <div class="msg"><strong>Projeto do grupo inteiro.</strong> Ele vale para todas as empresas do
         contratante e não tem filial — por isso não há unidade a escolher aqui.</div>
-      <div class="grade g3" style="margin-top:12px">`
+      <div class="grade g3" style="margin-top:var(--esp-6)">`
       : `
       <div class="grade g3">
         <div class="campo"><label for="q-fil">Filial</label><select id="q-fil" name="filial">
@@ -499,17 +499,17 @@ function formProjeto(existente) {
            a virada de um ERP não é da HR PB nem da HM PB. Marcar as cinco
            empresas criaria CINCO projetos, que precisam ser atualizados cinco
            vezes e somam cinco onde há um. Marcando esta caixa nasce UM. -->
-      <label class="liga-medias" style="margin-top:12px">
+      <label class="liga-medias" style="margin-top:var(--esp-6)">
         <input type="checkbox" id="q-grupo">
         <span>Projeto do <strong>grupo inteiro</strong> — vale para todas as empresas do contratante,
           e nasce um só</span>
       </label>
-      <div class="grade g2" style="margin-top:12px" id="q-unidades">
+      <div class="grade g2" style="margin-top:var(--esp-6)" id="q-unidades">
         <div class="campo"><label>Empresas</label><div data-sel="q-emp"></div></div>
         <div class="campo"><label>Filiais</label><div data-sel="q-fil-multi"></div></div>
       </div>
       <div id="q-resumo"></div>
-      <div class="grade g3" style="margin-top:12px">`}
+      <div class="grade g3" style="margin-top:var(--esp-6)">`}
         <div class="campo"><label for="q-ini">Mês de início</label><input id="q-ini" name="inicio" value="${mesExib(v.inicio)}"></div>
         <div class="campo"><label for="q-fim">Fim planejado</label><input id="q-fim" name="fimPlanejado" value="${v.fimPlanejado?mesExib(v.fimPlanejado):''}" placeholder="MM/AAAA"></div>
       </div>
@@ -641,14 +641,14 @@ function abrirProjeto(p) {
   abrirModal({
     titulo: p.nome,
     corpo: `
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <div style="display:flex;gap:var(--esp-4);flex-wrap:wrap;align-items:center">
         <span class="tag">${mesExib(p.inicio)} → ${mesExib(p.fimPlanejado)}</span>
         <span class="tag ${p.fimReal?'bom':''}">${p.fimReal?'Concluído em '+mesExib(p.fimReal):(STATUS_PROJ[p.status]||p.status)}</span>
         <button type="button" class="bt peq" data-edp style="margin-left:auto">Editar projeto</button>
       </div>
-      <h3 style="font-size:14px;margin-top:6px">Tarefas</h3>
+      <h3 style="font-size:14px;margin-top:var(--esp-3)">Tarefas</h3>
       <div class="rol" data-tar></div>
-      <form class="filtros" data-formtar style="margin-top:4px">
+      <form class="filtros" data-formtar style="margin-top:var(--esp-2)">
         <div class="campo" style="flex:1 1 150px"><label for="t-nome">Nova tarefa</label><input id="t-nome" name="tnome" required></div>
         <div class="campo" style="width:140px"><label for="t-resp">Responsável</label><input id="t-resp" name="tresp"></div>
         <div class="campo" style="width:210px"><label for="t-pai">Tarefa principal</label>
@@ -658,10 +658,10 @@ function abrirProjeto(p) {
         <div class="campo" style="width:104px"><label for="t-fim">Fim planejado</label><input id="t-fim" name="tfim" placeholder="MM/AAAA" required></div>
         <button class="bt pri" type="submit">Adicionar</button>
       </form>
-      <div data-replicar hidden style="margin-top:6px"></div>
-      <h3 style="font-size:14px;margin-top:8px">Envolvidos</h3>
+      <div data-replicar hidden style="margin-top:var(--esp-3)"></div>
+      <h3 style="font-size:14px;margin-top:var(--esp-4)">Envolvidos</h3>
       <div data-env style="display:flex;gap:7px;flex-wrap:wrap"></div>
-      <form class="filtros" data-formenv style="margin-top:4px">
+      <form class="filtros" data-formenv style="margin-top:var(--esp-2)">
         <div class="campo" style="flex:1 1 140px"><label for="e-nome">Nome</label><input id="e-nome" name="enome" required></div>
         <div class="campo" style="width:150px"><label for="e-papel">Papel</label><input id="e-papel" name="epapel"></div>
         <button class="bt" type="submit">Adicionar envolvido</button>
@@ -693,8 +693,8 @@ function abrirProjeto(p) {
           <strong>Este projeto também existe em ${inteiro(gemeos.length)} outra(s) unidade(s).</strong>
           Marque onde a tarefa nova deve nascer junto — cada cópia com vínculo próprio, e sem tarefa principal,
           porque a principal escolhida aqui é deste projeto.
-          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px">
-            ${gemeos.map((g) => `<label style="display:flex;gap:6px;align-items:center;font-size:13px">
+          <div style="display:flex;gap:var(--esp-6);flex-wrap:wrap;margin-top:var(--esp-4)">
+            ${gemeos.map((g) => `<label style="display:flex;gap:var(--esp-3);align-items:center;font-size:13px">
               <input type="checkbox" data-outro="${esc(g.empresa)}" data-filial="${esc(g.filial || '')}">
               ${esc(nomeEmpresa(g.empresa))}${g.filial ? ' · ' + esc(g.filial) : ' · nível empresa'}</label>`).join('')}
           </div></div>`;
@@ -727,9 +727,9 @@ function abrirProjeto(p) {
               ${x.fimReal?'':'<button type="button" class="bt fant peq" data-ok>Concluir</button>'}
               <button type="button" class="bt fant peq" data-del>Remover</button></td></tr>`; }).join('')}</tbody></table>`;
         raiz.querySelector('[data-env]').innerHTML = envolvidos.length === 0
-          ? '<span class="vazio" style="padding:6px">Nenhum envolvido.</span>'
+          ? '<span class="vazio" style="padding:var(--esp-3)">Nenhum envolvido.</span>'
           : envolvidos.map((e,i)=>`<span class="tag">${esc(e.papel?e.nome+' — '+e.papel:e.nome)}
-              <button type="button" class="bt fant peq" data-rmenv="${i}" style="padding:0 4px">✕</button></span>`).join('');
+              <button type="button" class="bt fant peq" data-rmenv="${i}" style="padding:0 var(--esp-2)">✕</button></span>`).join('');
         t.querySelectorAll('tr[data-t]').forEach((tr) => {
           const tar = tarefas.find((x)=>x.id===tr.dataset.t);
           tr.querySelector('[data-ok]')?.addEventListener('click', async () => {
@@ -751,7 +751,7 @@ function abrirProjeto(p) {
                      principal desta. Crie a tarefa que agrupa antes de agrupar esta.</p>`
                 : `<div class="campo"><label for="g-pai">Tarefa principal</label>
                      <select id="g-pai">${opcoesDePrincipal(candidatas, tar.paiId || null, tar.id)}</select></div>
-                   <p class="nota" style="margin-top:8px">A hierarquia vai até ${PROFUNDIDADE_MAXIMA} níveis.
+                   <p class="nota" style="margin-top:var(--esp-4)">A hierarquia vai até ${PROFUNDIDADE_MAXIMA} níveis.
                      Escolher <strong>nenhuma</strong> desagrupa a tarefa.</p>`,
               acoes: disponiveis.length === 0
                 ? `<button type="button" class="bt" data-c>Fechar</button>`

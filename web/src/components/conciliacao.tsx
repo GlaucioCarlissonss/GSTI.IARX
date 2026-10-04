@@ -104,7 +104,7 @@ export function PainelConciliacao({
   const podeProsseguir = pendentes === 0 && !travado && !enviando;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--esp-7)' }}>
       <BlocoDobravel titulo="Resumo da importação" contador={`${analise.total_linhas} linha(s)`} tom="neutro">
         <dl className="par">
           <dt>Linhas no arquivo</dt>
@@ -170,7 +170,7 @@ export function PainelConciliacao({
         )}
       </BlocoDobravel>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--esp-6)', flexWrap: 'wrap' }}>
         <button
           type="button"
           className="botao primario"
@@ -212,7 +212,7 @@ function BlocoDobravel({
   const [aberto, setAberto] = useState(false);
   return (
     <section className="cartao" style={{ padding: '12px 14px' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: aberto ? 12 : 0 }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 'var(--esp-5)', marginBottom: aberto ? 12 : 0 }}>
         <h2 style={{ marginRight: 'auto' }}>
           <button type="button" className="cartao-dobra" aria-expanded={aberto} onClick={() => setAberto((a) => !a)}>
             <span className="cartao-seta" aria-hidden>
@@ -246,7 +246,7 @@ function BlocoDivergencias({
 
   return (
     <section className="cartao" style={{ padding: '12px 14px' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: aberto ? 12 : 0 }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 'var(--esp-5)', marginBottom: aberto ? 12 : 0 }}>
         <h2 style={{ marginRight: 'auto' }}>
           <button
             type="button"
@@ -270,7 +270,7 @@ function BlocoDivergencias({
       {aberto && (
         <>
           {precisam.length > 1 && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 'var(--esp-4)', marginBottom: 'var(--esp-5)', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 className="botao discreto pequeno"
@@ -392,7 +392,7 @@ function LinhaItem({
         {item.ocorrencias}
       </td>
       <td>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--esp-3)', alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             list={listaId}
             value={alvo}

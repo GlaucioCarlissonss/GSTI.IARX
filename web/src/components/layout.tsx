@@ -152,7 +152,7 @@ export function Layout() {
         <div style={{ marginTop: 'auto', fontSize: 12, color: 'var(--tinta-fraca)', padding: '0 8px' }}>
           <div style={{ color: 'var(--tinta-2)' }}>{usuario?.nome}</div>
           <div>{usuario?.email}</div>
-          <button type="button" className="botao discreto pequeno" onClick={sair} style={{ marginTop: 6, paddingLeft: 0 }}>
+          <button type="button" className="botao discreto pequeno" onClick={sair} style={{ marginTop: 'var(--esp-3)', paddingLeft: 0 }}>
             Sair
           </button>
         </div>

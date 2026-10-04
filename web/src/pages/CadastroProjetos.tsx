@@ -234,7 +234,7 @@ function FormularioProjeto({
 
   return (
     <Modal titulo="Novo projeto" aberto={aberto} aoFechar={aoFechar}>
-      <form onSubmit={submeter} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <form onSubmit={submeter} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--esp-7)' }}>
         <Campo rotulo="Nome do projeto">
           <input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required autoFocus />
         </Campo>
@@ -397,7 +397,7 @@ function DetalheProjeto({
 
   return (
     <Modal titulo={projeto.nome} aberto aoFechar={aoFechar}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap', alignItems: 'center' }}>
         <Etiqueta texto={`${projeto.mes_inicio} → ${projeto.mes_fim_planejado}`} />
         <Etiqueta
           texto={projeto.mes_fim_real ? `Concluído em ${projeto.mes_fim_real}` : ROTULO_STATUS_PROJETO[projeto.status] ?? projeto.status}
@@ -413,7 +413,7 @@ function DetalheProjeto({
       {erro && <Aviso tipo="erro">{erro}</Aviso>}
 
       <div>
-        <h3 style={{ marginBottom: 8 }}>Tarefas</h3>
+        <h3 style={{ marginBottom: 'var(--esp-4)' }}>Tarefas</h3>
         {!tarefas.dados ? (
           <Carregando />
         ) : tarefas.dados.length === 0 ? (
@@ -435,11 +435,11 @@ function DetalheProjeto({
                   <tr key={t.id}>
                     {/* A indentação é o que mostra a hierarquia aqui; o Gantt
                         é quem traz os controles de expandir e comprimir. */}
-                    <td style={{ paddingLeft: 10 + ((t.nivel ?? 1) - 1) * 18 }}>
-                      {(t.nivel ?? 1) > 1 && <span style={{ color: 'var(--tinta-fraca)', marginRight: 6 }}>↳</span>}
+                    <td style={{ paddingLeft: 'var(--esp-5)' + ((t.nivel ?? 1) - 1) * 18 }}>
+                      {(t.nivel ?? 1) > 1 && <span style={{ color: 'var(--tinta-fraca)', marginRight: 'var(--esp-3)' }}>↳</span>}
                       {t.nome}
                       {(t.total_subtarefas ?? 0) > 0 && (
-                        <span style={{ color: 'var(--tinta-fraca)', fontSize: 11.5, marginLeft: 6 }}>
+                        <span style={{ color: 'var(--tinta-fraca)', fontSize: 11.5, marginLeft: 'var(--esp-3)' }}>
                           {t.total_subtarefas} subtarefa(s)
                         </span>
                       )}
@@ -474,7 +474,7 @@ function DetalheProjeto({
         )}
 
         {podeEditar && (
-          <form onSubmit={adicionarTarefa} className="barra-filtros" style={{ marginTop: 10 }}>
+          <form onSubmit={adicionarTarefa} className="barra-filtros" style={{ marginTop: 'var(--esp-5)' }}>
             <Campo rotulo="Nova tarefa">
               <input value={tarefa.nome} onChange={(e) => setTarefa({ ...tarefa, nome: e.target.value })} required />
             </Campo>
@@ -527,15 +527,15 @@ function DetalheProjeto({
       </div>
 
       <div>
-        <h3 style={{ marginBottom: 8 }}>Envolvidos</h3>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <h3 style={{ marginBottom: 'var(--esp-4)' }}>Envolvidos</h3>
+        <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap' }}>
           {(envolvidos.dados ?? []).length === 0 && <span className="vazio">Nenhum envolvido registrado.</span>}
           {(envolvidos.dados ?? []).map((e) => (
             <Etiqueta key={e.id} texto={e.papel ? `${e.nome} — ${e.papel}` : e.nome} />
           ))}
         </div>
         {podeEditar && (
-          <form onSubmit={adicionarEnvolvido} className="barra-filtros" style={{ marginTop: 10 }}>
+          <form onSubmit={adicionarEnvolvido} className="barra-filtros" style={{ marginTop: 'var(--esp-5)' }}>
             <Campo rotulo="Nome">
               <input value={envolvido.nome} onChange={(e) => setEnvolvido({ ...envolvido, nome: e.target.value })} required />
             </Campo>
@@ -604,7 +604,7 @@ function AgruparTarefa({
           <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
             A hierarquia vai até 3 níveis. Escolher <strong>nenhuma</strong> desagrupa a tarefa.
           </p>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 'var(--esp-4)', justifyContent: 'flex-end' }}>
             <button type="button" className="botao" onClick={aoFechar}>
               Cancelar
             </button>

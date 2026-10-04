@@ -118,8 +118,8 @@ function viewMetas() {
           <td><button class="bt fant peq" data-alternar="${i}">${m.ativo === false ? 'Reativar' : 'Desativar'}</button></td>
         </tr>`).join('')}</tbody>
       </table></div>`}
-      <div style="margin-top:12px"><button class="bt" data-nova-meta>Cadastrar meta</button></div>
-      <p class="nota" style="margin-top:10px">A vigência decide qual meta rege qual mês: trocar o alvo em
+      <div style="margin-top:var(--esp-6)"><button class="bt" data-nova-meta>Cadastrar meta</button></div>
+      <p class="nota" style="margin-top:var(--esp-5)">A vigência decide qual meta rege qual mês: trocar o alvo em
         janeiro não reescreve a leitura dos meses já fechados. Entre duas vigentes ganha a de início mais
         recente, e a meta sem início é o alvo genérico — vale onde nenhum específico alcança.</p>
     </section>`;
@@ -162,7 +162,7 @@ function formMeta() {
             ${Object.entries(CONTEXTOS_TETO)
               .map(([k, r]) => `<option value="${esc(k)}">${esc(r)}</option>`).join('')}
           </select>
-          <p class="nota" style="margin:4px 0 0">São três tetos independentes, cada um com a sua vigência.
+          <p class="nota" style="margin:var(--esp-2) 0 0">São três tetos independentes, cada um com a sua vigência.
             O teto <strong>geral</strong> é a soma dos vigentes — calculado, nunca digitado.</p></div>
         <div class="campo"><label for="m-valor">Valor da meta (R$)</label>
           <input id="m-valor" name="valorTeto" inputmode="decimal" placeholder="0,00"></div>
@@ -396,8 +396,8 @@ async function viewSlas() {
           <td><button class="bt fant peq" data-alternar-sla="${i}">${a.ativo === false ? 'Reativar' : 'Desativar'}</button></td>
         </tr>`).join('')}</tbody>
       </table></div>`}
-      <div style="margin-top:12px"><button class="bt" data-novo-sla>Cadastrar acordo</button></div>
-      <p class="nota" style="margin-top:10px">O acordo do tópico ganha do geral, e o acordo cadastrado
+      <div style="margin-top:var(--esp-6)"><button class="bt" data-novo-sla>Cadastrar acordo</button></div>
+      <p class="nota" style="margin-top:var(--esp-5)">O acordo do tópico ganha do geral, e o acordo cadastrado
         ganha do prazo que o helpdesk informou — o da origem fica guardado e aparece na ficha do chamado.
         As horas são <strong>úteis</strong>: correm dentro do expediente (seg–qui 08h–18h, sex 08h–17h) e
         pulam fim de semana e os <a href="#" data-ir-feriados>feriados cadastrados</a>. Chamado já gravado
@@ -411,18 +411,18 @@ async function viewSlas() {
         antes de aplicar. Mês fechado é recusado; mês passado exige justificativa.
         <strong>O prazo agora é contado em horas úteis</strong>, então reaplicar move números:
         chamado que atravessava fim de semana ou feriado ganha prazo mais folgado.</p>
-      <div class="grade g3" style="margin-top:10px">
+      <div class="grade g3" style="margin-top:var(--esp-5)">
         <div class="campo"><label for="r-comp">Competência</label>
           <select id="r-comp">${competenciasComChamados(emp)
             .map((c) => `<option value="${esc(c)}">${esc(mesExib(c))}</option>`).join('')}</select></div>
         <div class="campo"><label for="r-just">Justificativa</label>
           <input id="r-just" placeholder="obrigatória em mês já encerrado"></div>
       </div>
-      <div class="acoes" style="justify-content:flex-start;margin-top:10px">
+      <div class="acoes" style="justify-content:flex-start;margin-top:var(--esp-5)">
         <button class="bt" data-previa-sla>Ver o que mudaria</button>
         <button class="bt pri" data-aplicar-sla>Aplicar</button>
       </div>
-      <div id="r-resultado" style="margin-top:12px"></div>
+      <div id="r-resultado" style="margin-top:var(--esp-6)"></div>
     </section>
 
     ${blocoCriticidadePadraoHtml(emp)}`;
@@ -489,7 +489,7 @@ function resumoReaplicacaoHtml(resumo, aplicado) {
   ];
   return `<div class="msg ${aplicado ? 'ok' : ''}">
     <strong>${aplicado ? 'Acordo aplicado.' : 'Prévia — nada foi gravado.'}</strong>
-    <dl class="ficha" style="margin-top:6px">${linhas
+    <dl class="ficha" style="margin-top:var(--esp-3)">${linhas
       .map(([r, v]) => `<dt>${esc(r)}</dt><dd>${inteiro(v)}</dd>`).join('')}</dl></div>`;
 }
 
@@ -776,7 +776,7 @@ function viewReducao() {
       ATUAL sai dos lançamentos do recorte; o ALVO sai daqui. Sem nenhuma linha, o indicador do
       topo de Indicadores Gerais fica vazio — sem alvo não há de quanto para quanto.</div>
 
-    <section class="bloco" style="margin-top:16px">
+    <section class="bloco" style="margin-top:var(--esp-8)">
       <header><h2>Plano de redução de despesas</h2>
         <span class="nota">${inteiro(planos.length)} item(ns)</span></header>
       ${planos.length === 0 ? '<p class="vazio">Nenhuma despesa no plano.</p>' : `
@@ -793,8 +793,8 @@ function viewReducao() {
           <td><button class="bt fant peq" data-alternar-plano="${i}">${p.ativo === false ? 'Reativar' : 'Desativar'}</button></td>
         </tr>`).join('')}</tbody>
       </table></div>`}
-      <div style="margin-top:12px"><button class="bt" data-novo-plano>Adicionar ao plano</button></div>
-      <p class="nota" style="margin-top:10px">A vigência decide qual alvo rege qual mês: trocar o
+      <div style="margin-top:var(--esp-6)"><button class="bt" data-novo-plano>Adicionar ao plano</button></div>
+      <p class="nota" style="margin-top:var(--esp-5)">A vigência decide qual alvo rege qual mês: trocar o
         alvo em janeiro não reescreve a leitura dos meses já fechados.</p>
     </section>`;
 
@@ -950,7 +950,7 @@ function avaliarReconhecimento() {
 function resumoReconhecimentoHtml(r, aplicado) {
   return `<div class="msg ${aplicado ? 'ok' : ''}" data-resumo-reconhecimento>
     <strong>${aplicado ? 'Reconhecimento aplicado.' : 'Prévia — nada foi gravado.'}</strong>
-    <dl class="ficha" style="margin-top:6px">
+    <dl class="ficha" style="margin-top:var(--esp-3)">
       <dt>Lançamentos avaliados</dt><dd>${inteiro(r.avaliados)}</dd>
       <dt>${aplicado ? 'Reconhecidos agora' : 'Seriam reconhecidos'}</dt><dd>${inteiro(r.reconhecidos)}</dd>
       <dt>Já estavam reconhecidos</dt><dd>${inteiro(r.jaReconhecidos)}</dd>
@@ -968,7 +968,7 @@ function viewReconhecedores() {
       Parte dela, porém, vem de quem já conferiu na origem: o documento criado pela própria equipe
       de TI no sistema do cliente chega revisado. Quem está nesta lista dispensa essa conferência.</div>
 
-    <section class="bloco" style="margin-top:16px">
+    <section class="bloco" style="margin-top:var(--esp-8)">
       <header><h2>Quem reconhece despesa</h2>
         <span class="nota">${inteiro(lista.length)} pessoa(s)</span></header>
       ${lista.length === 0 ? '<p class="vazio">Ninguém cadastrado — toda a carga vai nascer por reconhecer.</p>' : `
@@ -981,22 +981,22 @@ function viewReconhecedores() {
           <td><button class="bt fant peq" data-alternar-rec="${i}">${r.ativo === false ? 'Reativar' : 'Desativar'}</button></td>
         </tr>`).join('')}</tbody>
       </table></div>`}
-      <div style="margin-top:12px"><button class="bt" data-novo-rec>Adicionar pessoa</button></div>
-      <p class="nota" style="margin-top:10px">A comparação ignora acento, espaço e caixa:
+      <div style="margin-top:var(--esp-6)"><button class="bt" data-novo-rec>Adicionar pessoa</button></div>
+      <p class="nota" style="margin-top:var(--esp-5)">A comparação ignora acento, espaço e caixa:
         <code>Miqueias Silva</code> e <code>MIQUEIASSILVA</code> são a mesma pessoa. Desativar quem
         saiu do time faz a próxima carga dele nascer por reconhecer, sem apagar o que já entrou.</p>
     </section>
 
-    <section class="bloco" style="margin-top:16px">
+    <section class="bloco" style="margin-top:var(--esp-8)">
       <header><h2>Aplicar ao que já está na base</h2></header>
       <p class="nota">O cadastro decide na ENTRADA da carga. Aqui ele alcança o que já foi
         carregado — veja o que mudaria e só então aplique. Nada é recalculado sozinho: um número
         apresentado numa reunião não pode mudar porque alguém mexeu numa lista.</p>
-      <div class="acoes" style="justify-content:flex-start;margin-top:10px">
+      <div class="acoes" style="justify-content:flex-start;margin-top:var(--esp-5)">
         <button class="bt" data-previa-rec>Ver o que mudaria</button>
         <button class="bt pri" data-aplicar-rec>Aplicar</button>
       </div>
-      <div data-saida-rec style="margin-top:12px"></div>
+      <div data-saida-rec style="margin-top:var(--esp-6)"></div>
     </section>`;
 
   el('#pagina').querySelector('[data-novo-rec]')?.addEventListener('click', formReconhecedor);

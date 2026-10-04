@@ -43,6 +43,21 @@
      uma cor de outra família leria como uma quarta série. O tracejado é o
      segundo canal, para não depender do tom. */
   --proj:#8fb8e8;
+  /* ESCALA DE ESPAÇAMENTO E RAIO — a mesma nos dois aplicativos.
+     
+     Os valores são EXATAMENTE os que já estavam espalhados pelo código: esta
+     entrega centraliza, não redesenha. Apertar a escala para 4/8/12/16/24
+     muda pixel em 23 telas, e isso é decisão de design — vai na entrega do
+     design system, onde passa a ser uma linha só em vez de 226.
+     
+     Medido antes de escolher: 10px aparecia 52 vezes, 12px 39, 8px 30,
+     14px 26, 6px 19, 16px 18, 4px 17 e 2px 9. O que ficou FORA da escala
+     (3, 5, 7, 26, 54px) segue literal de propósito: a lista dos literais
+     restantes é a dívida de design, e escondê-la num token não a paga. */
+  --esp-1:2px; --esp-2:4px; --esp-3:6px; --esp-4:8px; --esp-5:10px;
+  --esp-6:12px; --esp-7:14px; --esp-8:16px; --esp-9:20px; --esp-10:24px;
+  /* Raio: o cartão, o controle e a pastilha. */
+  --raio-p:5px; --raio-m:8px; --raio-g:12px; --raio-redondo:999px;
   --sombra:0 1px 2px rgba(17,23,33,.05),0 8px 24px rgba(17,23,33,.06);
   --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;

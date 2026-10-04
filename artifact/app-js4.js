@@ -170,7 +170,7 @@ function formLancamento(existente) {
           <input id="c-valor" name="valor" value="${v.valor===''?'':String(v.valor).replace('.',',')}" placeholder="1.234,56"></div>
         <div class="campo"><label for="c-nat">Natureza</label><select id="c-nat" name="natureza">
           ${Object.entries(NATUREZAS).map(([k,n])=>`<option value="${k}"${k===v.natureza?' selected':''}>${n}</option>`).join('')}</select>
-          ${!ed ? '' : `<p class="nota" style="margin:4px 0 0">Reclassifica ${v.grupo
+          ${!ed ? '' : `<p class="nota" style="margin:var(--esp-2) 0 0">Reclassifica ${v.grupo
             ? '<strong>a série inteira</strong>: uma série com meses de naturezas diferentes não descreveria despesa nenhuma'
             : 'esta despesa'}. Não cria nem remove meses — para isso, lance de novo.</p>`}</div>
         <div class="campo"><label for="c-cls">Classificação</label><select id="c-cls" name="classificacao">
@@ -187,7 +187,7 @@ function formLancamento(existente) {
           <label>Filiais beneficiadas</label>
           <div id="c-benef"></div>
           <input type="hidden" id="c-benef-val" name="beneficiadas" value="">
-          <p class="nota" style="margin:4px 0 0">Quem consome esta despesa. A lista é gravada como está hoje:
+          <p class="nota" style="margin:var(--esp-2) 0 0">Quem consome esta despesa. A lista é gravada como está hoje:
             uma filial cadastrada depois não entra neste lançamento.</p>
         </div>
       </div>
@@ -198,7 +198,7 @@ function formLancamento(existente) {
         <label for="c-reg">Regularizada em (MM/AAAA)</label>
         <input id="c-reg" name="regularizadaEm" value="${esc(mesExib(v.regularizadaEm||''))}"
           placeholder="em branco = ainda compartilhada">
-        <p class="nota" style="margin:4px 0 0">O mês em que cada unidade passou a pagar a parte dela na origem.
+        <p class="nota" style="margin:var(--esp-2) 0 0">O mês em que cada unidade passou a pagar a parte dela na origem.
           Vale para <strong>a série inteira</strong> — o contrato foi adequado uma vez —, e cada mês anterior
           a ele continua contando como compartilhado.</p>
       </div>
@@ -239,7 +239,7 @@ function formLancamento(existente) {
                <label><input type="checkbox" value="" checked> nível empresa</label>
                ${fs.map((f) => `<label><input type="checkbox" value="${esc(f.nome)}"> ${esc(f.nome)}</label>`).join('')}
              </div>
-             <p class="nota" data-resumo style="margin:4px 0 0"></p>`;
+             <p class="nota" data-resumo style="margin:var(--esp-2) 0 0"></p>`;
         if (!ed) ligarFiliais();
       };
 

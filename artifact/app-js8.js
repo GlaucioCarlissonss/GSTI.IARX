@@ -100,7 +100,7 @@ function viewConferencia() {
       <header><h2>Mês a mês, por origem</h2><span class="nota">${inteiro(meses.length)} competências</span></header>
       <div class="leg">${usadas.map((o) => `<span><i style="background:${COR_ORIGEM[o]}"></i>${esc(ORIGENS[o].curto)}</span>`).join('')}</div>
       <div id="gc"></div>
-      <div class="rol" style="margin-top:12px"><table>
+      <div class="rol" style="margin-top:var(--esp-6)"><table>
         <thead><tr><th>Competência</th>${usadas.map((o)=>`<th class="n">${esc(ORIGENS[o].curto)}</th>`).join('')}
           <th class="n">Total do mês</th></tr></thead>
         <tbody>${linhasMes.map((x) => `<tr>

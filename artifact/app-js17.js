@@ -373,7 +373,7 @@ const rotuloVariacao = (g) =>
 
 /** A chave de leitura do Farol 3. A projeção traz o tracejado da amostra, que
  *  é o mesmo canal que a linha usa no gráfico. */
-const legendaDoFarol3Html = () => `<div class="legenda-tipos" style="margin-top:10px">
+const legendaDoFarol3Html = () => `<div class="legenda-tipos" style="margin-top:var(--esp-5)">
   <span class="legenda-titulo">Séries</span>
   <span><i style="background:${COR_TOTAL}" aria-hidden="true"></i>total (todos os custos)</span>
   <span><i style="background:${COR_VARIAVEL}" aria-hidden="true"></i>variáveis (pontuais)</span>
@@ -390,7 +390,7 @@ const TETOS_DO_FAROL3 = [
   { k: 'tetoGeral', ctx: 'geral', nome: 'Teto geral (soma dos três)' },
 ];
 
-const legendaDosTetosHtml = (f3) => `<div class="legenda-tipos" style="margin-top:6px">
+const legendaDosTetosHtml = (f3) => `<div class="legenda-tipos" style="margin-top:var(--esp-3)">
   <span class="legenda-titulo">Tetos de gasto</span>
   ${TETOS_DO_FAROL3.map((t) => {
     const semMeta = t.ctx === 'geral' ? f3.tetos.geral === null : f3.tetos[t.ctx] === null;
@@ -515,7 +515,7 @@ const ROTULO_FAIXA = {
 };
 const COR_TETO = 'var(--crit)';
 
-const legendaDoObjetivo03Html = () => `<div class="legenda-tipos" style="margin-top:10px">
+const legendaDoObjetivo03Html = () => `<div class="legenda-tipos" style="margin-top:var(--esp-5)">
   <span class="legenda-titulo">Séries</span>
   ${Object.entries(ROTULO_FAIXA).map(([k, r]) =>
     `<span><i style="background:${COR_FAIXA[k]}" aria-hidden="true"></i>${esc(r)}</span>`).join('')}
@@ -530,7 +530,7 @@ const legendaDoObjetivo03Html = () => `<div class="legenda-tipos" style="margin-
  * é um terceiro estado, não um verde por omissão.
  */
 function tabelaDoObjetivo03Html(o) {
-  return `<div class="rol rol-fixo" style="margin-top:12px;max-height:300px;min-height:0"><table>
+  return `<div class="rol rol-fixo" style="margin-top:var(--esp-6);max-height:300px;min-height:0"><table>
     <thead><tr><th>Competência</th>
       ${Object.entries(ROTULO_FAIXA).map(([k, r]) =>
         `<th class="n" style="color:${COR_FAIXA[k]}">${esc(r.split(' (')[0])}</th>`).join('')}
@@ -561,7 +561,7 @@ function tabelaDoObjetivo03Html(o) {
 const COR_DESPESA = 'var(--s1)';
 const COR_INVESTIMENTO = 'var(--m4)';
 
-const legendaDeClassificacaoHtml = () => `<div class="legenda-tipos" style="margin-top:10px">
+const legendaDeClassificacaoHtml = () => `<div class="legenda-tipos" style="margin-top:var(--esp-5)">
   <span class="legenda-titulo">Classificação</span>
   <span><i style="background:${COR_DESPESA}" aria-hidden="true"></i>despesa</span>
   <span><i class="amostra-hachura" style="background:${COR_INVESTIMENTO}" aria-hidden="true"></i>investimento</span>
@@ -606,7 +606,7 @@ function grupoDoFarolHtml(id, titulo, g) {
   return `<h3 class="titulo-mini">${esc(titulo)} — ${brl(g.total)} no período${
     g.investimento > 0 ? `, dos quais ${brl(g.investimento)} em investimento` : ''}</h3>
     <div id="i-farol-${esc(id)}"></div>
-    <div class="rol rol-fixo" style="margin-top:10px;max-height:240px;min-height:0"><table>
+    <div class="rol rol-fixo" style="margin-top:var(--esp-5);max-height:240px;min-height:0"><table>
       <thead><tr><th>Competência</th><th class="n">Despesa</th><th class="n">Investimento</th>
         <th class="n">Total</th><th class="n">Variação</th></tr></thead>
       <tbody>${g.serie.map((p) => `<tr>
@@ -1095,7 +1095,7 @@ function cardsDaAdequacaoHtml(a) {
 }
 
 /** A chave de leitura da linha do tempo. A cor nunca é o único canal. */
-const legendaDaAdequacaoHtml = () => `<div class="legenda-tipos" style="margin-top:10px">
+const legendaDaAdequacaoHtml = () => `<div class="legenda-tipos" style="margin-top:var(--esp-5)">
   <span class="legenda-titulo">Linha do tempo</span>
   <span><i style="background:${COR_PENDENTE}" aria-hidden="true"></i>ainda compartilhado</span>
   <span><i style="background:${COR_REGULARIZADO}" aria-hidden="true"></i>já regularizado</span>
@@ -1546,14 +1546,14 @@ function abrirMetasDoMes(rot, mc) {
     tipo: 'meta-do-mes',
     corpo: `
       ${cardsDoPlanoHtml({ ...mc, rotulo: `Custo fixo menos a meta, em ${rot}` })}
-      <div class="msg${mc.atinge === null ? '' : mc.atinge ? ' bom' : ' erro'}" style="margin-top:12px">
+      <div class="msg${mc.atinge === null ? '' : mc.atinge ? ' bom' : ' erro'}" style="margin-top:var(--esp-6)">
         <strong>${mc.atinge === null ? 'Mês ainda não apurado.'
           : mc.atinge ? 'Meta alcançada.' : 'Meta não alcançada.'}</strong>
         ${mc.atinge === null
           ? ' É um mês projetado: o custo dele repete o último mês realizado, então não há resultado para julgar.'
           : ` O custo fixo de ${esc(rot)} é ${brl(mc.custo)}, contra o patamar de ${brl(mc.alvoFixo !== undefined ? mc.alvoFixo : mc.esperado)} que o plano pede.`}
       </div>
-      <div class="rol" style="margin-top:12px"><table>
+      <div class="rol" style="margin-top:var(--esp-6)"><table>
         <thead><tr><th>Plano cadastrado</th><th>Tipo de despesa</th><th>Vigência</th>
           <th class="n">Custo no mês</th><th class="n">Meta (cortar)</th><th class="n">Deve chegar a</th></tr></thead>
         <tbody>${mc.metas.map((x) => `<tr>
@@ -1571,7 +1571,7 @@ function abrirMetasDoMes(rot, mc) {
         <tfoot><tr><td colspan="4">Total</td><td class="n">${brl(mc.meta)}</td>
           <td class="n">${brl(mc.esperado)}</td></tr></tfoot>
       </table></div>
-      <p class="nota" style="margin-top:10px">O valor cadastrado é <strong>quanto cortar</strong>:
+      <p class="nota" style="margin-top:var(--esp-5)">O valor cadastrado é <strong>quanto cortar</strong>:
         o patamar a atingir é o custo de hoje menos ele. Os planos aparecem em
         <strong>ordem de vigência</strong> e <strong>em cadeia</strong> — quando dois alcançam a
         mesma despesa, o que começa depois parte do patamar que o anterior deixou, e não do
@@ -2343,7 +2343,7 @@ function termometro(alvo, pct, meta, rotulo) {
 
 /** Filtros do bloco: período próprio e filiais próprias, nada global. */
 function filtrosDoBloco(bloco, r) {
-  return `<div class="filtros" style="box-shadow:none;border:0;padding:0;margin-bottom:14px">
+  return `<div class="filtros" style="box-shadow:none;border:0;padding:0;margin-bottom:var(--esp-7)">
       <div class="campo" style="width:118px"><label for="i-${bloco}-de">De</label>
         <input id="i-${bloco}-de" value="${r.de ? mesExib(r.de) : ''}" placeholder="MM/AAAA"></div>
       <div class="campo" style="width:118px"><label for="i-${bloco}-ate">Até</label>
@@ -2388,7 +2388,7 @@ function filtrosDoBloco(bloco, r) {
  */
 function caixaDeCategorizacaoHtml() {
   const fonte = 'https://razonet.com.br/contabilidade-digital/diferenca-custo-despesa-investimento';
-  return `<div class="msg caixa-categorias" style="margin-bottom:14px">
+  return `<div class="msg caixa-categorias" style="margin-bottom:var(--esp-7)">
     <strong>Como classificamos os custos:</strong>
     <ol class="lista-categorias">
       <li>Custos com <strong>Despesas Fixas</strong> (Mensais)</li>
@@ -2415,7 +2415,7 @@ function caixaDeCategorizacaoHtml() {
  */
 function blocoIndicador({ chave, titulo, descricao, valor, cor, apoio, corpo, nota, extra }) {
   return `
-    <section class="bloco bloco-indicador" style="margin-top:14px">
+    <section class="bloco bloco-indicador" style="margin-top:var(--esp-7)">
       <header><h2>${esc(titulo)}</h2>
         <span class="nota valor-cabecalho"${cor ? ` style="color:${cor}"` : ''}>${valor}</span>
         ${descricao ? `<p class="descricao-indicador">${esc(descricao)}</p>` : ''}</header>
@@ -2426,7 +2426,7 @@ function blocoIndicador({ chave, titulo, descricao, valor, cor, apoio, corpo, no
         ${corpo || ''}
       </div>
       ${extra || ''}
-      ${nota ? `<p class="nota" style="margin-top:10px">${nota}</p>` : ''}
+      ${nota ? `<p class="nota" style="margin-top:var(--esp-5)">${nota}</p>` : ''}
     </section>`;
 }
 
@@ -2518,7 +2518,7 @@ function calcularFarol4(r) {
  */
 function subBlocoFarol4Html(f, corpo) {
   return `
-    <section class="bloco bloco-sub" data-sub-farol4="${esc(f.k)}" style="margin-top:12px">
+    <section class="bloco bloco-sub" data-sub-farol4="${esc(f.k)}" style="margin-top:var(--esp-6)">
       <header><h2>${esc(f.titulo)}</h2>
         <span class="nota valor-cabecalho" style="color:${f.cor}">${
           f.pronto ? brl(f.valor) : '<span class="vazio2">sem cadastro</span>'}</span></header>
@@ -2607,7 +2607,7 @@ function porCentroDeCustoHtml(pendente) {
         <td class="n" style="color:var(--alerta);font-weight:700">${brl(c.valor)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td>Total</td><td class="n">${inteiro(pendente.quantidade)}</td>
         <td class="n">${brl(pendente.valor)}</td></tr></tfoot></table></div>
-    <p class="nota" style="margin-top:10px">O centro de custo é o tipo de despesa — é assim que as bases
+    <p class="nota" style="margin-top:var(--esp-5)">O centro de custo é o tipo de despesa — é assim que as bases
       vêm rotuladas.</p>`;
 }
 
@@ -2690,7 +2690,7 @@ async function viewIndicadores() {
       expansão continua por empresa e, dentro dela, por filial. Os filtros são de cada módulo e não
       atravessam para as outras telas — nem sobrevivem ao recarregar.</div>
 
-    <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
+    <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:var(--esp-8)">
       <header>
         <h2>Financeiro</h2>
         <span class="nota">${[
@@ -2707,7 +2707,7 @@ async function viewIndicadores() {
          misturá-los numa pilha só obrigava a ler o título de cada um para
          descobrir de qual tipo era. Cada grupo abre e fecha, e dentro dele cada
          indicador continua abrindo por empresa e, dentro dela, por filial. -->
-    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:14px">
+    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:var(--esp-7)">
       <header><h2>Objetivos</h2>
         <span class="nota">alvo cadastrado, com veredicto</span></header>
 
@@ -2762,9 +2762,9 @@ async function viewIndicadores() {
           plano.janela.de ? ` — ${mesExib(plano.janela.de)} a ${mesExib(plano.janela.ate)}` : ''}</h3>
         ${legendaDeTiposHtml(plano.composicao)}
         ${interruptorDeMediasHtml('plano-reducao')}
-        <div id="i-plano-serie" style="margin-top:2px"></div>`}
+        <div id="i-plano-serie" style="margin-top:var(--esp-1)"></div>`}
         ${plano.itens.length === 0 ? '' : `
-        <div class="rol" style="margin-top:12px"><table>
+        <div class="rol" style="margin-top:var(--esp-6)"><table>
           <thead><tr><th>Item</th><th class="n">Atual / mês</th><th class="n">Alvo / mês</th>
             <th>Atual × alvo</th><th class="n">Meta (cortar)</th>
             <th class="n" title="Quanto do custo fixo total do mês esta meta corta. A coluna soma a meta total.">% do custo fixo</th></tr></thead>
@@ -2841,13 +2841,13 @@ async function viewIndicadores() {
           consumo é uma <em>classificação</em>, não algo que se deduza do valor. Enquanto ninguém
           marcar quais despesas são compartilhadas, o indicador não tem o que medir.
         </div>
-        <div class="acoes" style="justify-content:flex-start;margin-top:10px">
+        <div class="acoes" style="justify-content:flex-start;margin-top:var(--esp-5)">
           <button type="button" class="bt pri" data-classificar>Classificar despesas compartilhadas</button>
         </div>` : `
         ${cardsDaAdequacaoHtml(adequacao)}
         ${legendaDaAdequacaoHtml()}
         ${interruptorDeMediasHtml('rateio')}
-        <div id="i-adequacao" style="margin-top:2px"></div>
+        <div id="i-adequacao" style="margin-top:var(--esp-1)"></div>
         <h3 class="titulo-mini">O que ainda é compartilhado, por empresa e filial${
           adequacao.referencia ? ` — ${mesExib(adequacao.referencia)}` : ''}</h3>
         ${adequacao.porUnidade.length
@@ -2855,21 +2855,21 @@ async function viewIndicadores() {
              ${legendaDeMatrizesHtml(fatiasDe(adequacao.porUnidade, emDinheiro))}
              ${arvoreDeUnidadesHtml('ind-adequacao', adequacao.porUnidade, emDinheiro)}`
           : '<p class="vazio">Nada pendente no mês de referência: tudo o que é compartilhado já foi regularizado.</p>'}
-        <div class="acoes" style="justify-content:flex-start;margin-top:10px">
+        <div class="acoes" style="justify-content:flex-start;margin-top:var(--esp-5)">
           <button type="button" class="bt" data-classificar>Classificar despesas compartilhadas</button>
         </div>
         <h3 class="titulo-mini">Como ficaria rateado entre as empresas</h3>
         <!-- O critério sai do rodapé do bloco e passa a morar JUNTO da tabela
              que ele explica: o bloco agora fala de duas coisas, e uma nota no
              fim descreveria a de cima. -->
-        <p class="nota" style="margin:2px 0 0">O <strong>antes</strong> é como a unidade aparece hoje:
+        <p class="nota" style="margin:var(--esp-1) 0 0">O <strong>antes</strong> é como a unidade aparece hoje:
           o que é dela mais 100% do que ela paga. O <strong>depois</strong> é o que é dela mais a parcela
           que lhe cabe. O critério é <strong>proporcional à despesa própria</strong> de cada empresa no
           período; com nenhuma empresa tendo despesa própria, a divisão sai igual. O total redistribui,
           não cresce — e nenhum lançamento é alterado.</p>
         ${rateio.lancamentos === 0 ? '<p class="vazio">Sem despesa compartilhada no recorte.</p>' : `
         ${legendaDeConsumoHtml(corPrimeira)}
-        <div class="rol" style="margin-top:10px"><table>
+        <div class="rol" style="margin-top:var(--esp-5)"><table>
           <thead><tr><th>Empresa</th><th class="n">Própria</th><th class="n">Rateio recebido</th>
             <th>Antes → depois</th><th class="n">Variação</th></tr></thead>
           <tbody>${rateio.porEmpresa.map((e) => {
@@ -2938,7 +2938,7 @@ async function viewIndicadores() {
           Cadastre em Sistema › Cadastro › Metas, tipo <em>Objetivo 03</em>.</div>`}
         ${legendaDoObjetivo03Html()}
         ${interruptorDeMediasHtml('teto-gasto')}
-        <div id="i-obj3" style="margin-top:2px"></div>
+        <div id="i-obj3" style="margin-top:var(--esp-1)"></div>
         ${tabelaDoObjetivo03Html(obj3)}
         <h3 class="titulo-mini">Despesas reconhecidas de ${esc(obj3.referencia.rot)}, por empresa e filial</h3>
         ${faixaDeMatrizesHtml(fatiasDe(obj3.porUnidade, emDinheiro))}
@@ -2955,7 +2955,7 @@ async function viewIndicadores() {
 
     </section>
 
-    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:14px">
+    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:var(--esp-7)">
       <header><h2>Faróis</h2>
         <span class="nota">medem e sinalizam, sem alvo cadastrado</span></header>
 
@@ -3031,8 +3031,8 @@ async function viewIndicadores() {
         ${legendaDoFarol3Html()}
         ${legendaDosTetosHtml(farol3)}
         ${interruptorDeMediasHtml('custo-mes-a-mes')}
-        <div id="i-reducao" style="margin-top:2px"></div>
-        <div class="rol rol-fixo" style="margin-top:12px;max-height:300px;min-height:0"><table>
+        <div id="i-reducao" style="margin-top:var(--esp-1)"></div>
+        <div class="rol rol-fixo" style="margin-top:var(--esp-6);max-height:300px;min-height:0"><table>
           <thead><tr><th>Competência</th>
             <th class="n" style="color:${COR_TOTAL}">Total</th>
             <th class="n" style="color:${COR_VARIAVEL}">Variáveis</th>
@@ -3126,7 +3126,7 @@ async function viewIndicadores() {
 
     </section>
 
-    <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
+    <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:var(--esp-8)">
       <header>
         <h2>Projetos</h2>
         <span class="nota">${[
@@ -3140,13 +3140,13 @@ async function viewIndicadores() {
          indicadores de execução que já existiam passam a viver dentro da visão
          MICRO, que é o lugar deles — soltos ao lado da virada de sistema, a
          tela não diria qual pergunta cada número responde. -->
-    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:14px">
+    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:var(--esp-7)">
       <header><h2>Visão Macro — Virada de Sistema</h2>
         <span class="nota">a unidade virou no mês planejado?</span></header>
       ${cronogramaHtml(crono)}
     </section>
 
-    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:14px">
+    <section class="bloco bloco-grupo" data-dobra-padrao="aberto" style="margin-top:var(--esp-7)">
       <header><h2>Visão Micro — Execução do Projeto</h2>
         <span class="nota">atividade a atividade, por unidade</span></header>
 
@@ -3154,11 +3154,11 @@ async function viewIndicadores() {
          indicadores de tarefa medem o mesmo projeto, e em caixas separadas
          comparar um com o outro exigia abrir duas e rolar entre elas — que é
          justamente o que um painel existe para evitar. -->
-    <section class="bloco bloco-indicador" data-dobra-padrao="aberto" style="margin-top:14px">
+    <section class="bloco bloco-indicador" data-dobra-padrao="aberto" style="margin-top:var(--esp-7)">
       <header><h2>Visão Geral (Dashboard)</h2>
         <span class="nota">o projeto de relance, com tudo à vista</span></header>
 
-      <div class="kpis" style="margin-bottom:14px">
+      <div class="kpis" style="margin-bottom:var(--esp-7)">
         <div class="kpi" data-kpi="projetos-prazo" title="">
           <span class="r">Tarefas entregues no prazo</span>
           <span class="n"${proj.entregues === 0 ? '' : proj.leitura
@@ -3199,7 +3199,7 @@ async function viewIndicadores() {
     </section>
     </section>
 
-    <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:16px">
+    <section class="bloco bloco-modulo" data-dobra-padrao="aberto" style="margin-top:var(--esp-8)">
       <header>
         <h2>SLA</h2>
         <span class="nota">${resumoMetaDoModulo(sla.leitura) || `meta de ${sla.meta}%`}</span>
@@ -3220,7 +3220,7 @@ async function viewIndicadores() {
         ${faixaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
         ${legendaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
         ${arvoreDeUnidadesHtml('ind-sla', q.sla, inteiro, extraSla)}
-        <div id="i-termometro" style="margin-top:14px"></div>`,
+        <div id="i-termometro" style="margin-top:var(--esp-7)"></div>`,
     })}
 
     ${blocoIndicador({
@@ -3231,7 +3231,7 @@ async function viewIndicadores() {
       corpo: `${faixaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
         ${legendaDeMatrizesHtml(fatiasDe(q.sla, inteiro))}
         ${arvoreDeUnidadesHtml('ind-chamados', q.sla, inteiro, extraSla)}
-        <div class="grade g3" style="margin-top:14px">
+        <div class="grade g3" style="margin-top:var(--esp-7)">
           ${[['Abertos', sla.abertos, ''], ['Em andamento', sla.andamento, ''],
              ['Resolvidos', sla.resolvidos, 'bomtxt'], ['Vencidos', sla.vencidos, 'crit']]
             .map(([rot, n, cor]) => `<div class="bloco" style="box-shadow:none">
@@ -4229,7 +4229,7 @@ function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga, a
       </div>
       ${arvore ? arvoreDoDetalhamentoHtml(itens, prefixo)
         : itens.length === 0 ? '<p class="vazio">Nenhum registro neste recorte.</p>' : `
-      <div class="rol" style="margin-top:10px"><table${larga ? ' class="larga"' : ''}>
+      <div class="rol" style="margin-top:var(--esp-5)"><table${larga ? ' class="larga"' : ''}>
         <thead><tr>${colunas.map((c) => `<th${c.n ? ' class="n"' : ''}>${esc(c.rotulo)}</th>`).join('')}</tr></thead>
         <tbody>${itens.slice(0, 400).map((it) => `<tr>${colunas
           .map((c) => `<td${c.n ? ' class="n"' : c.texto ? ' class="texto"' : ''}>${
@@ -4242,7 +4242,7 @@ function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga, a
             c.valor ? c.valor(it) : esc(it[c.campo] == null ? '—' : it[c.campo])
           }</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div>
-      ${itens.length > 400 ? `<p class="nota" style="margin-top:8px">Exibindo os 400 primeiros de ${inteiro(itens.length)}.</p>` : ''}`}`,
+      ${itens.length > 400 ? `<p class="nota" style="margin-top:var(--esp-4)">Exibindo os 400 primeiros de ${inteiro(itens.length)}.</p>` : ''}`}`,
     acoes: '<button type="button" class="bt" data-c>Fechar</button>',
     aoMontar({ raiz, fechar }) {
       raiz.querySelector('[data-c]').onclick = fechar;

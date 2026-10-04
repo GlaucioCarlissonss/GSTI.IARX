@@ -106,7 +106,7 @@ function EnderecoOrigem({
   const [texto, setTexto] = useState<string | null>(null);
   const atual = texto ?? valor ?? '';
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+    <div style={{ display: 'flex', gap: 'var(--esp-4)', alignItems: 'center' }}>
       <input
         value={atual}
         aria-label={`Endereço base do ${sistema}`}
@@ -213,7 +213,7 @@ export function PaginaIntegracoes() {
               }
             >
               <Campo rotulo="URL do webhook">
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 'var(--esp-4)', alignItems: 'center' }}>
                   <input readOnly value={baseDaUrl + c.webhook_path} style={{ flex: 1 }} />
                   <BotaoCopiar texto={baseDaUrl + c.webhook_path} rotulo="a URL do webhook" />
                 </div>
@@ -222,7 +222,7 @@ export function PaginaIntegracoes() {
               <Campo rotulo="Segredo (header X-Webhook-Secret)">
                 {segredoNovo?.sistema === c.source_system ? (
                   <>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 'var(--esp-4)', alignItems: 'center' }}>
                       <input
                         readOnly
                         data-segredo
@@ -291,7 +291,7 @@ export function PaginaIntegracoes() {
                 </Campo>
               )}
 
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   className="botao"
@@ -360,7 +360,7 @@ export function PaginaIntegracoes() {
         titulo="Como configurar no N8N"
         descricao="O passo a passo com o endereço e os headers deste cliente"
       >
-        <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
+        <ol style={{ margin: 0, paddingLeft: 'var(--esp-9)', lineHeight: 1.7 }}>
           <li>
             <strong>Trigger</strong> — um nó de webhook do OStick/Bitrix24, ou um agendamento que consulta a API
             do sistema de origem.
@@ -521,7 +521,7 @@ export function PaginaIntegracoes() {
           </p>
           <pre
             style={{
-              background: 'var(--superficie-2)', padding: 12, borderRadius: 8,
+              background: 'var(--superficie-2)', padding: 'var(--esp-6)', borderRadius: 8,
               overflow: 'auto', fontSize: 12, margin: 0,
             }}
           >

@@ -184,7 +184,7 @@ function viewFeriados() {
       um chamado aberto na sexta às 17h30 com 4 horas de prazo vence na segunda de manhã, e
       medi-lo em horas corridas reprovaria a equipe pelo fim de semana.</div>
 
-    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:16px">
+    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:var(--esp-8)">
       <header><h2>Feriados</h2>
         <span class="nota">${inteiro(lista.length)} cadastrado(s) · ${
           inteiro(futuros.length)} ainda por vir</span>
@@ -205,7 +205,7 @@ function viewFeriados() {
               <button class="bt fant peq" data-fer-alt="${i}">${
                 f.ativo === false ? 'Reativar' : 'Desconsiderar'}</button></td>
           </tr>`).join('')}</tbody></table></div>`}
-      <p class="nota" style="margin-top:10px">Um feriado <strong>desconsiderado</strong> continua
+      <p class="nota" style="margin-top:var(--esp-5)">Um feriado <strong>desconsiderado</strong> continua
         na lista mas volta a contar como dia útil — é como se corrige um cadastro errado sem
         apagar o registro de que ele existiu.</p>
     </section>`;
@@ -438,11 +438,11 @@ function resumoCriticidadeHtml(linhas, aplicado, recusadas = []) {
   ];
   return `<div class="msg ${aplicado ? 'ok' : ''}">
     <strong>${aplicado ? 'Criticidade padrão aplicada.' : 'Prévia — nada foi gravado.'}</strong>
-    <dl class="ficha" style="margin-top:6px">${itens
+    <dl class="ficha" style="margin-top:var(--esp-3)">${itens
       .map(([r, v]) => `<dt>${esc(r)}</dt><dd>${inteiro(v)}</dd>`).join('')}</dl>
-    ${recusadas.length ? `<p class="nota" style="margin-top:8px">Não alcançou
+    ${recusadas.length ? `<p class="nota" style="margin-top:var(--esp-4)">Não alcançou
       ${esc(recusadas.map((x) => mesExib(x.comp)).join(', '))}: ${esc(recusadas[0].motivo)}</p>` : ''}
-    ${aplicado ? '' : '<p class="nota" style="margin-top:8px">Classificar muda o prazo e pode '
+    ${aplicado ? '' : '<p class="nota" style="margin-top:var(--esp-4)">Classificar muda o prazo e pode '
       + 'mudar o dentro/fora de chamado já contado — o percentual do mês se move.</p>'}</div>`;
 }
 
@@ -459,7 +459,7 @@ function blocoCriticidadePadraoHtml(emp) {
         que não é criticidade. Sem criticidade, nenhum acordo alcança o chamado e ele some da conta
         de conformidade em vez de aparecer como problema. Defina aqui com que criticidade entra o
         chamado que chega sem uma.</p>
-      <div class="grade g2" style="margin-top:10px">
+      <div class="grade g2" style="margin-top:var(--esp-5)">
         <div class="campo"><label for="cp-pad">Criticidade padrão</label>
           <select id="cp-pad">
             <option value="">Nenhuma — o chamado entra sem criticidade</option>
@@ -469,7 +469,7 @@ function blocoCriticidadePadraoHtml(emp) {
         <div class="campo" style="justify-content:flex-end">
           <button class="bt pri" id="cp-salvar">Salvar a criticidade padrão</button></div>
       </div>
-      <div id="cp-salvo" style="margin-top:10px"></div>
+      <div id="cp-salvo" style="margin-top:var(--esp-5)"></div>
 
       <h3 class="titulo-mini" style="margin-top:18px">Chamados já importados sem criticidade</h3>
       ${!semCritico
@@ -480,16 +480,16 @@ function blocoCriticidadePadraoHtml(emp) {
             A carga aplica a criticidade padrão a todos eles e refaz o prazo pelo acordo. Mês
             encerrado é recusado, e mês passado exige justificativa — os recusados são nomeados
             no resultado.</p>
-          <div class="campo" style="max-width:420px;margin-top:10px">
+          <div class="campo" style="max-width:420px;margin-top:var(--esp-5)">
             <label for="cp-just">Justificativa</label>
             <input id="cp-just" placeholder="obrigatória em mês já encerrado"></div>
-          <div class="acoes" style="justify-content:flex-start;margin-top:10px">
+          <div class="acoes" style="justify-content:flex-start;margin-top:var(--esp-5)">
             <button class="bt" id="cp-previa">Ver o que mudaria</button>
             <button class="bt pri" id="cp-aplicar"${padrao ? '' : ' disabled'}>Aplicar a todas</button>
           </div>
-          ${padrao ? '' : '<p class="nota" style="margin-top:8px;color:var(--alerta)">'
+          ${padrao ? '' : '<p class="nota" style="margin-top:var(--esp-4);color:var(--alerta)">'
             + 'Defina a criticidade padrão acima para poder aplicar.</p>'}`}
-      <div id="cp-resultado" style="margin-top:12px"></div>
+      <div id="cp-resultado" style="margin-top:var(--esp-6)"></div>
     </section>`;
 }
 
@@ -709,9 +709,9 @@ E.slaSeg = E.slaSeg || { conformidade: 'geral', volume: 'geral', status: 'geral'
 const META_CONFORMIDADE = 80;   // a linha de referência do contrato
 
 function seletorSegmentoHtml(id, atual, rotulo = 'Segmentar por') {
-  return `<label class="liga-medias" style="gap:8px">
+  return `<label class="liga-medias" style="gap:var(--esp-4)">
     <span>${esc(rotulo)}</span>
-    <select data-seg="${esc(id)}" style="width:auto;padding:4px 26px 4px 8px;font-size:12.5px"
+    <select data-seg="${esc(id)}" style="width:auto;padding:var(--esp-2) 26px var(--esp-2) var(--esp-4);font-size:12.5px"
       aria-label="${esc(rotulo)}">
       ${Object.entries(SEGMENTOS_SLA).map(([k, s]) => `<option value="${esc(k)}"${
         k === atual ? ' selected' : ''}>${esc(s.rotulo)}</option>`).join('')}
@@ -767,7 +767,7 @@ function abrirChamadosSla(titulo, itens, nota) {
 function painelSlaHtml() {
   const s = E.slaSeg;
   return `
-    <div class="painel-spin" style="margin-top:4px">
+    <div class="painel-spin" style="margin-top:var(--esp-2)">
       <div class="quadro quadro-largo" data-quadro="sla-conformidade-tempo">
         <header><h3>Conformidade de SLA ao Longo do Tempo</h3>
           <span><strong>O que mostra:</strong> a cada mês, quantos dos chamados RESOLVIDOS
@@ -776,7 +776,7 @@ function painelSlaHtml() {
             ${META_CONFORMIDADE}%; abaixo dela o mês não cumpriu o compromisso.</span></header>
         <div class="quadro-corpo">
           ${seletorSegmentoHtml('conformidade', s.conformidade)}
-          <div id="sla-g-conf" style="margin-top:8px"></div>
+          <div id="sla-g-conf" style="margin-top:var(--esp-4)"></div>
           <div id="sla-l-conf"></div>
         </div>
       </div>
@@ -788,7 +788,7 @@ function painelSlaHtml() {
             que a fila cresceu.</span></header>
         <div class="quadro-corpo">
           ${seletorSegmentoHtml('volume', s.volume)}
-          <div id="sla-g-vol" style="margin-top:8px"></div>
+          <div id="sla-g-vol" style="margin-top:var(--esp-4)"></div>
           <div id="sla-l-vol"></div>
         </div>
       </div>
@@ -800,8 +800,8 @@ function painelSlaHtml() {
             que sai.</span></header>
         <div class="quadro-corpo">
           ${seletorSegmentoHtml('status', s.status, 'Recortar por')}
-          <div id="sla-f-status" style="margin-top:8px"></div>
-          <div class="quadro-rosca" style="margin-top:8px">
+          <div id="sla-f-status" style="margin-top:var(--esp-4)"></div>
+          <div class="quadro-rosca" style="margin-top:var(--esp-4)">
             <div id="sla-g-status"></div>
             <div id="sla-l-status" class="legenda-tipos"></div>
           </div>
@@ -914,9 +914,9 @@ function desenharStatus(r) {
   const chave = validos.includes(escolhido) ? escolhido : null;
   const filtro = el('#sla-f-status');
   if (filtro) {
-    filtro.innerHTML = segId === 'geral' ? '' : `<label class="liga-medias" style="gap:8px">
+    filtro.innerHTML = segId === 'geral' ? '' : `<label class="liga-medias" style="gap:var(--esp-4)">
       <span>Mostrar</span>
-      <select data-seg-chave style="width:auto;padding:4px 26px 4px 8px;font-size:12.5px"
+      <select data-seg-chave style="width:auto;padding:var(--esp-2) 26px var(--esp-2) var(--esp-4);font-size:12.5px"
         aria-label="Recorte da distribuição">
         <option value="">Tudo somado</option>
         ${d.series.map((s) => `<option value="${esc(s.k)}"${s.k === chave ? ' selected' : ''}

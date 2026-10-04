@@ -54,12 +54,12 @@ function seletorEscopoHtml(escopo) {
   const filiais = empresas.flatMap(filiaisDa);
   // Com uma matriz só e nenhuma filial, os três modos dizem a mesma coisa.
   if (empresas.length <= 1 && !filiais.length) return '';
-  const opcao = (chave, rotulo, apoio) => `<label title="${esc(apoio)}" style="display:flex;gap:6px;align-items:center">
+  const opcao = (chave, rotulo, apoio) => `<label title="${esc(apoio)}" style="display:flex;gap:var(--esp-3);align-items:center">
       <input type="radio" name="d-escopo" value="${chave}"${escopo.modo === chave ? ' checked' : ''}> ${esc(rotulo)}</label>`;
   const caixas = (id, lista, marcados, rotuloDe) => `<div class="campo" style="min-width:230px">
       <label for="${id}">${id === 'd-esc-emp' ? 'Empresas (matrizes)' : 'Filiais'}</label>
-      <div id="${id}" class="rol" style="max-height:150px;padding:6px;border:1px solid var(--borda);border-radius:8px">
-        ${lista.map((x) => `<label style="display:flex;gap:6px;align-items:center;padding:2px 0">
+      <div id="${id}" class="rol" style="max-height:150px;padding:var(--esp-3);border:1px solid var(--borda);border-radius:8px">
+        ${lista.map((x) => `<label style="display:flex;gap:var(--esp-3);align-items:center;padding:var(--esp-1) 0">
             <input type="checkbox" value="${x.id}"${marcados.includes(x.id) ? ' checked' : ''}> ${esc(rotuloDe(x))}</label>`).join('')}
       </div></div>`;
 
@@ -67,17 +67,17 @@ function seletorEscopoHtml(escopo) {
     <header><h2>Escopo da operação</h2><span class="nota" id="d-escopo-resumo">${esc(resumoEscopoOp(escopo))}</span></header>
     <div class="msg">Vale para exportar E importar. O arquivo traz a coluna <strong>Empresa</strong>, então um arquivo
       só atende todas as unidades do escopo — e volta para elas na reimportação.</div>
-    <div style="display:flex;flex-wrap:wrap;gap:16px;margin:10px 0;font-size:13px">
+    <div style="display:flex;flex-wrap:wrap;gap:var(--esp-8);margin:var(--esp-5) 0;font-size:13px">
       ${opcao('cliente', 'Cliente inteiro', 'Todas as empresas e filiais deste cliente, num arquivo só.')}
       ${opcao('empresas', 'Empresas selecionadas', 'As matrizes marcadas. As filiais de cada uma entram junto.')}
       ${opcao('unidades', 'Unidades específicas', 'Matrizes e filiais marcadas uma a uma.')}
     </div>
-    <div id="d-escopo-listas" style="display:${escopo.modo === 'cliente' ? 'none' : 'flex'};flex-wrap:wrap;gap:14px;align-items:flex-start">
+    <div id="d-escopo-listas" style="display:${escopo.modo === 'cliente' ? 'none' : 'flex'};flex-wrap:wrap;gap:var(--esp-7);align-items:flex-start">
       ${caixas('d-esc-emp', empresas.map((id) => ({ id, nome: nomeEmpresa(id) })), escopo.empresas, (x) => x.nome)}
       <div id="d-esc-fil-caixa" style="display:${escopo.modo === 'unidades' ? 'block' : 'none'}">
         ${caixas('d-esc-fil', filiais, escopo.filiais, (f) => f.nome + (f.uf ? ' — ' + f.uf : '') + ' · ' + nomeEmpresa(f.empresa))}
       </div>
-      <div style="display:flex;gap:8px;padding-top:22px">
+      <div style="display:flex;gap:var(--esp-4);padding-top:22px">
         <button type="button" class="bt" id="d-esc-todas">Selecionar todas</button>
         <button type="button" class="bt" id="d-esc-limpar">Limpar seleção</button>
       </div>
@@ -158,10 +158,10 @@ async function viewDados() {
     <div class="grade g2">
       <section class="bloco">
         <header><h2>Exportar</h2><span class="nota">modelo ${MODELO_VERSAO}</span></header>
-        <p style="color:var(--tinta2);margin:0 0 14px" id="d-resumo-exp">Tudo de
+        <p style="color:var(--tinta2);margin:0 0 var(--esp-7)" id="d-resumo-exp">Tudo de
           <strong>${esc(resumoEscopoOp(escopo))}</strong>: ${inteiro(total)} lançamentos, em todas as
           competências e cenários, num arquivo só.</p>
-        <div class="filtros" style="padding:0;border:0;margin-bottom:12px">
+        <div class="filtros" style="padding:0;border:0;margin-bottom:var(--esp-6)">
           <div class="campo"><label for="d-modulo">Módulo</label><select id="d-modulo">
             ${Object.entries(MODULOS).map(([k,v]) => `<option value="${k}">${esc(v.rotulo)}</option>`).join('')}
           </select></div>
@@ -169,34 +169,34 @@ async function viewDados() {
             <option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV (.csv)</option>
           </select></div>
         </div>
-        <p class="nota" id="d-nota-csv" hidden style="margin:0 0 12px">
+        <p class="nota" id="d-nota-csv" hidden style="margin:0 0 var(--esp-6)">
           CSV guarda uma aba só; para o módulo completo, prefira .xlsx.</p>
         <button type="button" class="bt pri" id="d-exportar" data-escreve="export">Gerar arquivo</button>
-        <div class="msg" id="d-saida-exp" hidden style="margin-top:14px"></div>
+        <div class="msg" id="d-saida-exp" hidden style="margin-top:var(--esp-7)"></div>
       </section>
 
       <section class="bloco">
         <header><h2>Importar</h2></header>
-        <p style="color:var(--tinta2);margin:0 0 14px">Aceita o arquivo exportado daqui e também planilhas
+        <p style="color:var(--tinta2);margin:0 0 var(--esp-7)">Aceita o arquivo exportado daqui e também planilhas
           suas, desde que a aba se chame <code>Financeiro</code>, <code>SLA</code>, <code>Projetos</code>…
           Cabeçalhos são reconhecidos por apelido (<code>centro de custo</code> vale por
           <code>tipo de despesa</code>).</p>
-        <div class="campo" style="margin-bottom:12px">
+        <div class="campo" style="margin-bottom:var(--esp-6)">
           <label for="d-arquivo">Arquivo .xlsx ou .csv</label>
           <input type="file" id="d-arquivo" accept=".xlsx,.csv,.txt" data-escreve="import">
         </div>
-        <div class="campo" style="margin-bottom:12px">
+        <div class="campo" style="margin-bottom:var(--esp-6)">
           <label for="d-modo">Tipo de carga</label>
           <select id="d-modo">
             <option value="incremental">Incremental (arquivo do período)</option>
             <option value="inicial">Inicial (histórico completo)</option>
           </select>
         </div>
-        <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;font-size:13px">
-          <input type="checkbox" id="d-criar" checked style="margin-top:2px">
+        <label style="display:flex;gap:var(--esp-4);align-items:flex-start;margin-bottom:var(--esp-4);font-size:13px">
+          <input type="checkbox" id="d-criar" checked style="margin-top:var(--esp-1)">
           <span>Criar filiais, tipos de despesa e cenários que ainda não existirem</span></label>
-        <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;font-size:13px">
-          <input type="checkbox" id="d-simular" checked style="margin-top:2px">
+        <label style="display:flex;gap:var(--esp-4);align-items:flex-start;margin-bottom:var(--esp-7);font-size:13px">
+          <input type="checkbox" id="d-simular" checked style="margin-top:var(--esp-1)">
           <span><strong>Só conferir</strong> — mostra o que aconteceria, sem gravar nada</span></label>
         <button type="button" class="bt pri" id="d-importar" disabled data-escreve="import">Processar arquivo</button>
         <div id="d-saida-imp"></div>
@@ -207,12 +207,12 @@ async function viewDados() {
       <header><h2>Histórico de cargas</h2><span class="nota">${inteiro(cargas.length)}</span></header>
       <div class="msg">Toda tentativa entra aqui — inclusive a recusada, que é justamente a que se investiga
         depois. A conferência (“só conferir”) não entra: prévia não é carga.</div>
-      <div class="rol" style="margin-top:12px"><table>
+      <div class="rol" style="margin-top:var(--esp-6)"><table>
         <thead><tr><th>Quando</th><th>Tipo</th><th>Escopo</th><th>Arquivo</th><th>Situação</th>
           <th class="num">Lidas</th><th class="num">Criadas</th><th class="num">Duplicadas</th><th class="num">Inválidas</th></tr></thead>
         <tbody id="d-historico">${linhasHistoricoCargas(cargas)}</tbody></table></div>
       ${cargas.filter((c) => c.status === 'recusada' && c.mensagem).slice(0, 2).map((c) =>
-        `<div class="msg erro" style="margin-top:10px">${esc(new Date(c.quando).toLocaleString('pt-BR'))} —
+        `<div class="msg erro" style="margin-top:var(--esp-5)">${esc(new Date(c.quando).toLocaleString('pt-BR'))} —
           ${esc(c.arquivo || 'arquivo')}: ${esc(c.mensagem)}</div>`).join('')}
     </section>
 
@@ -221,13 +221,13 @@ async function viewDados() {
       <div class="msg">Onde o modelo diz <strong>Valor</strong>, a planilha de um cliente pode dizer
         <em>Vlr Total</em>. Cadastrar a equivalência evita reescrever o cabeçalho a cada carga — e o nome do
         modelo continua sendo aceito do mesmo jeito. Vale para todas as matrizes deste cliente.</div>
-      ${meusMapas.length ? `<div class="rol" style="margin-top:12px"><table>
+      ${meusMapas.length ? `<div class="rol" style="margin-top:var(--esp-6)"><table>
         <thead><tr><th>Aba</th><th>Coluna do modelo</th><th>Cabeçalho aceito</th><th></th></tr></thead>
         <tbody>${meusMapas.map((m) => `<tr><td>${esc(m.aba)}</td><td>${esc(m.coluna)}</td>
           <td>${esc(m.apelido)}</td>
           <td><button type="button" class="bt pequeno" data-escreve="edit" data-remover-mapa="${esc(m.id)}">Remover</button></td>
         </tr>`).join('')}</tbody></table></div>` : ''}
-      <div class="filtros" style="margin-top:12px;box-shadow:none;border:0;padding:0">
+      <div class="filtros" style="margin-top:var(--esp-6);box-shadow:none;border:0;padding:0">
         <div class="campo"><label for="mp-aba">Aba</label><select id="mp-aba">
           ${Object.keys(ABAS_MODELO).filter((n) => n !== 'Modelo').map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
         </select></div>
@@ -236,7 +236,7 @@ async function viewDados() {
           <input id="mp-apelido" style="min-width:220px"></div>
         <button type="button" class="bt pri" id="mp-criar" data-escreve="edit">Cadastrar cabeçalho</button>
       </div>
-      <div class="msg erro" id="mp-erro" hidden style="margin-top:10px"></div>
+      <div class="msg erro" id="mp-erro" hidden style="margin-top:var(--esp-5)"></div>
     </section>
 
     <section class="bloco">
@@ -339,7 +339,7 @@ async function viewDados() {
     if (!arq) return;
     const simular = el('#d-simular').checked;
     bt.disabled = true; bt.textContent = 'Lendo…';
-    saida.innerHTML = '<div class="carregando" style="padding:16px 0"><span class="giro"></span> Processando…</div>';
+    saida.innerHTML = '<div class="carregando" style="padding:var(--esp-8) 0"><span class="giro"></span> Processando…</div>';
     try {
       let abas;
       if (/\.xlsx$/i.test(arq.name)) {
@@ -401,14 +401,14 @@ async function viewDados() {
       // A recusa da carga inicial não é um beco: ela existe para a confirmação
       // ser informada, e o botão de confirmar vem junto do motivo.
       if (e && e.precisaConfirmar) {
-        saida.innerHTML = `<div class="msg erro" style="margin-top:14px">${esc(e.message)}
-          <div style="margin-top:10px"><button type="button" class="bt" id="d-confirmar" data-escreve="import">
+        saida.innerHTML = `<div class="msg erro" style="margin-top:var(--esp-7)">${esc(e.message)}
+          <div style="margin-top:var(--esp-5)"><button type="button" class="bt" id="d-confirmar" data-escreve="import">
             Confirmar a carga inicial mesmo assim</button></div></div>`;
         await refrescarHistoricoCargas(escopoOperacao());
         const btConf = el('#d-confirmar');
         if (btConf) btConf.onclick = () => { bt.dataset.confirmar = '1'; el('#d-simular').checked = false; bt.click(); };
       } else {
-        saida.innerHTML = `<div class="msg erro" style="margin-top:14px"><strong>Não foi possível ler o arquivo.</strong> ${esc(e.message || e)}</div>`;
+        saida.innerHTML = `<div class="msg erro" style="margin-top:var(--esp-7)"><strong>Não foi possível ler o arquivo.</strong> ${esc(e.message || e)}</div>`;
       }
     } finally { bt.disabled = false; bt.textContent = 'Processar arquivo'; }
   };
@@ -447,7 +447,7 @@ function nomeDeAbaPeloCabecalho(colunas) {
 
 function relatorioHtml(rel, simular, nomeArquivo) {
   if (rel.semAbasConhecidas) {
-    return `<div class="msg erro" style="margin-top:14px"><strong>Nenhuma aba reconhecida em ${esc(nomeArquivo)}.</strong>
+    return `<div class="msg erro" style="margin-top:var(--esp-7)"><strong>Nenhuma aba reconhecida em ${esc(nomeArquivo)}.</strong>
       Renomeie a aba para Financeiro, SLA, Projetos, Tarefas, Envolvidos, Filiais, TiposDespesa ou Cenarios.</div>`;
   }
   const criadas = rel.abas.reduce((s, a) => s + (a.criadas || 0), 0);
@@ -458,17 +458,17 @@ function relatorioHtml(rel, simular, nomeArquivo) {
     : `<strong>${esc(nomeArquivo)} importado.</strong> ${inteiro(criadas)} registro(s) criado(s),
        ${inteiro(duplicadas)} já existiam (ignorados), ${inteiro(rel.invalidas.length)} inválido(s).`;
   const versao = rel.versaoArquivo && rel.versaoArquivo !== MODELO_VERSAO
-    ? `<div class="msg alerta" style="margin-top:10px">Arquivo no modelo ${esc(rel.versaoArquivo)};
+    ? `<div class="msg alerta" style="margin-top:var(--esp-5)">Arquivo no modelo ${esc(rel.versaoArquivo)};
        o atual é ${MODELO_VERSAO}. Os cabeçalhos conhecidos foram mapeados mesmo assim.</div>` : '';
   const cadastros = rel.criouCadastros && (rel.criouCadastros.tipos.length + rel.criouCadastros.filiais.length + rel.criouCadastros.cenarios.length)
-    ? `<div class="msg" style="margin-top:10px">Cadastros criados:
+    ? `<div class="msg" style="margin-top:var(--esp-5)">Cadastros criados:
         ${[['tipo de despesa', rel.criouCadastros.tipos], ['filial', rel.criouCadastros.filiais], ['cenário', rel.criouCadastros.cenarios]]
           .filter(([, v]) => v.length).map(([r, v]) => `${v.length} ${r}(s) — ${v.map(esc).join(', ')}`).join(' · ')}</div>` : '';
 
   return `
-    <div class="msg ${simular ? '' : 'bom'}" style="margin-top:14px">${cab}</div>
+    <div class="msg ${simular ? '' : 'bom'}" style="margin-top:var(--esp-7)">${cab}</div>
     ${versao}${cadastros}
-    <div class="rol" style="margin-top:12px"><table>
+    <div class="rol" style="margin-top:var(--esp-6)"><table>
       <thead><tr><th>Aba</th><th class="n">Lidas</th><th class="n">${simular?'A criar':'Criadas'}</th>
         <th class="n">Já existiam</th><th class="n">Inválidas</th></tr></thead>
       <tbody>${rel.abas.map((a) => a.erro
@@ -478,12 +478,12 @@ function relatorioHtml(rel, simular, nomeArquivo) {
            <td class="n">${a.invalidas ? '<span class="tag crit">'+inteiro(a.invalidas)+'</span>' : '0'}</td></tr>`).join('')}
       </tbody></table></div>
     ${rel.invalidas.length ? `
-      <section class="bloco" style="margin-top:14px">
+      <section class="bloco" style="margin-top:var(--esp-7)">
         <header><h2>Linhas que não entraram</h2><span class="nota">${inteiro(rel.invalidas.length)} de ${inteiro(rel.abas.reduce((s,a)=>s+(a.lidas||0),0))}</span></header>
         <div class="rol"><table><thead><tr><th>Aba</th><th class="n">Linha</th><th>Motivo</th></tr></thead>
         <tbody>${rel.invalidas.slice(0, 200).map((x) => `<tr><td>${esc(x.aba)}</td>
           <td class="n">${x.linha}</td><td>${esc(x.motivo)}</td></tr>`).join('')}</tbody></table></div>
         ${rel.invalidas.length > 200 ? `<p class="nota">Mostrando as 200 primeiras.</p>` : ''}
       </section>` : ''}
-    ${simular && criadas ? `<div style="margin-top:14px"><button type="button" class="bt pri" id="d-gravar" data-escreve="import">Confirmar e gravar ${inteiro(criadas)} registro(s)</button></div>` : ''}`;
+    ${simular && criadas ? `<div style="margin-top:var(--esp-7)"><button type="button" class="bt pri" id="d-gravar" data-escreve="import">Confirmar e gravar ${inteiro(criadas)} registro(s)</button></div>` : ''}`;
 }

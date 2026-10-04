@@ -53,7 +53,7 @@ export function PaginaSelecaoCliente() {
         )}
 
         {!carregandoClientes && !erroClientes && clientes.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--esp-4)' }}>
             {clientes.map((c) => {
               const documento = formatarDocumento(c.documento);
               return (
@@ -66,7 +66,7 @@ export function PaginaSelecaoCliente() {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'flex-start',
-                    gap: 2,
+                    gap: 'var(--esp-1)',
                     textAlign: 'left',
                     padding: '12px 14px',
                     height: 'auto',

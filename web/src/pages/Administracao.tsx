@@ -60,7 +60,7 @@ export function PaginaFechamentos() {
           justificativa, que fica registrada na auditoria.
         </Aviso>
         {podeEditar && (
-          <form onSubmit={fechar} className="barra-filtros" style={{ marginTop: 12 }}>
+          <form onSubmit={fechar} className="barra-filtros" style={{ marginTop: 'var(--esp-6)' }}>
             <Campo rotulo="Competência (MM/AAAA)">
               <input value={competencia} onChange={(e) => setCompetencia(e.target.value)} style={{ width: 110 }} />
             </Campo>
@@ -251,7 +251,7 @@ export function PaginaCadastros() {
         </Cartao>
 
         <Cartao titulo="Filas de ticket" descricao="Infraestrutura, Sistema e Dados — expansível">
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap' }}>
             {(filas.dados ?? []).map((f) => (
               <Etiqueta key={f.id} texto={f.nome} />
             ))}
@@ -416,7 +416,7 @@ export function PaginaMetas() {
           />
         )}
 
-        <p className="dica-filtro" style={{ marginTop: 10 }}>
+        <p className="dica-filtro" style={{ marginTop: 'var(--esp-5)' }}>
           A vigência decide qual meta rege qual mês: trocar o alvo em janeiro não reescreve a leitura
           dos meses já fechados. Entre duas vigentes ganha a de início mais recente, e a meta sem
           início é o alvo genérico — vale onde nenhum específico alcança.
@@ -639,7 +639,7 @@ export function PaginaSlas() {
           />
         )}
 
-        <p className="dica-filtro" style={{ marginTop: 10 }}>
+        <p className="dica-filtro" style={{ marginTop: 'var(--esp-5)' }}>
           O acordo do tópico ganha do geral, e o acordo cadastrado ganha do prazo que o helpdesk
           informou — o da origem fica guardado e aparece na ficha do chamado. Quem escolhe qual
           acordo vale é a data de ABERTURA do chamado, e por isso dois acordos para a mesma
@@ -660,7 +660,7 @@ export function PaginaSlas() {
           individual para medir.
         </p>
 
-        <div className="barra-filtros" style={{ marginTop: 12 }}>
+        <div className="barra-filtros" style={{ marginTop: 'var(--esp-6)' }}>
           <Campo rotulo="Competência" dica="MM/AAAA">
             <input
               value={competencia}
@@ -706,7 +706,7 @@ export function PaginaSlas() {
                 ? `Acordo aplicado a ${competenciaExib(resumo.dados.competencia)}.`
                 : `Prévia de ${competenciaExib(resumo.dados.competencia)} — nada foi gravado.`}
             </strong>
-            <dl className="ficha" style={{ marginTop: 6 }}>
+            <dl className="ficha" style={{ marginTop: 'var(--esp-3)' }}>
               <Linha rotulo="Chamados avaliados" valor={inteiro(resumo.dados.avaliados)} />
               <Linha
                 rotulo={resumo.aplicado ? 'Alterados' : 'Seriam alterados'}
@@ -903,7 +903,7 @@ export function PaginaReducao() {
           />
         )}
 
-        <p className="dica-filtro" style={{ marginTop: 10 }}>
+        <p className="dica-filtro" style={{ marginTop: 'var(--esp-5)' }}>
           O valor ATUAL de cada item sai dos lançamentos do recorte; o ALVO sai daqui. A vigência
           decide qual alvo rege qual mês — trocar o alvo em janeiro não reescreve a leitura dos
           meses já fechados. O tipo de despesa é cadastrado por matriz, então a lista traz a matriz
@@ -1071,7 +1071,7 @@ export function PaginaReconhecedores() {
           />
         )}
 
-        <p className="dica-filtro" style={{ marginTop: 10 }}>
+        <p className="dica-filtro" style={{ marginTop: 'var(--esp-5)' }}>
           A comparação ignora acento, espaço e caixa: <code>Miqueias Silva</code> e{' '}
           <code>MIQUEIASSILVA</code> são a mesma pessoa. Desativar alguém que saiu do time faz a
           próxima carga dele nascer por reconhecer, sem apagar o que já entrou.
@@ -1087,7 +1087,7 @@ export function PaginaReconhecedores() {
           número apresentado numa reunião não pode mudar porque alguém mexeu numa lista.
         </p>
 
-        <div className="barra-filtros" style={{ marginTop: 12 }}>
+        <div className="barra-filtros" style={{ marginTop: 'var(--esp-6)' }}>
           <Campo rotulo="De" dica="MM/AAAA — em branco: desde o início">
             <input value={de} onChange={(e) => setDe(e.target.value)} placeholder="MM/AAAA" inputMode="numeric" style={{ width: 110 }} />
           </Campo>
@@ -1114,7 +1114,7 @@ export function PaginaReconhecedores() {
                 ? `Reconhecimento aplicado a ${recorte(resumo.dados)}.`
                 : `Prévia de ${recorte(resumo.dados)} — nada foi gravado.`}
             </strong>
-            <dl className="ficha" style={{ marginTop: 6 }}>
+            <dl className="ficha" style={{ marginTop: 'var(--esp-3)' }}>
               <Linha rotulo="Lançamentos avaliados" valor={inteiro(resumo.dados.avaliados)} />
               <Linha
                 rotulo={resumo.aplicado ? 'Reconhecidos agora' : 'Seriam reconhecidos'}
@@ -1166,7 +1166,7 @@ function EnderecoHelpdesk({ podeEditar }: { podeEditar: boolean }) {
     >
       {erro && <Aviso tipo="erro">{erro}</Aviso>}
       {salvo && <Aviso tipo="ok">Endereço salvo.</Aviso>}
-      <form onSubmit={salvar} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+      <form onSubmit={salvar} style={{ display: 'flex', gap: 'var(--esp-4)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <Campo rotulo="Endereço base">
           <input
             value={valor}
@@ -1265,7 +1265,7 @@ function FormularioNovo({
   return (
     <form
       className="barra-filtros"
-      style={{ marginTop: 12 }}
+      style={{ marginTop: 'var(--esp-6)' }}
       onSubmit={async (e) => {
         e.preventDefault();
         await aoEnviar(valores);

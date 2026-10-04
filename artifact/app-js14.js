@@ -68,14 +68,14 @@ function abrirDetalhamento({ titulo, subtitulo, colunas, linhas, total, formatar
     titulo: 'Detalhamento — ' + titulo,
     corpo: `
       ${subtitulo ? `<p class="nota" style="margin:0">${esc(subtitulo)}</p>` : ''}
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:var(--esp-4);flex-wrap:wrap">
         <span class="tag">${inteiro(linhas.length)} registro(s)</span>
         ${soma === null ? '' : `<span class="tag">Soma: ${esc(formatarTotal(soma))}</span>`}
         ${bate === null ? '' : bate
           ? '<span class="tag bom">confere com o indicador</span>'
           : `<span class="tag crit">diverge do indicador (${esc(formatarTotal(total))})</span>`}
       </div>
-      ${recorte.length ? `<p class="nota" style="margin:2px 0 0">Recorte aplicado — ${esc(recorte.join(' · '))}</p>` : ''}
+      ${recorte.length ? `<p class="nota" style="margin:var(--esp-1) 0 0">Recorte aplicado — ${esc(recorte.join(' · '))}</p>` : ''}
       ${linhas.length === 0
         ? '<p class="vazio">Nenhum registro compõe este número no recorte atual.</p>'
         : `<div class="rol"><table class="larga">

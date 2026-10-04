@@ -466,7 +466,7 @@ function viewSpincare() {
       outras três é <strong>uma</strong> linha, não seis. É por isso que ela tem cadastro próprio,
       ao lado de projetos e tarefas.</div>
 
-    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:16px">
+    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:var(--esp-8)">
       <header><h2>Carga da planilha</h2>
         <span class="nota">${carga
           ? `última carga em ${esc(carga.quando || '—')} · ${inteiro(carga.total || 0)} atividade(s)`
@@ -482,11 +482,11 @@ function viewSpincare() {
            tela logo depois de gravar apagava o relatório no mesmo instante em
            que a pessoa ia lê-lo. Sem cerca invertida aqui dentro: ela fecharia
            o template literal no meio do HTML. -->
-      <div id="spin-resultado" style="margin-top:14px">${
+      <div id="spin-resultado" style="margin-top:var(--esp-7)">${
         E.spincareRelatorio ? relatorioSpincareHtml(E.spincareRelatorio) : ''}</div>
     </section>
 
-    ${!d ? `<section class="bloco" style="margin-top:16px">
+    ${!d ? `<section class="bloco" style="margin-top:var(--esp-8)">
         <header><h2>Diagnóstico da base</h2></header>
         <p class="vazio">Nenhuma atividade carregada ainda. Suba a planilha acima para ver o
           que entrou e o que ficou faltando.</p>
@@ -513,7 +513,7 @@ function diagnosticoSpincareHtml(d) {
     <td class="n"${n ? ' style="color:var(--alerta);font-weight:700"' : ''}>${inteiro(n)}</td>
     <td>${esc(apoio)}</td></tr>`;
   return `
-    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:16px">
+    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:var(--esp-8)">
       <header><h2>Diagnóstico da base</h2>
         <span class="nota">${inteiro(d.total)} atividade(s) · ${inteiro(d.grupos)} grupo(s) ·
           ${inteiro(d.executantes)} executante(s)</span></header>
@@ -529,7 +529,7 @@ function diagnosticoSpincareHtml(d) {
       <!-- Os três percentuais somam 100% porque numerador e denominador saem
            do MESMO universo. No status report do cliente eles somam 104,24%:
            as contagens são sobre as 172 linhas e o denominador é 165. -->
-      <div class="msg" style="margin-top:14px">
+      <div class="msg" style="margin-top:var(--esp-7)">
         <strong>Os percentuais somam ${pctTxt(pct(d.concluidas + d.emAndamento + d.naoIniciadas
           + d.bloqueadas, d.validas))}.</strong>
         Numerador e denominador saem do mesmo universo — as
@@ -636,8 +636,8 @@ function relatorioSpincareHtml(lido) {
   const erros = lido.problemas.filter((p) => p.tipo === 'erro');
   const avisos = lido.problemas.filter((p) => p.tipo === 'aviso');
   const lista = (titulo, itens, classe) => (!itens.length ? '' : `
-    <div class="msg ${classe}" style="margin-top:10px"><strong>${esc(titulo)}</strong>
-      <ul style="margin:6px 0 0;padding-left:20px">
+    <div class="msg ${classe}" style="margin-top:var(--esp-5)"><strong>${esc(titulo)}</strong>
+      <ul style="margin:var(--esp-3) 0 0;padding-left:var(--esp-9)">
         ${itens.slice(0, 12).map((p) => `<li>Linha ${inteiro(p.linha)}${
           p.id ? ` (${esc(p.id)})` : ''}: ${esc(p.texto)}</li>`).join('')}
         ${itens.length > 12 ? `<li>e mais ${inteiro(itens.length - 12)}</li>` : ''}
@@ -648,10 +648,10 @@ function relatorioSpincareHtml(lido) {
     ${lista('Linhas recusadas', erros, 'erro')}
     ${lista('Avisos', avisos, 'alerta')}
     ${!lido.normalizados.length ? '' : `
-      <div class="msg" style="margin-top:10px"><strong>Grafias normalizadas.</strong>
+      <div class="msg" style="margin-top:var(--esp-5)"><strong>Grafias normalizadas.</strong>
         A mesma pessoa aparecia escrita de formas diferentes; a grafia que vale é a do cadastro de
         líderes. O nome original continua no arquivo — o que mudou foi só como o sistema agrupa.
-        <ul style="margin:6px 0 0;padding-left:20px">
+        <ul style="margin:var(--esp-3) 0 0;padding-left:var(--esp-9)">
           ${lido.normalizados.map(([de, para]) =>
             `<li><code>${esc(de)}</code> → <strong>${esc(para)}</strong></li>`).join('')}
         </ul></div>`}`;
@@ -830,7 +830,7 @@ function abrirAtividadesSpin(titulo, itens, nota) {
 
 /** A legenda da rosca: nome, valor e fatia, porque a cor nunca basta. */
 function legendaDaRoscaHtml(p) {
-  return `<div class="legenda-tipos" style="flex-direction:column;gap:6px;align-items:flex-start">
+  return `<div class="legenda-tipos" style="flex-direction:column;gap:var(--esp-3);align-items:flex-start">
     ${p.porStatus.map((s) => `<span data-fatia="${esc(s.status)}"
         style="cursor:${s.valor ? 'pointer' : 'default'}">
       <i style="background:${s.cor}"></i>
@@ -927,7 +927,7 @@ function painelSpincareHtml(p, extras = []) {
              pela criticidade; a conclusão é a contagem simples, que é o número
              do Status Report. Mostrar uma chamando-a da outra faria o gestor
              procurar um erro que não existe. -->
-        <p class="nota" style="margin-top:8px">Número grande: <strong>avanço ponderado</strong>
+        <p class="nota" style="margin-top:var(--esp-4)">Número grande: <strong>avanço ponderado</strong>
           (peso × avanço). Embaixo: <strong>conclusão</strong> — a contagem simples, que é o
           percentual do Status Report.</p>`, true)}
 
@@ -947,7 +947,7 @@ function painelSpincareHtml(p, extras = []) {
       ${extras.map(quadroExtra).join('')}
     </div>
 
-    <p class="nota" style="margin-top:12px">Os percentuais somam <strong>100%</strong> porque
+    <p class="nota" style="margin-top:var(--esp-6)">Os percentuais somam <strong>100%</strong> porque
       numerador e denominador saem do mesmo universo. No Status Report de referência eles somam
       <strong>104,24%</strong>: as contagens são feitas sobre todas as linhas e o denominador
       exclui as de criticidade <em>N/A</em>. Clique em qualquer número para ver as atividades
@@ -1110,7 +1110,7 @@ function cronogramaHtml(c) {
         <span class="card-apoio">as demais entram quando a planilha as incluir</span></div>
     </div>
 
-    <div class="rol" style="margin-top:14px"><table class="cronograma">
+    <div class="rol" style="margin-top:var(--esp-7)"><table class="cronograma">
       <thead><tr><th>Fase</th><th>Período</th><th>Unidades a migrar</th>
         <th class="n">Pacientes</th><th class="n">Aderência</th><th>Prazo macro</th></tr></thead>
       <tbody>${c.ondas.map((o) => `
@@ -1147,7 +1147,7 @@ function cronogramaHtml(c) {
         </tr>`).join('')}`).join('')}
       </tbody></table></div>
 
-    <p class="nota" style="margin-top:10px"><strong>Tarefa pendente não muda o prazo macro.</strong>
+    <p class="nota" style="margin-top:var(--esp-5)"><strong>Tarefa pendente não muda o prazo macro.</strong>
       O que ele mede é a unidade ter virado ou não no mês planejado; as pendências aparecem ao lado
       porque dizem o que falta, não porque reprovam a virada. Unidade <strong>sem coluna na
       planilha</strong> fica <em>pendente</em>, e não em atraso — a planilha não diz que ela não
@@ -1465,12 +1465,12 @@ function listagemSpincareHtml() {
     .sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
   const algumCorte = Object.values(f).some(Boolean);
   return `
-    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:16px">
+    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:var(--esp-8)">
       <header><h2>Atividades do Controle Único</h2>
         <span class="nota">${inteiro(lista.length)} de ${inteiro(todas.length)} atividade(s)${
           algumCorte ? ' — com corte aplicado' : ''}</span></header>
 
-      <div class="filtros" style="box-shadow:none;border:0;padding:0;margin-bottom:12px">
+      <div class="filtros" style="box-shadow:none;border:0;padding:0;margin-bottom:var(--esp-6)">
         <div class="campo" style="min-width:210px"><label for="sf-busca">Buscar</label>
           <input id="sf-busca" value="${esc(f.busca)}"
             placeholder="ID, atividade, caminho, executante"></div>
@@ -1493,7 +1493,7 @@ function listagemSpincareHtml() {
            no topo: ordenar por ID devolveria a ordem da planilha, que não
            responde pergunta nenhuma. A lista existe para dizer o que fazer
            primeiro. -->
-      <p class="nota" style="margin-bottom:8px">Ordenadas por <strong>farol</strong> (vermelho
+      <p class="nota" style="margin-bottom:var(--esp-4)">Ordenadas por <strong>farol</strong> (vermelho
         primeiro) e depois pelo <strong>atraso</strong>. Clique na linha para abrir a ficha
         completa e editar situação por unidade, pendência, próxima ação e evidência.</p>
       ${gradeSpincareHtml(lista)}

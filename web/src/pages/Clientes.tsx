@@ -219,7 +219,7 @@ export function PaginaClientes() {
         )}
 
         {podeCriar && (
-          <form onSubmit={criarCliente} className="barra-filtros" style={{ marginTop: 12 }}>
+          <form onSubmit={criarCliente} className="barra-filtros" style={{ marginTop: 'var(--esp-6)' }}>
             <Campo rotulo="Novo cliente">
               <input
                 value={novoCliente.nome}
@@ -247,7 +247,7 @@ export function PaginaClientes() {
         descricao="Matriz é a pessoa jurídica; filial é a unidade dela. O CNPJ é quem diz qual é qual."
         acoes={
           matrizes.length > 1 ? (
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 'var(--esp-4)' }}>
               <button
                 type="button"
                 className="botao discreto pequeno"
@@ -290,7 +290,7 @@ export function PaginaClientes() {
                   return [
                     <tr key={`m${m.id}`}>
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--esp-3)' }}>
                           {m.filiais.length > 0 ? (
                             <BotaoExpandir
                               aberto={aberta}
@@ -336,7 +336,7 @@ export function PaginaClientes() {
         )}
 
         {podeCriar && alvo && (
-          <form onSubmit={criarUnidade} style={{ marginTop: 14 }}>
+          <form onSubmit={criarUnidade} style={{ marginTop: 'var(--esp-7)' }}>
             <div className="barra-filtros">
               <Campo rotulo="Tipo">
                 <select

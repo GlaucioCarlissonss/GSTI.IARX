@@ -347,7 +347,7 @@ function detalheDoLancamento(l) {
   abrirModal({
     titulo: l.descricao || l.tipo,
     corpo: `
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:var(--esp-4);flex-wrap:wrap">
         <span class="tag">${brl(l.valor)}</span>
         <span class="tag">${mesExib(l.competencia)}</span>
         <span class="tag">${l.classificacao === 'investimento' ? 'Investimento' : 'Despesa'}</span>

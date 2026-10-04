@@ -74,7 +74,7 @@ export function Dica({ estado }: { estado: DicaEstado | null }) {
       <strong>{estado.titulo}</strong>
       {estado.linhas.map((l) => (
         <div className="linha" key={l.nome}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--esp-3)' }}>
             {l.cor && <i style={{ width: 9, height: 9, borderRadius: 3, background: l.cor, display: 'inline-block' }} />}
             {l.nome}
           </span>
@@ -226,7 +226,7 @@ export function GraficoBarras({
       <Legenda series={series} />
       <svg
         viewBox={`0 0 ${largura} ${altura}`}
-        style={{ width: '100%', height: 'auto', display: 'block', marginTop: 8 }}
+        style={{ width: '100%', height: 'auto', display: 'block', marginTop: 'var(--esp-4)' }}
         role="img"
         aria-label={`Gráfico de barras por ${rotuloCategoria.toLowerCase()}`}
         onMouseLeave={() => setDica(null)}
@@ -427,7 +427,7 @@ export function GraficoLinhas({
       <svg
         ref={svgRef}
         viewBox={`0 0 ${largura} ${altura}`}
-        style={{ width: '100%', height: 'auto', display: 'block', marginTop: 8, cursor: aoClicar ? 'pointer' : undefined }}
+        style={{ width: '100%', height: 'auto', display: 'block', marginTop: 'var(--esp-4)', cursor: aoClicar ? 'pointer' : undefined }}
         role="img"
         aria-label={`Série temporal por ${rotuloCategoria.toLowerCase()}`}
         onMouseMove={aoMover}
@@ -567,9 +567,9 @@ export function GraficoRanking({
                     }
                   : undefined
               }
-              style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 4, padding: clicavel ? '2px 4px' : undefined, borderRadius: 6 }}
+              style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 'var(--esp-2)', padding: clicavel ? '2px 4px' : undefined, borderRadius: 6 }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, gridColumn: '1 / -1' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--esp-6)', gridColumn: '1 / -1' }}>
                 <span style={{ fontSize: 12.5, color: 'var(--tinta-2)' }}>{item.rotulo}</span>
                 <span style={{ fontSize: 12.5, fontVariantNumeric: 'tabular-nums', fontWeight: 550 }}>
                   {formatar(item.valor)}
@@ -709,7 +709,7 @@ export function TabelaPorUnidade({
             <tr className="matriz">
               <td>
                 <i
-                  style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: m.cor, marginRight: 6 }}
+                  style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: m.cor, marginRight: 'var(--esp-3)' }}
                   aria-hidden
                 />
                 {m.nome}
@@ -1003,7 +1003,7 @@ export function LegendaDeMatrizes({ fatias }: { fatias: FatiaIndicador[] }) {
   const visiveis = fatias.filter((f) => f.valor > 0);
   if (visiveis.length < 2) return null;
   return (
-    <div className="legenda" style={{ marginTop: 8, fontSize: 11.5 }}>
+    <div className="legenda" style={{ marginTop: 'var(--esp-4)', fontSize: 11.5 }}>
       {visiveis.map((f) => (
         <span key={f.nome}>
           <i style={{ background: f.cor }} />

@@ -359,7 +359,7 @@ async function garantirEscopo() {
 function semBanco(motivo) {
   el('#pagina').innerHTML = `
     <section class="bloco">
-      <h2 style="margin-bottom:8px">Armazenamento indisponível nesta visualização</h2>
+      <h2 style="margin-bottom:var(--esp-4)">Armazenamento indisponível nesta visualização</h2>
       <p style="color:var(--tinta2)">${esc(motivo)}</p>
       <p style="color:var(--tinta2)">Abra esta página pelo link do artifact, logado na sua conta. Se o problema
         persistir, o mesmo sistema roda na sua máquina com <code>npm run iniciar</code>.</p>

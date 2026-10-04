@@ -658,7 +658,7 @@ function FormularioLancamento({
 
   return (
     <Modal titulo="Novo lançamento" aberto={aberto} aoFechar={aoFechar}>
-      <form onSubmit={submeter} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <form onSubmit={submeter} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--esp-7)' }}>
         <div className="grade c3">
           {empresas.length > 1 && (
             <Campo rotulo="Empresa (matriz)" dica="Onde o lançamento vai nascer. Independe do filtro da tela.">

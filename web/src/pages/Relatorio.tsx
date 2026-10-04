@@ -229,7 +229,7 @@ export function PaginaRelatorio() {
             aoMudar={setClassificacoes}
           />
         </Filtro>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 'var(--esp-3)', alignItems: 'flex-end' }}>
           <button
             type="button"
             className="botao discreto pequeno"
@@ -343,7 +343,7 @@ function LinhaGrupo({
           position: 'sticky',
           left: 0,
           background: 'var(--superficie)',
-          paddingLeft: 8 + (linha.nivel - 1) * 18,
+          paddingLeft: 'var(--esp-4)' + (linha.nivel - 1) * 18,
           fontWeight: linha.nivel === 1 ? 600 : 500,
         }}
       >
@@ -494,7 +494,7 @@ function LinhaLancamentoPivo({
 function DetalheLancamento({ lancamento: l, aoFechar }: { lancamento: Lancamento; aoFechar: () => void }) {
   return (
     <Modal titulo={l.descricao || l.tipo_despesa} aberto aoFechar={aoFechar}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 'var(--esp-4)', flexWrap: 'wrap' }}>
         <Etiqueta texto={dinheiro(l.valor_centavos)} />
         <Etiqueta texto={l.competencia} />
         <Etiqueta texto={l.classificacao === 'investimento' ? 'Investimento' : 'Despesa'} />
@@ -514,7 +514,7 @@ function DetalheLancamento({ lancamento: l, aoFechar }: { lancamento: Lancamento
         <dt>Consumo</dt>
         <dd>
           <EtiquetaConsumo lancamento={l} />
-          <div style={{ marginTop: 4 }}>{detalheConsumo(l)}</div>
+          <div style={{ marginTop: 'var(--esp-2)' }}>{detalheConsumo(l)}</div>
         </dd>
         <dt>Documento vinculado</dt>
         <dd>{l.documento ?? '—'}</dd>

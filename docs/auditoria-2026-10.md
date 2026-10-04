@@ -278,6 +278,67 @@ separado. Fica para uma entrega própria.
 
 ---
 
+## 2.3 Entrega 3 — tokens de espaçamento e raio (executada, nas duas pontas)
+
+**Escala única, com os mesmos nomes no artifact e na web**, declarada em
+`artifact/app-head.html` e `web/src/estilos.css`:
+
+```
+--esp-1: 2px   --esp-2: 4px   --esp-3: 6px   --esp-4: 8px    --esp-5: 10px
+--esp-6: 12px  --esp-7: 14px  --esp-8: 16px  --esp-9: 20px   --esp-10: 24px
+--raio-p: 5px  --raio-m: 8px  --raio-g: 12px --raio-redondo: 999px
+```
+
+| | literais migrados | fora da escala (seguem literais) |
+| --- | ---: | --- |
+| artifact | **211** de 226 | 3, 5, 7, 18, 22, 26, 30, 34, 54 px |
+| web | **121** | 3, 7, 9, 18, 26, 32, 54 px |
+
+**Os valores são exatamente os de antes.** A escala saiu da medição, não de um
+ideal: 10px aparecia 52 vezes, 12px 39, 8px 30, 14px 26. Apertar para
+4/8/12/16/24 — o que um design system de verdade faria — move pixel em 23
+telas, e isso é decisão de design: vai na Entrega 4, onde passa a ser **uma
+linha** em vez de 332.
+
+**Os 17 valores fora da escala seguem literais de propósito.** Essa lista *é* a
+dívida de design, e enfiá-la num token não a pagaria — só a esconderia.
+
+### A prova de que nada se moveu
+
+Não basta o token resolver para o pixel certo; é preciso que o pixel seja o
+mesmo de antes. Então: medi o estilo **computado** de todo elemento com
+espaçamento inline em quatro telas, voltei o código ao estado anterior, medi de
+novo e comparei.
+
+    126 elementos comparados · 0 diferenças
+
+### O que eu NÃO fiz, e por quê
+
+O enunciado pede nomenclatura consistente, e os dois aplicativos têm
+**vocabulários diferentes para os mesmos conceitos**:
+
+| conceito | artifact | web |
+| --- | --- | --- |
+| superfície | `--sup`, `--sup2`, `--sup3` | `--superficie`, `--superficie-2` |
+| texto | `--tinta`, `--tinta2`, `--tinta3` | `--tinta`, `--tinta-2`, `--tinta-fraca` |
+| borda | `--linha`, `--linha2` | `--borda`, `--borda-forte` |
+| cor da matriz | `--m1`…`--m8` | `--matriz-1`…`--matriz-8` |
+| crítico / alerta | `--crit`, `--alerta` | `--critico`, `--atencao` |
+| fonte | `--sans`, `--mono` | `--fonte` |
+
+Unificar são **cerca de 1.000 substituições** (516 no artifact, 505 na web) que
+**ninguém vê** e que podem quebrar qualquer tela em que eu escorregue. Juntar
+isso à migração de espaçamento tiraria das duas a chance de serem verificadas
+em separado — e a comparação de pixels acima, que é a rede de segurança desta
+entrega, não cobre cor.
+
+Fica como passo próprio, com a mesma disciplina: renomear de um lado por vez,
+com varredura de contraste nas 23 telas antes e depois. **Diga se quer, e em
+qual direção** — os nomes da web são mais descritivos, os do artifact mais
+curtos.
+
+---
+
 ## 3. Plano de ação
 
 A ordem abaixo difere do enunciado em um ponto, e é de propósito: **a suíte
@@ -288,7 +349,7 @@ não saber se a limpeza quebrou algo.
 | --- | --- | --- | --- |
 | **1.5** | **Destravar a verificação** | os 10 testes do FOC e as 3 suítes do artifact deixam de depender do mês corrente; decidir se a carga FOC ganha fixture anonimizada para entrar no CI | baixo — só teste |
 | 2 | Limpeza | ✅ os 17 símbolos mortos e o `zod`. **Pendente:** os 74 `export` de tipo e a consolidação dos cinco caminhos de detalhamento | médio — o detalhamento tem 43 chamadores |
-| 3 | Padronização | tokens de espaçamento e raio; os 305 `px` literais; camada de dados | baixo |
+| 3 | Padronização | ✅ escala de espaçamento e raio nas duas pontas, 332 literais migrados. **Pendente:** unificar o vocabulário de cor e a camada de dados | baixo |
 | 4 | Design system | tipografia, refino do dark mode, motion, componentes | médio — visual em 23 telas |
 | 5 | UX | estado de carregando, feedback, foco, responsividade | baixo |
 | 6 | Performance | `React.lazy` nas 17 rotas da web, `React.memo`, medir antes/depois | médio |
