@@ -288,7 +288,22 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
     JSON.stringify(depoisDeCriar));
 
   // Nome repetido é recusado com a frase de sempre, e o cliente aberto não muda.
+  // Sair do contratante PERGUNTA antes — tanto pelo botão quanto pelo cartão —,
+  // porque o que se perde ao sair é o recorte da sessão, e quem esbarrou no
+  // nome do cliente no meio de uma análise não pediu para perdê-lo.
   await pag.click('#bt-trocar-cliente');
+  await pag.waitForSelector('.fundo .modal', { timeout: 8000 });
+  const perguntou = await pag.$eval('.fundo .modal h2', (h) => h.textContent.trim()).catch(() => null);
+  conferir('sair do contratante pergunta antes', /Sair deste cliente/i.test(String(perguntou)), String(perguntou));
+  // "Ficar" não sai: o cliente continua aberto.
+  await pag.click('.fundo [data-fica]');
+  await pag.waitForTimeout(400);
+  conferir('ficar neste cliente não sai',
+    await pag.evaluate(() => !!E.clienteSel && !document.querySelector('.boas-vindas')));
+  // O cartão inteiro leva à MESMA pergunta, e aí sim "sair" volta à escolha.
+  await pag.click('#cliente-atual');
+  await pag.waitForSelector('.fundo [data-sai]', { timeout: 8000 });
+  await pag.click('.fundo [data-sai]');
   await pag.waitForSelector('.boas-vindas', { timeout: 8000 });
   await pag.click('#bv-novo');
   await pag.waitForSelector('#nc-nome', { timeout: 8000 });

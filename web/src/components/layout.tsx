@@ -1,4 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { useState } from 'react';
+import { Modal } from './base';
 import { useSessao } from '../lib/sessao';
 import { useLimparFiltros } from '../lib/filtros';
 import { ICONE_TEMA, ROTULO_TEMA, useTema } from '../lib/tema';
@@ -82,6 +84,12 @@ export function Layout() {
     trocarCliente();
   };
 
+  // Sair do contratante PERGUNTA antes. Não se perde dado nenhum — perde-se o
+  // CONTEXTO: os filtros de cada tela, a competência em foco e a unidade
+  // escolhida. Quem esbarra no nome do cliente no meio de uma análise perderia
+  // o caminho até ela sem aviso.
+  const [saindo, setSaindo] = useState(false);
+
   return (
     <div className="app">
       <aside className="lateral">
@@ -96,18 +104,67 @@ export function Layout() {
             só: quem ganha acesso a um segundo contratante no meio da semana
             precisa achar a saída sem descobrir que ela só existe depois. */}
         {cliente && (
-          <div className="cliente-atual">
+          // O CARTÃO INTEIRO é o caminho de saída, e não só o botão: quem quer
+          // trocar de contratante clica no nome do contratante, que é onde a
+          // mão vai. O botão fica para quem procura um rótulo explícito, e os
+          // dois levam à mesma pergunta.
+          <div
+            className="cliente-atual"
+            role="button"
+            tabIndex={0}
+            title="Clique para sair deste cliente e escolher outro"
+            aria-label={`Cliente ${cliente.nome}. Ativar para sair e escolher outro.`}
+            onClick={() => setSaindo(true)}
+            onKeyDown={(ev) => {
+              if (ev.key === 'Enter' || ev.key === ' ') {
+                ev.preventDefault();
+                setSaindo(true);
+              }
+            }}
+          >
             <span>Cliente</span>
             <strong title={cliente.nome}>{cliente.nome}</strong>
             <button
               type="button"
               className="botao discreto pequeno"
-              onClick={trocar}
+              onClick={(ev) => { ev.stopPropagation(); setSaindo(true); }}
               title="Volta à tela de seleção para escolher outro contratante"
             >
               Trocar cliente
             </button>
           </div>
+        )}
+        {cliente && (
+          <Modal
+            titulo="Sair deste cliente?"
+            aberto={saindo}
+            aoFechar={() => setSaindo(false)}
+            acoes={
+              <>
+                <button type="button" className="botao" onClick={() => setSaindo(false)}>
+                  Ficar neste cliente
+                </button>
+                <button
+                  type="button"
+                  className="botao primario"
+                  onClick={() => { setSaindo(false); trocar(); }}
+                >
+                  Sair e escolher outro
+                </button>
+              </>
+            }
+          >
+            <div className="aviso">
+              Você está em <strong>{cliente.nome}</strong>. Sair leva de volta à tela de escolha
+              de cliente.
+            </div>
+            <p style={{ marginTop: 'var(--esp-5)', fontSize: 13, color: 'var(--tinta-fraca)' }}>
+              O que você tem aqui não se perde: nada é apagado e tudo volta igual quando você
+              entrar de novo. O que recomeça é o <strong>recorte desta sessão</strong> — os
+              filtros de cada tela, a competência em foco e a unidade escolhida —, porque o corte
+              de um contratante não quer dizer nada no próximo.
+            </p>
+          </Modal>
         )}
         <nav className="menu">
           {/* O perfil governa o menu: módulo que a pessoa não vê não vira link,

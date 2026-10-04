@@ -621,9 +621,49 @@ function pintarCliente() {
   // descobrir que ela só existe depois de ter dois. E ele é também o caminho
   // para a tela de seleção, onde a estrutura de cada cliente aparece.
   const unidades = E.clienteSel ? empresasDoCliente(E.clienteSel).length : 0;
+  // O CARTÃO INTEIRO é o caminho de saída, e não só o botão. Quem quer trocar
+  // de contratante clica no nome do contratante — é onde a mão vai. O botão
+  // continua existindo para quem procura um rótulo explícito, e os dois levam
+  // à mesma pergunta.
   caixa.innerHTML = `<span>Cliente</span><b title="${esc(c.nome)}">${esc(c.nome)}</b>` +
     `<small>${inteiro(unidades)} unidade${unidades === 1 ? '' : 's'}</small>` +
     `<button type="button" id="bt-trocar-cliente" title="Volta à tela de seleção para escolher outro contratante">Trocar cliente</button>`;
+  caixa.setAttribute('role', 'button');
+  caixa.setAttribute('tabindex', '0');
+  caixa.setAttribute('aria-label', `Cliente ${c.nome}. Ativar para sair e escolher outro.`);
+  caixa.title = 'Clique para sair deste cliente e escolher outro';
+  const perguntar = (ev) => { ev.stopPropagation(); confirmarTrocaDeCliente(c); };
+  caixa.onclick = perguntar;
+  caixa.onkeydown = (ev) => {
+    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); perguntar(ev); }
+  };
   const bt = el('#bt-trocar-cliente');
-  if (bt) bt.onclick = () => trocarCliente();
+  if (bt) bt.onclick = perguntar;
+}
+
+/**
+ * Pergunta antes de largar o contratante.
+ *
+ * Sair não perde dado nenhum — mas perde o CONTEXTO: os filtros de tela, a
+ * competência em foco e a unidade escolhida morrem junto, porque o recorte de
+ * um contratante não significa nada no próximo. Quem clica sem querer no nome
+ * do cliente, no meio de uma análise, perderia o caminho até ela sem aviso.
+ */
+function confirmarTrocaDeCliente(cliente) {
+  abrirModal({
+    titulo: 'Sair deste cliente?',
+    corpo: `<div class="msg">Você está em <strong>${esc(cliente.nome)}</strong>.
+        Sair leva de volta à tela de escolha de cliente.</div>
+      <p class="nota" style="margin-top:var(--esp-5)">O que você tem aqui não se perde: nada é
+        apagado e tudo volta igual quando você entrar de novo. O que recomeça é o
+        <strong>recorte desta sessão</strong> — os filtros de cada tela, a competência em foco e
+        a unidade escolhida —, porque o corte de um contratante não quer dizer nada no
+        próximo.</p>`,
+    acoes: '<button type="button" class="bt" data-fica>Ficar neste cliente</button>'
+      + '<button type="button" class="bt pri" data-sai>Sair e escolher outro</button>',
+    aoMontar({ raiz, fechar }) {
+      raiz.querySelector('[data-fica]').onclick = fechar;
+      raiz.querySelector('[data-sai]').onclick = () => { fechar(); trocarCliente(); };
+    },
+  });
 }
