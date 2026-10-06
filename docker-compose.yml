@@ -1,0 +1,23 @@
+services:
+  gsti:
+    build: .
+    image: gsti-iarx
+    container_name: gsti-iarx
+    restart: unless-stopped
+    ports:
+      # Publicado só no loopback do host: troque para "0.0.0.0:3333:3333" e
+      # ponha um proxy reverso com HTTPS na frente para expor à rede.
+      - "127.0.0.1:${PORT:-3333}:3333"
+    environment:
+      # Obrigatório: segredo de assinatura das sessões.
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no arquivo .env}
+      # Depois de criada a primeira conta, o cadastro aberto fecha sozinho.
+      # Deixe 'true' apenas se quiser permitir auto-cadastro contínuo.
+      REGISTRO_ABERTO: ${REGISTRO_ABERTO:-false}
+      DATABASE_PATH: /app/data/gsti.sqlite
+    volumes:
+      # Banco e trilha de auditoria sobrevivem a recriações do contêiner.
+      - gsti-dados:/app/data
+
+volumes:
+  gsti-dados:
