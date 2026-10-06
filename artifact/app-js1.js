@@ -968,6 +968,23 @@ function ordemDosTipos() {
   return [...comFixa].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
 
+/**
+ * O estado vazio, com a CAUSA e o remédio.
+ *
+ * Uma tabela vazia tem duas causas, e os remédios são opostos: ou não há nada
+ * cadastrado — e a saída é cadastrar —, ou o filtro excluiu tudo, e a saída é
+ * afrouxar o filtro. Uma frase única, escolhida na mão, acerta metade das
+ * vezes; e a metade errada manda a pessoa cadastrar o que ela já tem, ou
+ * procurar um filtro que não existe.
+ *
+ * Então quem chama entrega as DUAS frases e diz se filtrou. `filtrou` é a
+ * pergunta "o conjunto sem filtro tem algo?", e não "há filtro na tela": a
+ * tela quase sempre tem filtro, e isso não diz nada.
+ */
+function vazioHtml({ semNada, comFiltro, filtrou }) {
+  return `<p class="vazio">${esc(filtrou ? comFiltro : semNada)}</p>`;
+}
+
 /** A cor deste tipo de despesa. Fora dos oito primeiros, a cor de "Outros". */
 function corDoTipo(nome) {
   const i = ordemDosTipos().indexOf(String(nome));

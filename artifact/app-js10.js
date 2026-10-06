@@ -537,7 +537,7 @@ async function importarFinanceiro(empresa, aba, opcoes, rel) {
     const competencia = lerCompetencia(ler(linha, 'Competência'));
     if (!competencia) return erro('Competência inválida — use MM/AAAA.');
     const valor = lerValorPlanilha(ler(linha, 'Valor'));
-    if (valor === null) return erro('Valor inválido.');
+    if (valor === null) return erro('Valor inválido — use números com vírgula decimal, como 1.760,23. O cifrão e os pontos de milhar são opcionais.');
     const tipo = ler(linha, 'Tipo de Despesa');
     if (!tipo) return erro('Tipo de despesa em branco.');
     const natureza = lerNatureza(ler(linha, 'Natureza'));
@@ -639,12 +639,12 @@ async function importarSla(empresa, aba, opcoes, rel) {
     if (!fila) return erro('Fila em branco.');
     const total = Number(ler(linha, 'Total Atendidos'));
     const dentro = Number(ler(linha, 'Dentro SLA'));
-    if (!Number.isInteger(total) || total < 0) return erro('Total de atendidos inválido.');
-    if (!Number.isInteger(dentro) || dentro < 0) return erro('Dentro do SLA inválido.');
+    if (!Number.isInteger(total) || total < 0) return erro('Total de atendidos inválido — use um número inteiro de 0 para cima.');
+    if (!Number.isInteger(dentro) || dentro < 0) return erro('Dentro do SLA inválido — use um número inteiro de 0 para cima, nunca maior que o total de atendidos.');
     if (dentro > total) return erro('Dentro do SLA (' + dentro + ') maior que o total (' + total + ').');
     const foraTxt = ler(linha, 'Fora SLA');
     const fora = foraTxt === '' ? total - dentro : Number(foraTxt);
-    if (!Number.isInteger(fora) || fora < 0) return erro('Fora do SLA inválido.');
+    if (!Number.isInteger(fora) || fora < 0) return erro('Fora do SLA inválido — use um número inteiro de 0 para cima. Ele não precisa ser informado: o sistema o calcula como total menos dentro.');
     if (dentro + fora !== total) return erro('Dentro (' + dentro + ') + fora (' + fora + ') não fecha com o total (' + total + ').');
 
     // `fora` não é gravado: é derivado de total − dentro em toda leitura, como

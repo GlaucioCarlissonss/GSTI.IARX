@@ -212,14 +212,64 @@ export function Modal({
 }) {
   const chave = chaveDoModal(tipo, titulo);
   const caixa = useRef<HTMLDivElement>(null);
+  // Quem abriu a tela flutuante. Fechar sem devolver o foco a ele joga quem
+  // navega por teclado de volta ao começo da página, longe do botão que acabou
+  // de usar — e a pessoa perde o lugar onde estava lendo.
+  const quemAbriu = useRef<HTMLElement | null>(null);
   const [cheia, setCheia] = useState(false);
 
   useEffect(() => {
     if (!aberto) return;
-    const aoTeclar = (e: KeyboardEvent) => e.key === 'Escape' && aoFechar();
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { aoFechar(); return; }
+      if (e.key !== 'Tab' || !caixa.current) return;
+      // Tab circula DENTRO do diálogo: `aria-modal` promete que o resto da
+      // página está inerte, e sem a volta do Tab a promessa é falsa — a
+      // terceira tabulação já estaria no menu, mexendo numa tela que o
+      // diálogo diz estar bloqueada.
+      const paradas = [...caixa.current.querySelectorAll<HTMLElement>(
+        'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),'
+        + 'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+      )].filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (!paradas.length) { e.preventDefault(); caixa.current.focus({ preventScroll: true }); return; }
+      const primeiro = paradas[0]!;
+      const ultimo = paradas[paradas.length - 1]!;
+      const atual = document.activeElement;
+      // Fora do diálogo (ou na própria caixa): a próxima parada é a ponta para
+      // a qual o Tab estava indo, e não a de sempre.
+      if (!caixa.current.contains(atual) || atual === caixa.current) {
+        e.preventDefault();
+        (e.shiftKey ? ultimo : primeiro).focus({ preventScroll: true });
+        return;
+      }
+      if (!e.shiftKey && atual === ultimo) { e.preventDefault(); primeiro.focus({ preventScroll: true }); }
+      else if (e.shiftKey && atual === primeiro) { e.preventDefault(); ultimo.focus({ preventScroll: true }); }
+    };
     document.addEventListener('keydown', aoTeclar);
     return () => document.removeEventListener('keydown', aoTeclar);
   }, [aberto, aoFechar]);
+
+  // Abrir guarda quem abriu e leva o foco para dentro; fechar o devolve.
+  // O foco entra no primeiro CAMPO quando há um — é onde a pessoa vai digitar.
+  // Não havendo (uma confirmação, um detalhamento só de leitura), vai para a
+  // caixa, que anuncia o título e deixa o Tab seguinte cair dentro do diálogo
+  // em vez de na página atrás.
+  useEffect(() => {
+    if (!aberto) {
+      const volta = quemAbriu.current;
+      quemAbriu.current = null;
+      if (volta && document.contains(volta)) volta.focus({ preventScroll: true });
+      return;
+    }
+    quemAbriu.current = document.activeElement as HTMLElement | null;
+    const id = requestAnimationFrame(() => {
+      const corpo = caixa.current?.querySelector<HTMLElement>(
+        '.modal-corpo input,.modal-corpo select,.modal-corpo textarea',
+      );
+      (corpo || caixa.current)?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [aberto]);
 
   // O tamanho guardado é aplicado em estilo, e não em estado de React: quem
   // arrasta espera resposta a cada pixel, e repintar a árvore a cada pixel
@@ -280,6 +330,11 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={titulo}
+        /* Aceita foco de código, e só dele: é para onde o foco vai quando o
+           diálogo não tem campo nenhum — uma confirmação de duas respostas,
+           por exemplo. Sem isto o foco fica na página ATRÁS de um diálogo que
+           se declara modal, e o primeiro Tab aterrissa fora dele. */
+        tabIndex={-1}
       >
         <header>
           <h2>{titulo}</h2>
@@ -386,4 +441,28 @@ export function ConfirmarAcao({
 
 export function Carregando({ children = 'Carregando…' }: { children?: ReactNode }) {
   return <p className="vazio">{children}</p>;
+}
+
+/**
+ * O estado vazio, com a CAUSA e o remédio.
+ *
+ * Uma tabela vazia tem duas causas, e os remédios são opostos: ou não há nada
+ * cadastrado — e a saída é cadastrar —, ou o filtro excluiu tudo, e a saída é
+ * afrouxar o filtro. Uma frase única, escolhida na mão, acerta metade das
+ * vezes; e a metade errada manda a pessoa cadastrar o que ela já tem, ou
+ * procurar um filtro que não existe.
+ *
+ * `filtrou` é a pergunta "há recorte aplicado AGORA?", e não "esta tela tem
+ * barra de filtros": toda tela tem, e isso não diz nada.
+ */
+export function Vazio({
+  semNada,
+  comFiltro,
+  filtrou,
+}: {
+  semNada: ReactNode;
+  comFiltro: ReactNode;
+  filtrou: boolean;
+}) {
+  return <p className="vazio">{filtrou ? comFiltro : semNada}</p>;
 }

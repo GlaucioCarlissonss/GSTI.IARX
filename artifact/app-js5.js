@@ -715,7 +715,7 @@ function abrirProjeto(p) {
         sel.disabled = candidatas.length === 0;
         sel.value = candidatas.some((c) => c.id === escolhido) ? escolhido : '';
 
-        t.innerHTML = tarefas.length === 0 ? '<p class="vazio">Nenhuma tarefa.</p>' : `
+        t.innerHTML = tarefas.length === 0 ? '<p class="vazio">Nenhuma tarefa neste projeto. Use "Nova tarefa" acima; o atraso e o desvio saem das datas, não se digitam.</p>' : `
           <table><thead><tr><th>Tarefa</th><th>Responsável</th><th>Período</th><th>Situação</th><th></th></tr></thead>
           <tbody>${emOrdem.map((x)=>{ const a = atrasoDe(x.fimPlanejado, x.fimReal, 'x'); return `<tr data-t="${esc(x.id)}">
             <td style="padding-left:${10 + (x.nivel - 1) * 18}px">${x.nivel > 1 ? '<span style="color:var(--tinta3)">↳</span> ' : ''}${esc(x.nome)}${
@@ -735,7 +735,7 @@ function abrirProjeto(p) {
           tr.querySelector('[data-ok]')?.addEventListener('click', async () => {
             const m = prompt('Mês de conclusão real (MM/AAAA):', mesExib(mesHoje()));
             if (!m) return;
-            const c = mesInterno(m); if (!c) return erro('Mês inválido.');
+            const c = mesInterno(m); if (!c) return erro('Mês inválido — use MM/AAAA, como 03/2026.');
             tar.fimReal = c; await persistir(); pintar();
           });
           tr.querySelector('[data-grp]').addEventListener('click', () => {

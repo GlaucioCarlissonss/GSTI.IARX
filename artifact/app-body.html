@@ -1,3 +1,9 @@
+<!-- A primeira parada de Tab da página. Até chegar ao conteúdo, quem navega
+     por teclado atravessa a marca, o cartão do cliente, o tema, cinco módulos
+     e as abas do módulo — em TODA tela, de novo. Este atalho pula tudo isso
+     num Enter. Ele fica escondido fora do foco, porque é inútil para quem usa
+     o mouse e ocupa o canto superior esquerdo, que é da marca. -->
+<a class="pular" href="#pagina">Pular para o conteúdo</a>
 <div class="barra">
   <div class="linha1">
     <div class="marca"><b>Gestão de TI IARX</b><span>Financeiro · Projetos · Suporte de TI</span></div>
@@ -17,7 +23,7 @@
 <!-- Quando a base foi atualizada pela última vez. Fica fora das telas porque
      vale para todas as do financeiro, e nenhuma delas precisa saber disso. -->
 <div class="ultima-carga" id="ultima-carga" hidden></div>
-<main class="pagina" id="pagina">
+<main class="pagina" id="pagina" tabindex="-1">
   <div class="carregando"><span class="giro"></span> Abrindo a base…</div>
 </main>
 <div id="modais"></div>

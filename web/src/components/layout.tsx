@@ -92,6 +92,12 @@ export function Layout() {
 
   return (
     <div className="app">
+      {/* A primeira parada de Tab da página. Até chegar ao conteúdo, quem
+          navega por teclado atravessa a marca, o cartão do cliente e os
+          dezenove itens do menu — em TODA tela, de novo. Este atalho pula
+          tudo isso num Enter, e fica escondido fora do foco porque é inútil
+          para quem usa o mouse. */}
+      <a className="pular" href="#conteudo">Pular para o conteúdo</a>
       <aside className="lateral">
         <div className="marca">
           <strong>GSTI.IARX</strong>
@@ -248,7 +254,7 @@ export function Layout() {
           </button>
         </header>
 
-        <main className="pagina">
+        <main className="pagina" id="conteudo" tabIndex={-1}>
           <Outlet />
         </main>
       </div>

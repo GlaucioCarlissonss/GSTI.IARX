@@ -90,7 +90,7 @@ export function PaginaCadastroProjetos() {
         {!consulta.dados ? (
           <Carregando />
         ) : consulta.dados.length === 0 ? (
-          <p className="vazio">Nenhum projeto cadastrado neste escopo.</p>
+          <p className="vazio">Nenhum projeto cadastrado neste escopo. Use <strong>Novo projeto</strong> acima — dá para criar em várias unidades de uma vez.</p>
         ) : (
           <div className="tabela-envolucro">
             <table>
@@ -417,7 +417,7 @@ function DetalheProjeto({
         {!tarefas.dados ? (
           <Carregando />
         ) : tarefas.dados.length === 0 ? (
-          <p className="vazio">Nenhuma tarefa neste projeto.</p>
+          <p className="vazio">Nenhuma tarefa neste projeto. Use <strong>Nova tarefa</strong> acima; o atraso e o desvio saem das datas, não se digitam.</p>
         ) : (
           <div className="tabela-envolucro">
             <table>

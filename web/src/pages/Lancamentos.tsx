@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import { useFiltroEscopo } from '../lib/filtros';
 import { EXPLICACAO, FichasUnidades, Filtro, FiltroUnidades } from '../components/filtro-escopo';
-import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal, UltimaAtualizacao } from '../components/base';
+import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal, UltimaAtualizacao, Vazio } from '../components/base';
 import { FichasSelecao, SeletorMulti } from '../components/seletor-multi';
 import { competenciaAtual, competenciaValida, inteiro, moeda, ROTULO_NATUREZA } from '../lib/formato';
 import { BlocosPorUnidade, SeletorModo, useModoVisao, type LinhaVisao } from '../components/visao-financeira';
@@ -146,6 +146,17 @@ export function PaginaLancamentos() {
         cenario: filtros.cenarios.join(',') || undefined,
       }),
     [escopo.params.empresas, escopo.params.filial_id, JSON.stringify(filtros)],
+  );
+
+  // Há recorte aplicado AGORA? É o que separa "não há lançamento nenhum" de
+  // "o filtro excluiu todos" — duas causas de tabela vazia cujos remédios são
+  // opostos. A empresa e a filial entram porque recortam tanto quanto os
+  // demais: olhar só uma unidade de cinco é um filtro como qualquer outro.
+  const recortado = Boolean(
+    filtros.competencia_inicio || filtros.competencia_fim || filtros.busca
+      || filtros.naturezas.length || filtros.classificacoes.length
+      || filtros.tipos.length || filtros.cenarios.length
+      || escopo.params.empresas || escopo.params.filial_id,
   );
 
   // A visão por mês e por unidade vem do mesmo recorte da listagem. É outra
@@ -341,7 +352,17 @@ export function PaginaLancamentos() {
         {!consulta.dados ? (
           <Carregando />
         ) : consulta.dados.itens.length === 0 ? (
-          <p className="vazio">Nenhum lançamento com os filtros aplicados.</p>
+          <Vazio
+            filtrou={recortado}
+            semNada={
+              <>Nenhum lançamento nesta unidade ainda. Use <strong>Novo lançamento</strong> acima,
+                ou suba uma planilha em <strong>Sistema › Importar / Exportar</strong>.</>
+            }
+            comFiltro={
+              <>Nenhum lançamento com os filtros aplicados. O recorte desta tela é que não alcança
+                nenhum — limpe um dos filtros acima para alargá-lo.</>
+            }
+          />
         ) : (
           <div className="tabela-envolucro">
             <table>

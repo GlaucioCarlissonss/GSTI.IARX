@@ -424,6 +424,90 @@ cliente, e o enunciado pede preservá-las.
 
 ---
 
+## 2.5 Entrega 5 — usabilidade (executada, nas duas pontas)
+
+Como nas anteriores, a entrega começou medindo. Três varreduras novas em cada
+superfície, e o que elas acharam decidiu o que foi feito — não o contrário.
+
+### 5.1 Operabilidade: a varredura não achou nada
+
+`artifact/testar-operavel.cjs` e `web/verificar-operavel.cjs` percorrem 17 e 21
+telas fazendo três perguntas por elemento:
+
+| pergunta | o que vira achado |
+| --- | --- |
+| responde ao teclado? | gesto de clique num elemento que não é focável nem tem papel de botão |
+| tem nome? | controle operável cujo nome acessível sai vazio ou é só um glifo (`✕`, `⛶`) |
+| dá para ver o foco? | parada de Tab que não ganha anel nem sombra |
+
+**Zero achados nas duas superfícies.** A disciplina que o projeto já escreveu
+em `regras-de-negocio.md` está de fato no código. As varreduras ficam como
+rede: o próximo `<div onclick>` cai nelas.
+
+> **Um erro meu, corrigido antes de virar conclusão.** A primeira versão da
+> terceira pergunta usava `el.focus()` e comparava o estilo antes e depois —
+> e acusou **290 controles** sem foco visível. O anel está lá: `:focus-visible`
+> existe justamente para separar foco de teclado de foco de mouse ou de
+> código, e foco de script não o casa. A checagem passou a pressionar **Tab de
+> verdade**, e aí os 290 viraram zero.
+
+### 5.2 Foco em modais: dois buracos reais, nas duas pontas
+
+Aqui a varredura não alcançava, e a leitura do código achou:
+
+1. **O Tab saía do diálogo.** `aria-modal="true"` promete que o resto da
+   página está inerte; a terceira tabulação já estava no menu, mexendo numa
+   tela que o diálogo diz estar bloqueada — e sem sinal nenhum, porque o modal
+   continua desenhado por cima.
+2. **Fechar não devolvia o foco.** Quem navega por teclado voltava ao começo
+   da página a cada confirmação.
+3. **Diálogo sem campo não recebia foco nenhum.** `querySelector('input,…')`
+   é no-op numa confirmação de duas respostas, e o foco ficava atrás dela.
+
+Os três corrigidos em `abrirModal` (artifact) e no componente `Modal` (web),
+com a caixa recebendo `tabindex="-1"` para ser o destino quando não há campo.
+`testar-foco-modal.cjs` e `verificar-foco-modal.cjs` cobrem o caminho, incluindo
+**diálogos empilhados**: o Tab fica no de cima, e o Escape fecha um por vez.
+
+### 5.3 Atalho de conteúdo e 390px
+
+Antes do conteúdo há, em TODA tela, a marca, o cartão do cliente, o tema e a
+navegação — doze paradas de Tab no artifact, dezenove itens de menu na web.
+Agora a **primeira** parada é "Pular para o conteúdo", escondida fora do foco.
+Ela move o **foco**, e não só a rolagem: sem `tabindex="-1"` no `<main>`, a
+tabulação seguinte voltaria ao topo e o atalho não teria pulado nada.
+
+**390px:** 16 telas do artifact e 21 da web, nenhuma com a PÁGINA rolando para
+o lado. Tabela que rola dentro da caixa dela é desenho, e a varredura a
+distingue — quando acha rolagem, ela nomeia o elemento culpado.
+
+### 5.4 Estados vazios: duas causas, dois remédios
+
+Uma tabela vazia tem duas causas e os remédios são opostos: não há nada
+cadastrado (cadastre) ou o filtro excluiu tudo (afrouxe). Uma frase única
+acerta metade das vezes, e a metade errada manda a pessoa cadastrar o que ela
+já tem. `vazioHtml()` (artifact) e `<Vazio>` (web) recebem as **duas** frases e
+o sinal que decide entre elas — em Lançamentos e na Auditoria, que são as
+listagens com filtro de maior tráfego.
+
+Os estados vazios de **cadastro** não têm duas causas: o que faltava neles era
+dizer **onde** se cadastra. Sete foram reescritos nas duas pontas.
+
+Cinco mensagens de erro do artifact diziam só que o valor era inválido
+(`Valor inválido.`, `Mês inválido.`, os três do SLA) e passaram a dizer o
+formato aceito. As da web já diziam.
+
+### 5.5 O que ficou medido
+
+| | artifact | web |
+| --- | --- | --- |
+| telas na varredura de operabilidade | 17 × 3 perguntas | 21 × 3 perguntas |
+| achados de operabilidade | **0** | **0** |
+| telas a 390px sem rolagem de página | 16 de 16 | 21 de 21 |
+| suítes/varreduras novas | 3 | 3 |
+
+---
+
 ## 3. Plano de ação
 
 A ordem abaixo difere do enunciado em um ponto, e é de propósito: **a suíte

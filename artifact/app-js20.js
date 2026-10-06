@@ -99,7 +99,7 @@ function viewMetas() {
 
     <section class="bloco">
       <header><h2>Metas</h2><span class="nota">${inteiro(metas.length)}</span></header>
-      ${metas.length === 0 ? '<p class="vazio">Nenhuma meta cadastrada.</p>' : `
+      ${metas.length === 0 ? '<p class="vazio">Nenhuma meta cadastrada. Sem meta, o indicador mostra o número e não diz se ele está bom — use "Cadastrar meta" acima.</p>' : `
       <div class="rol"><table>
         <thead><tr><th>Meta</th><th>Módulo</th><th>Tipo</th><th class="n">Alvo</th><th>Vigência</th><th>Situação</th><th></th></tr></thead>
         <tbody>${metas.map((m, i) => `<tr>

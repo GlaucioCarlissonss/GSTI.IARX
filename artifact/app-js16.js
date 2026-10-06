@@ -302,7 +302,7 @@ async function viewAcessos() {
     <section class="bloco" style="margin-top:var(--esp-8)">
       <header><h2>Usuários</h2><span class="nota">${inteiro(usuarios.length)} cadastrado(s)</span>
         <button class="bt pri" id="u-novo">Novo usuário</button></header>
-      ${usuarios.length === 0 ? '<p class="vazio">Nenhum usuário cadastrado neste cliente.</p>' : `
+      ${usuarios.length === 0 ? '<p class="vazio">Nenhum usuário cadastrado neste cliente. Use "Novo usuário" acima; o perfil de acesso se escolhe no próprio cadastro.</p>' : `
       <div class="rol"><table><thead><tr>
         <th>Nome</th><th>Usuário (login)</th><th>E-mail</th><th>Perfil</th><th>Situação</th><th></th>
       </tr></thead><tbody>

@@ -624,7 +624,11 @@ async function viewAuditoria() {
   el('#pagina').innerHTML = `
     <div class="msg">Nenhuma alteração relevante ocorre sem trilha: quem, quando e o quê. Registros mais recentes primeiro.</div>
     <section class="bloco"><header><h2>Trilha de auditoria</h2><span class="nota">${inteiro(filtrados.length)} eventos</span></header>
-      ${filtrados.length===0 ? '<p class="vazio">Nenhum evento registrado neste cliente ainda.</p>' : `
+      ${filtrados.length===0 ? vazioHtml({
+        semNada: 'Nenhum evento registrado neste cliente ainda. A trilha nasce sozinha: o primeiro cadastro, carga ou fechamento já aparece aqui.',
+        comFiltro: 'Nenhum evento da unidade escolhida. Há eventos neste cliente — o filtro de matriz acima é que não alcança nenhum, e o evento que vale para o cliente inteiro fica de fora dele.',
+        filtrou: itens.length > 0,
+      }) : `
       <div class="rol"><table><thead><tr><th>Quando</th>${mostrarColuna?'<th>Unidade</th>':''}<th>Entidade</th><th>Ação</th><th>Justificativa</th><th>Alteração</th></tr></thead>
       <tbody>${filtrados.slice(0,250).map((a)=>`<tr>
         <td style="white-space:nowrap">${new Date(a.quando).toLocaleString('pt-BR')}</td>

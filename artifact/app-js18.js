@@ -479,7 +479,7 @@ async function viewClientes() {
         mesma raiz, mesma matriz.</div>
       <div class="rol" style="margin-top:var(--esp-6)"><table>
         <thead><tr><th>Unidade</th><th>Tipo</th><th>Código</th><th>CNPJ</th><th>Endereço</th><th>CEP</th></tr></thead>
-        <tbody>${linhasEstrutura.join('') || '<tr><td colspan="6" class="vazio">Nenhuma matriz cadastrada.</td></tr>'}</tbody>
+        <tbody>${linhasEstrutura.join('') || '<tr><td colspan="6" class="vazio">Nenhuma matriz cadastrada. Use "Cadastrar unidade" acima — a regra do CNPJ decide sozinha se ela entra como matriz ou como filial de uma existente.</td></tr>'}</tbody>
       </table></div>
 
       <!-- O formulário é montado UMA vez e atualizado no lugar. Remontá-lo a

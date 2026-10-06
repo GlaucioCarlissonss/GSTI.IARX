@@ -79,7 +79,7 @@ export function PaginaFechamentos() {
         {!consulta.dados ? (
           <Carregando />
         ) : consulta.dados.length === 0 ? (
-          <p className="vazio">Nenhuma competência fechada nesta empresa.</p>
+          <p className="vazio">Nenhuma competência fechada nesta empresa. Fechar um mês bloqueia qualquer escrita nele, inclusive por importação.</p>
         ) : (
           <div className="tabela-envolucro">
             <table>
@@ -1388,7 +1388,7 @@ export function PaginaAuditoria() {
         {!consulta.dados ? (
           <Carregando />
         ) : consulta.dados.length === 0 ? (
-          <p className="vazio">Nenhum evento registrado.</p>
+          <p className="vazio">Nenhum evento registrado. A trilha nasce sozinha: o primeiro cadastro, carga ou fechamento já aparece aqui.</p>
         ) : (
           <div className="tabela-envolucro">
             <table>

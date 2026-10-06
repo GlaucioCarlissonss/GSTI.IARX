@@ -355,6 +355,9 @@ Vinte e uma suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-acordos.cjs` | o acordo de SLA que decide: a vigência escolhe pela abertura do chamado, a prévia não grava, a reaplicação vira dentro/fora, agregado e sem-prioridade ficam de fora, e mês fechado recusa |
 | `testar-reconhecedores.cjs` | quem reconhece despesa: o mesmo nome escrito de outro jeito é a mesma pessoa, a prévia não grava, aplicar marca só quem o cadastro alcança, e desativar não desfaz o passado |
 | `testar-contraste.cjs` | a régua de contraste do design system: percorre cada nó de texto visível em 11 telas × 2 temas, sobe até o primeiro fundo opaco e exige 4,5:1 (texto) ou 3:1 (texto grande). É a rede da repaginada visual — token de tinta clareado sem medir cai aqui, e não no olho de quem lê |
+| `testar-operavel.cjs` | a régua de operabilidade, em 17 telas: gesto de clique sem caminho de teclado, controle operável sem nome acessível (um botão que é só um glifo não é lido por ninguém) e parada de Tab sem marca visível — esta última percorrida com Tab de verdade, porque `focus()` de script não casa `:focus-visible` |
+| `testar-foco-modal.cjs` | o foco dentro e fora da tela flutuante: entra nela mesmo sem campo, o Tab circula lá dentro nos dois sentidos, fechar devolve o foco a quem abriu, e com dois diálogos empilhados o Tab fica no de cima |
+| `testar-estreito.cjs` | o atalho de pular para o conteúdo (primeira parada de Tab, que move o FOCO e não só a rolagem) e as 16 telas a 390px sem a PÁGINA rolar para o lado — tabela que rola dentro da caixa dela é desenho, não defeito |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

@@ -447,6 +447,14 @@
   .kpi-corpo{animation:abrirUnidades .16s ease-out}
   @keyframes abrirUnidades{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 }
+/* O atalho de pular para o conteúdo: fora da tela até receber foco, e então
+   em cima de tudo. `clip-path` em vez de `display:none` porque um elemento
+   escondido de verdade não recebe foco, e o atalho inteiro depende disso. */
+.pular{position:fixed;top:0;left:0;z-index:100;padding:10px 16px;
+  background:var(--acao);color:#fff;font-weight:var(--peso-forte);font-size:var(--txt-3);
+  border-radius:0 0 var(--raio-m) 0;text-decoration:none;
+  transform:translateY(-120%);transition:transform var(--mov) var(--curva)}
+.pular:focus{transform:none;outline:2px solid var(--sup);outline-offset:-4px}
 *{box-sizing:border-box}
 body{margin:0;background:var(--plano);color:var(--tinta);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 /* Título é identidade, e por isso fala na voz de display. O corpo do texto
@@ -647,6 +655,7 @@ body[data-sem-cliente] #ultima-carga{display:none!important}
 .abas button[data-escopo="cliente"]::after{content:"";width:5px;height:5px;border-radius:50%;background:var(--tinta3)}
 .abas button[data-escopo="cliente"][aria-current="page"]::after{background:var(--s1)}
 .pagina{max-width:1280px;margin:0 auto;padding-inline:20px;padding-block:22px 60px;display:flex;flex-direction:column;gap:16px}
+.pagina:focus{outline:none}
 
 /* ----------------------------------------------------------- controles */
 .campo{display:flex;flex-direction:column;gap:5px;min-width:0}

@@ -31,9 +31,24 @@ function gravarTamanhoDoModal(chave, dados) {
  * problema que o desenho já conhecia. O que a pessoa escolher continua
  * ganhando: o valor guardado é aplicado depois.
  */
+/**
+ * Os controles que recebem Tab dentro de um nó, na ordem em que o recebem.
+ * `offsetParent` descarta o que está escondido — um campo dentro de um bloco
+ * fechado não pode virar parada de tabulação invisível.
+ */
+function focaveisDe(raiz) {
+  const sel = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),'
+    + 'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  return [...raiz.querySelectorAll(sel)].filter((e) => e.offsetParent !== null || e === document.activeElement);
+}
+
 function abrirModal({ titulo, corpo, acoes, aoMontar, tipo, larguraPadrao }) {
   const chave = chaveDoModal(tipo, titulo);
   const guardado = lerTamanhoDoModal(chave) || {};
+  // Quem abriu a tela flutuante. Fechar sem devolver o foco a ele joga quem
+  // navega por teclado de volta ao começo da página, longe do botão que acabou
+  // de usar — e a pessoa perde o lugar onde estava lendo.
+  const quemAbriu = document.activeElement;
 
   const fundo = document.createElement('div');
   fundo.className = 'fundo';
@@ -54,10 +69,40 @@ function abrirModal({ titulo, corpo, acoes, aoMontar, tipo, larguraPadrao }) {
     </div>`;
 
   const caixa = fundo.querySelector('.modal');
-  const fechar = () => { fundo.remove(); document.removeEventListener('keydown', tecla); };
+  // A caixa aceita foco de código (e só dele): é para onde o foco vai quando o
+  // modal não tem campo nenhum — uma confirmação de duas respostas, por
+  // exemplo. Sem isto o foco fica na página ATRÁS de um diálogo que se declara
+  // modal, e o primeiro Tab da pessoa aterrissa fora dele.
+  caixa.setAttribute('tabindex', '-1');
+  const fechar = () => {
+    fundo.remove();
+    document.removeEventListener('keydown', tecla);
+    if (quemAbriu && document.contains(quemAbriu)) quemAbriu.focus({ preventScroll: true });
+  };
   // Com modais empilhados, Escape fecha só o de cima: fechar os dois faria o
-  // gestor perder também a tela de onde abriu o segundo.
-  const tecla = (e) => { if (e.key === 'Escape' && fundo === el('#modais').lastElementChild) fechar(); };
+  // gestor perder também a tela de onde abriu o segundo. Tab circula DENTRO do
+  // de cima: `aria-modal="true"` promete que o resto da página está inerte, e
+  // sem a volta do Tab a promessa é falsa — a terceira tabulação já estaria no
+  // menu, mexendo numa tela que o diálogo diz estar bloqueada.
+  const tecla = (e) => {
+    if (fundo !== el('#modais').lastElementChild) return;
+    if (e.key === 'Escape') { fechar(); return; }
+    if (e.key !== 'Tab') return;
+    const paradas = focaveisDe(fundo);
+    if (!paradas.length) { e.preventDefault(); caixa.focus({ preventScroll: true }); return; }
+    const primeiro = paradas[0];
+    const ultimo = paradas[paradas.length - 1];
+    const atual = document.activeElement;
+    // Fora do modal (ou na própria caixa): a próxima parada é a ponta para a
+    // qual o Tab estava indo, e não a de sempre.
+    if (!fundo.contains(atual) || atual === caixa) {
+      e.preventDefault();
+      (e.shiftKey ? ultimo : primeiro).focus({ preventScroll: true });
+      return;
+    }
+    if (!e.shiftKey && atual === ultimo) { e.preventDefault(); primeiro.focus({ preventScroll: true }); }
+    else if (e.shiftKey && atual === primeiro) { e.preventDefault(); ultimo.focus({ preventScroll: true }); }
+  };
   document.addEventListener('keydown', tecla);
   fundo.addEventListener('mousedown', (e) => { if (e.target === fundo) fechar(); });
   fundo.querySelector('[data-x]').addEventListener('click', fechar);
@@ -119,7 +164,12 @@ function abrirModal({ titulo, corpo, acoes, aoMontar, tipo, larguraPadrao }) {
   aoMontar?.({ raiz: fundo, fechar, erro, campo: (n) => fundo.querySelector('[name="'+n+'"]') });
   // Toda tabela dentro da tela flutuante ganha coluna ajustável.
   fundo.querySelectorAll('[data-corpo] table').forEach(colunasAjustaveis);
-  fundo.querySelector('input,select,textarea')?.focus();
+  // O foco entra no primeiro CAMPO quando há um — é onde a pessoa vai digitar.
+  // Não havendo (uma confirmação, um detalhamento só de leitura), vai para a
+  // caixa, que anuncia o título do diálogo e deixa o Tab seguinte cair dentro
+  // dele em vez de na página atrás.
+  (fundo.querySelector('[data-corpo] input,[data-corpo] select,[data-corpo] textarea')
+    || caixa).focus({ preventScroll: true });
   return { fechar, erro };
 }
 

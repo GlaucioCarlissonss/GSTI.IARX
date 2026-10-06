@@ -57,7 +57,11 @@ function viewLancamentos() {
     <section class="bloco">
       <header><h2>Lançamentos</h2>
         <span class="nota">${inteiro(lista.length)} registros · ${brl(total)}${lista.length>400?' · exibindo os 400 mais recentes':''}</span></header>
-      ${mostrados.length === 0 ? '<p class="vazio">Nenhum lançamento com estes filtros.</p>' : `
+      ${mostrados.length === 0 ? vazioHtml({
+        semNada: 'Nenhum lançamento nesta unidade ainda. Use "Novo lançamento" acima, ou suba uma planilha em Sistema › Importar / Exportar.',
+        comFiltro: 'Nenhum lançamento com estes filtros. Há lançamentos nesta unidade — o recorte atual é que não alcança nenhum.',
+        filtrou: Loja.todosDoEscopo().length > 0,
+      }) : `
       <div class="rol"><table>
         <thead><tr><th>Competência</th>${variasUnidades ? '<th>Unidade</th>' : ''}<th>Filial</th><th>Consumo</th><th>Tipo</th><th>Fornecedor</th><th>Documento</th><th>Descrição</th>
           <th>Origem</th><th>Natureza</th><th>Classificação</th><th class="n">Valor</th><th></th></tr></thead>
