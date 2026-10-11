@@ -405,6 +405,24 @@ function filtroDaTela(tela = E.aba) {
 }
 
 /**
+ * A VERSÃO DOS DADOS — um contador que anda a cada escrita em `E.lanc`.
+ *
+ * Ele existe para que um resultado calculado possa ser guardado e reusado com
+ * segurança. Comparar `E.lanc.size` não serviria: gravar um mês por cima de
+ * outro deixa o tamanho igual e o conteúdo diferente, e o cache devolveria o
+ * número velho sem avisar — que é a pior forma de errar.
+ *
+ * Quem escreve em `E.lanc` TEM de chamar `dadosMudaram()`. São quatro lugares,
+ * e todos estão marcados.
+ */
+let versaoDosDados = 0;
+function dadosMudaram() { versaoDosDados++; }
+
+/** Onde `Loja.todosDoEscopo` e `ordemDosTipos` guardam a última resposta. */
+const cacheDoEscopo = { chave: null, valor: null };
+const cacheDaOrdem = { chave: null, valor: null };
+
+/**
  * O escopo de leitura desta tela: o filtro local, quando há, e o cliente
  * inteiro quando não há. Nunca o banco todo — matriz de outro contratante não
  * entra nem por engano.
@@ -443,6 +461,7 @@ const Loja = {
     const snap = await E.db.collection('lanc').where('empresa','==',empresa).get();
     for (const d of snap.docs) E.lanc.set(d.id, { ...d.data() });
     E.mesesCarregados.add(empresa);
+    dadosMudaram(); // escrita em E.lanc — ver `versaoDosDados`
   },
   chave: (empresa, comp) => empresa + '__' + comp,
   itens(empresa, comp) { return (E.lanc.get(Loja.chave(empresa, comp)) || {}).itens || []; },
@@ -455,15 +474,36 @@ const Loja = {
     }
     return saida;
   },
-  /** Lançamentos de todas as empresas selecionadas. */
+  /**
+   * Lançamentos de todas as empresas selecionadas.
+   *
+   * GUARDADO entre chamadas, e esta foi a mudança de desempenho que mais
+   * pagou. A função copia objeto por objeto — numa base de dois anos são
+   * milhares de cópias — e a tela de Indicadores a chamava centenas de vezes
+   * para desenhar uma única vez, porque `corDoTipo` a alcança por baixo, uma
+   * vez por segmento de barra. Medido antes do cache: 2.484 ms só aqui.
+   *
+   * A chave é a versão dos dados mais o escopo: qualquer escrita ou troca de
+   * filtro produz chave nova, e o resultado velho é descartado. Ela é
+   * calculada a cada chamada de propósito — é uma soma de poucos inteiros,
+   * barata o bastante para não valer a pena guardar, e guardá-la traria de
+   * volta o risco que o cache existe para evitar.
+   */
   todosDoEscopo() {
-    return escopoEmpresas().flatMap((e) => Loja.todos(e));
+    const escopo = escopoEmpresas();
+    const chave = versaoDosDados + '|' + escopo.join(',');
+    if (cacheDoEscopo.chave === chave) return cacheDoEscopo.valor;
+    const valor = escopo.flatMap((e) => Loja.todos(e));
+    cacheDoEscopo.chave = chave;
+    cacheDoEscopo.valor = valor;
+    return valor;
   },
   async gravarMes(empresa, comp, itens) {
     const k = Loja.chave(empresa, comp);
     const corpo = { empresa, competencia: comp, itens };
     await E.db.doc('lanc/' + k).set(corpo);
     E.lanc.set(k, corpo);
+    dadosMudaram(); // escrita em E.lanc — ver `versaoDosDados`
   },
   /**
    * A trilha é do CLIENTE — dimensão primária, sempre presente. `empresa` é
@@ -964,10 +1004,20 @@ const CORES_TIPO = 8;
 // necessidade. E não consulta filtro nenhum — é por isso que a cor não se mexe
 // quando alguém aperta o período ou escolhe uma filial.
 function ordemDosTipos() {
+  // Guardada pelo mesmo motivo e com a mesma chave de `todosDoEscopo`: ela
+  // varre a base inteira e ordena por `localeCompare`, que é caro, e
+  // `corDoTipo` a chama uma vez POR SEGMENTO DE BARRA. Numa tela com dois anos
+  // de histórico isso eram centenas de varreduras completas para pintar uma
+  // tela — 1.730 ms medidos entre ela e `corDoTipo`.
+  const escopo = escopoEmpresas();
+  const chave = versaoDosDados + '|' + escopo.join(',');
+  if (cacheDaOrdem.chave === chave) return cacheDaOrdem.valor;
   const comFixa = new Set(Loja.todosDoEscopo()
     .filter((l) => l.natureza === 'fixa' && l.tipo)
     .map((l) => String(l.tipo)));
-  return [...comFixa].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  cacheDaOrdem.chave = chave;
+  cacheDaOrdem.valor = [...comFixa].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return cacheDaOrdem.valor;
 }
 
 /**

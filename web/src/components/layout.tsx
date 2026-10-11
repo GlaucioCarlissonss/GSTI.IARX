@@ -1,9 +1,10 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { useState } from 'react';
-import { Modal } from './base';
+import { Suspense, useState } from 'react';
+import { Carregando, Modal } from './base';
 import { useSessao } from '../lib/sessao';
 import { useLimparFiltros } from '../lib/filtros';
 import { ICONE_TEMA, ROTULO_TEMA, useTema } from '../lib/tema';
+import { adiantar } from '../rotas';
 
 // O menu é o desenho dos módulos do negócio. Quem trabalha com dinheiro não
 // precisa esbarrar em chamado, e vice-versa. `Sistema` guarda o que atravessa
@@ -194,6 +195,12 @@ export function Layout() {
                   <NavLink
                     key={item.para}
                     to={item.para}
+                    // A tela é buscada ao APONTAR, não ao clicar: entre
+                    // apontar e apertar passam uns 100 ms, e o arquivo
+                    // costuma chegar dentro dessa janela. `focus` cobre quem
+                    // navega por teclado, que nunca passa o mouse.
+                    onPointerEnter={() => adiantar(item.para)}
+                    onFocus={() => adiantar(item.para)}
                     end={'fim' in item ? item.fim : false}
                     className={({ isActive }) => [isActive ? 'ativo' : '', 'sub' in item ? 'aninhado' : ''].join(' ').trim()}
                   >
@@ -255,7 +262,14 @@ export function Layout() {
         </header>
 
         <main className="pagina" id="conteudo" tabIndex={-1}>
-          <Outlet />
+          {/* O Suspense fica AQUI, e não acima do Layout: assim menu, cabeçalho
+              e tema continuam na tela enquanto a próxima chega, e só a área de
+              conteúdo troca. Mais acima, cada navegação apagaria a navegação
+              inteira por um instante — que é como uma tela dividida fica pior
+              do que uma tela inteira. */}
+          <Suspense fallback={<Carregando>Carregando tela…</Carregando>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

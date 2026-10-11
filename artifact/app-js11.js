@@ -385,6 +385,7 @@ async function viewDados() {
       delete bt.dataset.confirmar;
       if (!simular) {
         E.lanc.clear(); E.mesesCarregados.clear(); E.projetos.clear(); E.sla.clear();
+        dadosMudaram(); // escrita em E.lanc — ver `versaoDosDados`
         for (const id of empresasDoEscopoOp(escopoAgora)) await garantirDados(id);
       }
       saida.innerHTML = relatorioHtml(rel, simular, arq.name);

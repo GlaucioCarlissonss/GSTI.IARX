@@ -213,6 +213,7 @@ async function purgarFolhaTI() {
       const corpo = { ...dados, itens: ficam };
       await E.db.doc('lanc/' + d.id).set(corpo);
       E.lanc.set(d.id, corpo);
+      dadosMudaram(); // escrita em E.lanc — ver `versaoDosDados`
     }
 
     await E.db.doc(MARCA_PURGA_FOLHA).set({ quando: new Date().toISOString(), removidos, centavos });

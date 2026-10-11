@@ -2,31 +2,13 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ProvedorSessao, useSessao } from './lib/sessao';
 import { ProvedorFiltros } from './lib/filtros';
 import { Layout } from './components/layout';
+// Login e Seleção de Cliente ficam ESTÁTICOS de propósito: são as duas telas
+// que todo mundo atravessa antes de qualquer outra, e carregá-las sob demanda
+// poria uma espera de rede justamente na porta de entrada. As 23 telas de
+// dentro vêm de `rotas.ts`, uma por arquivo, buscadas quando se vai até elas.
 import { Login, PrimeiraEmpresa, RedefinirSenha } from './pages/Login';
 import { PaginaSelecaoCliente } from './pages/SelecaoCliente';
-import { PaginaClientes } from './pages/Clientes';
-import { PaginaPainelExecutivo } from './pages/PainelExecutivo';
-import { PaginaIndicadoresGerais } from './pages/IndicadoresGerais';
-import { PaginaFinanceiro } from './pages/Financeiro';
-import { PaginaLancamentos } from './pages/Lancamentos';
-import { PaginaProjetos } from './pages/Projetos';
-import { PaginaCadastroProjetos } from './pages/CadastroProjetos';
-import { PaginaRegistrosSla, PaginaSla } from './pages/Sla';
-import { PaginaBitrix24, PaginaOstick } from './pages/Suporte';
-import { PaginaIntegracoes } from './pages/Integracoes';
-import { PaginaAcessos } from './pages/Acessos';
-import { PaginaRelatorio } from './pages/Relatorio';
-import { PaginaPlanilhas } from './pages/Planilhas';
-import { PaginaConferencia } from './pages/Conferencia';
-import {
-  PaginaAuditoria,
-  PaginaCadastros,
-  PaginaFechamentos,
-  PaginaMetas,
-  PaginaReconhecedores,
-  PaginaReducao,
-  PaginaSlas,
-} from './pages/Administracao';
+import { Telas } from './rotas';
 import { Carregando } from './components/base';
 
 function Rotas() {
@@ -48,29 +30,29 @@ function Rotas() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<PaginaPainelExecutivo />} />
-        <Route path="indicadores" element={<PaginaIndicadoresGerais />} />
-        <Route path="financeiro" element={<PaginaFinanceiro />} />
-        <Route path="lancamentos" element={<PaginaLancamentos />} />
-        <Route path="fechamentos" element={<PaginaFechamentos />} />
-        <Route path="conferencia" element={<PaginaConferencia />} />
-        <Route path="relatorio" element={<PaginaRelatorio />} />
-        <Route path="projetos" element={<PaginaProjetos />} />
-        <Route path="projetos/cadastro" element={<PaginaCadastroProjetos />} />
-        <Route path="sla" element={<PaginaSla />} />
-        <Route path="sla/registros" element={<PaginaRegistrosSla />} />
-        <Route path="suporte/ostick" element={<PaginaOstick />} />
-        <Route path="suporte/bitrix24" element={<PaginaBitrix24 />} />
-        <Route path="suporte/integracoes" element={<PaginaIntegracoes />} />
-        <Route path="planilhas" element={<PaginaPlanilhas />} />
-        <Route path="cadastros" element={<PaginaCadastros />} />
-        <Route path="metas" element={<PaginaMetas />} />
-        <Route path="slas" element={<PaginaSlas />} />
-        <Route path="reducao" element={<PaginaReducao />} />
-        <Route path="reconhecedores" element={<PaginaReconhecedores />} />
-        <Route path="clientes" element={<PaginaClientes />} />
-        <Route path="acessos" element={<PaginaAcessos />} />
-        <Route path="auditoria" element={<PaginaAuditoria />} />
+        <Route index element={<Telas.painelExecutivo />} />
+        <Route path="indicadores" element={<Telas.indicadores />} />
+        <Route path="financeiro" element={<Telas.financeiro />} />
+        <Route path="lancamentos" element={<Telas.lancamentos />} />
+        <Route path="fechamentos" element={<Telas.fechamentos />} />
+        <Route path="conferencia" element={<Telas.conferencia />} />
+        <Route path="relatorio" element={<Telas.relatorio />} />
+        <Route path="projetos" element={<Telas.projetos />} />
+        <Route path="projetos/cadastro" element={<Telas.cadastroProjetos />} />
+        <Route path="sla" element={<Telas.sla />} />
+        <Route path="sla/registros" element={<Telas.registrosSla />} />
+        <Route path="suporte/ostick" element={<Telas.ostick />} />
+        <Route path="suporte/bitrix24" element={<Telas.bitrix24 />} />
+        <Route path="suporte/integracoes" element={<Telas.integracoes />} />
+        <Route path="planilhas" element={<Telas.planilhas />} />
+        <Route path="cadastros" element={<Telas.cadastros />} />
+        <Route path="metas" element={<Telas.metas />} />
+        <Route path="slas" element={<Telas.slas />} />
+        <Route path="reducao" element={<Telas.reducao />} />
+        <Route path="reconhecedores" element={<Telas.reconhecedores />} />
+        <Route path="clientes" element={<Telas.clientes />} />
+        <Route path="acessos" element={<Telas.acessos />} />
+        <Route path="auditoria" element={<Telas.auditoria />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -2922,6 +2922,132 @@ deixa uma linha de auditoria com esses números e a justificativa — é ela que
 explica, depois, por que seiscentos lançamentos mudaram de estado no mesmo
 segundo.
 
+## Desempenho: o que foi medido, e o que foi feito
+
+Tudo nesta seção saiu de medição, não de intuição. As duas superfícies tinham
+problemas DIFERENTES, e tratá-las com a mesma receita teria melhorado a errada
+em cada uma.
+
+### A versão hospedada: o recálculo escondido
+
+A tela de **Indicadores Gerais** levava **6.198 ms** para ser desenhada numa
+base de 8.279 lançamentos (dois anos, duas matrizes). As outras 21 abas somadas
+levavam 148 ms.
+
+A primeira tentativa de explicar isso errou. Envolver cada função `calcular*`
+num cronômetro apontou `calcularPlanoReducao` como culpada de 98% do tempo — e
+ela não era: o custo estava em funções que ela chama por baixo, e o cronômetro
+de quem chama soma o de quem é chamado. Quem respondeu foi a **amostragem de
+CPU**, que mede tempo PRÓPRIO:
+
+```
+  2484 ms  Loja.todos
+   928 ms  corDoTipo
+   802 ms  ordemDosTipos
+   414 ms  Loja.todosDoEscopo
+```
+
+A causa: `corDoTipo(nome)` chama `ordemDosTipos()`, que chama
+`Loja.todosDoEscopo()`, que **copia objeto por objeto a base inteira**. E
+`corDoTipo` é chamada uma vez por segmento de barra. Desenhar 24 meses de
+custo fixo empilhado por tipo refazia a varredura centenas de vezes — mais de
+um milhão de cópias de objeto para pintar uma tela.
+
+**A correção**: `Loja.todosDoEscopo()` e `ordemDosTipos()` passam a guardar a
+última resposta, com chave `versão dos dados + escopo`.
+
+| | antes | depois |
+|---|---|---|
+| Indicadores Gerais | 6.198 ms | **105 ms** |
+| as 22 abas somadas | 6.346 ms | **237 ms** |
+
+**A invalidação é o ponto, e não o ganho.** Um cache que devolve o valor velho
+é pior do que o código lento que ele substituiu: a tela mostra um número errado
+com a confiança de um número certo, e ninguém tem como desconfiar — lentidão se
+percebe, dado velho não. Por isso:
+
+- a chave é um **contador de versão** (`versaoDosDados`), e não `E.lanc.size`.
+  Gravar um mês por cima de outro deixa o tamanho igual e o conteúdo diferente,
+  e um cache por tamanho serviria o valor velho exatamente aí;
+- os **quatro** pontos que escrevem em `E.lanc` chamam `dadosMudaram()`, e todos
+  estão marcados com comentário;
+- `artifact/testar-cache.cjs` prova a invalidação nos quatro casos — gravar,
+  gravar por cima sem mudar a quantidade, tipo novo entrando na ordem das cores,
+  e troca de escopo — além de provar que, entre duas mudanças, a resposta é de
+  fato reaproveitada. Sem esse último caso o cache poderia estar inerte e a
+  medição teria mentido.
+
+### O app React: o pacote inteiro para ver uma tela
+
+As 23 telas eram `import` estático, num pacote único de **554,52 kB**: quem
+abria o Painel Executivo baixava também Planilhas, Acessos e Auditoria.
+
+Dividir por rota (`React.lazy`) levou o pacote inicial a **299,22 kB**. Mas a
+medição com a rede estrangulada mostrou que isso, sozinho, **piorava** o caso
+comum:
+
+| | pacote único | só dividido |
+|---|---|---|
+| rede 4g | 1.031 ms | 1.307 ms |
+| rede 3g | 4.014 ms | 3.283 ms |
+
+É o esperado: dividir cria uma **fila** — o navegador só descobre de que
+arquivo a tela precisa depois de baixar e executar o pacote principal. Onde a
+banda é larga, os bytes poupados não custavam nada e a viagem extra custa.
+Entregar assim seria trocar uma piora no escritório por uma melhora no campo.
+
+A fila foi desfeita por `web/plugin-adiantar-tela.ts`, que escreve no
+`index.html` um script síncrono com o mapa `rota → arquivos` e injeta
+`<link rel="modulepreload">` da tela pedida. As duas viagens passam a acontecer
+lado a lado:
+
+| | pacote único | dividido + adiantamento |
+|---|---|---|
+| rede 4g | 1.031 ms | **846 ms** |
+| rede 3g | 4.014 ms | **3.103 ms** |
+| bytes por tela | 541,5 kB | **321 a 342 kB** |
+
+Duas salvaguardas, porque um plugin de desempenho que se cala ao quebrar faz a
+medição mentir:
+
+- o mapa é **extraído de `src/rotas.ts`**, que é a única fonte da rota e do
+  `import()` dela. Uma segunda lista escrita à mão divergiria na próxima tela
+  que alguém acrescentasse, e divergir ali não quebra nada visível — só faz o
+  adiantamento buscar a tela errada, em silêncio, para sempre;
+- a extração **falha a compilação** se ler menos telas do que o esperado, ou se
+  nenhuma rota casar com um pedaço do pacote.
+
+No menu, a tela também é buscada no `pointerenter` e no `focus` do link: entre
+apontar e apertar passam uns 100 ms, e o arquivo costuma chegar dentro dessa
+janela. O `Suspense` fica em volta do `Outlet`, **dentro** do `Layout` — mais
+acima, cada navegação apagaria menu e cabeçalho por um instante, e uma tela
+dividida ficaria pior do que uma tela inteira.
+
+### O que NÃO foi mexido, e por quê
+
+- **`React.memo` no app React.** Não houve medição que o justificasse: a web
+  recebe agregados prontos do servidor, e não tem o equivalente da varredura de
+  8.279 linhas que a versão hospedada tinha. Espalhar `memo` por suposição
+  acrescenta comparação a cada render e esconde a próxima medição.
+- **As demais 21 abas da versão hospedada.** Somadas davam 148 ms antes do
+  cache. Não há ali problema a resolver.
+
+### As ferramentas de medição ficam no repositório
+
+`artifact/medir-render.cjs`, `artifact/semear-volume.cjs` e
+`web/medir-carga.cjs` ficam versionados porque a próxima pessoa precisa poder
+refazer a conta. Duas armadilhas estão escritas dentro deles, porque custaram
+tempo:
+
+1. **`render()` é assíncrona.** Medir em volta dela sem `await` dava 0 ms em
+   telas que levam segundos — um número que faria qualquer otimização parecer
+   desnecessária;
+2. **base sintética mínima não mede nada.** Com dois lançamentos toda tela
+   desenha em 1 ms, e qualquer melhoria "ganha" zero porque não havia o que
+   ganhar. `semear-volume.cjs` gera 8.279 lançamentos inventados, com gerador
+   determinístico para que duas medições em dias diferentes continuem
+   comparáveis.
+
 ## Expansões previstas
 
 O modelo já acomoda novos tipos de despesa, filiais, empresas, filas e tópicos

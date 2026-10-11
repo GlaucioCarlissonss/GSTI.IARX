@@ -17,10 +17,18 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   pag.on('pageerror', (e) => erros.push(e.message));
   pag.on('console', (m) => { if (m.type() === 'error' && !/ERR_|net::|401/.test(m.text())) erros.push(m.text()); });
   await pag.goto(B + '/');
-  await pag.fill('input[type=email]', process.env.EMAIL || 'gestor@gsti.local');
-  await pag.fill('input[type=password]', process.env.SENHA || '');
+  // O login passou a ser por USUÁRIO, não por e-mail, e este roteiro ficou
+  // procurando um campo que não existe mais — falhando no `fill`, antes de
+  // conferir coisa alguma. Mesmo seletor dos outros verificadores.
+  await pag.fill('input[autocomplete="username"], input[name="usuario"]', process.env.USUARIO || 'gestora');
+  await pag.fill('input[type=password]', process.env.SENHA || 'varredura2026');
   await pag.click('button[type=submit]');
-  await pag.waitForTimeout(2200);
+  await pag.waitForTimeout(1200);
+  // E ganhou um passo antes das telas: a escolha do cliente. Sem atravessá-la
+  // nenhuma rota abre, e o roteiro mediria a tela de escolha 4 vezes.
+  if (await pag.$('.cartao button')) await pag.click('.cartao button');
+  await pag.waitForSelector('.menu a', { timeout: 15000 });
+  await pag.waitForTimeout(600);
 
   const falhas = [];
   const ok = (r, v, e) => { const b = JSON.stringify(v) === JSON.stringify(e);
