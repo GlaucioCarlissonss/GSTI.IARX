@@ -115,7 +115,7 @@ function linhasFinanceiro(_ctx: Contexto, escopo: EscopoOperacao) {
         `SELECT l.id, e.nome AS empresa, f.nome AS filial, t.nome AS tipo, l.competencia, l.valor_centavos,
                 l.natureza, l.classificacao, l.qtd_parcelas, l.parcela_numero, l.lancamento_origem_id,
                 l.cenario, l.origem, l.descricao, l.observacoes, l.tipo_consumo, l.beneficia_todas,
-                l.reconhecido, l.fornecedor
+                l.reconhecido, l.fornecedor, l.recorrencia_ate
            FROM lancamentos l
            JOIN empresas e ON e.id = l.empresa_id
            JOIN tipos_despesa t ON t.id = l.tipo_despesa_id
@@ -143,6 +143,7 @@ function linhasFinanceiro(_ctx: Contexto, escopo: EscopoOperacao) {
       beneficia_todas: number | null;
       reconhecido: number | null;
       fornecedor: string | null;
+      recorrencia_ate: string | null;
     }>
   );
 
@@ -172,6 +173,9 @@ function linhasFinanceiro(_ctx: Contexto, escopo: EscopoOperacao) {
       ? 'Todas'
       : (beneficiadas.get(l.id) ?? []).map((f) => `${f.empresa_nome} > ${f.nome}`).join('|'),
     Fornecedor: l.fornecedor ?? '',
+    // Vazio é "contrato em aberto", e não ausência de informação: é o estado
+    // da maioria, e a importação o lê exatamente assim.
+    'Contrato Vale Até': l.recorrencia_ate ? paraExibicao(l.recorrencia_ate) : '',
     Descrição: l.descricao ?? '',
     Observações: l.observacoes ?? '',
     // Sempre Sim ou Não, nunca vazio: em branco é o que a importação lê como

@@ -895,6 +895,28 @@ function importarLancamento(
   // O favorecido (modelo 1.7). Coluna ausente vale nulo, como todo campo novo.
   const fornecedor = ler(linha, 'Fornecedor') || null;
 
+  // A VIGÊNCIA DO CONTRATO (modelo 1.7). Em branco é "contrato em aberto", que
+  // é o estado da maioria e o que a projeção lê para continuar levando a
+  // despesa adiante. Recusar aqui, e não deixar passar, porque uma data
+  // inválida gravada silenciosamente encerraria — ou eternizaria — um contrato
+  // sem ninguém saber.
+  const vigenciaBruta = ler(linha, 'Contrato Vale Até');
+  let recorrenciaAte: string | null = null;
+  if (vigenciaBruta) {
+    if (natureza !== 'fixa') {
+      throw new Error('"Contrato Vale Até" só vale para despesa fixa: '
+        + 'pontual não se repete, e não há recorrência para encerrar.');
+    }
+    if (!ehCompetenciaValida(vigenciaBruta)) {
+      throw new Error(`"Contrato Vale Até" com valor "${vigenciaBruta}" inválido. Use MM/AAAA.`);
+    }
+    recorrenciaAte = paraInterno(vigenciaBruta);
+    if (recorrenciaAte < competencia) {
+      throw new Error(`"Contrato Vale Até" (${vigenciaBruta}) é anterior à competência `
+        + `(${competenciaBruta}): o contrato teria acabado antes de começar.`);
+    }
+  }
+
   if (natureza === 'pontual_parcelada' && parcelaNumero === null && (qtdParcelas === null || qtdParcelas < 2)) {
     throw new Error('Despesa pontual parcelada exige "Qtd Parcelas" maior ou igual a 2.');
   }
@@ -977,8 +999,9 @@ function importarLancamento(
       `INSERT INTO lancamentos
          (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
           qtd_parcelas, parcela_numero, lancamento_origem_id, cenario, origem, descricao, observacoes, dedup_hash,
-          tipo_consumo, beneficia_todas, reconhecido, reconhecido_em, reconhecido_via, fornecedor)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          tipo_consumo, beneficia_todas, reconhecido, reconhecido_em, reconhecido_via, fornecedor,
+          recorrencia_ate)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       ctx.empresaId,
@@ -1005,6 +1028,7 @@ function importarLancamento(
       // procura quando alguém pergunta quem conferiu.
       reconhecido ? 'planilha' : null,
       fornecedor,
+      recorrenciaAte,
     );
   const idNovo = Number(info.lastInsertRowid);
   if (tipoConsumo === 'compartilhado') {

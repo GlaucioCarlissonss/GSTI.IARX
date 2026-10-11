@@ -401,6 +401,10 @@ export function GraficoLinhas({
   const { teto, marcas } = escala(maximo);
   const y = (v: number) => margem.topo + alturaPlot - (v / teto) * alturaPlot;
   const x = (i: number) => margem.esquerda + (dados.length <= 1 ? larguraPlot / 2 : (larguraPlot * i) / (dados.length - 1));
+  // A largura do alvo de cada ponto. Na linha os pontos ficam SOBRE as bordas
+  // do gráfico, não centrados numa faixa como nas barras, então o alvo é o
+  // espaçamento entre pontos — o que dá meia faixa para cada um nas pontas.
+  const faixaDoPonto = dados.length <= 1 ? larguraPlot : larguraPlot / (dados.length - 1);
 
   if (dados.length === 0) return <p className="vazio">Sem dados no período consultado.</p>;
 
@@ -495,6 +499,49 @@ export function GraficoLinhas({
             {dados.length > 14 && i % 2 === 1 ? '' : d.rotulo}
           </text>
         ))}
+
+        {/*
+          UM ALVO POR PONTO, para o teclado alcançar o detalhamento.
+
+          O clique da série temporal estava só no `<svg>`, e dependia do
+          `indice` que o MOUSE destacou: com `role="img"` e sem `tabindex`,
+          quem navega por teclado não tinha como abrir o detalhamento de mês
+          nenhum. Um gráfico que abre registros para o mouse e não para o
+          teclado é uma função que existe para metade das pessoas.
+
+          É a mesma solução que as barras já usam — um `<g role="button">` por
+          categoria —, e a repetição aqui é de propósito: duas formas de
+          alcançar a mesma coisa obrigariam quem usa a reaprender a cada
+          gráfico. O retângulo é transparente e cobre a faixa inteira da
+          categoria, de modo que o alvo não é o círculo de 3,5 px.
+        */}
+        {aoClicar
+          && dados.map((d, i) => (
+            <g
+              key={`alvo-${d.rotulo}`}
+              role="button"
+              tabIndex={0}
+              aria-label={`${d.rotulo} — abrir os registros deste ponto`}
+              style={{ cursor: 'pointer' }}
+              onFocus={() => setIndice(i)}
+              onBlur={() => setIndice(null)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setDica(null);
+                  aoClicar(d, i);
+                }
+              }}
+            >
+              <rect
+                x={x(i) - faixaDoPonto / 2}
+                y={margem.topo}
+                width={faixaDoPonto}
+                height={alturaPlot}
+                fill="transparent"
+              />
+            </g>
+          ))}
       </svg>
       <Dica estado={dica} />
       <AlternarTabela aberta={tabela} alternar={() => setTabela((v) => !v)} />

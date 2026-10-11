@@ -23,7 +23,13 @@
 //     desfazer a conferência de ninguém.
 // 1.7 acrescentou "Fornecedor" ao Financeiro — o favorecido, que a carga de
 //     Contas a Pagar já gravava e a planilha não levava. Fora das obrigatórias,
-//     como as anteriores.
+//     como as anteriores. No mesmo modelo entrou "Contrato Vale Até": a
+//     vigência que a projeção lê para saber até quando um contrato recorrente
+//     continua acontecendo. Ela nasceu primeiro na versão hospedada, e as duas
+//     pontas ficaram declarando o MESMO modelo 1.7 com colunas diferentes —
+//     um arquivo exportado de lá perdia a vigência ao entrar aqui, em
+//     silêncio. Fora das obrigatórias: em branco é "contrato em aberto", que
+//     é o estado da maioria.
 export const TEMPLATE_VERSAO_ATUAL = '1.7';
 
 export type NomeAba =
@@ -82,6 +88,7 @@ const ABAS_BASE: Record<NomeAba, DefinicaoAba> = {
       'Tipo de Consumo',
       'Filiais Beneficiadas',
       'Fornecedor',
+      'Contrato Vale Até',
       'Descrição',
       'Observações',
       'Reconhecido',
@@ -102,6 +109,10 @@ const ABAS_BASE: Record<NomeAba, DefinicaoAba> = {
       Observações: ['observacoes', 'obs'],
       Reconhecido: ['reconhecido', 'conferido', 'reconhecidosn', 'despesareconhecida'],
       Fornecedor: ['fornecedor', 'favorecido', 'credor', 'beneficiario', 'razaosocial'],
+      // Os mesmos apelidos aceitos pela versão hospedada, para um arquivo
+      // preenchido lá entrar aqui sem retrabalho.
+      'Contrato Vale Até': ['contratovaleate', 'valeate', 'vigencia', 'vigenciaate',
+        'recorrenciaate', 'repetirate', 'contratoate'],
     },
     obrigatorias: ['Tipo de Despesa', 'Competência', 'Valor', 'Natureza', 'Classificação'],
   },
@@ -261,6 +272,10 @@ const NOTAS: Partial<Record<NomeAba, Record<string, string>>> = {
     Reconhecido:
       'Sim | Não — a despesa já foi conferida. EM BRANCO não altera nada: reimportar um arquivo antigo '
       + 'não desfaz conferência. Escrever "Não" numa despesa já reconhecida a devolve para a fila.',
+    'Contrato Vale Até':
+      'MM/AAAA — até quando este contrato recorrente vale. Só para despesa FIXA. EM BRANCO significa '
+      + 'contrato em aberto, e em aberto ele segue sendo projetado em todos os meses à frente. '
+      + 'Preencher é o que encerra a projeção de um contrato que acabou.',
   },
   Projetos: {
     'Mês Início': 'MM/AAAA.',

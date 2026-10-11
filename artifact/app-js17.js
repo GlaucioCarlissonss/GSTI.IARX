@@ -508,6 +508,19 @@ const interruptorDeMediasHtml = (chave) => `<label class="liga-medias">
 
 /** As faixas do Objetivo 03 e o vermelho do teto. */
 const COR_FAIXA = { fixas: 'var(--s1)', variaveis: 'var(--m4)', investimentos: 'var(--s3)' };
+/**
+ * A MESMA cor de faixa, no tom que o TEXTO exige.
+ *
+ * Preenchimento e texto medem-se por réguas diferentes: 3:1 contra a
+ * superfície para uma barra ou uma linha, 4,5:1 para uma palavra. As três
+ * cores acima reprovavam na segunda — e o verde reprovava até a primeira,
+ * com 2,82:1 no número de 25px do cabeçalho da tabela.
+ *
+ * Escurecer a rampa de preenchimento resolveria o texto e deixaria os gráficos
+ * pesados; daí a segunda rampa, com as mesmas matizes e a mesma ordem. É o
+ * mesmo arranjo que a paleta de tipo de despesa já usa (--t1t..--t8t).
+ */
+const COR_FAIXA_TEXTO = { fixas: 'var(--s1t)', variaveis: 'var(--m4t)', investimentos: 'var(--s3t)' };
 const ROTULO_FAIXA = {
   fixas: 'Despesas fixas (mensais)',
   variaveis: 'Despesas variáveis (pontuais)',
@@ -533,7 +546,7 @@ function tabelaDoObjetivo03Html(o) {
   return `<div class="rol rol-fixo" style="margin-top:var(--esp-6);max-height:300px;min-height:0"><table>
     <thead><tr><th>Competência</th>
       ${Object.entries(ROTULO_FAIXA).map(([k, r]) =>
-        `<th class="n" style="color:${COR_FAIXA[k]}">${esc(r.split(' (')[0])}</th>`).join('')}
+        `<th class="n" style="color:${COR_FAIXA_TEXTO[k]}">${esc(r.split(' (')[0])}</th>`).join('')}
       <th class="n" style="color:${COR_TOTAL}">Total</th>
       <th class="n" style="color:${COR_TETO}">Teto</th>
       <th class="n">Diferença</th><th class="n">vs. média</th><th>Situação</th></tr></thead>

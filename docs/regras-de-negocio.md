@@ -3048,6 +3048,73 @@ tempo:
    determinístico para que duas medições em dias diferentes continuem
    comparáveis.
 
+## Revisão final da série: o que ela encontrou
+
+A sétima entrega não acrescentou função nenhuma. Ela reviu as seis anteriores,
+e o que achou vale registrar porque dois dos achados eram do tipo que não
+aparece sozinho.
+
+### A planilha: duas pontas, o mesmo modelo, colunas diferentes
+
+A coluna **"Contrato Vale Até"** nasceu na versão hospedada junto com o motor
+de projeção, e o servidor ficou sem ela. As duas pontas passaram a declarar o
+MESMO modelo `1.7` aceitando colunas diferentes.
+
+Isso é pior do que faltar a coluna. Um arquivo exportado da versão hospedada e
+importado no servidor **perdia a vigência em silêncio** — sem erro, sem aviso —
+e todo contrato encerrado voltava a ser projetado para sempre, sem que houvesse
+um momento em que a informação visivelmente sumiu.
+
+A coluna passa a existir nas duas, com os mesmos apelidos de cabeçalho, e a
+importação **recusa** em vez de gravar calada: data inválida, vigência anterior
+à competência (o contrato acabaria antes de começar) e vigência em despesa
+pontual (não há recorrência para encerrar). `server/test/vigencia-planilha.test.ts`
+prova a ida e volta, inclusive que a vigência importada chega ao motor de
+projeção com o mesmo efeito da cadastrada na tela.
+
+### O gráfico de linha abria para o mouse e não para o teclado
+
+A barra e a fatia da rosca já eram gatilhos acessíveis. A **série temporal**
+não era: o clique dela morava num retângulo de captura que descobria o mês pela
+posição do cursor, com `role="img"` e sem `tabindex`. Pelo teclado o
+detalhamento dela simplesmente não existia.
+
+Nas duas superfícies, cada ponto ganhou um alvo focável — a mesma solução que
+as barras já usavam, de propósito: duas formas de alcançar a mesma coisa
+obrigariam quem usa a reaprender a cada gráfico. `artifact/testar-grafico-teclado.cjs`
+e `web/verificar-grafico-teclado.cjs` são a trava.
+
+### O vermelho de crítico não tinha versão escura
+
+`--positivo-texto` tinha sido corrigido para o tema escuro; `--critico` ficou
+para trás e seguia usando o tom do tema claro sobre fundo escuro — **3,62:1** na
+superfície do cartão e 3,27:1 na recuada, reprovado em AA, justamente no texto
+de 12px que anuncia uma meta descumprida.
+
+Ele só apareceu agora porque depende do DADO: o texto em vermelho só existe
+quando alguma meta falha, e a base de conferência levou seis entregas para
+chegar a esse estado. O tom novo (`#e2685c`, 4,77:1) é o mesmo que a versão
+hospedada já usava no escuro — as duas pontas passam a falar a mesma cor.
+
+### Três conferências que não conferiam nada
+
+`web/verificar-drill.cjs` procurava um campo de e-mail que o login não tem mais
+desde que a autenticação passou a ser por usuário: ele morria no `fill`, antes
+da primeira asserção. `verificar-carga.cjs` esperava um campo de arquivo que
+mora dentro de um cartão, e **os cartões nascem fechados**.
+
+A lição é a mesma das 290 falsas falhas de foco de uma entrega anterior: uma
+conferência que mede a tela errada não acusa falha — ela passa, ou falha pelo
+motivo errado, e nos dois casos deixa de proteger. Ambas foram consertadas, e
+a de drill-down passou a abrir os cartões antes de olhar.
+
+> Ao voltar a rodar, `verificar-carga.cjs` acusa três falhas que **não são do
+> app**: o CSV embutido nele é anterior à regra que exige a coluna "Empresa"
+> quando o escopo tem mais de uma matriz. Fica registrado como dívida da
+> conferência, e não como defeito — corrigi-la ajustando a asserção faria o
+> roteiro afirmar o que quer que a tela esteja fazendo, que é o oposto do que
+> um teste serve.
+
 ## Expansões previstas
 
 O modelo já acomoda novos tipos de despesa, filiais, empresas, filas e tópicos

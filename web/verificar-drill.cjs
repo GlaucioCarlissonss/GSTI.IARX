@@ -10,6 +10,14 @@
 const { chromium } = require('playwright');
 
 const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
+/** Abre todo cartão dobrado da tela. Gráfico fechado não está no DOM. */
+async function abrirCartoes(pag) {
+  await pag.evaluate(() => {
+    document.querySelectorAll('.cartao-dobra[aria-expanded="false"]').forEach((b) => b.click());
+  });
+  await pag.waitForTimeout(900);
+}
+
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN });
   const pag = await nav.newPage({ viewport: { width: 1500, height: 1100 } });
@@ -38,6 +46,7 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   for (const [rota, nome] of [['/', 'Painel executivo'], ['/financeiro', 'Dashboard financeiro'], ['/conferencia', 'Conferência'], ['/sla', 'SLA']]) {
     await pag.goto(B + rota);
     await pag.waitForTimeout(1600);
+    await abrirCartoes(pag);
     const kpis = await pag.$$('.indicador');
     const drills = await pag.$$('.indicador.drill');
     const comDica = await pag.$$eval('.indicador[title]', (es) => es.length);
@@ -65,6 +74,11 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   // Gráfico e ranking
   await pag.goto(B + '/financeiro');
   await pag.waitForTimeout(1600);
+  // OS CARTÕES NASCEM FECHADOS, e um gráfico fechado não existe no DOM. Sem
+  // isto a conferência acusava "a barra não é gatilho acessível" para uma
+  // barra que não estava na tela — um achado inventado, e do tipo que manda
+  // consertar o que não está quebrado.
+  await abrirCartoes(pag);
   console.log('\n--- gráficos ---');
   const barra = await pag.$('svg g[role=button]');
   ok('a barra é gatilho acessível', !!barra, true);

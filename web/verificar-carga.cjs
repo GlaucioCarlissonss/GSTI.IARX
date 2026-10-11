@@ -53,15 +53,27 @@ function csvDoCliente(cabecalhoValor) {
   }
   await pag.waitForSelector('.menu a', { timeout: 15000 });
   await pag.click('.menu a:has-text("Importar / Exportar")');
+  await pag.waitForTimeout(900);
+  // OS CARTÕES NASCEM FECHADOS, e o campo de arquivo mora dentro de um deles.
+  // Sem abrir, este roteiro esperava 15 s por um elemento que a tela não tinha
+  // desenhado — e morria antes de conferir qualquer coisa.
+  await pag.evaluate(() => {
+    document.querySelectorAll('.cartao-dobra[aria-expanded="false"]').forEach((b) => b.click());
+  });
   await pag.waitForSelector('input[type="file"]', { timeout: 15000 });
   await pag.waitForTimeout(600);
 
   // ------------------------------------------------- adaptador de cabeçalho
   console.log('\nADAPTADOR — o cabeçalho que a planilha do cliente usa');
   const cartaoImportar = pag.locator('.cartao', { hasText: 'Importar planilha' });
+  // O BOTÃO DE AÇÃO, e não o de dobra. Com os cartões abertos, o cabeçalho do
+  // cartão ("Importar planilha") também é um `<button>`, e um seletor por
+  // texto casava com os dois — o roteiro morria por ambiguidade antes de
+  // conferir qualquer coisa. `.botao` é a classe que só a ação tem.
+  const acaoImportar = cartaoImportar.locator('button.botao:has-text("Importar")');
   const semMapa = csvDoCliente('Vlr Total');
   await pag.setInputFiles('input[type="file"]', semMapa);
-  await cartaoImportar.locator('button:has-text("Importar")').click();
+  await acaoImportar.first().click();
   await pag.waitForTimeout(1800);
   let relatorio = await pag.textContent('body');
   ok('sem o cabeçalho cadastrado, a coluna obrigatória falta', /obrigat[óo]rias ausentes/i.test(relatorio),
@@ -77,7 +89,7 @@ function csvDoCliente(cabecalhoValor) {
   ok('o cabeçalho cadastrado aparece na lista', /Vlr Total/.test(naTabela));
 
   await pag.setInputFiles('input[type="file"]', semMapa);
-  await cartaoImportar.locator('button:has-text("Importar")').click();
+  await acaoImportar.first().click();
   await pag.waitForTimeout(1800);
   relatorio = await pag.textContent('body');
   ok('com o cabeçalho cadastrado, a mesma planilha entra', !/Colunas obrigatórias ausentes/.test(relatorio));
@@ -86,7 +98,7 @@ function csvDoCliente(cabecalhoValor) {
   console.log('\nMODO — inicial sobre base povoada pede confirmação');
   await cartaoImportar.locator('select').nth(1).selectOption('inicial');
   await pag.setInputFiles('input[type="file"]', csvDoCliente('Valor'));
-  await cartaoImportar.locator('button:has-text("Importar")').click();
+  await acaoImportar.first().click();
   await pag.waitForTimeout(1500);
   const recusa = await pag.$eval('.aviso.erro', (a) => a.textContent.trim()).catch(() => null);
   ok('a carga inicial é recusada, dizendo quantos registros já existem',

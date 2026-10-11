@@ -288,6 +288,46 @@ function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '', a
     captura.addEventListener('click', (ev) => { const i = maisProximo(ev); sumirDica(); aoClicar(pontos[i], i); });
   }
   svg.appendChild(captura);
+
+  // UM ALVO POR PONTO, para o TECLADO alcançar o detalhamento.
+  //
+  // O retângulo de captura acima resolve o mouse: ele descobre o mês pela
+  // posição do cursor. Pelo teclado não há cursor, e sem estes alvos o
+  // detalhamento da série temporal simplesmente não existia para quem navega
+  // por Tab — uma função que funciona para metade das pessoas.
+  //
+  // São retângulos transparentes, um por mês, na mesma solução que as barras
+  // já usam. O balão sai do próprio alvo no `focus`, porque não há posição de
+  // cursor de onde partir.
+  if (aoClicar) {
+    const faixaDoPonto = pontos.length <= 1 ? lp : lp / (pontos.length - 1);
+    pontos.forEach((p, i) => {
+      const alvoPonto = svgEl('rect', {
+        x: x(i) - faixaDoPonto / 2, y: m.t, width: faixaDoPonto, height: ap,
+        fill: 'transparent', role: 'button', tabindex: '0',
+        'aria-label': `${p.rot} — abrir os registros deste ponto`,
+      });
+      alvoPonto.style.cursor = 'pointer';
+      alvoPonto.addEventListener('focus', () => {
+        const c = alvoPonto.getBoundingClientRect();
+        mostrarDica({ clientX: c.left + c.width / 2, clientY: c.top }, p.rot,
+          series.filter((sr) => temValor(p, sr.k) && !sr.foraDoBalao)
+            .map((sr) => ({ nome: sr.nome, cor: sr.cor, valor: fmt(p.v[sr.k]) })));
+      });
+      alvoPonto.addEventListener('blur', sumirDica);
+      alvoPonto.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          // O cartão inteiro também é gatilho: sem barrar a subida, abriria
+          // duas telas flutuantes empilhadas.
+          ev.stopPropagation();
+          sumirDica();
+          aoClicar(p, i);
+        }
+      });
+      svg.appendChild(alvoPonto);
+    });
+  }
   // A FAIXA DE CAPTURA DE CADA LINHA DE REFERÊNCIA, por cima do retângulo do
   // mês: uma reta que atravessa o gráfico é a única marca sem um mês para
   // apontar, e por isso é a única que precisa contar a própria origem. A faixa
