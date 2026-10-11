@@ -1548,7 +1548,7 @@ acumulada, então uma média por fatia não teria onde encostar — e no Objetiv
 seriam até oito retas sobre oito tipos de despesa.
 
 **Teto e projeção não têm média.** Um teto é compromisso, não medição, e a
-média de um limite não significa nada; a projeção é o último mês repetido, e a
+média de um limite não significa nada; a projeção não foi medida, e a
 média dela seria ela mesma.
 
 ### Três traços, três significados
@@ -1646,6 +1646,119 @@ A situação vem **escrita** — *dentro*, *estourou*, *sem teto* —, nunca só
 cor. O balão aponta **de qual faixa** veio o estouro: o total sozinho não diz
 onde agir.
 
+## A projeção da recorrência, contrato a contrato
+
+O que o gestor pediu: *"todas as despesas que se repetem todos os meses sejam
+projetadas todos os meses, mudando o formato que está, que projeta a do último
+mês vigente. Se nada foi lançado no mês vigente, ele tem que existir como
+projeção."*
+
+### O que havia antes, e por que não servia
+
+As duas superfícies projetavam de formas diferentes, e nenhuma das duas
+respondia a pergunta:
+
+- a **versão hospedada** repetia o **total** fixo do último mês fechado, doze
+  vezes. Um número só, que não se abre: não dá para perguntar "de que contratos
+  isto é feito?", e um contrato que acabou continua embutido no total;
+- o **servidor** somava apenas o que **já estava lançado** nos meses à frente.
+  Mês sem lançamento devolvia **zero** — e "o custo de TI cai a zero em março" é
+  falso de um jeito que ninguém acredita, o que faz a projeção inteira deixar de
+  ser olhada.
+
+A causa de fundo era a mesma nos dois: **a recorrência nunca foi guardada como
+fato**. "Repetir mensalmente até" escrevia as linhas e se perdia; depois delas,
+ninguém sabia se o contrato continuava valendo.
+
+### A regra, agora
+
+Toda despesa **fixa** projeta mês a mês, a partir da última vez que apareceu,
+até a vigência dela — e, **não havendo vigência, indefinidamente**.
+
+Quatro decisões sustentam isso. São as mesmas em `server/src/domain/projecao.ts`
+e no motor da versão hospedada (`app-js1.js`), de propósito: o gestor confere um
+contra o outro, e uma divergência transformaria a projeção em duas respostas
+para a mesma pergunta.
+
+1. **A identidade do contrato NÃO inclui o valor.** Um reajuste é o mesmo
+   contrato mais caro, não um contrato novo; se o valor entrasse na chave, o
+   reajustado projetaria **duas** vezes — o preço velho e o novo. A chave é
+   unidade + filial + tipo + fornecedor + descrição + cenário, normalizados em
+   espaço e caixa (a planilha do cliente não é consistente nos dois). O valor
+   projetado é o da **última** ocorrência, que é o preço que vale hoje.
+
+2. **Linha real sempre vence a projeção.** Um mês que já tem o lançamento
+   daquele contrato não recebe a projeção dele. Sem isto a despesa seria contada
+   duas vezes exatamente nos meses em que o gestor foi diligente e lançou
+   adiantado — punindo o cuidado.
+
+3. **A vigência manda; a ausência dela significa "em aberto".** Encerrar um
+   contrato é cadastrar até quando ele valeu. Supor um fim que ninguém informou
+   inventaria o encerramento de contratos em vigor, e o sistema passaria a
+   prometer uma economia que não aconteceu. Quando duas ocorrências declaram
+   vigências diferentes, vale a declarada na competência **mais recente**: é a
+   última palavra de quem cadastrou, e não a ordem em que as linhas foram
+   gravadas.
+
+4. **O mês corrente é completado, não ignorado.** O que já foi lançado nele
+   conta como realizado; os contratos que ainda não foram lançados entram como
+   projeção.
+
+**O que a regra deliberadamente NÃO faz.** Não projeta despesa pontual, única ou
+parcelada. A parcelada já tem as linhas gravadas até o fim — projetá-la seria
+contar de novo. A única aconteceu uma vez, e não há o que repetir.
+
+### Onde a vigência se cadastra
+
+Coluna `recorrencia_ate` em `lancamentos`, `AAAA-MM` ou nulo. Nas telas é
+**"Contrato vale até (MM/AAAA)"**, ao lado de "Repetir mensalmente até". São
+duas perguntas diferentes, e por isso dois campos: a primeira **escreve linhas**
+nos meses à frente; a segunda **declara até quando o contrato vale**. Preencher
+"repetir até" também encerra o contrato naquele mês — dizer "repita até março" É
+dizer que ele vale até março.
+
+Linhas que já existiam nascem com vigência **nula**, ou seja, em aberto. Isso é
+escolha do gestor, não omissão do sistema: inventar um fim para elas seria a
+decisão 3 ao contrário.
+
+A planilha-modelo (versão **1.7**) ganhou a coluna **"Contrato Vale Até"**, não
+obrigatória. Ela **não** entra na chave de deduplicação: mudar a vigência de um
+contrato não pode criar um segundo contrato.
+
+### O custo da regra, e como ele fica visível
+
+A decisão 3 tem um preço conhecido: **um contrato que acabou e ninguém encerrou
+é projetado para sempre.** Isso é deliberado — mas só se defende se o sistema
+disser, por nome, quem está nessa situação.
+
+Daí a lista **"Ver contrato a contrato"**, no Farol 3 e no cartão de projeção do
+painel Financeiro (`GET /api/dashboards/contratos-projetados`). Ela abre a soma
+por **dono**, e traz de cada contrato: desde quando existe, quando foi visto
+pela última vez, **há quantos meses não é lançado**, a vigência (ou *em aberto*),
+o valor mensal, quantos meses ele projeta e quanto soma.
+
+A ordem é **pelo mais esquecido primeiro**, e em empate pelo mais caro: o
+contrato visto pela última vez há oito meses e ainda sendo projetado é o que
+precisa de decisão, mesmo que custe pouco. É assim que o risco silencioso vira
+fila de trabalho.
+
+**"Sem lançar há" conta de hoje**, e não do mês que a tela está olhando.
+Ancorar a conta no recorte faria o contrato esquecido aparecer como "lançado
+neste mês" só porque a janela terminava lá — justamente o que a lista existe
+para encontrar.
+
+### A leitura, no painel Financeiro
+
+`projecao_12_meses` traz `fixo` com o lançado e o projetado **somados** — é o
+compromisso do mês —, e `recorrente_projetado` + `contratos_projetados` à parte.
+O gráfico separa as duas numa faixa própria (`--serie-4`, roxo): empilhado o
+total não muda, muda a leitura, que passa a mostrar quanto do mês é **registro**
+e quanto é a **continuação** dos contratos.
+
+O "Compromisso — 12 meses" é a **soma dos meses projetados**, e não o último mês
+multiplicado por doze: os contratos não vencem todos no mesmo dia, e um que
+encerra em março tem de sair do compromisso de abril.
+
 ## Farol 3: as linhas de teto
 
 O Farol 3 ganhou **quatro linhas de teto** — fixas, variáveis, investimentos e a
@@ -1687,16 +1800,21 @@ passou a ser um indicador como os outros — cartão, número, drill-down e dobr
 exigiria adivinhar compras pontuais que ninguém decidiu ainda; o fixo é o único
 que se pode afirmar, porque é o que continua acontecendo se nada mudar.
 
-**Realizado é até o último mês fechado.** O mês corrente está pela metade, e
-tomá-lo como realizado faria o custo parecer ter despencado no dia 3.
+**O mês corrente é completado, não ignorado.** Ele saía da leitura inteira
+porque "está pela metade", e o resultado era um buraco justamente no mês que o
+gestor está vivendo. Agora o que já foi lançado nele conta como realizado, e os
+contratos que ainda não foram lançados entram como projeção: o mês fica inteiro
+sem fingir que já fechou.
 
 **A projeção é uma série à parte**, em tom claro e **tracejada** — dois canais,
 porque a cor sozinha não distingue realizado de projetado para quem não separa
-tons. Ela repete o nível fixo do último mês fechado pelos doze seguintes, e é
-uma regra só: misturá-la ao que já está lançado no futuro faria o significado da
-linha mudar de mês para mês, e ninguém saberia qual das duas está lendo. O
-último mês realizado entra nas duas séries, senão a linha clara nasceria solta
-no ar.
+tons. O último mês realizado entra nas duas séries, senão a linha clara nasceria
+solta no ar.
+
+**Ela projeta CONTRATO A CONTRATO**, e não o total do último mês repetido doze
+vezes. Ver [A projeção da recorrência](#a-projecao-da-recorrencia-contrato-a-contrato)
+abaixo: é a mesma regra que o servidor aplica, e as duas superfícies têm de dar
+o mesmo número.
 
 **A projeção não obedece ao filtro de período**, que termina no passado por
 padrão. Ela existe para olhar adiante; recortá-la pelo filtro a apagaria
@@ -1706,9 +1824,10 @@ justamente quando interessa.
 e quantos pontuais, a variação do fixo e os três tipos que mais pesam. **O
 clique** abre os lançamentos **do maior para o menor valor**: quem clica num mês
 quer saber o que pesa, e a ordem de cadastro faz procurar o peso linha a linha.
-Um mês projetado abre os lançamentos da **base**, dizendo que são dela — abrir a
-lista do mês futuro devolveria vazio, e um detalhamento vazio faz duvidar do
-número.
+Um mês projetado abre os **contratos** que o compõem — com o mês em que cada um
+foi visto pela última vez e até quando vale —, mais o que já foi lançado para
+aquele mês, se houver. Abrir a lista de lançamentos do mês futuro devolveria
+vazio, e um detalhamento vazio faz duvidar do número.
 
 **O cartão abre só o custo fixo** do último mês realizado, que é o número que
 ele anuncia. Abrir o mês inteiro mostraria uma lista cuja soma não é o valor
@@ -2064,8 +2183,14 @@ realizado e projetado é o ponto.
 
 > Os lançamentos futuros que já existem na base são deliberadamente ignorados
 > aqui. O que este objetivo pergunta é *"se nada mudar, o custo fixo de hoje
-> continua assim?"* — e é o custo de hoje, repetido, que responde. Quem quer ver
-> o que já está lançado no futuro tem o indicador **Custo recorrente mês a mês**.
+> continua assim?"* — e é o custo de hoje, repetido, que responde.
+>
+> **Este é o único lugar que ainda repete o mês de referência**, e é de
+> propósito: ele existe para ser a linha de base contra a qual a meta de
+> redução se mede, e uma base que se mexe com cada contrato cadastrado deixaria
+> de servir de régua. A projeção **por contrato** — a que responde "o que de
+> fato vem pela frente" — está no **Farol 3** e no cartão de projeção do painel
+> Financeiro; ver [A projeção da recorrência](#a-projecao-da-recorrencia-contrato-a-contrato).
 
 **Os rótulos de mês saem inclinados a 80°**, para que CADA barra tenha o seu:
 na horizontal, com 24 meses, só cabia um a cada dois, e metade das barras ficava

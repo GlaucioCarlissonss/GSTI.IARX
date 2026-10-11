@@ -237,6 +237,64 @@ export function detalheDeLancamentos(
 }
 
 /**
+ * OS CONTRATOS QUE A PROJEÇÃO CARREGA — a soma aberta por dono.
+ *
+ * Os demais detalhamentos listam LANÇAMENTOS: registros que existem. Este
+ * lista o que ainda NÃO foi lançado — contratos recorrentes que seguem
+ * valendo. Por isso ele tem fábrica própria em vez de reaproveitar a de
+ * lançamentos: as colunas respondem outra pergunta.
+ *
+ * A coluna que importa é "Sem lançar há": um contrato projetado há meses sem
+ * aparecer é o que precisa de vigência. Ordenada pelo servidor, a lista chega
+ * como fila de trabalho.
+ */
+export function detalheDeContratosProjetados(
+  titulo: string,
+  params: Record<string, unknown>,
+  total?: number | null,
+  subtitulo?: string,
+): PedidoDetalhe<Record<string, unknown>> {
+  return {
+    titulo,
+    subtitulo,
+    total,
+    caminho: '/api/dashboards/contratos-projetados',
+    params,
+    somar: (c) => Number(c.total_projetado),
+    colunas: [
+      { rotulo: 'Fornecedor', valor: (c) => (c.fornecedor as string) ?? '—', texto: true },
+      { rotulo: 'Descrição', valor: (c) => (c.descricao as string) ?? '—', texto: true },
+      { rotulo: 'Tipo', valor: (c) => (c.tipo_despesa as string) ?? '—', texto: true },
+      { rotulo: 'Desde', valor: (c) => String(c.primeira_ocorrencia) },
+      { rotulo: 'Visto pela última vez', valor: (c) => String(c.ultima_ocorrencia) },
+      {
+        // Zero vira "neste mês" em vez de "0": o número cru aqui se lê como
+        // ausência de informação, e é o oposto — é o contrato saudável.
+        rotulo: 'Sem lançar há',
+        valor: (c) =>
+          Number(c.meses_sem_lancamento) === 0 ? 'neste mês' : `${inteiro(Number(c.meses_sem_lancamento))} mês(es)`,
+        n: true,
+      },
+      {
+        rotulo: 'Vigência',
+        valor: (c) =>
+          c.recorrencia_ate ? (
+            String(c.recorrencia_ate)
+          ) : (
+            // Não é erro, e por isso não é vermelho: é a informação que falta
+            // para a projeção saber parar.
+            <Etiqueta texto="em aberto" cor="var(--serie-4)" />
+          ),
+        texto: true,
+      },
+      { rotulo: 'Valor/mês', valor: (c) => moeda(Number(c.valor_mes)), n: true },
+      { rotulo: 'Meses projetados', valor: (c) => inteiro(Number(c.meses_projetados)), n: true },
+      { rotulo: 'Total projetado', valor: (c) => moeda(Number(c.total_projetado)), n: true },
+    ],
+  };
+}
+
+/**
  * Registros de SLA — o que o painel de SLA conta. Cobre tanto o registro
  * agregado mensal quanto o chamado individual; `detalheDeChamados` abaixo é
  * do módulo de Suporte, restrito ao que veio de um helpdesk.

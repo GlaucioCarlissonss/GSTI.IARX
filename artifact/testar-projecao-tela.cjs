@@ -102,6 +102,43 @@ const { chromium } = require('playwright');
   ok('e o mês soma 1.400 — o lançado mais o projetado, cada um UMA vez',
     Math.round(d.valor) === 1400, String(d.valor));
 
+  // A soma tem de ter dono. Esta parte mede a lista que abre a projeção por
+  // contrato — a que torna defensável projetar um contrato sem vigência.
+  console.log('\nA FILA DE TRABALHO, CONTRATO A CONTRATO');
+  const fila = await pag.evaluate(() => {
+    const f3 = calcularFarol3({ filiais: new Set(), somenteReconhecidas: false });
+    const q = f3.contratosDoHorizonte;
+    return {
+      n: q.length,
+      emAberto: f3.contratosEmAberto,
+      // A soma da lista tem de bater com a das parcelas projetadas mês a mês:
+      // são a mesma conta vista por dono e por competência, e divergir faria a
+      // auditoria não auditar nada. Note que ela NÃO é o total dos meses —
+      // esse inclui a linha real lançada adiantado, que não é projeção.
+      somaDaLista: Math.round(q.reduce((s, c) => s + c.totalProjetado, 0)),
+      somaDosMeses: Math.round(f3.projetados.reduce(
+        (s, p) => s + p.contratos.reduce((a, c) => a + c.valor, 0), 0)),
+      // E o total dos meses tem de ser a projeção MAIS o que já foi lançado.
+      totalDosMeses: Math.round(f3.projetados.reduce((s, p) => s + p.fixaProjetada, 0)),
+      fornecedores: q.map((c) => c.fornecedor),
+      primeiro: q[0] && { f: q[0].fornecedor, meses: q[0].mesesProjetados, aberto: q[0].emAberto },
+      // TELECOM é o contrato em aberto; CLARO tem vigência de 3 meses.
+      claro: q.find((c) => c.fornecedor === 'CLARO'),
+    };
+  });
+  ok('a lista traz os dois contratos, uma linha cada', fila.n === 2, String(fila.n));
+  ok('ela soma exatamente as parcelas projetadas dos meses',
+    fila.somaDaLista === fila.somaDosMeses, `${fila.somaDaLista} vs ${fila.somaDosMeses}`);
+  // O lançamento adiantado de TELECOM (1.000) é a diferença, e ele não é
+  // projeção: aparece no mês, não na fila de contratos a decidir.
+  ok('e o total dos meses é a projeção mais o lançado adiantado',
+    fila.totalDosMeses === fila.somaDaLista + 1000,
+    `${fila.totalDosMeses} vs ${fila.somaDaLista}+1000`);
+  ok('o contrato sem vigência é contado como em aberto', fila.emAberto === 1, String(fila.emAberto));
+  ok('o contrato com vigência para no mês dela, e a lista mostra isso',
+    fila.claro && fila.claro.mesesProjetados === 3 && fila.claro.emAberto === false,
+    JSON.stringify(fila.claro && { m: fila.claro.mesesProjetados, a: fila.claro.emAberto }));
+
   console.log('\n=== erros de console: ' + (erros.length ? erros.join(' | ') : 'nenhum') + ' ===');
   await nav.close();
   console.log(falhas.length ? `\n${falhas.length} FALHA(S): ` + falhas.join(' · ') : '\nTudo certo.');

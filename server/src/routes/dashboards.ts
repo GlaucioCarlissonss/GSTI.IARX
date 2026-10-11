@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   conferenciaOrigem,
+  contratosProjetados,
   dashboardFinanceiro,
   dashboardProjetos,
   dashboardSla,
@@ -44,6 +45,16 @@ function filtroDoRelatorio(q: Record<string, unknown>): FiltroRelatorio {
 
 rotasDashboards.get('/financeiro', (req, res) => {
   res.json(dashboardFinanceiro(ctx(req), escopoDaQuery(req.query as Record<string, unknown>)));
+});
+
+/**
+ * A lista que abre a projeção do painel financeiro, contrato a contrato.
+ *
+ * Mesmo recorte do `/financeiro`, de propósito: é a mesma soma vista por
+ * dentro, e dois recortes diferentes dariam duas respostas para a mesma conta.
+ */
+rotasDashboards.get('/contratos-projetados', (req, res) => {
+  res.json(contratosProjetados(ctx(req), escopoDaQuery(req.query as Record<string, unknown>)));
 });
 
 rotasDashboards.get('/projetos', (req, res) => {

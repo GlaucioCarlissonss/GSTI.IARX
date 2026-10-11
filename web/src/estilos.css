@@ -27,6 +27,11 @@
   --serie-1: #2a78d6;
   --serie-2: #eb6834;
   --serie-3: #1baf7a;
+  /* A quarta série nasceu para a faixa PROJETADA da projeção de 12 meses, que
+     antes vinha somada dentro do fixo e desaparecia na leitura. Roxo porque as
+     três primeiras já ocupam azul, laranja e verde, e porque ele é o que mais
+     se separa delas para quem não distingue vermelho e verde. */
+  --serie-4: #8257c5;
 
   /* --serie-1 é cor de SÉRIE: ela pinta barra e linha, onde a régua é a de
      componente (3:1). Texto e preenchimento de ação medem-se pela régua de
@@ -131,6 +136,7 @@
     --serie-1: #3987e5;
     --serie-2: #d95926;
     --serie-3: #199e70;
+    --serie-4: #a273e8;
     --elo: #5296e8;
     --acao: #1c70d6;
 
@@ -164,6 +170,7 @@
   --serie-1: #3987e5;
   --serie-2: #d95926;
   --serie-3: #199e70;
+  --serie-4: #a273e8;
   --elo: #5296e8;
   --acao: #1c70d6;
 

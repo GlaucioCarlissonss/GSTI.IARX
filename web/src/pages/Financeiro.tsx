@@ -6,7 +6,12 @@ import { Aviso, Carregando, Cartao } from '../components/base';
 import { EXPLICACAO, FichasUnidades, Filtro, FiltroUnidades } from '../components/filtro-escopo';
 import { FichasSelecao, SeletorMulti } from '../components/seletor-multi';
 import { GraficoBarras, GraficoLinhas, GraficoRanking, Indicador } from '../components/graficos';
-import { Detalhamento, detalheDeLancamentos, type PedidoDetalhe } from '../components/detalhamento';
+import {
+  Detalhamento,
+  detalheDeContratosProjetados,
+  detalheDeLancamentos,
+  type PedidoDetalhe,
+} from '../components/detalhamento';
 import { competenciaValida, inteiro, mesCurto, moeda, moedaCurta, percentual, ROTULO_NATUREZA } from '../lib/formato';
 
 export interface DashboardFinanceiro {
@@ -23,7 +28,22 @@ export interface DashboardFinanceiro {
   por_natureza: Array<{ natureza: string; total: number; quantidade: number; participacao_pct: number }>;
   por_filial: Array<{ filial_id: number | null; filial: string; despesa: number; investimento: number; total: number }>;
   evolucao_mensal: Array<{ competencia: string; despesa: number; investimento: number; total: number }>;
-  projecao_12_meses: Array<{ competencia: string; parcelado: number; fixo: number; pontual: number; total: number }>;
+  /**
+   * `fixo` já traz o lançado e o projetado somados — é o compromisso do mês.
+   * `recorrente_projetado` é a parte dele que NINGUÉM lançou: o que os
+   * contratos recorrentes custarão se continuarem. Separá-los é o que permite
+   * à tela dizer o que é registro e o que é previsão, em vez de misturar os
+   * dois num número só.
+   */
+  projecao_12_meses: Array<{
+    competencia: string;
+    parcelado: number;
+    fixo: number;
+    pontual: number;
+    total: number;
+    recorrente_projetado: number;
+    contratos_projetados: number;
+  }>;
 }
 
 interface Cenario {
@@ -38,8 +58,12 @@ const SERIES_CLASSIFICACAO = [
   { chave: 'investimento', nome: 'Investimento', cor: 'var(--serie-2)' },
 ];
 
+// Quatro faixas, e não três: o recorrente projetado sai do "fixo" e ganha
+// faixa própria. Empilhado o total não muda — muda a leitura, que passa a
+// mostrar quanto do mês é registro e quanto é a continuação dos contratos.
 const SERIES_PROJECAO = [
-  { chave: 'fixo', nome: 'Fixo recorrente', cor: 'var(--serie-1)' },
+  { chave: 'fixo', nome: 'Fixo lançado', cor: 'var(--serie-1)' },
+  { chave: 'projetado', nome: 'Recorrente projetado', cor: 'var(--serie-4)' },
   { chave: 'parcelado', nome: 'Parcelas em curso', cor: 'var(--serie-2)' },
   { chave: 'pontual', nome: 'Pontual único', cor: 'var(--serie-3)' },
 ];
@@ -106,6 +130,10 @@ export function PaginaFinanceiro() {
     .map((c) => ({ valor: c.chave, rotulo: c.nome, apoio: inteiro(c.lancamentos) }));
 
   const compromisso = d.projecao_12_meses.reduce((s, m) => s + m.total, 0);
+  const projetado12 = d.projecao_12_meses.reduce((s, m) => s + m.recorrente_projetado, 0);
+  // O MAIOR mês, e não a soma: o mesmo contrato reaparece em todos os doze, e
+  // somar as contagens diria "120 contratos" onde existem dez.
+  const contratos12 = d.projecao_12_meses.reduce((n, m) => Math.max(n, m.contratos_projetados), 0);
 
   return (
     <>
@@ -231,8 +259,16 @@ export function PaginaFinanceiro() {
         <Indicador
           rotulo="Compromisso — 12 meses"
           valor={moedaCurta(compromisso)}
-          apoio="Parcelas e recorrências já lançadas"
-          dica="Soma dos 12 meses seguintes ao mês em foco, com o que já está lançado."
+          apoio={
+            projetado12 > 0
+              ? `inclui ${moedaCurta(projetado12)} de ${inteiro(contratos12)} contrato(s) projetado(s)`
+              : 'Parcelas e recorrências já lançadas'
+          }
+          dica={
+            'Soma dos 12 meses seguintes ao mês em foco: o que já está lançado mais a continuação '
+            + 'dos contratos recorrentes, cada um até a vigência cadastrada. Contrato sem vigência '
+            + 'é tratado como em aberto e projetado nos doze meses.'
+          }
           aoDetalhar={() =>
             setDetalhe(
               detalheDeLancamentos(
@@ -272,11 +308,46 @@ export function PaginaFinanceiro() {
           />
         </Cartao>
 
-        <Cartao titulo="Projeção dos próximos 12 meses" descricao="Compromissos já lançados">
+        <Cartao
+          titulo="Projeção dos próximos 12 meses"
+          descricao="Lançado mais os contratos recorrentes que seguem valendo"
+          acoes={
+            projetado12 > 0 ? (
+              // A soma projetada tem de ter dono. Sem este botão a barra roxa
+              // é um número que ninguém consegue conferir — e uma projeção que
+              // não se abre deixa de ser olhada.
+              <button
+                type="button"
+                className="botao discreto pequeno"
+                onClick={() =>
+                  setDetalhe(
+                    detalheDeContratosProjetados(
+                      'Contratos recorrentes projetados',
+                      recorte({}),
+                      projetado12,
+                      'O que a projeção carrega adiante, contrato a contrato. '
+                        + 'Quem está "em aberto" segue sendo projetado até alguém cadastrar a vigência.',
+                    ),
+                  )
+                }
+              >
+                Ver contratos projetados
+              </button>
+            ) : undefined
+          }
+        >
           <GraficoBarras
             dados={d.projecao_12_meses.map((m) => ({
               rotulo: mesCurto(m.competencia),
-              valores: { fixo: m.fixo, parcelado: m.parcelado, pontual: m.pontual },
+              valores: {
+                // `fixo` vem com o projetado dentro; tirá-lo aqui é o que
+                // mantém o total da pilha igual ao do servidor e, ainda
+                // assim, separa o registro da previsão.
+                fixo: m.fixo - m.recorrente_projetado,
+                projetado: m.recorrente_projetado,
+                parcelado: m.parcelado,
+                pontual: m.pontual,
+              },
             }))}
             series={SERIES_PROJECAO}
             modo="empilhado"
@@ -289,6 +360,14 @@ export function PaginaFinanceiro() {
                   `Compromisso de ${m.competencia}`,
                   recorte({ competencia_inicio: m.competencia, competencia_fim: m.competencia }),
                   m.fixo + m.parcelado + m.pontual,
+                  // O detalhamento lista LANÇAMENTOS, e o projetado não é um.
+                  // Dizer quanto dele falta na lista evita a leitura errada de
+                  // que a barra está maior do que os registros que a explicam.
+                  m.recorrente_projetado > 0
+                    ? `Deste total, ${moeda(m.recorrente_projetado)} são projeção de `
+                      + `${inteiro(m.contratos_projetados)} contrato(s) recorrente(s) — `
+                      + 'ainda sem lançamento neste mês, e por isso fora da lista abaixo.'
+                    : undefined,
                 ),
               );
             }}

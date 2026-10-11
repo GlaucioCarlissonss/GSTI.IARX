@@ -5,7 +5,15 @@ import { useFiltroEscopo } from '../lib/filtros';
 import { EXPLICACAO, FichasUnidades, Filtro, FiltroUnidades } from '../components/filtro-escopo';
 import { Aviso, Campo, Carregando, Cartao, ConfirmarAcao, Etiqueta, Modal, UltimaAtualizacao, Vazio } from '../components/base';
 import { FichasSelecao, SeletorMulti } from '../components/seletor-multi';
-import { competenciaAtual, competenciaValida, inteiro, moeda, ROTULO_NATUREZA } from '../lib/formato';
+import {
+  competenciaAtual,
+  competenciaExib,
+  competenciaOrdem,
+  competenciaValida,
+  inteiro,
+  moeda,
+  ROTULO_NATUREZA,
+} from '../lib/formato';
 import { BlocosPorUnidade, SeletorModo, useModoVisao, type LinhaVisao } from '../components/visao-financeira';
 import { useExpansao } from '../lib/expansao';
 import {
@@ -48,6 +56,11 @@ interface Lancamento {
   reconhecido: boolean;
   /** 'manual' (alguém olhou) ou 'cadastro_origem' (uma regra decidiu). */
   reconhecido_via: string | null;
+  /**
+   * Até quando o contrato vale, MM/AAAA. Nulo é "em aberto" — e em aberto o
+   * contrato segue sendo projetado em todo mês, que é o comportamento pedido.
+   */
+  recorrencia_ate: string | null;
 }
 
 interface Pagina {
@@ -443,6 +456,17 @@ export function PaginaLancamentos() {
                           parcela {l.parcela_numero}/{l.qtd_parcelas}
                         </div>
                       )}
+                      {/* A vigência fica à vista porque é ela que decide até
+                          quando a projeção leva este contrato adiante. Dizer
+                          "em aberto" em vez de calar é o ponto: o silêncio é
+                          que faz o contrato encerrado projetar para sempre. */}
+                      {l.natureza === 'fixa' && (
+                        <div style={{ color: 'var(--tinta-fraca)', fontSize: 12 }}>
+                          {l.recorrencia_ate
+                            ? `vale até ${competenciaExib(l.recorrencia_ate)}`
+                            : 'contrato em aberto'}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <Etiqueta
@@ -600,6 +624,7 @@ function FormularioLancamento({
     qtd_parcelas: '',
     valor_refere_se: 'total',
     repetir_ate: '',
+    recorrencia_ate: '',
     fornecedor: '',
     descricao: '',
     observacoes: '',
@@ -638,6 +663,14 @@ function FormularioLancamento({
   const submeter = async (evento: FormEvent) => {
     evento.preventDefault();
     if (!competenciaValida(form.competencia)) return setErro('Competência deve estar no formato MM/AAAA.');
+    if (form.natureza === 'fixa' && form.recorrencia_ate) {
+      if (!competenciaValida(form.recorrencia_ate))
+        return setErro('Contrato vale até: use o formato MM/AAAA, ou deixe em branco para contrato em aberto.');
+      // Recusar aqui, e não no servidor, porque a tela sabe dizer qual das
+      // duas datas está errada — a mensagem do servidor chega sem isso.
+      if (competenciaOrdem(form.recorrencia_ate) < competenciaOrdem(form.competencia))
+        return setErro('Contrato vale até não pode ser anterior à competência do lançamento.');
+    }
     setEnviando(true);
     setErro(null);
     try {
@@ -654,6 +687,10 @@ function FormularioLancamento({
         qtd_parcelas: form.natureza === 'pontual_parcelada' ? Number(form.qtd_parcelas) : null,
         valor_refere_se: form.valor_refere_se,
         repetir_ate: form.natureza === 'fixa' && form.repetir_ate ? form.repetir_ate : null,
+        // A vigência é o que a projeção lê. `repetir_ate` materializa as
+        // ocorrências; esta diz até quando o contrato vale — e sem ela o
+        // contrato é em aberto, e segue sendo projetado.
+        recorrencia_ate: form.natureza === 'fixa' && form.recorrencia_ate ? form.recorrencia_ate : null,
         fornecedor: form.fornecedor || null,
         descricao: form.descricao || null,
         observacoes: form.observacoes || null,
@@ -786,9 +823,24 @@ function FormularioLancamento({
         )}
 
         {form.natureza === 'fixa' && (
-          <Campo rotulo="Repetir mensalmente até (MM/AAAA)" dica="Opcional — gera uma ocorrência por mês">
-            <input value={form.repetir_ate} onChange={(e) => alterar('repetir_ate', e.target.value)} placeholder="12/2027" />
-          </Campo>
+          <div className="grade c2">
+            <Campo rotulo="Repetir mensalmente até (MM/AAAA)" dica="Opcional — gera uma ocorrência por mês">
+              <input value={form.repetir_ate} onChange={(e) => alterar('repetir_ate', e.target.value)} placeholder="12/2027" />
+            </Campo>
+            {/* Duas perguntas diferentes, e por isso dois campos. A de cima
+                escreve linhas; esta declara até quando o contrato vale. Em
+                branco, ele é em aberto — e a projeção o leva a todo mês. */}
+            <Campo
+              rotulo="Contrato vale até (MM/AAAA)"
+              dica="Em branco = contrato em aberto, projetado indefinidamente"
+            >
+              <input
+                value={form.recorrencia_ate}
+                onChange={(e) => alterar('recorrencia_ate', e.target.value)}
+                placeholder="em branco = em aberto"
+              />
+            </Campo>
+          </div>
         )}
 
         {/* O favorecido em campo próprio. Era digitado dentro da Descrição —

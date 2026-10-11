@@ -36,6 +36,8 @@ const mesInterno = (t) => { const x = /^(0[1-9]|1[0-2])\/(\d{4})$/.exec((t||'').
 const mesIdx = (m) => +m.slice(0,4)*12 + (+m.slice(5)-1);
 const mesDe = (n) => Math.floor(n/12) + '-' + String((n%12)+1).padStart(2,'0');
 const mesSoma = (m, n) => mesDe(mesIdx(m)+n);
+/** Quantos meses de `a` até `b`. Negativo quando `b` é anterior. */
+const mesesEntre = (a, b) => mesIdx(b) - mesIdx(a);
 const mesHoje = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); };
 const intervalo = (a, b) => { const r=[]; for (let i=mesIdx(a); i<=mesIdx(b); i++) r.push(mesDe(i)); return r; };
 

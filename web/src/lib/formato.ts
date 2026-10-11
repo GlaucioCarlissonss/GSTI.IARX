@@ -68,3 +68,14 @@ export const competenciaExib = (valor: string | null | undefined) => {
   const interno = texto.match(/^(\d{4})-(\d{2})$/);
   return interno ? `${interno[2]}/${interno[1]}` : texto;
 };
+
+/**
+ * Competência no formato que ORDENA: `AAAA-MM`. MM/AAAA ordena alfabeticamente
+ * errado — "01/2027" vem antes de "12/2026" —, então comparar duas delas na
+ * tela exige passar por aqui primeiro. Aceita os dois formatos.
+ */
+export const competenciaOrdem = (valor: string | null | undefined) => {
+  const texto = String(valor ?? '').trim();
+  const exib = texto.match(/^(\d{2})\/(\d{4})$/);
+  return exib ? `${exib[2]}-${exib[1]}` : texto;
+};

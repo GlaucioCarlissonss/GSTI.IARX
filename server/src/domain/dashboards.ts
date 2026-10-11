@@ -14,7 +14,7 @@ import { paraReais } from './dinheiro.js';
 import { calcularAtraso } from './projetos.js';
 import { montarFiltroSla, percentual, type FiltroSla } from './sla.js';
 import { escopoSql } from './escopo.js';
-import { contratosDoEscopo, projetadoPorMes } from './projecao.js';
+import { contratosDoEscopo, projetadoPorMes, projetar } from './projecao.js';
 import { alvoDe, leituraDeMeta } from './metas.js';
 import {
   despesaCentralizada,
@@ -347,6 +347,99 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
     por_filial: porFilial,
     evolucao_mensal: evolucaoMensal,
     projecao_12_meses: projecao12Meses,
+  };
+}
+
+/**
+ * OS CONTRATOS QUE A PROJEÇÃO ESTÁ CARREGANDO, um a um.
+ *
+ * A projeção soma; esta lista responde de QUEM é a soma. Ela existe porque a
+ * regra escolhida tem um custo conhecido: contrato sem vigência é tratado como
+ * em aberto e projetado indefinidamente — inclusive um que acabou e ninguém
+ * encerrou. Isso é deliberado (supor um fim que ninguém informou seria pior),
+ * mas só é defensável se o sistema disser quem está nessa situação.
+ *
+ * Daí `meses_sem_lancamento`: o contrato visto pela última vez há muito tempo
+ * e ainda sendo projetado é exatamente o que precisa de uma vigência. A tela
+ * ordena por ele, e a lista vira uma fila de trabalho em vez de um risco
+ * silencioso.
+ */
+export function contratosProjetados(ctx: Contexto, escopo: EscopoDashboard = {}) {
+  const cenarios = cenariosDoEscopo(escopo);
+  const { condicoes, params } = filtroFinanceiro(ctx, escopo, cenarios);
+  const where = condicoes.join(' AND ');
+
+  const mesRef = competenciaReferencia(ctx, escopo, cenarios);
+  // O horizonte é o mesmo do painel: divergir aqui faria a lista explicar uma
+  // soma diferente da que está na tela ao lado.
+  const inicioProj = somarMeses(mesRef, 1);
+  const fimProj = somarMeses(mesRef, 12);
+  const hoje = competenciaAtual();
+
+  const contratos = contratosDoEscopo(where, params);
+  // As PARCELAS, e não o total por mês: a pergunta aqui é por contrato, e o
+  // agregado mensal já perdeu o dono de cada valor.
+  const acumulado = new Map<string, { centavos: number; meses: number }>();
+  for (const p of projetar(contratos, inicioProj, fimProj)) {
+    const a = acumulado.get(p.chave) ?? { centavos: 0, meses: 0 };
+    a.centavos += p.valorCentavos;
+    a.meses += 1;
+    acumulado.set(p.chave, a);
+  }
+
+  const itens = contratos
+    .filter((c) => acumulado.has(c.chave))
+    .map((c) => {
+      const a = acumulado.get(c.chave)!;
+      return {
+        chave: c.chave,
+        empresa_id: c.empresaId,
+        filial_id: c.filialId,
+        tipo_despesa_id: c.tipoDespesaId,
+        tipo_despesa: c.tipoDespesa,
+        fornecedor: c.fornecedor,
+        descricao: c.descricao,
+        cenario: c.cenario,
+        valor_mes: paraReais(c.valorCentavos),
+        primeira_ocorrencia: paraExibicao(c.primeiraOcorrencia),
+        ultima_ocorrencia: paraExibicao(c.ultimaOcorrencia),
+        ocorrencias: c.ocorrencias,
+        recorrencia_ate: c.recorrenciaAte ? paraExibicao(c.recorrenciaAte) : null,
+        /** Nulo = em aberto. É o que a tela precisa para oferecer o encerramento. */
+        em_aberto: c.recorrenciaAte === null,
+        /**
+         * Há quantos meses ele não é lançado, contados de HOJE — e não do mês
+         * de referência da tela. A pergunta é sobre o presente: ancorá-la no
+         * recorte faria um contrato visto pela última vez há seis meses
+         * aparecer como "neste mês" só porque a janela terminava lá, que é
+         * justamente o contrato que a lista existe para encontrar.
+         *
+         * O piso em zero cobre o lançamento adiantado: um contrato já lançado
+         * para um mês à frente não está atrasado há um número negativo de
+         * meses.
+         */
+        meses_sem_lancamento: Math.max(0, diferencaEmMeses(c.ultimaOcorrencia, hoje)),
+        meses_projetados: a.meses,
+        total_projetado: paraReais(a.centavos),
+      };
+    })
+    // O mais esquecido primeiro, e em empate o mais caro: é a ordem em que
+    // alguém de fato revisaria a lista.
+    .sort((a, b) =>
+      b.meses_sem_lancamento - a.meses_sem_lancamento || b.total_projetado - a.total_projetado);
+
+  return {
+    escopo: {
+      competencia: paraExibicao(mesRef),
+      de: paraExibicao(inicioProj),
+      ate: paraExibicao(fimProj),
+    },
+    total_projetado: itens.reduce((s, i) => s + i.total_projetado, 0),
+    contratos: itens.length,
+    // Quantos estão sendo projetados sem ninguém ter dito até quando. Não é um
+    // erro — é a conta de quanto da projeção depende de uma vigência ausente.
+    em_aberto: itens.filter((i) => i.em_aberto).length,
+    itens,
   };
 }
 

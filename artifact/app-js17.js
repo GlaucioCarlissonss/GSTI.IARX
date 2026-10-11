@@ -853,6 +853,43 @@ function calcularFarol3(r) {
   // nasceria solta no ar, sem ligação com o ponto de onde ela parte.
   if (ultimo) ultimo.fixaProjetada = ultimo.fixa;
 
+  // ----------------------------------------- a projeção vista por CONTRATO
+  // Percorre as mesmas parcelas que formaram os meses acima, agora somando
+  // por dono em vez de por competência. Mesma fonte, outra pergunta — e por
+  // isso os dois totais não podem divergir.
+  const porContrato = new Map();
+  for (const mes of porMesProj.values()) {
+    for (const i of mes.itens) {
+      const a = porContrato.get(i.contrato.chave)
+        || { contrato: i.contrato, centavos: 0, meses: 0 };
+      a.centavos += cent(i.valor);
+      a.meses += 1;
+      porContrato.set(i.contrato.chave, a);
+    }
+  }
+  // A âncora é o MÊS DE HOJE, e não o último mês da janela do bloco.
+  // "Há quanto tempo este contrato não é lançado" é uma pergunta sobre hoje,
+  // não sobre o recorte que a tela está mostrando: ancorá-la na janela fazia
+  // um contrato visto pela última vez há seis meses aparecer como "neste mês"
+  // só porque a janela terminava lá — justamente o contrato que a lista
+  // existe para encontrar.
+  const fila = [...porContrato.values()]
+    .map((a) => ({
+      ...a.contrato,
+      mesesProjetados: a.meses,
+      totalProjetado: reais(a.centavos),
+      emAberto: !a.contrato.vigenciaAte,
+      // Há quantos meses ele não é lançado. Zero é o contrato saudável; um
+      // número alto com `emAberto` é exatamente o que precisa de vigência.
+      // O piso em zero cobre o lançamento adiantado: um contrato lançado para
+      // um mês à frente não está atrasado há um número negativo de meses.
+      mesesSemLancamento: Math.max(0, mesesEntre(a.contrato.ultima, corrente)),
+    }))
+    // O mais esquecido primeiro, e em empate o mais caro: é a ordem em que
+    // alguém de fato revisaria a lista.
+    .sort((x, y) => y.mesesSemLancamento - x.mesesSemLancamento
+      || cent(y.totalProjetado) - cent(x.totalProjetado));
+
   // OS TETOS DE GASTO, mês a mês. Eles atravessam realizados E projetados: um
   // teto que parasse no último mês fechado deixaria de dizer o que a projeção
   // mais precisa responder — "este patamar cabe no limite?".
@@ -882,10 +919,21 @@ function calcularFarol3(r) {
     semTeto: tetosDoUltimo.contextosSemMeta,
     ultimoRealizado: ultimo ? ultimo.comp : null,
     nivelFixo: ultimo ? ultimo.fixa : 0,
-    // O que o nível fixo de hoje compromete nos doze meses à frente, se nada
-    // mudar. É a leitura que a projeção existe para dar.
-    compromisso: reais(cent(ultimo ? ultimo.fixa : 0) * projetados.length),
+    // O que os contratos comprometem nos doze meses à frente, se nada mudar.
+    // É a SOMA dos meses projetados, e não o último mês multiplicado por doze:
+    // os contratos não vencem todos no mesmo dia, e um que encerra em março
+    // tem de sair do compromisso de abril. Multiplicar o último mês afirmaria
+    // que nenhum deles encerra nunca.
+    compromisso: reais(projetados.reduce((s, p) => s + cent(p.fixaProjetada), 0)),
     mesesProjetados: projetados.length,
+    // A FILA DE TRABALHO. A soma acima diz "quanto"; esta lista diz "de quem",
+    // e existe por causa do custo conhecido da regra: contrato sem vigência é
+    // projetado adiante, inclusive um que acabou e ninguém encerrou. Supor um
+    // fim que ninguém informou seria pior — mas só se sustenta se o sistema
+    // disser, por nome, quem está nessa situação e há quantos meses.
+    contratosDoHorizonte: fila,
+    contratosProjetados: fila.length,
+    contratosEmAberto: fila.filter((c) => c.emAberto).length,
   };
 }
 
@@ -1614,7 +1662,8 @@ function abrirMetasDoMes(rot, mc) {
         <strong>${mc.atinge === null ? 'Mês ainda não apurado.'
           : mc.atinge ? 'Meta alcançada.' : 'Meta não alcançada.'}</strong>
         ${mc.atinge === null
-          ? ' É um mês projetado: o custo dele repete o último mês realizado, então não há resultado para julgar.'
+          ? ' É um mês projetado: o custo dele vem dos contratos recorrentes que seguem valendo, '
+            + 'e não de um resultado apurado — não há o que julgar ainda.'
           : ` O custo fixo de ${esc(rot)} é ${brl(mc.custo)}, contra o patamar de ${brl(mc.alvoFixo !== undefined ? mc.alvoFixo : mc.esperado)} que o plano pede.`}
       </div>
       <div class="rol" style="margin-top:var(--esp-6)"><table>
@@ -3084,7 +3133,8 @@ async function viewIndicadores() {
       valor: farol3.ultimoRealizado ? brl(farol3.nivelFixo) : '—',
       apoio: farol3.ultimoRealizado
         ? `nível fixo de ${mesExib(farol3.ultimoRealizado)} · ${inteiro(farol3.realizados.length)} mês(es) realizado(s)`
-          + ` · projeção de ${inteiro(farol3.mesesProjetados)} meses compromete ${brl(farol3.compromisso)}`
+          + ` · ${inteiro(farol3.contratosProjetados)} contrato(s) recorrente(s) comprometem`
+          + ` ${brl(farol3.compromisso)} em ${inteiro(farol3.mesesProjetados)} meses`
         : 'nenhum mês realizado neste recorte',
       corpo: farol3.realizados.length === 0 ? '' : `
         ${farol3.semTeto.length === 0 ? '' : `<div class="msg alerta">
@@ -3092,6 +3142,14 @@ async function viewIndicadores() {
           Essas linhas aparecem em <strong>cinza tracejado</strong> e sem valor — o vermelho é o limite de
           alguém, e pintar de vermelho a ausência de limite inventaria um compromisso. O teto geral é a
           soma dos vigentes. Cadastre em Sistema › Cadastro › Metas, tipo <em>Objetivo 03</em>.</div>`}
+        ${farol3.contratosProjetados === 0 ? '' : `<div class="msg" style="margin-top:var(--esp-5)">
+          <strong>${inteiro(farol3.contratosProjetados)} contrato(s) recorrente(s)</strong> sustentam
+          ${brl(farol3.compromisso)} nos próximos ${inteiro(farol3.mesesProjetados)} meses${
+            farol3.contratosEmAberto === 0 ? '' : `, e <strong>${inteiro(farol3.contratosEmAberto)}
+            deles seguem sem vigência cadastrada</strong> — enquanto ninguém informar até quando
+            valeram, eles continuam sendo projetados`}.
+          <div style="margin-top:var(--esp-3)"><button type="button" class="bt"
+            data-contratos-projetados>Ver contrato a contrato</button></div></div>`}
         ${legendaDoFarol3Html()}
         ${legendaDosTetosHtml(farol3)}
         ${interruptorDeMediasHtml('custo-mes-a-mes')}
@@ -3402,8 +3460,9 @@ async function viewIndicadores() {
   // nasceria solta no ar.
   const alvoFarol3 = el('#i-reducao');
   if (alvoFarol3 && farol3.pontos.length) {
-    // Média das três séries MEDIDAS. A projeção não entra (é o último mês
-    // repetido, e a média dela seria ela mesma) nem os tetos (compromisso).
+    // Média das três séries MEDIDAS. A projeção não entra — ela não foi
+    // medida, e uma média sobre o futuro afirmaria um resultado que ainda não
+    // aconteceu — nem os tetos, que são compromisso e não medição.
     const verMediasF3 = mostrarMedias('custo-mes-a-mes');
     const mediasF3 = Object.fromEntries(['total', 'variavel', 'fixa'].map((k) =>
       [k, verMediasF3 ? mediaDoPeriodo(farol3.realizados.map((p) => p[k]),
@@ -3609,6 +3668,11 @@ async function viewIndicadores() {
       ev.stopPropagation();
       abrirClassificacaoCompartilhada(rf);
     };
+  });
+  // A projeção aberta por dono. Mesmo `stopPropagation`, e pela mesma razão:
+  // o cartão que abriga o botão é gatilho de drill-down.
+  el('#pagina').querySelectorAll('[data-contratos-projetados]').forEach((b) => {
+    b.onclick = (ev) => { ev.stopPropagation(); abrirContratosProjetados(farol3); };
   });
   // O termômetro mora dentro do bloco de SLA, que abre fechado: desenhar num
   // elemento escondido é legítimo — o SVG tem `viewBox`, e aparece pronto
@@ -4591,6 +4655,56 @@ function abrirMesDoObjetivo03(obj3, comp) {
   });
 }
 
+/**
+ * A PROJEÇÃO ABERTA POR DONO — a fila de trabalho da recorrência.
+ *
+ * O cartão do Farol 3 diz quanto os contratos comprometem; esta tela diz de
+ * quem é esse compromisso. Ela existe por causa do custo conhecido da regra:
+ * contrato sem vigência é projetado adiante, inclusive um que já acabou e
+ * ninguém encerrou. Supor um fim que ninguém informou seria pior — inventaria
+ * uma economia que não aconteceu —, mas a escolha só se defende se o sistema
+ * disser, por nome, quem está nessa situação e há quantos meses.
+ *
+ * Por isso a ordem é pelo mais esquecido, e não pelo mais caro: o contrato
+ * visto pela última vez há oito meses e ainda projetado é o que precisa de
+ * uma decisão, mesmo que custe pouco.
+ */
+function abrirContratosProjetados(farol3) {
+  const itens = farol3.contratosDoHorizonte || [];
+  abrirRegistros({
+    titulo: `Contratos recorrentes projetados — ${brl(farol3.compromisso)} em `
+      + `${inteiro(farol3.mesesProjetados)} meses`,
+    tipo: 'contratos-projetados', larga: true,
+    itens, contagem: farol3.contratosProjetados,
+    colunas: [
+      { rotulo: 'Fornecedor', texto: true, valor: (c) => c.fornecedor || '—' },
+      { rotulo: 'Descrição', texto: true, valor: (c) => c.descricao || '—' },
+      { rotulo: 'Tipo', texto: true, valor: (c) => c.tipo || '—' },
+      { rotulo: 'Unidade', texto: true, valor: (c) => c.filial || '(nível empresa)' },
+      { rotulo: 'Desde', valor: (c) => mesExib(c.primeira) },
+      { rotulo: 'Visto pela última vez', valor: (c) => mesExib(c.ultima) },
+      // Zero vira "neste mês": o número cru aqui se leria como falta de
+      // informação, e é o oposto — é o contrato saudável.
+      { rotulo: 'Sem lançar há', n: true,
+        valor: (c) => c.mesesSemLancamento === 0
+          ? 'neste mês' : `${inteiro(c.mesesSemLancamento)} mês(es)` },
+      // "Em aberto" não é erro, e por isso não é vermelho: é a informação que
+      // falta para a projeção saber parar.
+      { rotulo: 'Vigência', texto: true,
+        valor: (c) => c.vigenciaAte ? mesExib(c.vigenciaAte) : 'em aberto' },
+      { rotulo: 'Valor / mês', n: true, valor: (c) => brl(c.valor) },
+      { rotulo: 'Meses projetados', n: true, valor: (c) => inteiro(c.mesesProjetados) },
+      { rotulo: 'Total projetado', n: true, valor: (c) => brl(c.totalProjetado) },
+    ],
+    nota: (farol3.contratosEmAberto
+      ? `${inteiro(farol3.contratosEmAberto)} sem vigência cadastrada: enquanto ninguém informar até `
+        + 'quando valeram, eles seguem sendo projetados. Para encerrar um, abra o lançamento mais '
+        + 'recente dele e preencha "Contrato vale até". '
+      : 'Todos têm vigência cadastrada. ')
+      + 'Do mais esquecido para o mais recente — é nessa ordem que a lista se revisa.',
+  });
+}
+
 function abrirMesDoFarol3(farol3, comp, soFixas = false) {
   const ponto = farol3.pontos.find((p) => p.comp === comp);
   if (!ponto) return;
@@ -4603,27 +4717,39 @@ function abrirMesDoFarol3(farol3, comp, soFixas = false) {
   // própria ali. Mostrar lançamento nenhum faria o gestor duvidar do número,
   // e mostrar os lançamentos de um mês passado mentiria sobre a competência.
   const fonte = ponto.projetado
-    ? (ponto.contratos || []).map((c) => ({
-        empresa: c.empresa, filial: c.filial, tipo: c.tipo, fornecedor: c.fornecedor,
-        descricao: c.descricao, cenario: c.cenario, valor: c.valor,
-        natureza: 'fixa', competencia: ponto.comp,
-        // De onde ele veio e até quando vale: é o que transforma a projeção
-        // numa lista de trabalho em vez de um total que ninguém audita.
-        obs: `visto pela última vez em ${mesExib(c.ultima)}`
-          + (c.vigenciaAte ? ` · vigência até ${mesExib(c.vigenciaAte)}` : ' · sem vigência cadastrada'),
-      }))
+    ? [
+        // O que JÁ foi lançado para este mês à frente entra primeiro, e como
+        // lançamento de verdade: ele faz parte do número do cartão, e deixá-lo
+        // de fora faria a lista somar menos do que o valor clicado — a
+        // divergência que o detalhamento existe para não ter.
+        ...(ponto.itens || []),
+        ...(ponto.contratos || []).map((c) => ({
+          empresa: c.empresa, filial: c.filial, tipo: c.tipo, fornecedor: c.fornecedor,
+          descricao: c.descricao, cenario: c.cenario, valor: c.valor,
+          natureza: 'fixa', competencia: ponto.comp,
+          // De onde ele veio e até quando vale: é o que transforma a projeção
+          // numa lista de trabalho em vez de um total que ninguém audita.
+          obs: `visto pela última vez em ${mesExib(c.ultima)}`
+            + (c.vigenciaAte ? ` · vigência até ${mesExib(c.vigenciaAte)}` : ' · sem vigência cadastrada'),
+        })),
+      ]
     : soFixas ? ponto.itens.filter((l) => l.natureza === 'fixa') : ponto.itens;
   const itens = [...fonte].sort((a, b) => cent(b.valor) - cent(a.valor));
   abrirRegistros({
     titulo: ponto.projetado
-      ? `Custo fixo projetado para ${ponto.rot} — ${inteiro(ponto.contratosProjetados)} contrato(s)`
+      ? `Custo fixo projetado para ${ponto.rot} — ${brl(ponto.fixaProjetada)}`
       : soFixas ? `Custo fixo de ${ponto.rot}` : `Custos de ${ponto.rot}`,
     tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
     itens, contagem: null,
     nota: ponto.projetado
-      ? `${inteiro(itens.length)} contrato(s) recorrente(s) projetado(s) para ${ponto.rot}. `
-        + 'Cada um é projetado pelo valor da última vez que apareceu, até a vigência dele — e, sem vigência, '
-        + 'adiante. Eles não têm lançamento próprio neste mês: é por isso que estão aqui.'
+      ? `${inteiro(ponto.contratosProjetados)} contrato(s) recorrente(s) projetado(s) para ${ponto.rot}`
+        + (ponto.lancadosNoMes
+          ? `, mais ${inteiro(ponto.lancadosNoMes)} lançamento(s) já feito(s) para este mês`
+          : '')
+        + `, somando ${brl(ponto.fixaProjetada)}. `
+        + 'O contrato é projetado pelo valor da última vez que apareceu, até a vigência dele — e, sem '
+        + 'vigência, adiante. Quem está "sem vigência cadastrada" segue sendo projetado até alguém '
+        + 'informar até quando ele valeu.'
       : soFixas
         ? `${inteiro(itens.length)} despesa(s) fixa(s), somando ${brl(ponto.fixa)}. Do maior para o menor valor.`
         : `${inteiro(itens.length)} lançamento(s): ${brl(ponto.fixa)} em despesa fixa e `
