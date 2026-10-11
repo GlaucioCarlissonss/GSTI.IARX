@@ -1075,3 +1075,132 @@ function legendaDeConsumoHtml(corBase) {
     <span><i style="background:${escura}"></i>tom escurecido · paga por ela, consumida pelo grupo</span>
   </div>`;
 }
+
+/* ==========================================================================
+   O MOTOR DE PROJEÇÃO — o que continua acontecendo se nada mudar.
+
+   É o MESMO motor de `server/src/domain/projecao.ts`, com as mesmas quatro
+   decisões. As duas superfícies precisam dar o mesmo número: o gestor abre
+   uma e confere na outra, e uma divergência aqui transformaria a projeção em
+   duas respostas para a mesma pergunta.
+
+   Até aqui esta ponta repetia o TOTAL fixo do último mês fechado, doze vezes.
+   Um número só, que não se abre: não dava para perguntar de que contratos ele
+   era feito, e um contrato encerrado seguia embutido nele.
+
+   As quatro decisões:
+
+   1. A IDENTIDADE DO CONTRATO NÃO INCLUI O VALOR. Reajuste é o mesmo contrato
+      mais caro; se o valor entrasse na chave, o reajustado projetaria DUAS
+      vezes — o preço velho e o novo. O valor projetado é o da última
+      ocorrência, que é o preço que vale hoje.
+   2. LINHA REAL SEMPRE VENCE A PROJEÇÃO. Mês que já tem o lançamento daquele
+      contrato não recebe a projeção dele, ou a despesa seria contada duas
+      vezes exatamente nos meses em que alguém lançou adiantado.
+   3. A VIGÊNCIA MANDA, e a ausência dela significa "em aberto". Encerrar um
+      contrato é cadastrar até quando ele valeu; supor um fim que ninguém
+      informou inventaria o encerramento de contratos em vigor.
+   4. O MÊS CORRENTE É COMPLETADO, não ignorado: o que já foi lançado nele
+      conta, e os contratos que faltam entram projetados.
+
+   O que ele deliberadamente NÃO faz: projetar despesa pontual. A parcelada já
+   tem as linhas dela até o fim — projetá-la seria contar de novo. A única
+   aconteceu uma vez.
+   ========================================================================== */
+
+/** Quantos meses a projeção enxerga à frente. O mesmo horizonte do Painel. */
+const MESES_PROJECAO = 12;
+
+/** Normaliza como o servidor normaliza: espaço e caixa não criam contrato. */
+const normalProj = (v) =>
+  v === null || v === undefined ? '' : String(v).trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * A identidade do contrato. SEM o valor — ver decisão 1.
+ *
+ * A unidade entra porque o mesmo contrato em duas filiais são dois
+ * compromissos; o cenário entra porque cenários são alternativas, e somá-los
+ * contaria a mesma despesa duas vezes.
+ */
+const chaveDoContrato = (l) => [
+  l.empresa ?? '', l.filial ?? '', normalProj(l.tipo),
+  normalProj(l.fornecedor), normalProj(l.descricao), normalProj(l.cenario),
+].join('|');
+
+/**
+ * Agrupa lançamentos FIXOS em contratos.
+ *
+ * A vigência vem da ocorrência mais recente que declarou uma: é a última
+ * palavra de quem cadastrou. Uma vigência antiga sobrevivendo a uma nova faria
+ * o encerramento depender da ordem em que as linhas foram gravadas.
+ */
+function contratosDe(lancamentos) {
+  const porChave = new Map();
+  const vigencias = new Map();
+  for (const l of lancamentos) {
+    if (l.natureza !== 'fixa' || !l.competencia) continue;
+    const chave = chaveDoContrato(l);
+    const c = porChave.get(chave);
+    if (!c) {
+      porChave.set(chave, {
+        chave, empresa: l.empresa ?? null, filial: l.filial ?? null, tipo: l.tipo ?? null,
+        fornecedor: l.fornecedor ?? null, descricao: l.descricao ?? null, cenario: l.cenario,
+        ultima: l.competencia, primeira: l.competencia, valor: l.valor,
+        vigenciaAte: null, ocorrencias: 1, lancados: new Set([l.competencia]),
+      });
+    } else {
+      c.ocorrencias += 1;
+      c.lancados.add(l.competencia);
+      if (l.competencia < c.primeira) c.primeira = l.competencia;
+      // O valor acompanha a última ocorrência: é o preço vigente.
+      if (l.competencia > c.ultima) { c.ultima = l.competencia; c.valor = l.valor; }
+    }
+    if (l.recorrenciaAte) {
+      const ant = vigencias.get(chave);
+      if (!ant || l.competencia >= ant.em) vigencias.set(chave, { em: l.competencia, ate: l.recorrenciaAte });
+    }
+  }
+  for (const [chave, v] of vigencias) {
+    const c = porChave.get(chave);
+    if (c) c.vigenciaAte = v.ate;
+  }
+  return [...porChave.values()];
+}
+
+/**
+ * O contrato vale neste mês?
+ *
+ * Antes da última ocorrência ele não existia, e projetar para trás inventaria
+ * despesa num passado que já foi medido.
+ */
+const contratoValeEm = (c, mes) =>
+  mes >= c.ultima && (!c.vigenciaAte || mes <= c.vigenciaAte);
+
+/** As parcelas projetadas no intervalo, contrato a contrato. */
+function projetarContratos(contratos, de, ate) {
+  if (ate < de) return [];
+  const meses = intervalo(de, ate);
+  const saida = [];
+  for (const c of contratos) {
+    for (const m of meses) {
+      if (!contratoValeEm(c, m)) continue;
+      // Decisão 2: o mês que já tem a linha real não recebe a projeção.
+      if (c.lancados.has(m)) continue;
+      saida.push({ comp: m, chave: c.chave, valor: c.valor, contrato: c });
+    }
+  }
+  return saida;
+}
+
+/** O total projetado por competência, pronto para somar ao realizado. */
+function projetadoPorMes(contratos, de, ate) {
+  const mapa = new Map();
+  for (const p of projetarContratos(contratos, de, ate)) {
+    const a = mapa.get(p.comp) || { centavos: 0, contratos: 0, itens: [] };
+    a.centavos += cent(p.valor);
+    a.contratos += 1;
+    a.itens.push(p);
+    mapa.set(p.comp, a);
+  }
+  return mapa;
+}

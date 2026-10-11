@@ -725,25 +725,50 @@ const MESES_PROJETADOS = 12;
  *    que aconteceu; projetá-los exigiria adivinhar compras pontuais que
  *    ninguém decidiu ainda. O fixo é o único que se pode afirmar: é o que
  *    continua acontecendo se nada mudar.
- * 2. **Realizado é até o último mês FECHADO.** O mês corrente está pela
- *    metade, e tomá-lo como realizado faria o custo parecer ter despencado no
- *    dia 3.
- * 3. **A projeção repete o nível fixo do último mês realizado**, e é uma regra
- *    só. Misturar "o que já está lançado no futuro" com "o nível de hoje
- *    repetido" faria o significado da linha mudar de mês para mês, e ninguém
- *    saberia qual dos dois está lendo.
+ * 2. **O mês corrente é COMPLETADO, não ignorado.** Ele saía da leitura
+ *    inteira por "estar pela metade", e o resultado era um buraco justamente
+ *    no mês que o gestor está vivendo. Agora o que já foi lançado nele conta,
+ *    e os contratos que ainda não foram lançados entram projetados — o mês
+ *    fica inteiro sem fingir que já fechou.
+ * 3. **A projeção é CONTRATO A CONTRATO**, e não um total repetido.
+ *
+ *    Até aqui ela repetia o nível fixo do último mês fechado, doze vezes: um
+ *    número só, que não se abre. Não dava para perguntar de que contratos ele
+ *    era feito, e um contrato encerrado seguia embutido nele para sempre.
+ *
+ *    Agora cada despesa fixa é projetada a partir da última vez que apareceu,
+ *    pelo valor dela, até a vigência — e, não havendo vigência, adiante. Mês
+ *    que já tem a linha do contrato não recebe a projeção dele, ou a despesa
+ *    seria contada duas vezes exatamente nos meses em que alguém lançou
+ *    adiantado. É o mesmo motor do servidor (`domain/projecao.ts`): as duas
+ *    pontas precisam dar o mesmo número, porque o gestor abre uma e confere
+ *    na outra.
  * 4. **A projeção não obedece ao filtro de período**, que termina no passado
  *    por padrão. Ela existe para olhar adiante; recortá-la pelo filtro a
- *    apagaria justamente quando ela interessa.
+ *    apagaria justamente quando ela interessa. Pela mesma razão os CONTRATOS
+ *    saem da base inteira do escopo, e não da janela: um contrato que parou
+ *    de aparecer dentro dela é o que a projeção precisa carregar adiante.
  */
 function calcularFarol3(r) {
   const base = Loja.todosDoEscopo().filter((l) =>
     passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, r) &&
     naJanela(l.competencia, r) && (!r.somenteReconhecidas || reconhecidoDe(l)));
 
-  const fechado = mesSoma(mesHoje(), -1);
+  // O mês corrente ENTRA, e por isso o corte é nele e não no mês anterior.
+  // Ele não é mais um buraco: o que já foi lançado conta, e os contratos que
+  // faltam entram projetados logo abaixo.
+  const corrente = mesHoje();
   const meses = ordenado([...new Set(base.map((l) => l.competencia).filter(Boolean))])
-    .filter((m) => m <= fechado);
+    .filter((m) => m <= corrente);
+
+  // Os contratos saem da base do escopo SEM a janela de período: um contrato
+  // que parou de aparecer dentro dela é justamente o que a projeção precisa
+  // carregar adiante. O recorte de filial, cenário e reconhecimento continua
+  // valendo — ele diz de QUEM é a leitura, não de quando.
+  const semJanela = Loja.todosDoEscopo().filter((l) =>
+    passaNoFiltro(E.cenariosSel, l.cenario) && naFilialDoBloco(l.filial, r) &&
+    (!r.somenteReconhecidas || reconhecidoDe(l)));
+  const contratos = contratosDe(semJanela);
 
   const somaC2 = (itens) => itens.reduce((s, l) => s + cent(l.valor), 0);
   const realizados = meses.map((m, i) => {
@@ -773,17 +798,56 @@ function calcularFarol3(r) {
   });
 
   const ultimo = realizados[realizados.length - 1] || null;
-  const projetados = !ultimo ? [] : intervalo(mesSoma(ultimo.comp, 1), mesSoma(ultimo.comp, MESES_PROJETADOS))
-    .map((m) => ({
+
+  // ------------------------------------------- a projeção, contrato a contrato
+  // O horizonte começa no mês SEGUINTE ao último com dado — o corrente já está
+  // entre os realizados, completado pelos contratos que faltavam nele.
+  const deProj = mesSoma(ultimo ? ultimo.comp : corrente, 1);
+  const ateProj = mesSoma(deProj, MESES_PROJECAO - 1);
+  const porMesProj = projetadoPorMes(contratos, deProj, ateProj);
+
+  const projetados = intervalo(deProj, ateProj).map((m) => {
+    const p = porMesProj.get(m) || { centavos: 0, contratos: 0, itens: [] };
+    // O que JÁ ESTÁ LANÇADO naquele mês futuro entra junto. Sem isto, uma
+    // despesa que o gestor lançou adiantado sumiria da leitura: o motor a
+    // descarta da projeção (ela já tem linha), e o realizado para no mês
+    // corrente. O dinheiro existe e precisa aparecer uma vez — nem duas, nem
+    // nenhuma.
+    const reaisDoMes = semJanela.filter((l) => l.competencia === m && l.natureza === 'fixa');
+    const centReal = reaisDoMes.reduce((acc, l) => acc + cent(l.valor), 0);
+    // A composição do mês projetado é a dos CONTRATOS que o compõem — não a
+    // cópia da composição de um mês passado. É o que permite abrir o número e
+    // perguntar "de que contratos isto é feito?", que é o que faltava.
+    const porTipo = new Map();
+    for (const i of p.itens) {
+      const t = i.contrato.tipo || '—';
+      porTipo.set(t, (porTipo.get(t) || 0) + cent(i.valor));
+    }
+    for (const l of reaisDoMes) {
+      const t = l.tipo || '—';
+      porTipo.set(t, (porTipo.get(t) || 0) + cent(l.valor));
+    }
+    return {
       comp: m, rot: mesExib(m), projetado: true,
       total: null, variavel: null, fixa: null,
       // A projeção é uma série à parte: é ela que ganha o tom claro e o
       // tracejado, e é por isso que o realizado fica `null` aqui.
-      fixaProjetada: ultimo.fixa,
-      baseDaProjecao: ultimo.comp, lancamentos: ultimo.fixasN,
-      composicao: ultimo.composicao, itens: ultimo.itens.filter((l) => l.natureza === 'fixa'),
+      fixaProjetada: reais(p.centavos + centReal),
+      contratosProjetados: p.contratos,
+      // O que já tem linha naquele mês, à parte: é o que permite a tela dizer
+      // "tanto já está lançado, tanto é a recorrência seguindo".
+      lancadosNoMes: reaisDoMes.length,
+      lancamentos: p.contratos + reaisDoMes.length,
+      composicao: [...porTipo.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+        .map(([tipo, c]) => ({ tipo, valor: reais(c) })),
+      // Os itens do mês projetado são os CONTRATOS, não lançamentos: eles não
+      // existem como linha, e fingir que existem faria o detalhamento abrir
+      // registros que ninguém lançou.
+      itens: reaisDoMes,
+      contratos: p.itens.map((i) => i.contrato),
       variacao: null,
-    }));
+    };
+  });
 
   // O último realizado entra TAMBÉM na série projetada, senão a linha clara
   // nasceria solta no ar, sem ligação com o ponto de onde ela parte.
@@ -3047,7 +3111,7 @@ async function viewIndicadores() {
           <tbody>${farol3.pontos.map((p) => `<tr data-mes-farol3="${esc(p.comp)}"${
             p.projetado ? ' class="linha-projetada"' : ''}>
             <td>${esc(p.rot)}${p.projetado
-              ? `<div class="arv-comp">projeção · base ${esc(mesExib(p.baseDaProjecao))}</div>` : ''}</td>
+              ? `<div class="arv-comp">projeção · ${inteiro(p.contratosProjetados)} contrato(s) recorrente(s)</div>` : ''}</td>
             <td class="n">${p.total === null ? '—' : brl(p.total)}</td>
             <td class="n">${p.variavel === null ? '—' : brl(p.variavel)}</td>
             <td class="n"${p.projetado ? ` style="color:${COR_PROJECAO}"` : ''}>${
@@ -3362,8 +3426,8 @@ async function viewIndicadores() {
         // O detalhamento que o enunciado pede: mês, natureza e composição, além
         // do valor que as séries já dão.
         extra: p.projetado
-          ? [{ nome: 'Projeção', valor: `repete ${mesExib(p.baseDaProjecao)}` },
-            { nome: 'Despesas fixas', valor: `${inteiro(p.lancamentos)} lançamento(s)` },
+          ? [{ nome: 'Projeção', valor: `${inteiro(p.contratosProjetados)} contrato(s) recorrente(s)` },
+            { nome: 'Como é projetado', valor: 'cada contrato pelo valor da última vez que apareceu' },
             ...p.composicao.map((c) => ({ nome: c.tipo, valor: brl(c.valor), cor: COR_PROJECAO }))]
           : [{ nome: 'Lançamentos', valor: `${inteiro(p.lancamentos)} · ${inteiro(p.fixasN)} fixo(s), `
               + `${inteiro(p.variaveisN)} pontual(is)` },
@@ -4533,18 +4597,33 @@ function abrirMesDoFarol3(farol3, comp, soFixas = false) {
   // O cartão anuncia o NÍVEL FIXO, e o clique nele tem de abrir só o que forma
   // esse número: uma lista com os pontuais junto somaria mais do que o valor
   // clicado, que é a divergência que o detalhamento existe para não ter.
-  const fonte = soFixas && !ponto.projetado
-    ? ponto.itens.filter((l) => l.natureza === 'fixa') : ponto.itens;
+  // Num mês PROJETADO não há lançamento: o que forma o número são os
+  // CONTRATOS. Eles entram com a forma de um lançamento daquele mês — é o que
+  // a tabela sabe desenhar — e a nota abaixo diz que eles não têm linha
+  // própria ali. Mostrar lançamento nenhum faria o gestor duvidar do número,
+  // e mostrar os lançamentos de um mês passado mentiria sobre a competência.
+  const fonte = ponto.projetado
+    ? (ponto.contratos || []).map((c) => ({
+        empresa: c.empresa, filial: c.filial, tipo: c.tipo, fornecedor: c.fornecedor,
+        descricao: c.descricao, cenario: c.cenario, valor: c.valor,
+        natureza: 'fixa', competencia: ponto.comp,
+        // De onde ele veio e até quando vale: é o que transforma a projeção
+        // numa lista de trabalho em vez de um total que ninguém audita.
+        obs: `visto pela última vez em ${mesExib(c.ultima)}`
+          + (c.vigenciaAte ? ` · vigência até ${mesExib(c.vigenciaAte)}` : ' · sem vigência cadastrada'),
+      }))
+    : soFixas ? ponto.itens.filter((l) => l.natureza === 'fixa') : ponto.itens;
   const itens = [...fonte].sort((a, b) => cent(b.valor) - cent(a.valor));
   abrirRegistros({
     titulo: ponto.projetado
-      ? `Custo fixo projetado para ${ponto.rot} — base: ${mesExib(ponto.baseDaProjecao)}`
+      ? `Custo fixo projetado para ${ponto.rot} — ${inteiro(ponto.contratosProjetados)} contrato(s)`
       : soFixas ? `Custo fixo de ${ponto.rot}` : `Custos de ${ponto.rot}`,
     tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
     itens, contagem: null,
     nota: ponto.projetado
-      ? `${inteiro(itens.length)} despesa(s) fixa(s) de ${mesExib(ponto.baseDaProjecao)}, que é a base da `
-        + 'projeção. Meses futuros repetem o nível fixo do último mês fechado; eles não têm lançamento próprio.'
+      ? `${inteiro(itens.length)} contrato(s) recorrente(s) projetado(s) para ${ponto.rot}. `
+        + 'Cada um é projetado pelo valor da última vez que apareceu, até a vigência dele — e, sem vigência, '
+        + 'adiante. Eles não têm lançamento próprio neste mês: é por isso que estão aqui.'
       : soFixas
         ? `${inteiro(itens.length)} despesa(s) fixa(s), somando ${brl(ponto.fixa)}. Do maior para o menor valor.`
         : `${inteiro(itens.length)} lançamento(s): ${brl(ponto.fixa)} em despesa fixa e `

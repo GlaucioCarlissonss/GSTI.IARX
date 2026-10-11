@@ -326,9 +326,20 @@ function formLancamento(existente) {
               <option value="total">o total do contrato (rateado)</option>
               <option value="parcela">o valor de cada parcela</option></select></div>
           </div>`
-          : nat === 'fixa' && !ed ? `
-          <div class="campo"><label for="c-ate">Repetir mensalmente até (MM/AAAA)</label>
-            <input id="c-ate" name="ate" placeholder="opcional — gera uma ocorrência por mês"></div>` : '';
+          : nat === 'fixa' ? `
+          <div class="grade ${ed ? '' : 'g2'}">
+            ${ed ? '' : `
+            <div class="campo"><label for="c-ate">Repetir mensalmente até (MM/AAAA)</label>
+              <input id="c-ate" name="ate" placeholder="opcional — gera uma ocorrência por mês">
+              <p class="nota" style="margin:var(--esp-2) 0 0">Cria uma linha por mês até aí. Preenchido,
+                ele também vira a vigência do contrato.</p></div>`}
+            <div class="campo"><label for="c-vig">Contrato vale até (MM/AAAA)</label>
+              <input id="c-vig" name="vigencia" value="${esc(mesExib(v.recorrenciaAte||''))}"
+                placeholder="em branco = contrato em aberto">
+              <p class="nota" style="margin:var(--esp-2) 0 0">É o que a <strong>projeção</strong> lê.
+                Em branco significa <strong>em aberto</strong>, e um contrato em aberto é projetado todo mês,
+                indefinidamente — encerrar um contrato é cadastrar até quando ele valeu.</p></div>
+          </div>` : '';
       };
       pintarExtra();
       campo('natureza').addEventListener('change', pintarExtra);
@@ -423,6 +434,18 @@ async function salvarLancamento(existente, campo, empresa, filial) {
     throw new Error('Regularizada em: use MM/AAAA, ou deixe em branco se ainda não houve.');
   }
 
+  // A vigência do contrato. Só faz sentido em despesa FIXA: a pontual única
+  // aconteceu uma vez, e a parcelada já tem o fim dela nas parcelas.
+  const vigBruto = (campo('vigencia')?.value || '').trim();
+  const ehFixa = campo('natureza').value === 'fixa';
+  const recorrenciaAte = ehFixa && vigBruto ? (mesInterno(vigBruto) || null) : null;
+  if (ehFixa && vigBruto && !recorrenciaAte) {
+    throw new Error('Contrato vale até: use MM/AAAA, como 03/2026 — ou deixe em branco para contrato em aberto.');
+  }
+  if (recorrenciaAte && recorrenciaAte < comp) {
+    throw new Error('O contrato não pode valer até antes da competência dele — um contrato não acaba antes de começar.');
+  }
+
   const base = {
     filial: pagadora,
     tipo: campo('tipo').value,
@@ -435,6 +458,9 @@ async function salvarLancamento(existente, campo, empresa, filial) {
     beneficiadas,
     beneficiaTodas: escolhaConsumo === 'compartilhado' && !!marcadas.todas,
     regularizadaEm,
+    // Nulo = contrato EM ABERTO, e é o que a projeção lê para saber que ele
+    // continua acontecendo.
+    recorrenciaAte,
   };
 
   if (existente) {
@@ -453,6 +479,14 @@ async function salvarLancamento(existente, campo, empresa, filial) {
     if (mudouMarco && existente.grupo) {
       await propagarNaSerie(emp, existente.grupo,
         { regularizadaEm: base.regularizadaEm, tipoConsumo: base.tipoConsumo },
+        existente.id, just);
+    }
+    // A vigência é da SÉRIE pela mesma razão: o contrato tem UM fim. Gravá-la
+    // só na linha editada faria a projeção depender de qual mês o gestor
+    // abriu para encerrar o contrato.
+    const mudouVigencia = (base.recorrenciaAte || null) !== (existente.recorrenciaAte || null);
+    if (mudouVigencia && existente.grupo) {
+      await propagarNaSerie(emp, existente.grupo, { recorrenciaAte: base.recorrenciaAte },
         existente.id, just);
     }
     if (comp !== existente.competencia) {
@@ -491,6 +525,9 @@ async function salvarLancamento(existente, campo, empresa, filial) {
     if (fim < comp) throw new Error('"Repetir até" deve ser igual ou posterior à competência.');
     if (mesIdx(fim) - mesIdx(comp) > 240) throw new Error('Recorrência acima de 240 meses.');
     for (const m of intervalo(comp, fim)) ocorrencias.push({ comp: m, valor, parcela: null, qtdParcelas: null });
+    // Repetir até X É dizer que o contrato vale até X. Guardar as duas coisas
+    // em separado deixaria o sistema com duas respostas para a mesma pergunta.
+    base.recorrenciaAte = fim;
   } else {
     ocorrencias.push({ comp, valor, parcela: null, qtdParcelas: null });
   }

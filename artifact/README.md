@@ -358,6 +358,8 @@ Vinte e uma suítes, todas contra um `window.claude` simulado num Chromium real:
 | `testar-operavel.cjs` | a régua de operabilidade, em 17 telas: gesto de clique sem caminho de teclado, controle operável sem nome acessível (um botão que é só um glifo não é lido por ninguém) e parada de Tab sem marca visível — esta última percorrida com Tab de verdade, porque `focus()` de script não casa `:focus-visible` |
 | `testar-foco-modal.cjs` | o foco dentro e fora da tela flutuante: entra nela mesmo sem campo, o Tab circula lá dentro nos dois sentidos, fechar devolve o foco a quem abriu, e com dois diálogos empilhados o Tab fica no de cima |
 | `testar-estreito.cjs` | o atalho de pular para o conteúdo (primeira parada de Tab, que move o FOCO e não só a rolagem) e as 16 telas a 390px sem a PÁGINA rolar para o lado — tabela que rola dentro da caixa dela é desenho, não defeito |
+| `testar-projecao.cjs` | o motor de projeção medido SEM navegador: ele é puro, e roda num `vm` sobre `app-js1.js`. Os casos são os mesmos de `server/test/projecao.test.ts` de propósito — as duas pontas precisam dar o mesmo número, porque o gestor abre uma e confere na outra |
+| `testar-projecao-tela.cjs` | a projeção no navegador: doze meses, cada um com os contratos que se repetem; a vigência encerrando no mês dela e não no seguinte; e o lançamento feito adiantado contado UMA vez, nem duas nem nenhuma. Lança o que precisa dentro da página, então roda também sobre a base sintética de `semear-projecao.cjs` |
 
 `testar-isolamento.cjs` exercita a regra multi-tenant no estado mais
 arriscado, não no mais confortável: com **todas** as empresas carregadas ao

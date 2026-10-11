@@ -12,7 +12,7 @@
 //     para a planilha poder dizer quem CONSOME o que a filial paga. Fora das
 //     obrigatórias: um arquivo anterior continua entrando igual. A numeração
 //     acompanha a do servidor, que é quem o cliente vê na aba Modelo.
-const MODELO_VERSAO = '1.6';
+const MODELO_VERSAO = '1.7';
 
 /**
  * A coluna que diz de QUAL MATRIZ é a linha.
@@ -52,7 +52,7 @@ const ABAS_MODELO_BASE = {
   Financeiro: {
     colunas: ['Filial', 'Tipo de Despesa', 'Competência', 'Valor', 'Natureza', 'Classificação',
       'Qtd Parcelas', 'Parcela', 'Grupo', 'Cenário', 'Origem', 'Tipo de Consumo', 'Filiais Beneficiadas',
-      'Fornecedor', 'Descrição', 'Observações'],
+      'Fornecedor', 'Contrato Vale Até', 'Descrição', 'Observações'],
     obrigatorias: ['Tipo de Despesa', 'Competência', 'Valor', 'Natureza', 'Classificação'],
     apelidos: {
       'Tipo de Despesa': ['tipo', 'tipodespesa', 'tipodedespesa', 'centrocusto', 'centrodecusto'],
@@ -60,6 +60,8 @@ const ABAS_MODELO_BASE = {
       Valor: ['valor', 'valorrs', 'valorreais'],
       'Classificação': ['classificacao', 'classificacaocontabil'],
       'Qtd Parcelas': ['qtdparcelas', 'quantidadeparcelas', 'parcelas', 'numeroparcelas'],
+      'Contrato Vale Até': ['contratovaleate', 'valeate', 'vigencia', 'vigenciaate',
+        'recorrenciaate', 'repetirate', 'contratoate'],
       Parcela: ['parcela', 'numeroparcela', 'parcelanumero'],
       Grupo: ['grupo', 'grupoparcelamento', 'referencia', 'referenciaexterna'],
       'Cenário': ['cenario', 'cenarioprojecao'],
@@ -233,6 +235,9 @@ function linhasFinanceiro(empresa) {
       // escolha original apagaria essa diferença.
       'Filiais Beneficiadas': l.beneficiaTodas ? 'Todas' : beneficiadasDe(l).join('|'),
       'Fornecedor': l.fornecedor || '',
+      // A vigência do contrato. Vazio = em aberto, que é o estado que projeta
+      // indefinidamente — e é como todo lançamento antigo sai daqui.
+      'Contrato Vale Até': l.recorrenciaAte ? mesExib(l.recorrenciaAte) : '',
       'Descrição': l.descricao || '', 'Observações': l.obs || '',
     }));
 }
@@ -445,6 +450,9 @@ const NOTAS_MODELO = {
     'Competência': 'Mês de referência no formato MM/AAAA (ex.: 03/2026).',
     Valor: 'Em reais, com vírgula ou ponto decimal (1.234,56 ou 1234.56). Sem "R$".',
     Natureza: 'Fixa | Pontual única | Pontual parcelada.',
+    'Contrato Vale Até': 'MM/AAAA. Só em despesa FIXA: até quando o contrato vale. '
+      + 'Em branco = contrato EM ABERTO, e um contrato em aberto é projetado todo mês, indefinidamente. '
+      + 'Encerrar um contrato é preencher aqui até quando ele valeu.',
     'Classificação': 'Despesa | Investimento.',
     'Qtd Parcelas': 'Só para natureza parcelada; o sistema gera as parcelas seguintes.',
     Grupo: 'Identificador que liga as parcelas de uma mesma compra.',
@@ -576,8 +584,26 @@ async function importarFinanceiro(empresa, aba, opcoes, rel) {
     const desconhecida = beneficiadas.find((n) => !filiaisDoEscopo().some((f) => f.nome === n));
     if (desconhecida) return erro('Filial beneficiada "' + desconhecida + '" não encontrada neste cliente.');
 
+    // A vigência do contrato. Coluna AUSENTE ou vazia não mexe em nada: o
+    // arquivo do modelo anterior continua entrando, e reimportar uma
+    // exportação antiga não reabre contrato nenhum.
+    const vigBruto = (ler(linha, 'Contrato Vale Até') || '').trim();
+    let recorrenciaAte = null;
+    if (vigBruto) {
+      if (natureza !== 'fixa') {
+        return erro('Contrato Vale Até só vale em despesa Fixa — a pontual única aconteceu uma vez, '
+          + 'e a parcelada já termina nas parcelas.');
+      }
+      recorrenciaAte = mesInterno(vigBruto);
+      if (!recorrenciaAte) return erro('Contrato Vale Até inválido — use MM/AAAA, como 03/2026.');
+      if (recorrenciaAte < competencia) {
+        return erro('Contrato Vale Até é anterior à competência — um contrato não acaba antes de começar.');
+      }
+    }
+
     const registro = { filial, tipo, competencia, valor, natureza, classificacao,
       parcela, qtdParcelas, cenario, origem, tipoConsumo, beneficiadas, beneficiaTodas,
+      recorrenciaAte,
       fornecedor: ler(linha, 'Fornecedor') || null,
       descricao: ler(linha, 'Descrição') || null, obs: ler(linha, 'Observações') || null,
       grupo: ler(linha, 'Grupo') || null };

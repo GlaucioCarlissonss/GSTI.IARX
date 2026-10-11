@@ -4,7 +4,7 @@ const fs = require('fs');
 const base = {};
 for (const dir of ['dados']) {
   for (const f of fs.readdirSync(dir)) {
-    if (f === '_indice.json') continue;
+    if (f.startsWith('_') || f.startsWith('.')) continue;
     const [col, id] = f.replace(/\.json$/, '').split('__');
     const rest = f.replace(/\.json$/, '').split('__').slice(1).join('__');
     base[col + '/' + rest] = JSON.parse(fs.readFileSync(dir + '/' + f, 'utf8'));
