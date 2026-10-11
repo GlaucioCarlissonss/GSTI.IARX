@@ -155,6 +155,12 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   -- "quem se beneficia" é sempre `lancamento_beneficiadas`, que é a lista
   -- congelada no momento da gravação.
   beneficia_todas     INTEGER NOT NULL DEFAULT 0 CHECK (beneficia_todas IN (0,1)),
+  -- Até quando este contrato vale, em AAAA-MM. NULO = em aberto, e é o que
+  -- projeta para frente indefinidamente. Encerrar um contrato é cadastrar a
+  -- vigência dele; supor uma data que ninguém informou inventaria o fim de
+  -- contratos em vigor.
+  recorrencia_ate     TEXT CHECK (recorrencia_ate IS NULL
+                        OR recorrencia_ate GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'),
   documento           TEXT,
   -- A quem se pagou, separado de `origem_custo` (que mistura setor e centro de
   -- custo): é o que permite conciliar o fornecedor da planilha contra os que o

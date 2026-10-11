@@ -33,11 +33,53 @@ function detectarSeparador(primeiraLinha: string): string {
  * era UTF-8. `TextDecoder` já vem no Node, então isto não acrescenta
  * dependência nenhuma.
  */
+/**
+ * A faixa 0x80–0x9F do Windows-1252, escrita à mão.
+ *
+ * É a única parte em que o Windows-1252 difere do ISO-8859-1: ali o
+ * ISO-8859-1 tem caracteres de CONTROLE, e o Windows-1252 tem travessão,
+ * aspas curvas, reticências, bullet e o cifrão do euro — exatamente os
+ * caracteres que um ERP usa em descrição de nota.
+ *
+ * Ela existe porque `new TextDecoder('windows-1252')` NÃO é confiável: há
+ * compilação do Node em que esse rótulo decodifica como ISO-8859-1, e aí o
+ * byte 0x97 (travessão) vira U+0097 — um caractere de controle INVISÍVEL.
+ * O estrago é silencioso da pior maneira: o acento sai certo, então o texto
+ * parece correto, e só o travessão some. "Link dedicado — janeiro" é gravado
+ * com um controle no lugar do traço, e a descrição deixa de casar com a mesma
+ * despesa na carga seguinte.
+ *
+ * Trinta e dois pontos de código resolvem isso sem depender da ICU do
+ * ambiente. Posição vazia = indefinido também no Windows-1252.
+ */
+const CP1252_ALTO = [
+  '\u20AC', '', '\u201A', '\u0192', '\u201E', '\u2026', '\u2020', '\u2021',
+  '\u02C6', '\u2030', '\u0160', '\u2039', '\u0152', '', '\u017D', '',
+  '', '\u2018', '\u2019', '\u201C', '\u201D', '\u2022', '\u2013', '\u2014',
+  '\u02DC', '\u2122', '\u0161', '\u203A', '\u0153', '', '\u017E', '\u0178',
+];
+
+/** O buffer lido como Windows-1252, byte a byte, sem passar pela ICU. */
+function deWindows1252(buffer: Buffer): string {
+  let fora = '';
+  for (const byte of buffer) {
+    if (byte >= 0x80 && byte <= 0x9f) {
+      const c = CP1252_ALTO[byte - 0x80];
+      // Posição sem caractere definido: preserva o byte como veio, que é o que
+      // o próprio padrão manda e o que evita perder a posição no campo.
+      fora += c || String.fromCharCode(byte);
+    } else {
+      fora += String.fromCharCode(byte);
+    }
+  }
+  return fora;
+}
+
 export function decodificarTexto(buffer: Buffer): string {
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
   } catch {
-    return new TextDecoder('windows-1252').decode(buffer);
+    return deWindows1252(buffer);
   }
 }
 

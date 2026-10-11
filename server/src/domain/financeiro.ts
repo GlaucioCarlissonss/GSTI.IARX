@@ -194,6 +194,15 @@ export interface EntradaLancamento {
   valorRefereSe?: 'total' | 'parcela';
   /** Para natureza fixa: replica o lançamento mensalmente até esta competência (inclusive). */
   repetirAte?: string | null;       // "MM/AAAA"
+  /**
+   * Até quando o contrato vale — "MM/AAAA", ou nulo para em aberto.
+   *
+   * É o que a projeção lê. Vazio significa "em aberto", e um contrato em
+   * aberto projeta indefinidamente: encerrar é cadastrar a vigência, porque
+   * supor um fim que ninguém informou inventaria o encerramento de contratos
+   * em vigor.
+   */
+  recorrenciaAte?: string | null;
   descricao?: string | null;
   observacoes?: string | null;
   /** Cenário de projeção. 'oficial' é o padrão e alimenta os dashboards. */
@@ -271,6 +280,10 @@ function apresentar(linha: LinhaLancamento & Record<string, unknown>, beneficiad
     valor: paraReais(linha.valor_centavos),
     valor_centavos: linha.valor_centavos,
     natureza: linha.natureza,
+    // Até quando este contrato vale. Nulo = em aberto, e é o que a projeção
+    // lê para saber que ele continua acontecendo. Vai em MM/AAAA, como toda
+    // competência que sai daqui.
+    recorrencia_ate: linha.recorrencia_ate ? paraExibicao(linha.recorrencia_ate as string) : null,
     classificacao: linha.classificacao,
     qtd_parcelas: linha.qtd_parcelas,
     parcela_numero: linha.parcela_numero,
@@ -359,6 +372,10 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
 
   const valores: Array<{ competencia: string; centavos: number; parcela: number | null }> = [];
   let qtdParcelas: number | null = null;
+  // Até quando este contrato vale. Só faz sentido em despesa FIXA: a pontual
+  // única aconteceu uma vez, e a parcelada já tem o fim dela nas parcelas.
+  let recorrenciaAte: string | null =
+    entrada.natureza === 'fixa' && entrada.recorrenciaAte ? paraInterno(entrada.recorrenciaAte) : null;
 
   if (entrada.natureza === 'pontual_parcelada') {
     const n = Number(entrada.qtdParcelas ?? 0);
@@ -379,6 +396,9 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
   } else if (entrada.natureza === 'fixa' && entrada.repetirAte) {
     const fim = paraInterno(entrada.repetirAte);
     if (fim < competencia) throw erroValidacao('"Repetir até" deve ser igual ou posterior à competência inicial.');
+    // Repetir até X É dizer que o contrato vale até X. Guardar as duas coisas
+    // em separado deixaria o sistema com duas respostas para a mesma pergunta.
+    recorrenciaAte = fim;
     let mes = competencia;
     while (mes <= fim) {
       valores.push({ competencia: mes, centavos: valorCentavos, parcela: null });
@@ -402,8 +422,8 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
          (empresa_id, filial_id, tipo_despesa_id, competencia, valor_centavos, natureza, classificacao,
           qtd_parcelas, parcela_numero, lancamento_origem_id, descricao, observacoes, cenario, origem, dedup_hash,
           origem_custo, destino_pagamento, documento, fornecedor, grupo_gasto, data_pagamento, planejamento,
-          tipo_consumo, beneficia_todas)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          tipo_consumo, beneficia_todas, recorrencia_ate)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const extras = [
       entrada.fornecedor ?? null,
@@ -416,6 +436,14 @@ export function criarLancamento(ctx: Contexto, entrada: EntradaLancamento) {
       // pontas do INSERT usam os mesmos extras, e por isso ela é herdada.
       tipoConsumo,
       entrada.beneficiadas === 'todas' ? 1 : 0,
+      // A vigência também é do contrato, e pela mesma razão vai nos extras.
+      //
+      // `repetirAte` deixa de morrer na criação. Até aqui ele materializava
+      // uma linha por mês e sumia, e depois disso ninguém conseguia
+      // distinguir "contrato mensal em vigor" de "doze despesas iguais que
+      // por acaso se repetiram" — era por não ter essa distinção que a
+      // projeção repetia um total em vez de projetar contrato a contrato.
+      recorrenciaAte,
     ];
 
     const primeiro = valores[0]!;
@@ -671,6 +699,13 @@ export interface AtualizacaoLancamento {
   documento?: string | null;
   tipoConsumo?: TipoConsumo | null;
   beneficiadas?: number[] | 'todas' | null;
+  /**
+   * Até quando o contrato vale — "MM/AAAA", ou `null` para reabri-lo.
+   *
+   * Campo não enviado PERMANECE, como todos os outros aqui: corrigir um valor
+   * não pode encerrar nem reabrir um contrato por efeito colateral.
+   */
+  recorrenciaAte?: string | null;
   justificativa?: string | null;
 }
 
@@ -709,6 +744,29 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
   const valorCentavos = dados.valor !== undefined ? paraCentavos(dados.valor) : antes.valor_centavos;
   if (valorCentavos < 0) throw erroValidacao('O valor do lançamento não pode ser negativo.');
 
+  // A vigência da recorrência. Só vale em despesa FIXA: a pontual única
+  // aconteceu uma vez e a parcelada já tem o fim dela nas parcelas — aceitar
+  // vigência nelas prometeria um encerramento que a projeção nunca leria.
+  const naturezaAtual = (dados as { natureza?: Natureza }).natureza ?? (antes.natureza as Natureza);
+  let recorrenciaAte: string | null = (antes.recorrencia_ate as string | null) ?? null;
+  if (dados.recorrenciaAte !== undefined) {
+    if (dados.recorrenciaAte === null || dados.recorrenciaAte === '') {
+      recorrenciaAte = null;
+    } else {
+      if (naturezaAtual !== 'fixa') {
+        throw erroValidacao(
+          'Só despesa fixa tem vigência de recorrência — a pontual única aconteceu uma vez, e a parcelada já termina nas parcelas.',
+        );
+      }
+      recorrenciaAte = paraInterno(dados.recorrenciaAte);
+      if (recorrenciaAte < novaCompetencia) {
+        throw erroValidacao(
+          'A vigência da recorrência não pode ser anterior à competência do lançamento — um contrato não acaba antes de começar.',
+        );
+      }
+    }
+  }
+
   // Campo não enviado permanece. Só se mexe na lista de beneficiadas quando o
   // pedido fala dela — corrigir um valor não pode apagar quem consome a despesa.
   const tipoConsumo: TipoConsumo =
@@ -730,7 +788,7 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
       `UPDATE lancamentos
           SET filial_id = ?, tipo_despesa_id = ?, competencia = ?, valor_centavos = ?, classificacao = ?,
               descricao = ?, observacoes = ?, origem_custo = ?, destino_pagamento = ?, fornecedor = ?,
-              documento = ?, tipo_consumo = ?, beneficia_todas = ?,
+              documento = ?, tipo_consumo = ?, beneficia_todas = ?, recorrencia_ate = ?,
               atualizado_em = datetime('now')
         WHERE id = ? AND empresa_id = ?`,
     )
@@ -750,6 +808,7 @@ export function atualizarLancamento(ctx: Contexto, id: number, dados: Atualizaca
       dados.documento !== undefined ? dados.documento : antes.documento,
       tipoConsumo,
       dados.beneficiadas === 'todas' ? 1 : mexeNoConsumo ? 0 : Number(antes.beneficia_todas ?? 0),
+      recorrenciaAte,
       id,
       empresaDoRegistro,
     );

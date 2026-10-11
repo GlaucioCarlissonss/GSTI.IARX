@@ -38,6 +38,32 @@ test('o arquivo em Windows-1252 chega com os acentos inteiros', () => {
   assert.ok(!texto.includes('�'), 'nenhum caractere ficou irrecuperável');
 });
 
+test('a pontuação do Windows-1252 chega inteira, não como caractere de controle', () => {
+  // A faixa 0x80–0x9F é a ÚNICA em que o Windows-1252 difere do ISO-8859-1, e
+  // é onde moram travessão, aspas curvas, reticências e bullet — justamente o
+  // que um ERP usa em descrição de nota. Há compilação do Node em que
+  // `TextDecoder('windows-1252')` decodifica essa faixa como ISO-8859-1, e aí
+  // o travessão vira U+0097: um caractere INVISÍVEL.
+  //
+  // O estrago é silencioso da pior maneira. O acento sai certo, o texto parece
+  // correto, e só o traço some — a descrição deixa de casar com a mesma
+  // despesa na carga seguinte, e a deduplicação para de reconhecê-la.
+  const texto = decodificarTexto(BRUTO);
+  assert.ok(texto.includes('Link dedicado de internet — janeiro'),
+    'o travessão (0x97) tem de chegar como — e não como U+0097');
+  for (const c of texto) {
+    const n = c.codePointAt(0)!;
+    assert.ok(n < 0x80 || n > 0x9f, `sobrou um caractere de controle C1: U+${n.toString(16)}`);
+  }
+});
+
+test('cada byte da faixa alta vira o caractere que o Windows-1252 manda', () => {
+  // A tabela inteira, de uma vez: se alguém trocar a implementação por um
+  // decodificador do ambiente, é aqui que a troca aparece.
+  const bytes = Buffer.from([0x80, 0x85, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x99]);
+  assert.equal(decodificarTexto(bytes), '€…‘’“”•–—™');
+});
+
 test('o cabeçalho identifica o layout, e o da outra carga não', () => {
   const { brutas } = ler();
   assert.equal(ehLayoutContasPagar(brutas[0]!), true);

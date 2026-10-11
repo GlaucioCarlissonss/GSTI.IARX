@@ -101,6 +101,10 @@ rotasFinanceiro.post('/', exigir('financeiro', 'create'), (req, res) => {
       qtdParcelas: corpo.qtd_parcelas ?? null,
       valorRefereSe: corpo.valor_refere_se,
       repetirAte: corpo.repetir_ate ?? null,
+      // A vigência do contrato. Quando `repetir_ate` vem preenchido ele É a
+      // vigência, e o domínio resolve isso — aqui o campo existe para a
+      // despesa fixa que nasce num mês só e já sabe quando acaba.
+      recorrenciaAte: corpo.recorrencia_ate ?? null,
       descricao: corpo.descricao ?? null,
       observacoes: corpo.observacoes ?? null,
       origemCusto: corpo.origem_custo ?? null,
@@ -146,6 +150,7 @@ rotasFinanceiro.patch('/:id', exigir('financeiro', 'edit'), (req, res) => {
       documento: corpo.documento,
       tipoConsumo: corpo.tipo_consumo,
       beneficiadas: beneficiadasDoCorpo(corpo.filiais_beneficiadas),
+      recorrenciaAte: corpo.recorrencia_ate,
       justificativa: corpo.justificativa ?? null,
     }),
   );

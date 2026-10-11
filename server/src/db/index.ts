@@ -113,6 +113,22 @@ export function migrar(db: Conexao): void {
     // restrição em ADD COLUMN, e a validação fica no domínio.
     ['tipo_consumo', "TEXT NOT NULL DEFAULT 'integral'"],
     ['beneficia_todas', 'INTEGER NOT NULL DEFAULT 0'],
+    // Até quando este contrato vale. NULO = em aberto, e é o que projeta para
+    // frente indefinidamente.
+    //
+    // Antes desta coluna a recorrência não existia como FATO: `repetirAte`
+    // vivia só no instante da criação, materializava uma linha por mês e
+    // sumia. Depois disso ninguém conseguia distinguir "contrato mensal em
+    // vigor" de "doze despesas iguais que por acaso se repetiram" — e a
+    // projeção, sem saber a diferença, repetia um total em vez de projetar
+    // contrato a contrato.
+    //
+    // O lançamento que já existe nasce NULO, isto é, em aberto. Foi a escolha
+    // do gestor: despesa fixa sem vigência projeta para sempre, e encerrar um
+    // contrato é cadastrar a vigência dele. Nasce assim porque o contrário —
+    // supor uma data de fim que ninguém informou — inventaria o encerramento
+    // de contratos que estão em vigor.
+    ['recorrencia_ate', 'TEXT'],
   ] as Array<[string, string]>) {
     if (!colunas.has(nome)) db.exec(`ALTER TABLE lancamentos ADD COLUMN ${nome} ${tipo}`);
   }

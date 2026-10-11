@@ -14,6 +14,7 @@ import { paraReais } from './dinheiro.js';
 import { calcularAtraso } from './projetos.js';
 import { montarFiltroSla, percentual, type FiltroSla } from './sla.js';
 import { escopoSql } from './escopo.js';
+import { contratosDoEscopo, projetadoPorMes } from './projecao.js';
 import { alvoDe, leituraDeMeta } from './metas.js';
 import {
   despesaCentralizada,
@@ -219,7 +220,17 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
     };
   });
 
-  // --- Projeção dos próximos 12 meses (compromissos já lançados: parcelas e fixas)
+  // --- Projeção dos próximos 12 meses
+  //
+  // Ela soma DUAS coisas, e a segunda é nova:
+  //
+  // 1. o que JÁ ESTÁ LANÇADO à frente — parcelas e recorrências materializadas;
+  // 2. os contratos recorrentes que ainda não têm linha naquele mês.
+  //
+  // Até aqui só havia a primeira, e o resultado era que um mês sem lançamento
+  // devolvia ZERO. "O custo de TI cai a zero em março" é falso de um jeito que
+  // ninguém acredita — e uma projeção em que não se acredita deixa de ser
+  // olhada, que é o pior destino de um número.
   const inicioProj = somarMeses(mesRef, 1);
   const fimProj = somarMeses(mesRef, 12);
   const linhasProj = db()
@@ -240,14 +251,29 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
     total: number;
   }>;
   const mapaProj = new Map(linhasProj.map((l) => [l.competencia, l]));
+  // Os contratos saem da história INTEIRA do escopo, não da janela: um
+  // contrato que parou de aparecer dentro dela é justamente o que a projeção
+  // precisa carregar adiante.
+  const contratos = contratosDoEscopo(where, params);
+  const recorrenteProj = projetadoPorMes(contratos, inicioProj, fimProj);
   const projecao12Meses = intervalo(inicioProj, fimProj).map((mes) => {
     const l = mapaProj.get(mes);
+    const r = recorrenteProj.get(mes);
+    // O contrato que JÁ tem linha neste mês não entra de novo: o motor o
+    // descarta, e é o que impede a despesa de ser contada duas vezes
+    // exatamente nos meses em que alguém foi diligente e lançou adiantado.
+    const projetado = r?.centavos ?? 0;
     return {
       competencia: paraExibicao(mes),
       parcelado: paraReais(l?.parcelado ?? 0),
-      fixo: paraReais(l?.fixo ?? 0),
+      fixo: paraReais((l?.fixo ?? 0) + projetado),
       pontual: paraReais(l?.pontual ?? 0),
-      total: paraReais(l?.total ?? 0),
+      // O que veio de contrato recorrente ainda não lançado, à parte: é o que
+      // permite à tela dizer "deste total, tanto é compromisso já lançado e
+      // tanto é a recorrência seguindo" — sem isso os dois viram um número só.
+      recorrente_projetado: paraReais(projetado),
+      contratos_projetados: r?.contratos ?? 0,
+      total: paraReais((l?.total ?? 0) + projetado),
     };
   });
 
