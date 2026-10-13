@@ -2,7 +2,7 @@
 //
 // A entrega move um indicador de tela: "Despesas por reconhecer" sai de
 // Indicadores Gerais e vai para o Painel do Controle Financeiro, que é onde se
-// resolve o que ele aponta. Em Indicadores Gerais fica o Farol 2, com o mesmo
+// resolve o que ele aponta. Em Indicadores Gerais fica o Farol 3, com o mesmo
 // visual e absorvendo o antigo bloco solto "Por reconhecer, por centro de custo".
 //
 // A conferência que mais importa é a do MOVIMENTO: o bloco solto sumiu da fila,
@@ -27,7 +27,7 @@ const { irPara } = require('./ajuda-testes.cjs');
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#modulos button', { timeout: 20000 });
 
-  console.log('\nINDICADORES GERAIS — o Farol 2 no lugar, e o bloco solto fora');
+  console.log('\nINDICADORES GERAIS — o Farol 3 no lugar, e o bloco solto fora');
   await irPara(pag, 'Indicadores Gerais', 1800);
   const ind = await pag.evaluate(() => {
     const kpi = document.querySelector('[data-kpi="por-reconhecer"]');
@@ -50,9 +50,9 @@ const { irPara } = require('./ajuda-testes.cjs');
       drill: kpi.classList.contains('drill'),
     } : null;
   });
-  ok('o Farol 2 existe', !!ind);
+  ok('o Farol 3 existe', !!ind);
   ok('com o título do enunciado',
-    ind && /^Farol 2 - Custos de Despesas lançadas pelo Financeiro que NÃO SÃO/.test(ind.titulo),
+    ind && /^Farol 3 - Custos de Despesas lançadas pelo Financeiro que NÃO SÃO/.test(ind.titulo),
     ind && ind.titulo);
   ok('mantém a faixa e a legenda por empresa', ind && ind.faixa && ind.legenda);
   ok('mantém a árvore por empresa e filial', ind && ind.arvore > 0, ind && String(ind.arvore));

@@ -64,8 +64,8 @@ const { irPara } = require('./ajuda-testes.cjs');
     ['plano-reducao', 'Objetivo 01', 1],
     ['rateio', 'Objetivo 02', 1],
     ['teto-gasto', 'Objetivo 03', 4],
-    ['custo-recorrente', 'Farol 1', 2],
-    ['custo-mes-a-mes', 'Farol 3', 3],
+    ['custo-recorrente', 'Farol 2', 2],
+    ['custo-mes-a-mes', 'Farol 1', 3],
   ];
   for (const [chave, nome, esperadas] of BLOCOS) {
     const b = await pag.evaluate((k) => {
@@ -102,7 +102,7 @@ const { irPara } = require('./ajuda-testes.cjs');
       realizadoComComparacao: f.realizados.every((p) => !!p.vsMedia),
     };
   });
-  ok('o Farol 3 tem três médias', excecoes.pontilhadas === 3, String(excecoes.pontilhadas));
+  ok('o Farol 1 tem três médias', excecoes.pontilhadas === 3, String(excecoes.pontilhadas));
   ok('e cinco tracejadas — a projeção e os quatro tetos, sem média nenhuma',
     excecoes.tracejadas === 5, String(excecoes.tracejadas));
   ok('mês projetado não é comparado com a média', excecoes.projetadoSemComparacao);
@@ -118,7 +118,7 @@ const { irPara } = require('./ajuda-testes.cjs');
       // Média simples dos meses realizados.
       confere: Math.abs(f.mediaTotal.valor - soma / f.realizados.length) < 0.01,
       // O Objetivo 03 mede sobre o universo dele (só reconhecidas), então a
-      // média dele é a dele — não a do Farol 3, por acaso igual ou não.
+      // média dele é a dele — não a do Farol 1, por acaso igual ou não.
       obj3: o.mediaTotal.meses,
       // A distância é percentual e traz o sinal.
       exemplo: f.realizados[0].vsMedia.texto,
@@ -179,7 +179,7 @@ const { irPara } = require('./ajuda-testes.cjs');
     return por;
   });
   // Os cinco gráficos do Financeiro que ganharam média: Objetivo 01, Objetivo
-  // 02, Objetivo 03, os dois do Farol 1 e o Farol 3.
+  // 02, Objetivo 03, os dois do Farol 2 e o Farol 1.
   ok('toda reta de média tem faixa de captura', Object.keys(faixas).length >= 5,
     Object.keys(faixas).join(', '));
   const todos = Object.values(faixas).flat();
@@ -256,7 +256,7 @@ const { irPara } = require('./ajuda-testes.cjs');
         [...tr.children].map((td) => td.textContent.trim())).filter((c) => c.some((x) => /%/.test(x))).length,
     };
   });
-  ok('o racional do Farol 3 tem a coluna vs. média', racional.coluna);
+  ok('o racional do Farol 1 tem a coluna vs. média', racional.coluna);
   ok('e ela vem preenchida', racional.celulas > 0, `${racional.celulas} linha(s)`);
 
   await pag.locator('[data-medias="custo-mes-a-mes"]').click();

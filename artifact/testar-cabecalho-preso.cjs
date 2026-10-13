@@ -2,7 +2,7 @@
 //
 // As tabelas dos faróis rolam dentro do próprio cartão, com altura limitada.
 // O cabeçalho ficava preso só dentro da tela flutuante, então no cartão ele
-// saía de vista na primeira rolagem — e a tabela do Farol 3 tem dez colunas de
+// saía de vista na primeira rolagem — e a tabela do Farol 1 tem dez colunas de
 // número (total, variáveis, fixas, variação, vs. média e os quatro tetos).
 // Sem os nomes à vista, para saber de que coluna é um valor era preciso voltar
 // ao topo e descer contando, a cada linha.
@@ -81,7 +81,7 @@ const { chromium } = require('playwright');
   await abrir('indicadores', 'indicadores_gerais');
   const f3 = await pag.evaluate(() => {
     const bloco = [...document.querySelectorAll('#pagina .bloco')]
-      .find((b) => /Farol 3/.test(b.querySelector('h2,h3')?.textContent || ''));
+      .find((b) => /Farol 1/.test(b.querySelector('h2,h3')?.textContent || ''));
     if (!bloco) return { ausente: true };
     const caixa = bloco.querySelector('.rol-fixo');
     const th = caixa && caixa.querySelector(':scope > table thead th');
@@ -105,7 +105,7 @@ const { chromium } = require('playwright');
     };
   });
   if (f3.ausente || f3.semTabela) {
-    ok('o cartão do Farol 3 tem tabela mês a mês', false, f3.ausente ? 'cartão ausente' : 'sem tabela');
+    ok('o cartão do Farol 1 tem tabela mês a mês', false, f3.ausente ? 'cartão ausente' : 'sem tabela');
   } else {
     ok('o cartão está visível na janela — a medição vale', f3.naTela);
     ok('o cabeçalho cola no topo da caixa', f3.colado);

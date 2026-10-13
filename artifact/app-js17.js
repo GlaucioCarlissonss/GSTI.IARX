@@ -276,7 +276,7 @@ const noStatusDoBloco = (st, r) => (!r.status || r.status.size === 0 ? true : r.
  * período, e não o último ponto: um mês atípico no fim não é direção.
  */
 /**
- * FAROL 1 — variação dos custos fixos (mensais) E dos variáveis (pontuais).
+ * FAROL 2 — variação dos custos fixos (mensais) E dos variáveis (pontuais).
  *
  * Absorve o antigo "Custo recorrente — variação no período": a leitura dos
  * fixos é a MESMA, número por número, e ganha ao lado a dos pontuais, que o
@@ -371,7 +371,7 @@ const rotuloVariacao = (g) =>
     + g.variacaoTotal.toLocaleString('pt-BR') + '% ponta a ponta')
   + ` (tendência ${SETA_TENDENCIA[g.tendencia]} ${PALAVRA_TENDENCIA[g.tendencia]})`;
 
-/** A chave de leitura do Farol 3. A projeção traz o tracejado da amostra, que
+/** A chave de leitura do Farol 1. A projeção traz o tracejado da amostra, que
  *  é o mesmo canal que a linha usa no gráfico. */
 const legendaDoFarol3Html = () => `<div class="legenda-tipos" style="margin-top:var(--esp-5)">
   <span class="legenda-titulo">Séries</span>
@@ -581,7 +581,7 @@ const legendaDeClassificacaoHtml = () => `<div class="legenda-tipos" style="marg
 </div>`;
 
 /**
- * Os quatro números do Farol 1: variação de cada grupo, e quanto de cada um é
+ * Os quatro números do Farol 2: variação de cada grupo, e quanto de cada um é
  * investimento. O percentual de investimento fica ao lado da variação porque é
  * ele que explica uma alta que não é despesa.
  */
@@ -642,7 +642,7 @@ function grupoDoFarolHtml(id, titulo, g) {
  *
  * 1. **Só despesa RECONHECIDA entra.** É o enunciado, e faz sentido: o teto é
  *    um compromisso de gestão, e o que ninguém conferiu ainda não pode reprovar
- *    ninguém. O universo é menor que o do Farol 1 de propósito.
+ *    ninguém. O universo é menor que o do Farol 2 de propósito.
  * 2. **As três faixas são DISJUNTAS**, e é o que torna verdadeiro o "total =
  *    soma das três". `natureza` e `classificacao` são campos independentes — um
  *    investimento pode ser fixo ou pontual —, então "investimentos" leva tudo
@@ -718,7 +718,7 @@ function calcularObjetivo03(r) {
   };
 }
 
-/** As cores das três séries do Farol 3, mais o tom claro da projeção. */
+/** As cores das três séries do Farol 1, mais o tom claro da projeção. */
 const COR_TOTAL = 'var(--s2)';
 const COR_VARIAVEL = 'var(--m4)';
 const COR_FIXA = 'var(--s1)';
@@ -730,7 +730,7 @@ const COR_PROJECAO = 'var(--proj)';
 const MESES_PROJETADOS = 12;
 
 /**
- * FAROL 3 — custo recorrente mês a mês, com projeção do que é fixo.
+ * FAROL 1 — custo recorrente mês a mês, com projeção do que é fixo.
  *
  * Quatro decisões:
  *
@@ -2720,7 +2720,7 @@ const frenteSemCadastroHtml = (f) => `<div class="msg">
  * Neste sistema o centro de custo É o tipo de despesa: é assim que as bases do
  * cliente vêm rotuladas, e a importação já traduz um pelo outro.
  *
- * A peça é compartilhada porque a mesma tabela aparece no Farol 2, em
+ * A peça é compartilhada porque a mesma tabela aparece no Farol 3, em
  * Indicadores Gerais, e no Painel do Controle Financeiro — duas cópias
  * divergiriam na primeira correção, e as duas telas falam do mesmo trabalho.
  */
@@ -3086,63 +3086,8 @@ async function viewIndicadores() {
         <span class="nota">medem e sinalizam, sem alvo cadastrado</span></header>
 
     ${blocoIndicador({
-      chave: 'custo-recorrente',
-      titulo: 'Farol 1 - Variação dos custos Fixos(Mensais) e Variação dos custos Variáveis(pontuais)',
-      // O NÚMERO DO CABEÇALHO continua sendo o dos fixos, e não uma média dos
-      // dois: é o patamar recorrente que responde "o custo subiu?", e somar
-      // uma compra pontual a ele foi justamente o que o indicador antigo
-      // evitava. A variação dos pontuais vem ao lado, no apoio e nos cards.
-      valor: farol.fixos.variacaoTotal === null
-        ? '—'
-        : (farol.fixos.variacaoTotal > 0 ? '+' : '') + farol.fixos.variacaoTotal.toLocaleString('pt-BR') + '%',
-      cor: farol.fixos.tendencia === 'queda' ? 'var(--bomtxt)'
-        : farol.fixos.tendencia === 'alta' ? 'var(--crit)' : null,
-      // As duas medidas vêm NOMEADAS. A porcentagem é ponta a ponta (primeiro
-      // contra último mês) e a palavra é a tendência (média da primeira metade
-      // contra a da segunda). Elas podem discordar de verdade — uma série que
-      // dá um salto só no último mês é "em queda" na tendência e "+72%" ponta a
-      // ponta —, e escrevê-las juntas sem rótulo lê-se como defeito.
-      apoio: `fixos ${esc(rotuloVariacao(farol.fixos))} · variáveis ${esc(rotuloVariacao(farol.variaveis))}`
-        + `${farol.fixos.economia > 0 ? ` · economia de ${brl(farol.fixos.economia)}/mês` : ''}`,
-      corpo: `${metaHtml(metaDoCustoRecorrente(rf, reducao))}
-        ${cardsDoFarolHtml(farol)}
-        ${legendaDeClassificacaoHtml()}
-        ${interruptorDeMediasHtml('custo-recorrente')}
-        ${grupoDoFarolHtml('fixos', 'Custos fixos (mensais)', farol.fixos)}
-        ${grupoDoFarolHtml('variaveis', 'Custos variáveis (pontuais)', farol.variaveis)}
-        <h3 class="titulo-mini">Custo fixo por empresa e filial</h3>
-        ${faixaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
-        ${legendaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
-        ${arvoreDeUnidadesHtml('ind-fixos', q.fixos, emDinheiro)}`,
-      nota: 'Fixos e variáveis são séries <strong>separadas, nunca somadas</strong>: uma compra pontual '
-        + 'num mês e nenhuma no seguinte produz uma "queda" de 100% que é só o fim da compra, e '
-        + 'misturá-la ao recorrente contaminaria a única leitura que fala de patamar. Dentro de cada '
-        + 'série, <strong>despesa</strong> e <strong>investimento</strong> aparecem separados — investir '
-        + 'R$ 50 mil num mês não é o custo subir R$ 50 mil. A variação é a do total de cada grupo.',
-    })}
-
-    ${blocoIndicador({
-      chave: 'por-reconhecer',
-      titulo: 'Farol 2 - Custos de Despesas lançadas pelo Financeiro que NÃO SÃO Reconhecidas/gerenciadas',
-      valor: brl(pendente.valor),
-      cor: pendente.quantidade ? 'var(--alerta)' : 'var(--bomtxt)',
-      apoio: `${inteiro(pendente.quantidade)} de ${inteiro(pendente.universoN)} lançamentos `
-        + `(${pendente.pctQuantidade.toLocaleString('pt-BR')}%)`,
-      corpo: `${faixaDeMatrizesHtml(fatiasDe(q.pendentes, emDinheiro))}
-        ${legendaDeMatrizesHtml(fatiasDe(q.pendentes, emDinheiro))}
-        ${arvoreDeUnidadesHtml('ind-pendentes', q.pendentes, emDinheiro)}
-        <!-- O "Por reconhecer, por centro de custo" era um bloco solto na fila,
-             abaixo deste e falando do mesmo número. Passa a viver AQUI dentro:
-             são duas leituras do mesmo trabalho a fazer — por unidade e por
-             centro —, e mantê-las separadas obrigava a rolar a tela para
-             descobrir que o total era o mesmo. -->
-        <h3 class="titulo-mini">Não reconhecido, por centro de custo</h3>
-        ${porCentroDeCustoHtml(pendente)}`,
-    })}
-
-    ${blocoIndicador({
       chave: 'custo-mes-a-mes',
-      titulo: 'Farol 3 - Custo recorrente Mês a Mês',
+      titulo: 'Farol 1 - Custo recorrente Mês a Mês',
       valor: farol3.ultimoRealizado ? brl(farol3.nivelFixo) : '—',
       apoio: farol3.ultimoRealizado
         ? `nível fixo de ${mesExib(farol3.ultimoRealizado)} · ${inteiro(farol3.realizados.length)} mês(es) realizado(s)`
@@ -3209,6 +3154,61 @@ async function viewIndicadores() {
         + 'ao que já está lançado no futuro faria o significado da linha mudar de mês para mês. Ela não '
         + 'obedece ao filtro de período, que termina no passado por padrão; recortá-la o apagaria '
         + 'justamente quando ela interessa.'),
+    })}
+
+    ${blocoIndicador({
+      chave: 'custo-recorrente',
+      titulo: 'Farol 2 - Variação dos custos Fixos(Mensais) e Variação dos custos Variáveis(pontuais)',
+      // O NÚMERO DO CABEÇALHO continua sendo o dos fixos, e não uma média dos
+      // dois: é o patamar recorrente que responde "o custo subiu?", e somar
+      // uma compra pontual a ele foi justamente o que o indicador antigo
+      // evitava. A variação dos pontuais vem ao lado, no apoio e nos cards.
+      valor: farol.fixos.variacaoTotal === null
+        ? '—'
+        : (farol.fixos.variacaoTotal > 0 ? '+' : '') + farol.fixos.variacaoTotal.toLocaleString('pt-BR') + '%',
+      cor: farol.fixos.tendencia === 'queda' ? 'var(--bomtxt)'
+        : farol.fixos.tendencia === 'alta' ? 'var(--crit)' : null,
+      // As duas medidas vêm NOMEADAS. A porcentagem é ponta a ponta (primeiro
+      // contra último mês) e a palavra é a tendência (média da primeira metade
+      // contra a da segunda). Elas podem discordar de verdade — uma série que
+      // dá um salto só no último mês é "em queda" na tendência e "+72%" ponta a
+      // ponta —, e escrevê-las juntas sem rótulo lê-se como defeito.
+      apoio: `fixos ${esc(rotuloVariacao(farol.fixos))} · variáveis ${esc(rotuloVariacao(farol.variaveis))}`
+        + `${farol.fixos.economia > 0 ? ` · economia de ${brl(farol.fixos.economia)}/mês` : ''}`,
+      corpo: `${metaHtml(metaDoCustoRecorrente(rf, reducao))}
+        ${cardsDoFarolHtml(farol)}
+        ${legendaDeClassificacaoHtml()}
+        ${interruptorDeMediasHtml('custo-recorrente')}
+        ${grupoDoFarolHtml('fixos', 'Custos fixos (mensais)', farol.fixos)}
+        ${grupoDoFarolHtml('variaveis', 'Custos variáveis (pontuais)', farol.variaveis)}
+        <h3 class="titulo-mini">Custo fixo por empresa e filial</h3>
+        ${faixaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
+        ${legendaDeMatrizesHtml(fatiasDe(q.fixos, emDinheiro))}
+        ${arvoreDeUnidadesHtml('ind-fixos', q.fixos, emDinheiro)}`,
+      nota: 'Fixos e variáveis são séries <strong>separadas, nunca somadas</strong>: uma compra pontual '
+        + 'num mês e nenhuma no seguinte produz uma "queda" de 100% que é só o fim da compra, e '
+        + 'misturá-la ao recorrente contaminaria a única leitura que fala de patamar. Dentro de cada '
+        + 'série, <strong>despesa</strong> e <strong>investimento</strong> aparecem separados — investir '
+        + 'R$ 50 mil num mês não é o custo subir R$ 50 mil. A variação é a do total de cada grupo.',
+    })}
+
+    ${blocoIndicador({
+      chave: 'por-reconhecer',
+      titulo: 'Farol 3 - Custos de Despesas lançadas pelo Financeiro que NÃO SÃO Reconhecidas/gerenciadas',
+      valor: brl(pendente.valor),
+      cor: pendente.quantidade ? 'var(--alerta)' : 'var(--bomtxt)',
+      apoio: `${inteiro(pendente.quantidade)} de ${inteiro(pendente.universoN)} lançamentos `
+        + `(${pendente.pctQuantidade.toLocaleString('pt-BR')}%)`,
+      corpo: `${faixaDeMatrizesHtml(fatiasDe(q.pendentes, emDinheiro))}
+        ${legendaDeMatrizesHtml(fatiasDe(q.pendentes, emDinheiro))}
+        ${arvoreDeUnidadesHtml('ind-pendentes', q.pendentes, emDinheiro)}
+        <!-- O "Por reconhecer, por centro de custo" era um bloco solto na fila,
+             abaixo deste e falando do mesmo número. Passa a viver AQUI dentro:
+             são duas leituras do mesmo trabalho a fazer — por unidade e por
+             centro —, e mantê-las separadas obrigava a rolar a tela para
+             descobrir que o total era o mesmo. -->
+        <h3 class="titulo-mini">Não reconhecido, por centro de custo</h3>
+        ${porCentroDeCustoHtml(pendente)}`,
     })}
 
     ${blocoIndicador({
@@ -3465,7 +3465,7 @@ async function viewIndicadores() {
     tr.onclick = (ev) => { ev.stopPropagation(); abrirMesDoObjetivo03(obj3, tr.dataset.mesObj3); };
   });
 
-  // FAROL 3 — três séries realizadas mais a projeção do fixo.
+  // FAROL 1 — três séries realizadas mais a projeção do fixo.
   //
   // A projeção é uma SÉRIE à parte, e não a mesma linha pintada de outra cor:
   // é isso que lhe dá tom claro e tracejado sem mentir sobre onde o realizado
@@ -3630,7 +3630,7 @@ async function viewIndicadores() {
           dica: detalheDaMedia('Custo fixo compartilhado', m, COR_PENDENTE) }] : [];
       })() });
   }
-  // FAROL 1 — uma barra empilhada por grupo, dividida entre despesa e
+  // FAROL 2 — uma barra empilhada por grupo, dividida entre despesa e
   // investimento. Empilhada porque as duas somam o custo do mês: lado a lado
   // fariam procurar uma comparação entre elas, quando o que há é uma soma.
   for (const [id, g] of [['fixos', farol.fixos], ['variaveis', farol.variaveis]]) {
@@ -3921,7 +3921,7 @@ async function viewIndicadores() {
   el('#pagina').querySelectorAll('tr[data-centro]').forEach((tr) => {
     tr.style.cursor = 'pointer';
     tr.onclick = (ev) => {
-      // A tabela agora mora DENTRO do cartão do Farol 2, que é ele próprio um
+      // A tabela agora mora DENTRO do cartão do Farol 3, que é ele próprio um
       // gatilho de drill-down: sem barrar a propagação, clicar num centro abre
       // duas telas empilhadas — a do centro por baixo da do farol inteiro.
       ev.stopPropagation();
@@ -4632,7 +4632,7 @@ function abrirClassificacaoCompartilhada(r) {
 }
 
 /**
- * Os lançamentos de um mês do Farol 3, do maior valor para o menor.
+ * Os lançamentos de um mês do Farol 1, do maior valor para o menor.
  *
  * A ordem decrescente é o pedido, e ela é a certa: quem clica num mês quer
  * saber o que pesa, e uma lista por ordem de cadastro faz procurar o peso
@@ -4671,7 +4671,7 @@ function abrirMesDoObjetivo03(obj3, comp) {
 /**
  * A PROJEÇÃO ABERTA POR DONO — a fila de trabalho da recorrência.
  *
- * O cartão do Farol 3 diz quanto os contratos comprometem; esta tela diz de
+ * O cartão do Farol 1 diz quanto os contratos comprometem; esta tela diz de
  * quem é esse compromisso. Ela existe por causa do custo conhecido da regra:
  * contrato sem vigência é projetado adiante, inclusive um que já acabou e
  * ninguém encerrou. Supor um fim que ninguém informou seria pior — inventaria

@@ -53,7 +53,7 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   ok('nenhum indicador divide a linha com outro', !estrutura.ladoALado);
   ok('cada um ocupa a largura inteira', estrutura.larguraCheia);
   // Doze: três objetivos e QUATRO faróis no Financeiro, dois em Projetos e três
-  // em SLA. O Farol 3 entrou quando "Custo recorrente mês a mês" deixou de ser
+  // em SLA. O Farol 1 entrou quando "Custo recorrente mês a mês" deixou de ser
   // uma seção solta, o Objetivo 03 com o teto de gasto, o Farol 4 com o valor
   // gerado pela TI, e a Visão Geral (Dashboard) do SLA com os três painéis de
   // conformidade, volume e situação.

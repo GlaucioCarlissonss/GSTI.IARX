@@ -1,4 +1,4 @@
-// FAROL 3 — custo recorrente mês a mês, com projeção do que é fixo.
+// FAROL 1 — custo recorrente mês a mês, com projeção do que é fixo.
 // E o agrupamento OBJETIVOS / FARÓIS dentro do módulo Financeiro.
 //
 // A conferência que decide a entrega é a da PROJEÇÃO: ela tem de ser uma série
@@ -53,12 +53,12 @@ const { irPara } = require('./ajuda-testes.cjs');
   // Quatro desde o Farol 4 (valor gerado pela TI), que entra depois do Farol 3.
   ok('os quatro faróis estão em "Faróis", na ordem',
     JSON.stringify(grupos.farois)
-      === JSON.stringify(['custo-recorrente', 'por-reconhecer', 'custo-mes-a-mes', 'valor-gerado']),
+      === JSON.stringify(['custo-mes-a-mes', 'custo-recorrente', 'por-reconhecer', 'valor-gerado']),
     JSON.stringify(grupos.farois));
   ok('cada grupo abre e fecha', grupos.dobram);
   ok('e cada indicador continua abrindo dentro dele', grupos.indicadoresDobram);
 
-  console.log('\nFAROL 3 — três séries e a projeção');
+  console.log('\nFAROL 1 — três séries e a projeção');
   const f3 = await pag.evaluate(() => {
     const kpi = document.querySelector('[data-kpi="custo-mes-a-mes"]');
     const sec = kpi && kpi.closest('section.bloco-indicador');
@@ -90,8 +90,8 @@ const { irPara } = require('./ajuda-testes.cjs');
       passaDoFiltro: f.projetados.length > 0 && f.projetados[0].comp > f.ultimoRealizado,
     } : null;
   });
-  ok('o Farol 3 existe', !!f3);
-  ok('com o título do enunciado', f3 && f3.titulo === 'Farol 3 - Custo recorrente Mês a Mês', f3 && f3.titulo);
+  ok('o Farol 1 existe', !!f3);
+  ok('com o título do enunciado', f3 && f3.titulo === 'Farol 1 - Custo recorrente Mês a Mês', f3 && f3.titulo);
   // Onze séries: total, variáveis, fixas, projeção, os quatro tetos e as três
   // médias. As séries de teto existem mesmo sem meta cadastrada — sem valor
   // elas não chegam a ser desenhadas, e é a ausência da linha que diz que não
@@ -151,7 +151,7 @@ const { irPara } = require('./ajuda-testes.cjs');
       // O teto atravessa os meses projetados: é lá que "este patamar cabe no
       // limite?" mais importa.
       noProjetado: f.projetados[0] ? f.projetados[0].tetoGeral : null,
-      // E as séries do Farol 3 continuam todas lá.
+      // E as séries do Farol 1 continuam todas lá.
       seriesAntigas: ['Total', 'Variáveis', 'Fixas'].every((c) =>
         [...sec.querySelectorAll('thead th')].some((t) => t.textContent.trim() === c)),
     };
@@ -173,7 +173,7 @@ const { irPara } = require('./ajuda-testes.cjs');
   ok('com aviso no bloco', tetos.aviso);
   ok('o teto alcança também os meses projetados', tetos.noProjetado === tetos.geral,
     String(tetos.noProjetado));
-  ok('e as séries do Farol 3 continuam todas', tetos.seriesAntigas);
+  ok('e as séries do Farol 1 continuam todas', tetos.seriesAntigas);
 
   console.log('\nCLIQUE — lançamentos do maior para o menor');
   await pag.locator('tr[data-mes-farol3]').nth(3).click();

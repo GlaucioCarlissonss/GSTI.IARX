@@ -1,6 +1,6 @@
 // FAROL 1 — variação dos custos fixos (mensais) e dos variáveis (pontuais).
 //
-// A promessa que mais importa é de NÃO PERDER: o Farol 1 absorve o antigo
+// A promessa que mais importa é de NÃO PERDER: o Farol 2 absorve o antigo
 // "Custo recorrente — variação no período", e a série dos fixos tem de sair
 // número por número igual à que o indicador antigo produzia. Um indicador novo
 // que muda o número do antigo em silêncio é pior do que não tê-lo.
@@ -43,7 +43,7 @@ const { irPara } = require('./ajuda-testes.cjs');
   });
   ok('o bloco existe', !!bloco);
   ok('com o título do enunciado',
-    bloco && /^Farol 1 - Variação dos custos Fixos\(Mensais\)/.test(bloco.titulo), bloco && bloco.titulo);
+    bloco && /^Farol 2 - Variação dos custos Fixos\(Mensais\)/.test(bloco.titulo), bloco && bloco.titulo);
   ok('um card por grupo', bloco && bloco.cards === 2, bloco && String(bloco.cards));
   ok('um gráfico por grupo', bloco && bloco.graficos === 2, bloco && String(bloco.graficos));
   ok('uma tabela de variação por grupo', bloco && bloco.tabelas >= 2, bloco && String(bloco.tabelas));

@@ -1535,13 +1535,13 @@ são da mesma espécie.
 
 Uma reta por série responde *"este mês está acima ou abaixo do que este período
 vem custando?"*. Está nos **seis gráficos** do módulo: Objetivo 01, Objetivo 02,
-Objetivo 03, os dois do Farol 1 e o Farol 3.
+Objetivo 03, os dois do Farol 2 e o Farol 1.
 
 | gráfico | médias |
 | --- | --- |
-| Objetivo 01, Objetivo 02, Farol 1 (×2) | **1 cada**: o total da barra |
+| Objetivo 01, Objetivo 02, Farol 2 (×2) | **1 cada**: o total da barra |
 | Objetivo 03 | **4**: fixas, variáveis, investimentos e total |
-| Farol 3 | **3**: total, variáveis e fixas |
+| Farol 1 | **3**: total, variáveis e fixas |
 
 **Nas barras empilhadas a média é a do total.** O olho lê a barra pela altura
 acumulada, então uma média por fatia não teria onde encostar — e no Objetivo 01
@@ -1620,7 +1620,7 @@ mostrando a média.
 ## Objetivo 03: custos dentro de um teto de gasto
 
 **Só despesa reconhecida entra.** O teto é um compromisso de gestão, e o que
-ninguém conferiu ainda não reprova ninguém — o universo é menor que o do Farol 1
+ninguém conferiu ainda não reprova ninguém — o universo é menor que o do Farol 2
 de propósito. Medido na base real: **zero** lançamentos reconhecidos hoje, então
 o indicador nasce vazio e diz por quê.
 
@@ -1731,7 +1731,7 @@ A decisão 3 tem um preço conhecido: **um contrato que acabou e ninguém encerr
 é projetado para sempre.** Isso é deliberado — mas só se defende se o sistema
 disser, por nome, quem está nessa situação.
 
-Daí a lista **"Ver contrato a contrato"**, no Farol 3 e no cartão de projeção do
+Daí a lista **"Ver contrato a contrato"**, no Farol 1 e no cartão de projeção do
 painel Financeiro (`GET /api/dashboards/contratos-projetados`). Ela abre a soma
 por **dono**, e traz de cada contrato: desde quando existe, quando foi visto
 pela última vez, **há quantos meses não é lançado**, a vigência (ou *em aberto*),
@@ -1759,9 +1759,9 @@ O "Compromisso — 12 meses" é a **soma dos meses projetados**, e não o últim
 multiplicado por doze: os contratos não vencem todos no mesmo dia, e um que
 encerra em março tem de sair do compromisso de abril.
 
-## Farol 3: as linhas de teto
+## Farol 1: as linhas de teto
 
-O Farol 3 ganhou **quatro linhas de teto** — fixas, variáveis, investimentos e a
+O Farol 1 ganhou **quatro linhas de teto** — fixas, variáveis, investimentos e a
 geral —, no gráfico e como colunas no racional. A geral é a **soma das três**,
 calculada.
 
@@ -1790,7 +1790,23 @@ ler o título de cada um para descobrir de que tipo era.
 O agrupamento é só hierarquia: dentro do grupo, cada indicador continua abrindo
 por empresa e, dentro dela, por filial, com os mesmos filtros do módulo.
 
-## Farol 3: custo mês a mês, com projeção do que é fixo
+## A ordem dos Faróis
+
+A pilha dos Faróis foi reordenada a pedido do gestor: o que era o **Farol 3**
+(custo recorrente mês a mês) passou a ser o **Farol 1**, o antigo **Farol 1**
+(variação dos custos fixos e variáveis) passou a **Farol 2**, e o antigo
+**Farol 2** (despesas não reconhecidas) passou a **Farol 3**. O Farol 4 não se
+move: ele continua fechando a pilha.
+
+O que mudou foi a ORDEM DE LEITURA e o número no título. As chaves internas
+(`custo-mes-a-mes`, `custo-recorrente`, `por-reconhecer`, `valor-gerado`)
+ficaram como estavam de propósito: elas guardam o estado de aberto/fechado de
+cada cartão e identificam o bloco no drill-down. Renomeá-las para acompanhar o
+número reiniciaria a dobra de todo mundo e quebraria o vínculo com o estado já
+guardado — e, daqui a uma próxima reordenação, a chave `farol-1` apontaria para
+o segundo cartão, que é pior do que não ter número nenhum na chave.
+
+## Farol 1: custo mês a mês, com projeção do que é fixo
 
 Evolução do antigo *Custo recorrente mês a mês*, que era uma seção solta e
 passou a ser um indicador como os outros — cartão, número, drill-down e dobra.
@@ -1833,18 +1849,18 @@ vazio, e um detalhamento vazio faz duvidar do número.
 ele anuncia. Abrir o mês inteiro mostraria uma lista cuja soma não é o valor
 clicado.
 
-## Farol 2: o que o financeiro lançou e ninguém reconheceu
+## Farol 3: o que o financeiro lançou e ninguém reconheceu
 
 O indicador **Despesas por reconhecer** saiu de Indicadores Gerais e passou para
 o **Painel do Controle Financeiro**, que é a tela onde se resolve o que ele
 aponta — reconhecer em lote é trabalho operacional, não leitura estratégica. Em
-Indicadores Gerais fica o **Farol 2**, com a mesma estrutura visual: número,
+Indicadores Gerais fica o **Farol 3**, com a mesma estrutura visual: número,
 faixa e legenda por empresa, árvore empresa → filial → lançamento e drill-down.
 
 **O bloco solto "Por reconhecer, por centro de custo" deixou de existir como
 bloco.** Ele falava do mesmo número que o indicador logo acima, e mantê-los
 separados obrigava a rolar a tela para descobrir isso. A tabela passou a viver
-**dentro** do Farol 2, como a segunda leitura do mesmo trabalho: por unidade e
+**dentro** do Farol 3, como a segunda leitura do mesmo trabalho: por unidade e
 por centro de custo.
 
 **Cada tela refaz a conta com o próprio recorte.** No Painel, o número obedece às
@@ -1861,7 +1877,7 @@ centro abre duas telas flutuantes empilhadas — a do centro por baixo da do far
 inteiro. É o terceiro lugar do sistema onde esse par apareceu, e a suíte passou
 a conferir a contagem de telas abertas nas duas superfícies.
 
-## Farol 1: variação dos custos fixos e dos variáveis
+## Farol 2: variação dos custos fixos e dos variáveis
 
 O bloco absorve o antigo *Custo recorrente — variação no período*: a leitura dos
 fixos é a mesma, número por número — série, variação, tendência, economia e a
@@ -2189,7 +2205,7 @@ realizado e projetado é o ponto.
 > propósito: ele existe para ser a linha de base contra a qual a meta de
 > redução se mede, e uma base que se mexe com cada contrato cadastrado deixaria
 > de servir de régua. A projeção **por contrato** — a que responde "o que de
-> fato vem pela frente" — está no **Farol 3** e no cartão de projeção do painel
+> fato vem pela frente" — está no **Farol 1** e no cartão de projeção do painel
 > Financeiro; ver [A projeção da recorrência](#a-projecao-da-recorrencia-contrato-a-contrato).
 
 **Os rótulos de mês saem inclinados a 80°**, para que CADA barra tenha o seu:
