@@ -233,7 +233,7 @@ function ligarKpis(mapa) {
       // Quem navega por teclado não passa o mouse: o balão acompanha o foco.
       kpi.addEventListener('focus', () => {
         const c = kpi.getBoundingClientRect();
-        mostrarDica({ clientX: c.left + c.width / 2, clientY: c.top + c.height }, rotulo, linhas);
+        mostrarDicaJa({ clientX: c.left + c.width / 2, clientY: c.top + c.height }, rotulo, linhas);
       });
       kpi.addEventListener('blur', sumirDica);
       // Sem drill-down o indicador não recebe foco por si: o tooltip ainda

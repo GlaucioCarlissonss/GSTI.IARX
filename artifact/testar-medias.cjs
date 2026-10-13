@@ -194,11 +194,15 @@ const { irPara } = require('./ajuda-testes.cjs');
     const c = f.getBoundingClientRect();
     f.dispatchEvent(new MouseEvent('mousemove', { bubbles: true,
       clientX: c.left + c.width / 2, clientY: c.top }));
-    await new Promise((r) => setTimeout(r, 60));
+    // O balão passou a esperar o cursor PARAR: 60 ms mediam o comportamento
+    // antigo, em que ele abria no primeiro movimento. A espera é o recurso,
+    // não um atraso a contornar — a suíte espera o tempo dela e depois mede o
+    // mesmo conteúdo de sempre.
+    await new Promise((r) => setTimeout(r, ESPERA_DICA + 400));
     const d = document.querySelector('#dica');
     return { ligado: d.classList.contains('on'), texto: d.textContent };
   });
-  ok('passar o mouse na reta abre o balão', balao.ligado);
+  ok('o balão da reta abre depois dos 5 s parado', balao.ligado);
   // Os quatro dados que o pedido nomeia: o valor da posição da linha, o valor
   // total somado, quantos meses e QUAIS.
   ok('com o valor da posição da linha', /Valor da linha/.test(balao.texto), balao.texto);

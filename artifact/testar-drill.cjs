@@ -37,9 +37,16 @@ const TELAS = ['Painel', 'Conferência', 'Projetos', 'Indicadores', 'Indicadores
     const alvos = await pag.$$('svg g[role="button"], svg rect[fill="transparent"], .rank .it');
     if (alvos.length) {
       await alvos[0].hover();
-      await pag.waitForTimeout(300);
+      // O balão passou a esperar o cursor PARAR por cinco segundos: 300 ms
+      // mediam o comportamento antigo. A espera é o recurso, não um atraso a
+      // contornar — e por isso a suíte também confere que ANTES dela não há
+      // balão nenhum, que é o estrago que se quis consertar.
+      await pag.waitForTimeout(600);
+      const cedo = await pag.$eval('#dica', (d) => d.classList.contains('on'));
+      confere(`${tela}: o tooltip NÃO aparece de imediato`, cedo, false);
+      await pag.waitForTimeout(5000);
       const dica = await pag.$eval('#dica', (d) => ({ visivel: d.classList.contains('on'), texto: d.textContent.trim() }));
-      confere(`${tela}: o tooltip aparece com conteúdo`, [dica.visivel, dica.texto.length > 3], [true, true]);
+      confere(`${tela}: e aparece com conteúdo depois dos 5 s`, [dica.visivel, dica.texto.length > 3], [true, true]);
       continue;
     }
     // O Gantt não é SVG: as barras levam `title` nativo, que é tooltip do

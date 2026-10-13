@@ -5,7 +5,31 @@
 const NS = 'http://www.w3.org/2000/svg';
 const svgEl = (n, a) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
 const dica = () => el('#dica');
-function mostrarDica(ev, titulo, linhas) {
+
+/**
+ * O BALÃO ESPERA O CURSOR PARAR.
+ *
+ * Antes ele abria no primeiro `mousemove`, e numa tela de Indicadores isso
+ * significa um balão por cima do número a cada gesto: atravessar a tabela do
+ * farol para ler uma coluna piscava um texto de quatro linhas no caminho, e o
+ * balão tapava justamente o dado que se queria ler. Ajudar e atrapalhar eram
+ * a mesma coisa.
+ *
+ * Agora ele só aparece depois de CINCO SEGUNDOS PARADO sobre o elemento. Cada
+ * movimento do cursor reinicia a contagem — é "parado", não "faz cinco
+ * segundos que entrei aqui" —, então quem está lendo a tela nunca o vê, e
+ * quem parou em cima de um número para entendê-lo recebe a explicação.
+ *
+ * Depois de aberto o balão SEGUE o cursor sem esperar de novo: reiniciar a
+ * contagem com ele na tela o faria piscar a cada pixel.
+ *
+ * O teclado não espera. Quem chegou por Tab já escolheu o elemento, e o foco
+ * não tem "de raspão" — daí `mostrarDicaJa`, que é o caminho imediato.
+ */
+const ESPERA_DICA = 5000;
+let ATRASO_DICA = null;
+
+function mostrarDicaJa(ev, titulo, linhas) {
   const d = dica();
   d.innerHTML = '<b>' + esc(titulo) + '</b>' + linhas.map((l) =>
     '<div class="l"><span>' + (l.cor ? '<i style="display:inline-block;width:9px;height:9px;border-radius:3px;background:'+l.cor+';margin-right:5px"></i>' : '') +
@@ -18,40 +42,38 @@ function mostrarDica(ev, titulo, linhas) {
   const acima = ev.clientY - c.height - 12;
   d.style.top = (acima >= 8 ? acima : Math.min(ev.clientY + 18, innerHeight - c.height - 12)) + 'px';
 }
-const sumirDica = () => { clearTimeout(ATRASO_DICA); dica().classList.remove('on'); };
 
 /**
- * O balão com atraso, para quem passa o cursor de raspão.
- *
- * Sem atraso, atravessar uma tabela de vinte barras pisca vinte balões pelo
- * caminho. Com ele, o balão só aparece onde o cursor PAROU — que é onde havia
- * intenção de ler. 180 ms é o ponto em que o gesto deliberado já espera algo e
- * o de passagem ainda não.
- *
- * O foco do teclado NÃO espera: quem chegou ali por Tab já escolheu o
- * elemento, e um atraso seria só demora.
+ * O caminho do PONTEIRO: espera o cursor parar. Todo `mousemove` do sistema
+ * chama esta função, e é por isso que a espera mora aqui dentro e não em cada
+ * um dos dezoito lugares que desenham um balão.
  */
-let ATRASO_DICA = null;
+function mostrarDica(ev, titulo, linhas) {
+  if (dica().classList.contains('on')) { mostrarDicaJa(ev, titulo, linhas); return; }
+  clearTimeout(ATRASO_DICA);
+  // `ev` é reaproveitado pelo navegador entre eventos: guardar a posição agora
+  // é o que faz o balão nascer onde o cursor parou, e não onde ele estiver
+  // cinco segundos depois.
+  const onde = { clientX: ev.clientX, clientY: ev.clientY };
+  ATRASO_DICA = setTimeout(() => mostrarDicaJa(onde, titulo, linhas), ESPERA_DICA);
+}
+
+const sumirDica = () => { clearTimeout(ATRASO_DICA); dica().classList.remove('on'); };
 
 function ligarDica(elemento, montar) {
   if (!elemento) return;
-  const abrir = (ev) => {
+  const abrir = (ev, ja) => {
     const d = montar();
-    if (d) mostrarDica(ev, d.titulo, d.linhas);
+    if (d) (ja ? mostrarDicaJa : mostrarDica)(ev, d.titulo, d.linhas);
   };
-  elemento.addEventListener('mouseenter', (ev) => {
-    clearTimeout(ATRASO_DICA);
-    ATRASO_DICA = setTimeout(() => abrir(ev), 180);
-  });
-  // Seguir o cursor só depois que o balão abriu: mover antes disso
-  // reiniciaria o atraso a cada pixel e ele nunca chegaria ao fim.
-  elemento.addEventListener('mousemove', (ev) => {
-    if (dica().classList.contains('on')) abrir(ev);
-  });
+  // `mouseenter` e `mousemove` passam pelo mesmo caminho: a espera está dentro
+  // de `mostrarDica`, e cada movimento a reinicia.
+  elemento.addEventListener('mouseenter', abrir);
+  elemento.addEventListener('mousemove', abrir);
   elemento.addEventListener('mouseleave', sumirDica);
   elemento.addEventListener('focus', () => {
     const c = elemento.getBoundingClientRect();
-    abrir({ clientX: c.left + c.width / 2, clientY: c.bottom });
+    abrir({ clientX: c.left + c.width / 2, clientY: c.bottom }, true);
   });
   elemento.addEventListener('blur', sumirDica);
   // Quem navega por teclado precisa alcançar o elemento para focá-lo. Um nó
@@ -180,7 +202,7 @@ function barras(alvo, pontos, series, modo = 'empilhado', fmt = brl, fmtEixo = c
     faixa.addEventListener('mouseleave', sumirDica);
     faixa.addEventListener('focus', () => {
       const c = faixa.getBoundingClientRect();
-      mostrarDica({ clientX: c.left + c.width / 2, clientY: c.top }, r.dica.titulo, r.dica.linhas);
+      mostrarDicaJa({ clientX: c.left + c.width / 2, clientY: c.top }, r.dica.titulo, r.dica.linhas);
     });
     faixa.addEventListener('blur', sumirDica);
     // A faixa fica POR CIMA das colunas: sem repassar o clique, os seis pixels
@@ -310,7 +332,7 @@ function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '', a
       alvoPonto.style.cursor = 'pointer';
       alvoPonto.addEventListener('focus', () => {
         const c = alvoPonto.getBoundingClientRect();
-        mostrarDica({ clientX: c.left + c.width / 2, clientY: c.top }, p.rot,
+        mostrarDicaJa({ clientX: c.left + c.width / 2, clientY: c.top }, p.rot,
           series.filter((sr) => temValor(p, sr.k) && !sr.foraDoBalao)
             .map((sr) => ({ nome: sr.nome, cor: sr.cor, valor: fmt(p.v[sr.k]) })));
       });
@@ -346,7 +368,7 @@ function linhas(alvo, pontos, series, fmt = brl, fmtEixo = curto, sufixo = '', a
     // partir, e sem isso a informação só existiria para quem usa o mouse.
     faixa.addEventListener('focus', () => {
       const c = faixa.getBoundingClientRect();
-      mostrarDica({ clientX: c.left + c.width / 2, clientY: c.top }, s.dica.titulo, s.dica.linhas);
+      mostrarDicaJa({ clientX: c.left + c.width / 2, clientY: c.top }, s.dica.titulo, s.dica.linhas);
     });
     faixa.addEventListener('blur', sumirDica);
     // O cartão inteiro é gatilho de drill-down: sem barrar a subida, um clique

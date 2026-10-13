@@ -193,7 +193,7 @@ export function GraficoBarras({
   /** Com isto, cada barra vira gatilho de drill-down. */
   aoClicar?: (ponto: PontoCategoria, indice: number) => void;
 }) {
-  const [dica, setDica] = useState<DicaEstado | null>(null);
+  const { dica, mostrar, fechar } = useBalao();
   const [tabela, setTabela] = useState(false);
   const idClip = useId();
 
@@ -229,7 +229,7 @@ export function GraficoBarras({
         style={{ width: '100%', height: 'auto', display: 'block', marginTop: 'var(--esp-4)' }}
         role="img"
         aria-label={`Gráfico de barras por ${rotuloCategoria.toLowerCase()}`}
-        onMouseLeave={() => setDica(null)}
+        onMouseLeave={fechar}
       >
         <clipPath id={idClip}>
           <rect x={margem.esquerda} y={0} width={larguraPlot} height={altura} />
@@ -266,21 +266,22 @@ export function GraficoBarras({
                     'aria-label': `${ponto.rotulo} — abrir os registros deste ponto`,
                     style: { cursor: 'pointer' },
                     onClick: () => {
-                      setDica(null);
+                      fechar();
                       aoClicar(ponto, indice);
                     },
                     onKeyDown: (e: React.KeyboardEvent) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        setDica(null);
+                        fechar();
                         aoClicar(ponto, indice);
                       }
                     },
                   }
                 : {};
             const total = series.reduce((s, serie) => s + (d.valores[serie.chave] ?? 0), 0);
+            // A espera mora em `mostrar`: cada movimento reinicia a contagem.
             const aoEntrar = (evento: React.MouseEvent) =>
-              setDica({
+              mostrar({
                 x: evento.clientX,
                 y: evento.clientY,
                 titulo: d.rotulo,
@@ -388,7 +389,7 @@ export function GraficoLinhas({
   aoClicar?: (ponto: PontoCategoria, indice: number) => void;
 }) {
   const [indice, setIndice] = useState<number | null>(null);
-  const [dica, setDica] = useState<DicaEstado | null>(null);
+  const { dica, mostrar, fechar } = useBalao();
   const [tabela, setTabela] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -416,8 +417,10 @@ export function GraficoLinhas({
       ((relativo - margem.esquerda) / (larguraPlot || 1)) * Math.max(dados.length - 1, 1),
     );
     const alvo = Math.max(0, Math.min(dados.length - 1, i));
+    // O destaque do ponto é IMEDIATO — ele é a resposta ao gesto, e esperar
+    // cinco segundos por ele deixaria o gráfico mudo. Só o balão espera.
     setIndice(alvo);
-    setDica({
+    mostrar({
       x: evento.clientX,
       y: evento.clientY,
       titulo: dados[alvo]!.rotulo,
@@ -437,11 +440,11 @@ export function GraficoLinhas({
         onMouseMove={aoMover}
         onMouseLeave={() => {
           setIndice(null);
-          setDica(null);
+          fechar();
         }}
         // Clica no ponto que o cursor já destacou: é o mesmo que o tooltip
         // está mostrando, então não há surpresa entre o que se vê e o que abre.
-        onClick={aoClicar && indice !== null ? () => { setDica(null); aoClicar(dados[indice]!, indice); } : undefined}
+        onClick={aoClicar && indice !== null ? () => { fechar(); aoClicar(dados[indice]!, indice); } : undefined}
       >
         {marcas.map((m) => (
           <g key={m}>
@@ -528,7 +531,7 @@ export function GraficoLinhas({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  setDica(null);
+                  fechar();
                   aoClicar(d, i);
                 }
               }}
@@ -791,51 +794,81 @@ export function TabelaPorUnidade({
 
 /** Uma fatia do número consolidado: de quem é, quanto, e com que cor. */
 /**
- * O balão com atraso, para quem passa o cursor de raspão.
+ * O BALÃO ESPERA O CURSOR PARAR.
  *
- * Sem atraso, atravessar uma tabela de vinte barras pisca vinte balões pelo
- * caminho. Com ele, o balão só aparece onde o cursor PAROU — que é onde havia
- * intenção de ler. 180 ms é o ponto em que o gesto deliberado já espera algo e
- * o de passagem ainda não.
+ * Antes ele abria no primeiro movimento, e numa tela de indicadores isso
+ * significa um balão por cima do número a cada gesto: atravessar uma tabela
+ * para ler uma coluna piscava um texto de quatro linhas no caminho, e o balão
+ * tapava justamente o dado que se queria ler. Ajudar e atrapalhar eram a
+ * mesma coisa.
  *
- * O foco do teclado NÃO espera: quem chegou ali por Tab já escolheu o
- * elemento, e um atraso seria só demora.
+ * Agora ele só aparece depois de CINCO SEGUNDOS PARADO. Cada movimento do
+ * cursor reinicia a contagem — é "parado", não "faz cinco segundos que entrei
+ * aqui" —, então quem está lendo a tela nunca o vê, e quem parou em cima de um
+ * número para entendê-lo recebe a explicação.
+ *
+ * Depois de aberto, o balão SEGUE o cursor sem esperar de novo: reiniciar a
+ * contagem com ele na tela o faria piscar a cada pixel.
+ *
+ * O teclado não espera. Quem chegou por Tab já escolheu o elemento, e o foco
+ * não tem "de raspão" — daí `mostrarJa`.
  */
-export function useDica() {
+export const ESPERA_DICA = 5000;
+
+export function useBalao() {
   const [dica, setDica] = useState<DicaEstado | null>(null);
   const relogio = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aberto = useRef(false);
 
   const fechar = useCallback(() => {
     if (relogio.current) clearTimeout(relogio.current);
     relogio.current = null;
+    aberto.current = false;
     setDica(null);
+  }, []);
+
+  const mostrarJa = useCallback((d: DicaEstado) => {
+    if (relogio.current) clearTimeout(relogio.current);
+    relogio.current = null;
+    aberto.current = true;
+    setDica(d);
+  }, []);
+
+  const mostrar = useCallback((d: DicaEstado) => {
+    if (aberto.current) { setDica(d); return; }
+    if (relogio.current) clearTimeout(relogio.current);
+    relogio.current = setTimeout(() => { aberto.current = true; setDica(d); }, ESPERA_DICA);
   }, []);
 
   // Um balão pendurado num elemento que saiu da tela ficaria para sempre.
   useEffect(() => () => { if (relogio.current) clearTimeout(relogio.current); }, []);
 
+  return { dica, mostrar, mostrarJa, fechar };
+}
+
+export function useDica() {
+  const { dica, mostrar, mostrarJa, fechar } = useBalao();
+
   /** Os manipuladores prontos para espalhar num elemento. */
   const gatilho = useCallback(
-    (montar: () => Omit<DicaEstado, 'x' | 'y'>) => ({
-      onMouseEnter: (ev: { clientX: number; clientY: number }) => {
-        const x = ev.clientX;
-        const y = ev.clientY;
-        if (relogio.current) clearTimeout(relogio.current);
-        relogio.current = setTimeout(() => setDica({ x, y, ...montar() }), 180);
-      },
-      // Seguir o cursor só depois que o balão abriu: mover antes disso
-      // reiniciaria o atraso a cada pixel e ele nunca chegaria ao fim.
-      onMouseMove: (ev: { clientX: number; clientY: number }) =>
-        setDica((atual) => (atual ? { ...atual, x: ev.clientX, y: ev.clientY } : atual)),
-      onMouseLeave: fechar,
-      onFocus: (ev: { currentTarget: Element }) => {
-        const c = ev.currentTarget.getBoundingClientRect();
-        setDica({ x: c.left + c.width / 2, y: c.bottom, ...montar() });
-      },
-      onBlur: fechar,
-      tabIndex: 0,
-    }),
-    [fechar],
+    (montar: () => Omit<DicaEstado, 'x' | 'y'>) => {
+      // `mouseenter` e `mousemove` passam pelo mesmo caminho: a espera está
+      // dentro de `mostrar`, e cada movimento a reinicia.
+      const aoApontar = (ev: { clientX: number; clientY: number }) =>
+        mostrar({ x: ev.clientX, y: ev.clientY, ...montar() });
+      return {
+        onMouseEnter: aoApontar,
+        onMouseMove: aoApontar,
+        onMouseLeave: fechar,
+        onFocus: (ev: { currentTarget: Element }) => {
+          const c = ev.currentTarget.getBoundingClientRect();
+          mostrarJa({ x: c.left + c.width / 2, y: c.bottom, ...montar() });
+        },
+        onBlur: fechar,
+        tabIndex: 0,
+      };
+    },
+    [mostrar, mostrarJa, fechar],
   );
 
   return { dica, gatilho, fechar };

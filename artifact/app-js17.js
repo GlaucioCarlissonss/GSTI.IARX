@@ -1965,7 +1965,7 @@ function barrasDoObjetivo(alvo, dados, aoClicar, media = null) {
       // elemento — é a regra que vale para todo gatilho do sistema.
       g.addEventListener('focus', () => {
         const r = g.getBoundingClientRect();
-        mostrarDica({ clientX: r.left + r.width / 2, clientY: r.top + 12 }, titulo, balao(p));
+        mostrarDicaJa({ clientX: r.left + r.width / 2, clientY: r.top + 12 }, titulo, balao(p));
       });
       g.addEventListener('blur', sumirDica);
     }
@@ -2093,7 +2093,7 @@ function barrasDoObjetivo(alvo, dados, aoClicar, media = null) {
     faixa.addEventListener('mouseleave', sumirDica);
     faixa.addEventListener('focus', () => {
       const c = faixa.getBoundingClientRect();
-      mostrarDica({ clientX: c.left + c.width / 2, clientY: c.top }, detalhe.titulo, detalhe.linhas);
+      mostrarDicaJa({ clientX: c.left + c.width / 2, clientY: c.top }, detalhe.titulo, detalhe.linhas);
     });
     faixa.addEventListener('blur', sumirDica);
     // O clique segue para o mês que está embaixo do cursor: a faixa fica por
