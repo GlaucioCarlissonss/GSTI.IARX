@@ -776,9 +776,14 @@ tr.lancamento[data-compartilhada] > th:first-child { box-shadow: inset 3px 0 0 v
 }
 .puxador:hover, .puxador.arrastando { background: color-mix(in srgb, var(--serie-1) 35%, transparent); border-radius: 4px; }
 
-/* Dentro da tela flutuante, o cabeçalho da tabela também fica preso: rolar
-   centenas de registros sem os nomes das colunas é ler número sem rótulo. */
-.modal .tabela-envolucro thead th {
+/* Em TODA caixa que rola por dentro, o cabeçalho da tabela fica preso: rolar
+   centenas de registros sem os nomes das colunas é ler número sem rótulo.
+   A mesma regra da versão hospedada, para a tabela de uma ponta não se
+   comportar diferente da outra. `:not(.pivot)` porque a tabela dinâmica já
+   prende cabeçalho, rodapé e primeira coluna com z-index próprio, e os quatro
+   cantos dela dependem dessa ordem. */
+.modal .tabela-envolucro thead th,
+.tabela-envolucro.rol-fixo > table:not(.pivot) thead th {
   position: sticky; top: 0; z-index: 2; background: var(--superficie);
   box-shadow: inset 0 -1px 0 var(--eixo);
 }

@@ -950,9 +950,20 @@ input[type=checkbox]{width:auto;accent-color:var(--s1)}
 .modal [data-corpo]::-webkit-scrollbar-thumb:hover, .modal .rol::-webkit-scrollbar-thumb:hover,
 .rol-fixo::-webkit-scrollbar-thumb:hover{background:var(--tinta3);background-clip:content-box}
 
-/* Dentro da tela flutuante, o cabeçalho da tabela também fica preso: rolar
-   centenas de registros sem os nomes das colunas é ler número sem rótulo. */
-.modal .rol thead th{position:sticky;top:0;z-index:2;background:var(--sup);
+/* Em TODA caixa que rola por dentro, o cabeçalho da tabela fica preso: rolar
+   centenas de registros sem os nomes das colunas é ler número sem rótulo.
+
+   Valia só dentro da tela flutuante. Nas tabelas dos faróis — que rolam dentro
+   do próprio cartão, com altura limitada — o cabeçalho subia junto, e as
+   colunas de Farol 3 (total, variáveis, fixas, variação, tetos) viravam seis
+   números sem nome: para saber de qual coluna era o valor, era preciso voltar
+   ao topo e descer contando.
+
+   `:not(.pivot)` porque a tabela dinâmica já prende cabeçalho, rodapé e a
+   primeira coluna com z-index próprio — e os quatro cantos dela dependem
+   dessa ordem. */
+.modal .rol thead th,
+.rol-fixo > table:not(.pivot) thead th{position:sticky;top:0;z-index:2;background:var(--sup);
   box-shadow:inset 0 -1px 0 var(--linha2)}
 
 /* Coluna ajustável: a alça fica na divisa, dentro do cabeçalho. */
