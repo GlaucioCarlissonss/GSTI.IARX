@@ -3131,6 +3131,58 @@ a de drill-down passou a abrir os cartões antes de olhar.
 > roteiro afirmar o que quer que a tela esteja fazendo, que é o oposto do que
 > um teste serve.
 
+## O detalhamento comparativo mês a mês
+
+O detalhamento de um indicador financeiro era UMA lista: o que veio no recorte.
+Ela responde "de que é feito este número", e só. Quem queria saber se o mês
+piorou abria dois meses em duas janelas e comparava no olho.
+
+Agora o detalhamento abre em **camadas empilhadas**, de largura cheia, uma
+abaixo da outra, **todas fechadas ao nascer** e cada uma dizendo o seu total no
+cabeçalho — dá para ler os três números sem abrir nada:
+
+1. **Diferença vs mês anterior** — quanto mudou, e para que lado.
+2. **O que veio no mês filtrado** — a composição.
+3. **Mês anterior: o que veio × o que não veio** — o que se repetiu e o que cessou.
+4. **Recorte completo** — só nos detalhamentos que cobrem vários meses.
+
+A cor segue a convenção dos cartões: **queda em verde, alta em vermelho**, porque
+o indicador é custo. Sem mês anterior para comparar, a camada diz isso em vez de
+mostrar zero — uma base vazia viraria "100% de redução", que é uma leitura falsa.
+
+### Qual é "o mês filtrado" quando o detalhamento é de recorte
+
+Cinco dos nove detalhamentos do Financeiro abrem **um mês** (`Custo fixo de
+04/2026`, `Despesas compartilhadas de 04/2026`, `Custos fixos/variáveis`,
+`Despesas reconhecidas`, Farol 1 mês a mês). Os outros quatro cobrem **o recorte
+inteiro**: Objetivo 01, despesas compartilhadas do recorte, custo recorrente do
+recorte e cada item do plano de redução.
+
+Nesses quatro não existe "o mês do detalhamento". A comparação passa a ser a do
+**último mês do recorte contra o anterior a ele** — é a leitura de quem pergunta
+"e agora, como está?". A lista inteira não desaparece: ela vira a **quarta
+camada**, e é ela que fecha com o indicador. Sem isso, a soma visível seria a de
+um mês contra um número de nove, e o detalhamento passaria a acusar uma
+divergência que não existe.
+
+### O que cada superfície paga pela comparação
+
+No artifact os lançamentos estão todos na memória, e comparar dois meses é de
+graça. No app cada mês é uma consulta: o mês anterior é buscado **uma vez**,
+junto com o principal — nunca por linha — e num detalhamento de recorte são duas
+consultas, porque a resposta do recorte pode chegar cortada e derivar o mês dela
+daria um total menor que o real. As tabelas de cada camada só são montadas
+quando a camada abre.
+
+No app a comparação é ligada pelo DADO, não por tela: `detalheDeLancamentos`
+pede as camadas, e `janelaDoPedido` só as entrega quando os parâmetros trazem
+`competencia_inicio` e `competencia_fim`. A Conferência de origem filtra por
+cenário, sem janela de competência — e por isso continua exibindo a lista de
+sempre, sem camada nenhuma.
+
+Medido por `artifact/testar-detalhamento-comparativo.cjs` e
+`web/verificar-detalhamento-comparativo.cjs`, nos dois temas.
+
 ## Expansões previstas
 
 O modelo já acomoda novos tipos de despesa, filiais, empresas, filas e tópicos

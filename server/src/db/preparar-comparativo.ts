@@ -1,0 +1,56 @@
+/**
+ * Base isolada para conferir, no navegador, o DETALHAMENTO COMPARATIVO.
+ *
+ * `preparar-verificacao-v2.ts` monta o cliente de duas matrizes, mas todos os
+ * lançamentos dele caem no mês corrente — e um detalhamento que compara dois
+ * meses não teria o que comparar. Este script roda sobre aquela base e
+ * acrescenta o MÊS ANTERIOR: parte das despesas se repete (é o que a camada 3
+ * chamará de "veio"), parte cessa, e parte só aparece agora.
+ *
+ *   DATABASE_PATH=.../verif.sqlite npx tsx src/db/preparar-verificacao-v2.ts
+ *   DATABASE_PATH=.../verif.sqlite npx tsx src/db/preparar-comparativo.ts
+ *
+ * Nunca aponte para `data/gsti.sqlite`: este script escreve.
+ */
+import { carregarAmbiente } from '../lib/ambiente.js';
+carregarAmbiente();
+import { db } from './index.js';
+import { criarLancamento } from '../domain/financeiro.js';
+import { comEmpresaEmFoco } from '../domain/escopo.js';
+import { competenciaAtual, paraExibicao, somarMeses } from '../domain/competencia.js';
+import type { Contexto } from '../domain/contexto.js';
+
+const usuario = db().prepare('SELECT id, email FROM usuarios ORDER BY id LIMIT 1')
+  .get() as { id: number; email: string };
+const empresas = db().prepare('SELECT id, cliente_id FROM empresas ORDER BY id')
+  .all() as Array<{ id: number; cliente_id: number }>;
+const filiais = db().prepare('SELECT id, empresa_id FROM filiais ORDER BY id')
+  .all() as Array<{ id: number; empresa_id: number }>;
+const tipo = (db().prepare('SELECT id FROM tipos_despesa ORDER BY id LIMIT 1').get() as { id: number }).id;
+
+const base: Contexto = {
+  clienteId: empresas[0]!.cliente_id,
+  empresaIds: empresas.map((e) => e.id),
+  empresaId: empresas[0]!.id,
+  usuarioId: usuario.id,
+  usuarioEmail: usuario.email,
+  papel: 'gestor',
+};
+const sede = filiais[0]!;
+const ctx = comEmpresaEmFoco(base, sede.empresa_id);
+
+const anterior = paraExibicao(somarMeses(competenciaAtual(), -1));
+
+// Repetidas: mesmo fornecedor, mesmo tipo, mesma filial — é o par que a
+// camada 3 vai reconhecer como "veio" quando a entrega 3 chegar.
+criarLancamento(ctx, { filialId: sede.id, tipoDespesaId: tipo, competencia: anterior,
+  valor: 11500, natureza: 'fixa', classificacao: 'despesa',
+  descricao: 'Licença corporativa de antivírus', justificativa: 'base de verificação' });
+criarLancamento(ctx, { filialId: sede.id, tipoDespesaId: tipo, competencia: anterior,
+  valor: 3000, natureza: 'fixa', classificacao: 'despesa', descricao: 'Telefonia da sede', justificativa: 'base de verificação' });
+// Cessada: existe no mês anterior e não no filtrado.
+criarLancamento(ctx, { filialId: sede.id, tipoDespesaId: tipo, competencia: anterior,
+  valor: 4200, natureza: 'pontual_unica', classificacao: 'despesa',
+  descricao: 'Consultoria de migração (encerrada)', justificativa: 'base de verificação' });
+
+console.log(`mês anterior semeado: ${anterior} — 3 lançamento(s)`);

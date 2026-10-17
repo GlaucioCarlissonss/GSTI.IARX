@@ -96,6 +96,15 @@ async function abrirCartoes(pag) {
     const m = await pag.$eval('.modal, [role=dialog]', (x) => x.textContent.replace(/\s+/g, ' ')).catch(() => '');
     console.log(`    item "${rot}"`);
     ok('o detalhe do ranking confere', [/confere com o indicador/.test(m), /diverge/.test(m)], [true, false]);
+    // O detalhamento financeiro passou a abrir em camadas, e a lista mora na
+    // de composição — fechada ao nascer. As colunas são as mesmas; o que mudou
+    // é que elas estão um clique abaixo.
+    await pag.evaluate(() => {
+      const bt = [...document.querySelectorAll('.camada-bt')]
+        .find((b) => /o que veio no mês filtrado/i.test(b.textContent));
+      if (bt) bt.click();
+    });
+    await pag.waitForTimeout(400);
     const cols = await pag.$$eval('.modal thead th, [role=dialog] thead th', (ts) => ts.map((t) => t.textContent.trim()));
     ok('as colunas trazem origem e destino', ['Origem do custo', 'Destino', 'Procedência'].every((c) => cols.includes(c)), true);
     await pag.keyboard.press('Escape');

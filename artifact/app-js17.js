@@ -1821,6 +1821,185 @@ function ligarArvoreDoDetalhamento(raiz) {
   }
 }
 
+// ------------------------------------- detalhamento comparativo mês a mês
+//
+// O detalhamento de um indicador financeiro deixa de ser UMA lista e passa a
+// ser camadas empilhadas, cada uma respondendo uma pergunta diferente:
+//
+//   1. quanto mudou em relação ao mês anterior — e para que lado;
+//   2. o que veio no mês filtrado, e com que peso cada parte;
+//   3. o que havia no mês anterior, para separar o que se repetiu do que cessou.
+//
+// Uma lista só respondia a segunda. As outras duas a pessoa fazia de cabeça,
+// abrindo dois meses em duas janelas e comparando no olho.
+//
+// Todas nascem FECHADAS e montam o corpo no primeiro clique: três árvores
+// completas de uma vez custariam, num mês cheio, três vezes o que custa a
+// pergunta que a pessoa realmente veio fazer.
+
+/** Os meses presentes numa lista de lançamentos, do mais antigo ao mais novo. */
+function mesesDaLista(itens) {
+  return [...new Set(itens.map((l) => l.competencia).filter(Boolean))].sort();
+}
+
+const porValorDesc = (itens) => [...itens].sort((a, b) => cent(b.valor) - cent(a.valor));
+
+/**
+ * O recorte de comparação de um detalhamento.
+ *
+ * Quando o detalhamento é de UM mês, quem chama informa `mes` — e informa
+ * também `anteriores`, porque o mês de antes não está na lista que ele abriu.
+ *
+ * Quando o detalhamento cobre o RECORTE inteiro — Objetivo 01, rateio, custo
+ * recorrente, plano de redução — não existe "o mês do detalhamento". Aí a
+ * comparação é a do ÚLTIMO mês da lista contra o anterior a ele, que é a
+ * leitura de quem pergunta "e agora, como está?". Nesse caso a lista inteira
+ * continua na tela, numa camada própria, porque é ela — e não o último mês —
+ * que soma o valor do indicador.
+ *
+ * `temBase` separa "o mês anterior veio vazio" de "não sei o que houve no mês
+ * anterior". O segundo acontece no primeiro mês da base e quando o anterior
+ * cai fora do recorte; dizer zero ali seria inventar uma queda de 100%.
+ */
+function recorteComparativo({ itens, mes, anteriores }) {
+  const meses = mesesDaLista(itens);
+  const mesFoco = mes || meses[meses.length - 1] || '';
+  const mesAnterior = mesFoco ? mesSoma(mesFoco, -1) : '';
+  const doMes = mes ? itens : itens.filter((l) => l.competencia === mesFoco);
+  return {
+    mesFoco, mesAnterior,
+    // Mais de um mês na lista sem mês informado: o detalhamento é de recorte.
+    multiMes: !mes && meses.length > 1,
+    doMes,
+    doAnterior: anteriores || itens.filter((l) => l.competencia === mesAnterior),
+    recorte: itens,
+    temBase: !!anteriores || meses.includes(mesAnterior),
+  };
+}
+
+/** A diferença entre o mês filtrado e o anterior, em centavos. */
+function deltaDoComparativo(c) {
+  const atual = somaC(c.doMes.map((l) => l.valor));
+  const anterior = somaC(c.doAnterior.map((l) => l.valor));
+  const delta = atual - anterior;
+  return {
+    atual, anterior, delta,
+    // Sem base, o percentual não existe — e 100% seria uma leitura falsa.
+    pct: anterior ? (delta / anterior) * 100 : null,
+    // Gastar menos é bom: a queda é verde, a alta é vermelha. É a mesma
+    // convenção de `.delta` nos cartões, e trocá-la aqui confundiria as duas.
+    sentido: delta < 0 ? 'desce' : delta > 0 ? 'sobe' : 'zero',
+  };
+}
+
+const SETA_DELTA = { sobe: '↑', desce: '↓', zero: '=' };
+
+/** Uma camada: cabeçalho fixo com título e valor, corpo que nasce fechado. */
+function camadaHtml({ chave, id, rotulo, valor }) {
+  const idCorpo = `${chave}-${id}`;
+  return `<section class="camada" data-camada="${id}">
+    <h4 class="camada-cab"><button type="button" class="camada-bt" aria-expanded="false"
+        aria-controls="${idCorpo}" data-abrir-camada="${id}">
+      <span class="bloco-seta" aria-hidden="true">+</span>
+      <span class="camada-rot">${esc(rotulo)}</span>
+      <span class="camada-val">${valor}</span>
+    </button></h4>
+    <div class="camada-corpo" id="${idCorpo}" hidden></div>
+  </section>`;
+}
+
+let SEQ_COMPARATIVO = 0;
+/** Os construtores de corpo de cada detalhamento aberto, até o modal montar. */
+const CAMADAS_PENDENTES = new Map();
+
+/**
+ * O detalhamento inteiro: o cabeçalho "MM/AAAA vs MM/AAAA" e as camadas.
+ *
+ * Devolve só o HTML; os corpos ficam num construtor por camada, que
+ * `ligarDetalhamentoComparativo` consome no primeiro clique.
+ */
+function detalhamentoComparativoHtml({ itens, mes, anteriores, prefixo }) {
+  const c = recorteComparativo({ itens, mes, anteriores });
+  const d = deltaDoComparativo(c);
+  const chave = `cmp${++SEQ_COMPARATIVO}`;
+  const semBase = '<span class="camada-sem">sem mês anterior para comparar</span>';
+
+  const valorDif = !c.temBase ? semBase
+    : `<span class="delta ${d.sentido}">${SETA_DELTA[d.sentido]} ${brl(reais(Math.abs(d.delta)))}`
+      + `${d.pct === null ? '' : ` · ${pctTxt(Math.abs(d.pct))}`}</span>`;
+  const comContagem = (lista) =>
+    `${brl(reais(somaC(lista.map((l) => l.valor))))} <span class="camada-qtd">`
+    + `${inteiro(lista.length)} lançamento(s)</span>`;
+
+  const camadas = [
+    { id: 'dif', rotulo: 'Diferença vs mês anterior', valor: valorDif },
+    { id: 'veio', rotulo: 'O que veio no mês filtrado', valor: comContagem(c.doMes) },
+    { id: 'ant', rotulo: 'Mês anterior: o que veio × o que não veio',
+      valor: c.temBase ? comContagem(c.doAnterior) : semBase },
+  ];
+  // A quarta só existe no detalhamento de recorte, e é ela que fecha com o
+  // indicador: sem ela, a soma visível seria a de um mês contra um número de
+  // nove. Num detalhamento de um mês, a camada 2 já é essa conferência.
+  if (c.multiMes) {
+    camadas.push({ id: 'recorte', rotulo: 'Recorte completo — o que o indicador soma',
+      valor: comContagem(c.recorte) });
+  }
+
+  const arvore = (lista) => arvoreDoDetalhamentoHtml(porValorDesc(lista), prefixo);
+  CAMADAS_PENDENTES.set(chave, {
+    dif: () => !c.temBase
+      ? `<p class="vazio">${esc(c.mesAnterior ? `Não há ${mesExib(c.mesAnterior)} neste recorte.`
+          : 'Não há mês anterior.')} Sem ele não há diferença a medir.</p>`
+      : '<p class="nota">A quebra da variação por empresa e filial entra na próxima entrega.</p>',
+    veio: () => arvore(c.doMes),
+    ant: () => c.temBase ? arvore(c.doAnterior)
+      : `<p class="vazio">${esc(mesExib(c.mesAnterior) || 'O mês anterior')} não está no recorte.</p>`,
+    recorte: () => arvore(c.recorte),
+  });
+
+  return `<div class="det-comp" data-comparativo="${chave}">
+    <p class="det-comp-cab">Detalhamento · <strong>${esc(mesExib(c.mesFoco) || '—')} vs `
+      + `${esc(c.temBase ? mesExib(c.mesAnterior) : 'sem base')}</strong>`
+      + (c.multiMes
+        ? ` <span class="camada-qtd">recorte de ${esc(mesExib(mesesDaLista(itens)[0]))} a `
+          + `${esc(mesExib(c.mesFoco))} — a comparação é do último mês</span>`
+        : '')
+      + `</p>
+    ${camadas.map((cam) => camadaHtml({ chave, ...cam })).join('')}
+  </div>`;
+}
+
+/**
+ * Liga as camadas: abre, fecha, e monta o corpo no primeiro clique.
+ *
+ * O estado morre com o modal, como o da árvore — guardar em `localStorage`
+ * qual camada estava aberta encheria a loja de chaves de um recorte que passou.
+ */
+function ligarDetalhamentoComparativo(raiz) {
+  const area = raiz.querySelector('[data-comparativo]');
+  if (!area) return;
+  const construtores = CAMADAS_PENDENTES.get(area.dataset.comparativo) || {};
+  CAMADAS_PENDENTES.delete(area.dataset.comparativo);
+
+  for (const bt of area.querySelectorAll('[data-abrir-camada]')) {
+    bt.onclick = () => {
+      const secao = bt.closest('.camada');
+      const corpo = secao.querySelector('.camada-corpo');
+      const abrir = bt.getAttribute('aria-expanded') !== 'true';
+      if (abrir && !corpo.dataset.montado) {
+        const montar = construtores[secao.dataset.camada];
+        corpo.innerHTML = montar ? montar() : '';
+        corpo.dataset.montado = '1';
+        ligarArvoreDoDetalhamento(corpo);
+        ligarDicasDaTela(corpo);
+      }
+      bt.setAttribute('aria-expanded', String(abrir));
+      bt.firstElementChild.textContent = abrir ? '−' : '+';
+      corpo.hidden = !abrir;
+    };
+  }
+}
+
 /**
  * As despesas fixas de UMA competência, no mesmo recorte que o objetivo usa.
  *
@@ -3586,6 +3765,9 @@ async function viewIndicadores() {
         // não só quais lançamentos existem. Cada nível ordena por valor.
         arvore: true,
         itens: [...itens].sort((a, b) => cent(b.valor) - cent(a.valor)),
+        // O mês de antes sai da MESMA consulta, e não da lista já filtrada:
+        // um detalhamento de um mês não carrega o mês anterior dentro de si.
+        comparativo: { mes: comp, anteriores: fixasDaCompetencia(rf, mesSoma(comp, -1)) },
         contagem: null,
         nota: ponto.projetado
           ? `${inteiro(itens.length)} lançamento(s) de ${mesExib(comp)}, que é a base da projeção. `
@@ -3616,6 +3798,8 @@ async function viewIndicadores() {
           titulo: `Despesas compartilhadas de ${ponto.rot}`,
           tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
           itens: [...doMes].sort((a, b) => cent(b.valor) - cent(a.valor)),
+          comparativo: { mes: ponto.comp,
+            anteriores: adequacao.registros.filter((l) => l.competencia === mesSoma(ponto.comp, -1)) },
           contagem: null,
           nota: `${inteiro(doMes.length)} despesa(s) fixa(s) compartilhada(s), somando `
             + `${brl(reais(somaC(doMes.map((l) => l.valor))))}. `
@@ -3647,6 +3831,8 @@ async function viewIndicadores() {
           titulo: `${id === 'fixos' ? 'Custos fixos' : 'Custos variáveis'} de ${ponto.rot}`,
           tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
           itens: [...doMes].sort((a, b) => cent(b.valor) - cent(a.valor)),
+          comparativo: { mes: ponto.comp,
+            anteriores: g.itens.filter((l) => l.competencia === mesSoma(ponto.comp, -1)) },
           contagem: null,
           nota: `${inteiro(doMes.length)} lançamento(s), somando ${brl(reais(somaC(doMes.map((l) => l.valor))))}. `
             + `${inteiro(doMes.filter((l) => l.classificacao === 'investimento').length)} classificado(s) como investimento.`,
@@ -3797,6 +3983,10 @@ async function viewIndicadores() {
             titulo: 'Objetivo 01 — despesas fixas do plano', tipo: 'indicadores-mes',
             colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
             itens: lancamentosDoPlano(), contagem: null,
+            // Detalhamento de RECORTE: a comparação é a do último mês da
+            // vigência contra o anterior, e o recorte inteiro fica na quarta
+            // camada — é ele que soma o número do indicador.
+            comparativo: {},
             nota: `Custo mensal atual ${brl(plano.totalAtual)}, alvo ${brl(plano.totalAlvo)} — `
               + `${pctTxt(plano.pctReducao)} de redução, medidos em `
               + `${plano.referencia ? mesExib(plano.referencia) : 'nenhum mês'}. `
@@ -3814,6 +4004,7 @@ async function viewIndicadores() {
             titulo: 'Despesas fixas compartilhadas do recorte', tipo: 'indicadores-mes',
             colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
             itens: adequacao.registros,
+            comparativo: {},
             contagem: null,
             nota: `${inteiro(adequacao.registros.length)} lançamento(s) fixo(s) compartilhado(s) na janela. `
               + `Em ${mesExib(adequacao.referencia)}: ${brl(adequacao.compartilhado)} ainda compartilhados e `
@@ -3828,7 +4019,7 @@ async function viewIndicadores() {
       abrir: () => abrirRegistros({
         titulo: 'Custo recorrente — despesas fixas do recorte', tipo: 'indicadores-mes',
         colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
-        itens: fixosDoRecorte(rf), contagem: null,
+        itens: fixosDoRecorte(rf), contagem: null, comparativo: {},
         nota: 'A variação compara o primeiro e o último mês; a lista traz as despesas que formam a série.',
       }),
     },
@@ -3942,7 +4133,7 @@ async function viewIndicadores() {
       abrirRegistros({
         titulo: 'Plano de redução — ' + item.nome, tipo: 'indicadores-mes',
         colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
-        itens: item.registros, contagem: null,
+        itens: item.registros, contagem: null, comparativo: {},
         nota: `Atual ${brl(item.atual)} · alvo ${brl(item.alvo)} · ${pctTxt(item.pctReducao)} de redução.`,
       });
     };
@@ -4353,7 +4544,8 @@ function tarefasDoRecorte(r, quais) {
  * tarefa. Aqui a conferência é por CONTAGEM, porque o número no card pode ser um
  * percentual — e somar percentuais não significa nada.
  */
-function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga, arvore, prefixo }) {
+function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga, arvore, prefixo,
+  comparativo }) {
   const confere = contagem === null || contagem === undefined || contagem === itens.length;
   abrirModal({
     titulo, tipo,
@@ -4368,7 +4560,8 @@ function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga, a
           : confere ? ' Confere com o indicador.' : ` Diverge: o indicador conta ${inteiro(contagem)}.`}
         ${nota ? ' ' + nota : ''}
       </div>
-      ${arvore ? arvoreDoDetalhamentoHtml(itens, prefixo)
+      ${comparativo ? detalhamentoComparativoHtml({ itens, prefixo, ...comparativo })
+        : arvore ? arvoreDoDetalhamentoHtml(itens, prefixo)
         : itens.length === 0 ? '<p class="vazio">Nenhum registro neste recorte.</p>' : `
       <div class="rol" style="margin-top:var(--esp-5)"><table${larga ? ' class="larga"' : ''}>
         <thead><tr>${colunas.map((c) => `<th${c.n ? ' class="n"' : ''}>${esc(c.rotulo)}</th>`).join('')}</tr></thead>
@@ -4387,7 +4580,8 @@ function abrirRegistros({ titulo, tipo, colunas, itens, contagem, nota, larga, a
     acoes: '<button type="button" class="bt" data-c>Fechar</button>',
     aoMontar({ raiz, fechar }) {
       raiz.querySelector('[data-c]').onclick = fechar;
-      if (arvore) ligarArvoreDoDetalhamento(raiz);
+      if (comparativo) ligarDetalhamentoComparativo(raiz);
+      else if (arvore) ligarArvoreDoDetalhamento(raiz);
     },
   });
 }
@@ -4657,6 +4851,10 @@ function abrirMesDoObjetivo03(obj3, comp) {
     titulo: `Despesas reconhecidas de ${p.rot}`,
     tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
     itens, contagem: null,
+    // A série do objetivo já tem o mês anterior montado com o mesmo filtro;
+    // quando ele cai fora do recorte, não há base — e a camada diz isso.
+    comparativo: { mes: comp,
+      anteriores: (obj3.serie.find((x) => x.comp === mesSoma(comp, -1)) || {}).itens },
     nota: `${inteiro(itens.length)} lançamento(s) reconhecido(s): ${brl(p.fixas)} em despesa fixa, `
       + `${brl(p.variaveis)} em pontual e ${brl(p.investimentos)} em investimento, somando ${brl(p.total)}. `
       + (p.dentro === null
@@ -4718,37 +4916,54 @@ function abrirContratosProjetados(farol3) {
   });
 }
 
+/**
+ * O que forma o número de um ponto do Farol 1.
+ *
+ * O cartão anuncia o NÍVEL FIXO, e o clique nele tem de abrir só o que forma
+ * esse número: uma lista com os pontuais junto somaria mais do que o valor
+ * clicado, que é a divergência que o detalhamento existe para não ter.
+ * Num mês PROJETADO não há lançamento: o que forma o número são os
+ * CONTRATOS. Eles entram com a forma de um lançamento daquele mês — é o que
+ * a tabela sabe desenhar — e a nota do modal diz que eles não têm linha
+ * própria ali. Mostrar lançamento nenhum faria o gestor duvidar do número,
+ * e mostrar os lançamentos de um mês passado mentiria sobre a competência.
+ *
+ * Está numa função porque o mês ANTERIOR, na camada de comparação, tem de
+ * passar exatamente pelo mesmo caminho: dois critérios diferentes nos dois
+ * lados fariam a diferença medir a regra, e não o custo.
+ */
+function fonteDoPontoFarol3(ponto, soFixas) {
+  if (!ponto) return [];
+  if (!ponto.projetado) {
+    return soFixas ? ponto.itens.filter((l) => l.natureza === 'fixa') : ponto.itens;
+  }
+  return [
+    // O que JÁ foi lançado para este mês à frente entra primeiro, e como
+    // lançamento de verdade: ele faz parte do número do cartão, e deixá-lo
+    // de fora faria a lista somar menos do que o valor clicado — a
+    // divergência que o detalhamento existe para não ter.
+    ...(ponto.itens || []),
+    ...(ponto.contratos || []).map((c) => ({
+      empresa: c.empresa, filial: c.filial, tipo: c.tipo, fornecedor: c.fornecedor,
+      descricao: c.descricao, cenario: c.cenario, valor: c.valor,
+      natureza: 'fixa', competencia: ponto.comp,
+      // De onde ele veio e até quando vale: é o que transforma a projeção
+      // numa lista de trabalho em vez de um total que ninguém audita.
+      obs: `visto pela última vez em ${mesExib(c.ultima)}`
+        + (c.vigenciaAte ? ` · vigência até ${mesExib(c.vigenciaAte)}` : ' · sem vigência cadastrada'),
+    })),
+  ];
+}
+
 function abrirMesDoFarol3(farol3, comp, soFixas = false) {
   const ponto = farol3.pontos.find((p) => p.comp === comp);
   if (!ponto) return;
-  // O cartão anuncia o NÍVEL FIXO, e o clique nele tem de abrir só o que forma
-  // esse número: uma lista com os pontuais junto somaria mais do que o valor
-  // clicado, que é a divergência que o detalhamento existe para não ter.
-  // Num mês PROJETADO não há lançamento: o que forma o número são os
-  // CONTRATOS. Eles entram com a forma de um lançamento daquele mês — é o que
-  // a tabela sabe desenhar — e a nota abaixo diz que eles não têm linha
-  // própria ali. Mostrar lançamento nenhum faria o gestor duvidar do número,
-  // e mostrar os lançamentos de um mês passado mentiria sobre a competência.
-  const fonte = ponto.projetado
-    ? [
-        // O que JÁ foi lançado para este mês à frente entra primeiro, e como
-        // lançamento de verdade: ele faz parte do número do cartão, e deixá-lo
-        // de fora faria a lista somar menos do que o valor clicado — a
-        // divergência que o detalhamento existe para não ter.
-        ...(ponto.itens || []),
-        ...(ponto.contratos || []).map((c) => ({
-          empresa: c.empresa, filial: c.filial, tipo: c.tipo, fornecedor: c.fornecedor,
-          descricao: c.descricao, cenario: c.cenario, valor: c.valor,
-          natureza: 'fixa', competencia: ponto.comp,
-          // De onde ele veio e até quando vale: é o que transforma a projeção
-          // numa lista de trabalho em vez de um total que ninguém audita.
-          obs: `visto pela última vez em ${mesExib(c.ultima)}`
-            + (c.vigenciaAte ? ` · vigência até ${mesExib(c.vigenciaAte)}` : ' · sem vigência cadastrada'),
-        })),
-      ]
-    : soFixas ? ponto.itens.filter((l) => l.natureza === 'fixa') : ponto.itens;
-  const itens = [...fonte].sort((a, b) => cent(b.valor) - cent(a.valor));
+  const itens = [...fonteDoPontoFarol3(ponto, soFixas)]
+    .sort((a, b) => cent(b.valor) - cent(a.valor));
+  const pontoAnterior = farol3.pontos.find((p) => p.comp === mesSoma(comp, -1));
   abrirRegistros({
+    comparativo: { mes: comp,
+      anteriores: pontoAnterior ? fonteDoPontoFarol3(pontoAnterior, soFixas) : undefined },
     titulo: ponto.projetado
       ? `Custo fixo projetado para ${ponto.rot} — ${brl(ponto.fixaProjetada)}`
       : soFixas ? `Custo fixo de ${ponto.rot}` : `Custos de ${ponto.rot}`,

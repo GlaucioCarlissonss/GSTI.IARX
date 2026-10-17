@@ -659,6 +659,42 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
 .delta.desce { color: var(--positivo-texto); }
 .delta.neutro { color: var(--tinta-fraca); }
 
+/* ------------------------------ detalhamento comparativo (dentro do modal)
+   Camadas empilhadas, largura cheia, uma abaixo da outra. Cada cabeçalho fica
+   visível com a camada fechada — é por ele que se lê o total sem abrir nada.
+   O mesmo desenho do artifact, para quem usa os dois não reaprender a tela. */
+.det-comp { display: flex; flex-direction: column; gap: var(--esp-5); }
+.det-comp-cab { margin: 0; font-size: var(--txt-2); color: var(--tinta-2); }
+.det-comp-cab strong { font-family: var(--mono); color: var(--tinta); font-variant-numeric: tabular-nums; }
+.camada { border: 1px solid var(--borda); border-radius: var(--raio-m); background: var(--superficie); overflow: hidden; }
+.camada-cab { margin: 0; }
+.camada-bt {
+  display: flex; align-items: center; gap: var(--esp-5); width: 100%;
+  padding: var(--esp-6) var(--esp-7);
+  font: inherit; color: inherit; background: none; border: 0; cursor: pointer; text-align: left;
+}
+.camada-bt:hover { background: var(--superficie-2); }
+.camada-bt:focus-visible { outline: 2px solid var(--serie-1); outline-offset: -2px; }
+.camada-seta {
+  flex: none; width: 18px; height: 18px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; line-height: 1;
+  color: var(--tinta-2); background: var(--superficie-2); border: 1px solid var(--borda-forte);
+}
+/* O rótulo cede espaço; o valor nunca quebra — é o que se compara de relance
+   entre uma camada e a outra. */
+.camada-rot {
+  flex: 1 1 auto; min-width: 0; font-size: var(--txt-2); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--tinta-2);
+}
+.camada-val { flex: none; font-family: var(--mono); font-size: var(--txt-3); font-variant-numeric: tabular-nums; }
+.camada-qtd { font-family: var(--mono); font-size: var(--txt-1); color: var(--tinta-fraca); }
+.camada-sem { font-size: var(--txt-2); color: var(--tinta-fraca); font-style: italic; }
+.camada-corpo { padding: 0 var(--esp-7) var(--esp-7); }
+.camada-corpo:not([hidden]) { animation: abrir-camada 0.14s ease-out; }
+@keyframes abrir-camada { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .camada-corpo:not([hidden]) { animation: none; } }
+
 /* -------------------------------------------------------------------- tabela */
 .tabela-envolucro { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }

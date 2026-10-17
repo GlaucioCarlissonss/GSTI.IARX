@@ -810,6 +810,32 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{border-color:var
 .bloco-corpo{animation:abrir-bloco .14s ease-out}
 @keyframes abrir-bloco{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.bloco-corpo{animation:none}}
+/* ------------------------------ detalhamento comparativo (dentro do modal)
+   Camadas empilhadas, largura cheia, uma abaixo da outra. Cada cabeçalho fica
+   visível com a camada fechada — é por ele que se lê o total sem abrir nada. */
+.det-comp{display:flex;flex-direction:column;gap:var(--esp-5);margin-top:var(--esp-5)}
+.det-comp-cab{margin:0 0 var(--esp-2);font-size:var(--txt-2);color:var(--tinta2)}
+.det-comp-cab strong{font-family:var(--mono);color:var(--tinta);font-variant-numeric:tabular-nums}
+.camada{border:1px solid var(--linha);border-radius:var(--raio-m);background:var(--sup);overflow:hidden}
+.camada-cab{margin:0}
+.camada-bt{
+  display:flex;align-items:center;gap:var(--esp-5);width:100%;
+  padding:var(--esp-6) var(--esp-7);
+  font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:left;
+}
+.camada-bt:hover{background:var(--sup2)}
+.camada-bt:focus-visible{outline:2px solid var(--s1);outline-offset:-2px}
+/* O rótulo cede espaço; o valor nunca quebra — é o que se compara de relance
+   entre uma camada e a outra. */
+.camada-rot{flex:1 1 auto;min-width:0;font-size:var(--txt-2);font-weight:var(--peso-forte);
+  text-transform:uppercase;letter-spacing:.06em;color:var(--tinta2)}
+.camada-val{flex:none;font-family:var(--mono);font-size:var(--txt-3);font-variant-numeric:tabular-nums}
+.camada-qtd{font-family:var(--mono);font-size:var(--txt-1);color:var(--tinta3)}
+.camada-sem{font-size:var(--txt-2);color:var(--tinta3);font-style:italic}
+.camada-corpo{padding:0 var(--esp-7) var(--esp-7)}
+.camada-corpo:not([hidden]){animation:abrir-bloco .14s ease-out}
+@media (prefers-reduced-motion:reduce){.camada-corpo:not([hidden]){animation:none}}
+
 .grade{display:grid;gap:16px}
 .g2{grid-template-columns:repeat(auto-fit,minmax(400px,1fr));align-items:start}
 .g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}

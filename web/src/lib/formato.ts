@@ -79,3 +79,24 @@ export const competenciaOrdem = (valor: string | null | undefined) => {
   const exib = texto.match(/^(\d{2})\/(\d{4})$/);
   return exib ? `${exib[2]}-${exib[1]}` : texto;
 };
+
+/**
+ * A competência deslocada em N meses, DEVOLVIDA NO FORMATO QUE ENTROU.
+ *
+ * O deslocamento passa por um contador de meses em vez de mexer no mês e no
+ * ano separadamente: subtrair 1 de "01/2026" tem de dar "12/2025", e a conta
+ * ingênua daria "00/2026". Aceita os dois formatos, como as irmãs acima, e
+ * devolve vazio para o que não é competência — assim quem chama distingue
+ * "não há mês anterior" de um mês inventado.
+ */
+export const competenciaSoma = (valor: string | null | undefined, n: number) => {
+  const m = competenciaOrdem(valor).match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+  if (!m) return '';
+  const contados = Number(m[1]) * 12 + (Number(m[2]) - 1) + n;
+  if (contados < 0) return '';
+  const ano = Math.floor(contados / 12);
+  const mes = String((contados % 12) + 1).padStart(2, '0');
+  // No formato de quem perguntou: misturar MM/AAAA com AAAA-MM nos parâmetros
+  // de uma consulta faria o servidor receber duas gramáticas no mesmo filtro.
+  return /^\d{2}\/\d{4}$/.test(String(valor ?? '').trim()) ? `${mes}/${ano}` : `${ano}-${mes}`;
+};

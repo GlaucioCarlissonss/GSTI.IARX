@@ -8,10 +8,13 @@
  *
  * Os dados vêm sob demanda: a tela só busca quando o detalhamento abre.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api } from '../lib/api';
 import { Aviso, Carregando, Etiqueta, Modal } from './base';
-import { inteiro, moeda, ROTULO_STATUS_PROJETO, ROTULO_STATUS_TAREFA } from '../lib/formato';
+import {
+  competenciaExib, competenciaOrdem, competenciaSoma,
+  inteiro, moeda, percentual, ROTULO_STATUS_PROJETO, ROTULO_STATUS_TAREFA,
+} from '../lib/formato';
 import { ligarColunasAjustaveis } from '../lib/colunas';
 import { EtiquetaConsumo, type ComConsumoEEmpresa } from './consumo';
 
@@ -53,14 +56,138 @@ export interface PedidoDetalhe<T = Record<string, unknown>> {
   somar?: (linha: T) => number;
   formatarTotal?: (v: number) => string;
   colunas: Array<ColunaDetalhe<T>>;
+  /**
+   * Abre o detalhamento em CAMADAS comparativas em vez de uma lista só. Vale
+   * para o que é somado por competência — lançamentos —, e só tem efeito
+   * quando os parâmetros trazem uma janela de competência de onde tirar o mês
+   * filtrado e o anterior a ele.
+   */
+  comparativo?: boolean;
 }
 
 /** Teto de linhas exibidas. Acima disso a tela some antes de ajudar. */
 const TETO = 300;
 
+// ---------------------------------------- detalhamento comparativo mês a mês
+//
+// O detalhamento de um indicador financeiro deixa de ser UMA lista e passa a
+// ser camadas empilhadas, cada uma respondendo uma pergunta diferente:
+//
+//   1. quanto mudou em relação ao mês anterior — e para que lado;
+//   2. o que veio no mês filtrado, e com que peso cada parte;
+//   3. o que havia no mês anterior, para separar o que se repetiu do que cessou.
+//
+// Uma lista só respondia a segunda. As outras duas o gestor fazia de cabeça,
+// abrindo dois meses em duas telas e comparando no olho.
+//
+// É a mesma estrutura do artifact, com uma diferença que vem do meio: lá os
+// lançamentos estão todos na memória e a comparação é de graça; aqui cada mês
+// é uma consulta. Por isso o mês anterior é buscado UMA vez, junto com o
+// principal — e não por linha, que seria o N+1 — e as tabelas de cada camada
+// só são montadas quando a camada abre.
+
+/** A janela de competência de um pedido, quando ele tem uma. */
+function janelaDoPedido(params?: Record<string, unknown>) {
+  const ini = params?.competencia_inicio ? String(params.competencia_inicio) : '';
+  const fim = params?.competencia_fim ? String(params.competencia_fim) : '';
+  if (!ini || !fim) return null;
+  // O mês em foco é o ÚLTIMO da janela: num recorte de nove meses, "e agora,
+  // como está?" é uma pergunta sobre o mês mais recente, não sobre o primeiro.
+  const foco = competenciaOrdem(fim) >= competenciaOrdem(ini) ? fim : ini;
+  const anterior = competenciaSoma(foco, -1);
+  if (!anterior) return null;
+  return { ini, fim, foco, anterior, multiMes: competenciaOrdem(ini) !== competenciaOrdem(fim) };
+}
+
+/** O que uma consulta de um mês devolveu, já somado. */
+interface Fatia<T> { itens: T[]; contagem: number; soma: number | null; cortada: boolean }
+
+const SETA_DELTA = { sobe: '↑', desce: '↓', zero: '=' } as const;
+
+/**
+ * A tabela de um detalhamento — a lista em si, com o aviso de corte.
+ *
+ * Está num componente porque cada camada tem a sua, e as alças de ajuste de
+ * coluna precisam de uma referência por tabela: uma só, no pai, ligaria as
+ * alças sempre à primeira e deixaria as outras sem.
+ */
+function TabelaDoDetalhe<T>({ colunas, itens, contagem, cortada }: {
+  colunas: Array<ColunaDetalhe<T>>; itens: T[]; contagem: number; cortada: boolean;
+}) {
+  const tabela = useRef<HTMLTableElement>(null);
+  useEffect(() => ligarColunasAjustaveis(tabela.current), [colunas, itens]);
+  if (itens.length === 0) {
+    return <p className="vazio">Nenhum registro compõe este número no recorte atual.</p>;
+  }
+  return (
+    <>
+      {/* A altura vem da tela flutuante, não de um teto fixo: esticar a
+          janela precisa dar espaço à tabela. */}
+      <div className="tabela-envolucro">
+        <table ref={tabela}>
+          <thead>
+            <tr>
+              {colunas.map((c) => (
+                <th key={c.rotulo} className={c.n ? 'num' : undefined}>{c.rotulo}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {itens.slice(0, TETO).map((l, i) => (
+              <tr key={i}>
+                {colunas.map((c) => (
+                  <td key={c.rotulo} className={c.n ? 'num' : c.texto ? 'texto' : undefined}>
+                    {c.valor(l) ?? '—'}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {(itens.length > TETO || cortada) && (
+        <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
+          Exibindo {inteiro(Math.min(itens.length, TETO))} de {inteiro(contagem)} registro(s). Estreite o
+          recorte para ver o resto.
+        </p>
+      )}
+    </>
+  );
+}
+
+/** Uma camada: cabeçalho fixo com título e valor, corpo que nasce fechado. */
+function Camada({ id, rotulo, valor, children }: {
+  id: string; rotulo: string; valor: ReactNode; children: () => ReactNode;
+}) {
+  const [aberta, setAberta] = useState(false);
+  // Montado uma vez, o corpo fica: reabrir não refaz o trabalho de pintar
+  // trezentas linhas, e fechar não joga fora o que já estava pronto.
+  const [montada, setMontada] = useState(false);
+  const idCorpo = `camada-${id}`;
+  return (
+    <section className="camada">
+      <h4 className="camada-cab">
+        <button
+          type="button"
+          className="camada-bt"
+          aria-expanded={aberta}
+          aria-controls={idCorpo}
+          onClick={() => { setMontada(true); setAberta((a) => !a); }}
+        >
+          <span className="camada-seta" aria-hidden="true">{aberta ? '−' : '+'}</span>
+          <span className="camada-rot">{rotulo}</span>
+          <span className="camada-val">{valor}</span>
+        </button>
+      </h4>
+      <div className="camada-corpo" id={idCorpo} hidden={!aberta}>
+        {montada ? children() : null}
+      </div>
+    </section>
+  );
+}
+
 export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>; aoFechar: () => void }) {
   const [estado, setEstado] = useState<{ itens: T[]; total: number; soma: number | null } | { erro: string } | null>(null);
-  const tabela = useRef<HTMLTableElement>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -85,8 +212,52 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
     };
   }, [pedido]);
 
-  // As alças só existem depois de a tabela ser pintada, e mudam com as colunas.
-  useEffect(() => ligarColunasAjustaveis(tabela.current), [estado, pedido.colunas]);
+  const janela = useMemo(
+    () => (pedido.comparativo ? janelaDoPedido(pedido.params) : null),
+    [pedido],
+  );
+
+  // O mês em foco e o anterior, cada um numa consulta. O anterior nunca está
+  // na resposta principal de um detalhamento de UM mês, e no de recorte a
+  // lista pode vir cortada — derivá-la dali daria um total menor que o real.
+  const [fatias, setFatias] = useState<
+    { foco: Fatia<T> | null; anterior: Fatia<T> | null } | { erro: string } | null
+  >(null);
+
+  useEffect(() => {
+    if (!janela) { setFatias(null); return undefined; }
+    let vivo = true;
+    setFatias(null);
+    const extrair = pedido.extrair ?? ((x: unknown) => (x as { itens?: T[] }).itens ?? (x as T[]));
+    const umMes = (mes: string): Promise<Fatia<T>> =>
+      api
+        .get<unknown>(pedido.caminho, { ...pedido.params, competencia_inicio: mes, competencia_fim: mes })
+        .then((r) => {
+          const itens = extrair(r) ?? [];
+          const contagem = pedido.contarNaResposta ? pedido.contarNaResposta(r) : itens.length;
+          const cortada = contagem > itens.length;
+          const soma = pedido.somaNaResposta
+            ? pedido.somaNaResposta(r)
+            : cortada || !pedido.somar
+              ? null
+              : itens.reduce((s, l) => s + pedido.somar!(l), 0);
+          return { itens, contagem, soma, cortada };
+        });
+    // Um detalhamento de UM mês já tem o mês em foco na resposta principal:
+    // pedi-lo de novo seria a mesma consulta duas vezes.
+    Promise.all([janela.multiMes ? umMes(janela.foco) : null, umMes(janela.anterior)])
+      .then(([foco, anterior]) => { if (vivo) setFatias({ foco, anterior }); })
+      .catch((e) => {
+        if (vivo) {
+          setFatias({
+            erro: e instanceof Error
+              ? `Não foi possível carregar ${competenciaExib(janela.anterior)} para comparar: ${e.message}`
+              : `Não foi possível carregar ${competenciaExib(janela.anterior)} para comparar.`,
+          });
+        }
+      });
+    return () => { vivo = false; };
+  }, [janela, pedido]);
 
   const itens = estado && 'itens' in estado ? estado.itens : [];
   const totalDeRegistros = estado && 'itens' in estado ? estado.total : 0;
@@ -139,47 +310,160 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
             )}
           </div>
 
-          {itens.length === 0 ? (
-            <p className="vazio">Nenhum registro compõe este número no recorte atual.</p>
+          {janela ? (
+            <CamadasComparativas
+              pedido={pedido}
+              janela={janela}
+              fatias={fatias}
+              recorte={{ itens, contagem: totalDeRegistros, soma, cortada }}
+            />
           ) : (
-            <>
-              {/* A altura vem da tela flutuante, não de um teto fixo: esticar a
-                  janela precisa dar espaço à tabela. */}
-              <div className="tabela-envolucro">
-                <table ref={tabela}>
-                  <thead>
-                    <tr>
-                      {pedido.colunas.map((c) => (
-                        <th key={c.rotulo} className={c.n ? 'num' : undefined}>
-                          {c.rotulo}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {itens.slice(0, TETO).map((l, i) => (
-                      <tr key={i}>
-                        {pedido.colunas.map((c) => (
-                          <td key={c.rotulo} className={c.n ? 'num' : c.texto ? 'texto' : undefined}>
-                            {c.valor(l) ?? '—'}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {(itens.length > TETO || cortada) && (
-                <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
-                  Exibindo {inteiro(Math.min(itens.length, TETO))} de {inteiro(totalDeRegistros)} registro(s). Estreite o
-                  recorte para ver o resto.
-                </p>
-              )}
-            </>
+            <TabelaDoDetalhe
+              colunas={pedido.colunas}
+              itens={itens}
+              contagem={totalDeRegistros}
+              cortada={cortada}
+            />
           )}
         </>
       )}
     </Modal>
+  );
+}
+
+/**
+ * As camadas de um detalhamento comparativo.
+ *
+ * O cabeçalho diz o mês filtrado e o de comparação; cada camada diz o seu
+ * total sem precisar abrir. A quarta só existe no detalhamento de RECORTE, e
+ * é ela que fecha com o indicador: nesse caso o número da tela soma vários
+ * meses, e a camada do mês sozinha somaria menos.
+ */
+function CamadasComparativas<T>({ pedido, janela, fatias, recorte }: {
+  pedido: PedidoDetalhe<T>;
+  janela: NonNullable<ReturnType<typeof janelaDoPedido>>;
+  fatias: { foco: Fatia<T> | null; anterior: Fatia<T> | null } | { erro: string } | null;
+  recorte: { itens: T[]; contagem: number; soma: number | null; cortada: boolean };
+}) {
+  const formatar = pedido.formatarTotal ?? ((v: number) => moeda(v));
+  const carregando = fatias === null;
+  const erro = fatias && 'erro' in fatias ? fatias.erro : null;
+  const prontas = fatias && !('erro' in fatias) ? fatias : null;
+  // Num detalhamento de um mês, o mês em foco É a resposta principal.
+  const foco: Fatia<T> = (janela.multiMes ? prontas?.foco : recorte) ?? {
+    itens: [], contagem: 0, soma: null, cortada: false,
+  };
+  const anterior = prontas?.anterior ?? null;
+
+  const resumo = (f: Fatia<T> | null): ReactNode => {
+    if (carregando) return <span className="camada-sem">carregando…</span>;
+    if (!f) return <span className="camada-sem">indisponível</span>;
+    return (
+      <>
+        {f.soma === null ? '—' : formatar(f.soma)}{' '}
+        <span className="camada-qtd">{inteiro(f.contagem)} registro(s)</span>
+      </>
+    );
+  };
+
+  let valorDif: ReactNode = <span className="camada-sem">carregando…</span>;
+  if (!carregando) {
+    const base = anterior?.soma ?? null;
+    const atual = foco.soma;
+    if (base === null || atual === null) {
+      valorDif = <span className="camada-sem">sem base de comparação</span>;
+    } else {
+      const delta = atual - base;
+      // Gastar menos é bom: a queda é verde, a alta é vermelha. É a mesma
+      // convenção de `.delta` nos indicadores — trocá-la aqui confundiria as duas.
+      const sentido = delta < 0 ? 'desce' : delta > 0 ? 'sobe' : 'zero';
+      valorDif = (
+        <span className={`delta ${sentido === 'zero' ? 'neutro' : sentido}`}>
+          {SETA_DELTA[sentido]} {formatar(Math.abs(delta))}
+          {base !== 0 && ` · ${percentual(Math.abs((delta / base) * 100))}`}
+        </span>
+      );
+    }
+  }
+
+  return (
+    <div className="det-comp">
+      <p className="det-comp-cab">
+        Detalhamento ·{' '}
+        <strong>
+          {competenciaExib(janela.foco)} vs {competenciaExib(janela.anterior)}
+        </strong>
+        {janela.multiMes && (
+          <span className="camada-qtd">
+            {' '}recorte de {competenciaExib(janela.ini)} a {competenciaExib(janela.fim)} — a comparação é do
+            último mês
+          </span>
+        )}
+      </p>
+
+      {erro && <Aviso tipo="erro">{erro}</Aviso>}
+
+      <Camada id="dif" rotulo="Diferença vs mês anterior" valor={valorDif}>
+        {() =>
+          anterior === null ? (
+            <p className="vazio">
+              Sem {competenciaExib(janela.anterior)} não há diferença a medir.
+            </p>
+          ) : (
+            <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
+              A quebra da variação por empresa e filial entra na próxima entrega.
+            </p>
+          )
+        }
+      </Camada>
+
+      <Camada id="veio" rotulo="O que veio no mês filtrado" valor={resumo(carregando ? null : foco)}>
+        {() => (
+          <TabelaDoDetalhe
+            colunas={pedido.colunas}
+            itens={foco.itens}
+            contagem={foco.contagem}
+            cortada={foco.cortada}
+          />
+        )}
+      </Camada>
+
+      <Camada
+        id="ant"
+        rotulo="Mês anterior: o que veio × o que não veio"
+        valor={resumo(anterior)}
+      >
+        {() =>
+          anterior === null ? (
+            <p className="vazio">{competenciaExib(janela.anterior)} não pôde ser carregado.</p>
+          ) : (
+            <TabelaDoDetalhe
+              colunas={pedido.colunas}
+              itens={anterior.itens}
+              contagem={anterior.contagem}
+              cortada={anterior.cortada}
+            />
+          )
+        }
+      </Camada>
+
+      {janela.multiMes && (
+        <Camada
+          id="recorte"
+          rotulo="Recorte completo — o que o indicador soma"
+          valor={resumo(recorte)}
+        >
+          {() => (
+            <TabelaDoDetalhe
+              colunas={pedido.colunas}
+              itens={recorte.itens}
+              contagem={recorte.contagem}
+              cortada={recorte.cortada}
+            />
+          )}
+        </Camada>
+      )}
+    </div>
   );
 }
 
@@ -216,6 +500,11 @@ export function detalheDeLancamentos(
     total,
     caminho: '/api/dashboards/relatorio/lancamentos',
     params,
+    // Lançamento é somado por competência: o detalhamento abre comparando o
+    // mês filtrado com o anterior. Quando o recorte não tem janela de
+    // competência — a Conferência filtra por cenário —, `janelaDoPedido`
+    // devolve nulo e a tela volta a ser a lista de sempre.
+    comparativo: true,
     somar: (l) => Number(l.valor_centavos) / 100,
     colunas: [
       { rotulo: 'Competência', valor: (l) => String(l.competencia) },
