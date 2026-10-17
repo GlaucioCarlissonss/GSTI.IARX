@@ -149,6 +149,63 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   const depois = await lerCamadas();
 
   ok('fechada, a camada não tinha tabela', antesDeAbrir.camadas[1].linhas === 0);
+
+  // ------------------------------------------- hierarquia Empresa → Filial
+  console.log('\nHIERARQUIA — Empresa → Filial dentro de cada camada');
+  const hier = await pag.evaluate(async () => {
+    const corpo = [...document.querySelectorAll('.camada')]
+      .find((s) => /o que veio no mês filtrado/i.test(s.textContent)).querySelector('.camada-corpo');
+    const empresas = [...corpo.querySelectorAll('.grupo-unidade.nivel-1')];
+    const antes = {
+      empresas: empresas.length,
+      filiais: corpo.querySelectorAll('.grupo-unidade.nivel-2').length,
+      itens: corpo.querySelectorAll('tbody tr:not(.grupo-unidade)').length,
+      fechadas: empresas.every((e) => e.querySelector('.arv-abrir').getAttribute('aria-expanded') === 'false'),
+      // O subtotal de cada empresa aparece com o grupo fechado — é por ele que
+      // se lê o peso da unidade sem abrir nada.
+      comSubtotal: empresas.every((e) => /R\$/.test(e.querySelector('.grupo-valor').textContent)),
+      // Valor decrescente entre as empresas.
+      valores: empresas.map((e) => Number(e.querySelector('.grupo-valor').textContent
+        .replace(/[^\d,]/g, '').replace(',', '.'))),
+      nomeado: empresas.every((e) => e.querySelector('.grupo-nome').textContent.trim().length > 0),
+    };
+    empresas[0].querySelector('.arv-abrir').click();
+    await new Promise((r) => setTimeout(r, 200));
+    const comEmpresa = {
+      filiais: corpo.querySelectorAll('.grupo-unidade.nivel-2').length,
+      itens: corpo.querySelectorAll('tbody tr:not(.grupo-unidade)').length,
+      anunciada: empresas[0].querySelector('.arv-abrir').getAttribute('aria-expanded') === 'true',
+    };
+    corpo.querySelector('.grupo-unidade.nivel-2 .arv-abrir').click();
+    await new Promise((r) => setTimeout(r, 200));
+    const comFilial = { itens: corpo.querySelectorAll('tbody tr:not(.grupo-unidade)').length };
+    // Fechar a empresa recolhe as filiais dela.
+    empresas[0].querySelector('.arv-abrir').click();
+    await new Promise((r) => setTimeout(r, 200));
+    const fechada = {
+      filiais: corpo.querySelectorAll('.grupo-unidade.nivel-2').length,
+      itens: corpo.querySelectorAll('tbody tr:not(.grupo-unidade)').length,
+    };
+    return { antes, comEmpresa, comFilial, fechada };
+  });
+  ok('a camada abre pela EMPRESA', hier.antes.empresas > 0, `${hier.antes.empresas} empresa(s)`);
+  ok('as empresas nascem fechadas', hier.antes.fechadas);
+  ok('nenhuma filial nem lançamento à vista antes do clique',
+    hier.antes.filiais === 0 && hier.antes.itens === 0,
+    `${hier.antes.filiais} filial(is) · ${hier.antes.itens} item(ns)`);
+  ok('cada empresa diz o seu subtotal sem precisar abrir', hier.antes.comSubtotal);
+  ok('as empresas vêm em valor decrescente',
+    hier.antes.valores.every((v, i, a) => i === 0 || a[i - 1] >= v), JSON.stringify(hier.antes.valores));
+  ok('cada empresa vem nomeada', hier.antes.nomeado);
+  ok('abrir a empresa revela as FILIAIS, e só elas',
+    hier.comEmpresa.filiais > 0 && hier.comEmpresa.itens === 0,
+    `${hier.comEmpresa.filiais} filial(is) · ${hier.comEmpresa.itens} item(ns)`);
+  ok('o estado da empresa é anunciado', hier.comEmpresa.anunciada);
+  ok('abrir a filial revela os lançamentos', hier.comFilial.itens > 0, `${hier.comFilial.itens} item(ns)`);
+  ok('fechar a empresa recolhe a filial que estava aberta',
+    hier.fechada.filiais === 0 && hier.fechada.itens === 0,
+    `${hier.fechada.filiais} filial(is) · ${hier.fechada.itens} item(ns)`);
+
   ok('aberta, a camada traz as linhas', depois.camadas[1].linhas > 0, `${depois.camadas[1].linhas} linha(s)`);
   ok('abrir a camada não dispara consulta nova', consultas.length === consultasAoAbrirModal,
     `${consultas.length} de ${consultasAoAbrirModal}`);

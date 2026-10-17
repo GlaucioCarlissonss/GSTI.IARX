@@ -3165,6 +3165,24 @@ camada**, e é ela que fecha com o indicador. Sem isso, a soma visível seria a 
 um mês contra um número de nove, e o detalhamento passaria a acusar uma
 divergência que não existe.
 
+### A hierarquia Empresa → Filial, dentro de cada camada
+
+No artifact ela já existia: a árvore do detalhamento é TIPO → EMPRESA → FILIAL →
+LANÇAMENTO, e as camadas a reaproveitam inteira.
+
+No app ela **não existia** — o detalhamento sempre foi uma tabela plana com uma
+coluna "Filial", sem nível de empresa. Agora cada camada agrupa em duas linhas
+de grupo, Empresa e Filial, cada uma com o seu subtotal visível **antes** de
+abrir, nascidas fechadas e ordenadas por valor decrescente; os lançamentos só
+aparecem abaixo da filial, com as mesmas dez colunas de antes. Fechar uma
+empresa recolhe as filiais dela — uma filial aberta sob uma empresa fechada
+seria uma árvore mentindo sobre si.
+
+A empresa não vem escrita no lançamento: o relatório devolve `empresa_id`, e o
+nome e a cor saem da sessão, pela mesma tabela que pinta as faixas dos
+indicadores. Resolver ali, e não no servidor, é o que mantém a cor de cada
+unidade igual nas quatro telas que abrem este detalhamento.
+
 ### O que cada superfície paga pela comparação
 
 No artifact os lançamentos estão todos na memória, e comparar dois meses é de

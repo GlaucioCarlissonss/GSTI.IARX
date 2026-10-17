@@ -53,4 +53,26 @@ criarLancamento(ctx, { filialId: sede.id, tipoDespesaId: tipo, competencia: ante
   valor: 4200, natureza: 'pontual_unica', classificacao: 'despesa',
   descricao: 'Consultoria de migração (encerrada)', justificativa: 'base de verificação' });
 
+// A SEGUNDA MATRIZ, nos dois meses. Sem ela a hierarquia Empresa → Filial
+// tem um galho só, e uma árvore de um galho não prova ordenação, nem subtotal
+// por unidade, nem que fechar uma empresa recolhe as filiais dela.
+const mes = paraExibicao(competenciaAtual());
+const outra = filiais.find((f) => f.empresa_id !== sede.empresa_id);
+// O tipo de despesa é POR EMPRESA: o da sede não vale para a outra matriz.
+const tipo2 = outra && (db()
+  .prepare('SELECT id FROM tipos_despesa WHERE empresa_id = ? ORDER BY id LIMIT 1')
+  .get(outra.empresa_id) as { id: number } | undefined)?.id;
+if (outra && tipo2) {
+  const ctx2 = comEmpresaEmFoco(base, outra.empresa_id);
+  // Mais barata que a sede: a ordem decrescente entre as duas é verificável.
+  criarLancamento(ctx2, { filialId: outra.id, tipoDespesaId: tipo2, competencia: mes,
+    valor: 5400, natureza: 'fixa', classificacao: 'despesa', descricao: 'Enlace da unidade' });
+  criarLancamento(ctx2, { filialId: outra.id, tipoDespesaId: tipo2, competencia: mes,
+    valor: 1800, natureza: 'fixa', classificacao: 'despesa', descricao: 'Suporte de impressão' });
+  criarLancamento(ctx2, { filialId: outra.id, tipoDespesaId: tipo2, competencia: anterior,
+    valor: 5400, natureza: 'fixa', classificacao: 'despesa', descricao: 'Enlace da unidade',
+    justificativa: 'base de verificação' });
+  console.log(`segunda matriz semeada: ${mes} (2) e ${anterior} (1)`);
+}
+
 console.log(`mês anterior semeado: ${anterior} — 3 lançamento(s)`);

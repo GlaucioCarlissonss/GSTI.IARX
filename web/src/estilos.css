@@ -695,6 +695,29 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
 @keyframes abrir-camada { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .camada-corpo:not([hidden]) { animation: none; } }
 
+/* A hierarquia Empresa → Filial dentro da camada. Duas linhas de grupo, cada
+   uma com o seu subtotal: a indentação é o canal da hierarquia e o botão é o
+   que a torna operável. O ponto colorido repete a cor da unidade — a mesma das
+   faixas dos indicadores —, e nunca é o único canal: o nome vem escrito. */
+.grupo-unidade > th {
+  text-align: left; font-weight: 600; background: var(--superficie-2);
+  border-top: 1px solid var(--borda);
+}
+.grupo-unidade > th > * { vertical-align: middle; }
+.grupo-unidade.nivel-2 > th { padding-left: 26px; font-weight: 500; color: var(--tinta-2); }
+.grupo-nome { margin-left: 7px; }
+.grupo-valor { float: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.ponto-unidade { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-left: 7px; }
+.grupo-unidade .arv-abrir {
+  width: 17px; height: 17px; padding: 0; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 600 12px/1 inherit; cursor: pointer;
+  color: var(--tinta-2); background: var(--superficie);
+  border: 1px solid var(--borda-forte); border-radius: 5px;
+}
+.grupo-unidade .arv-abrir:hover { color: var(--tinta); border-color: var(--tinta-fraca); }
+.grupo-unidade .arv-abrir:focus-visible { outline: 2px solid var(--serie-1); outline-offset: 2px; }
+
 /* -------------------------------------------------------------------- tabela */
 .tabela-envolucro { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }

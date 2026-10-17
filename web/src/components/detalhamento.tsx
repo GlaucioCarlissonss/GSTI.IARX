@@ -16,6 +16,8 @@ import {
   inteiro, moeda, percentual, ROTULO_STATUS_PROJETO, ROTULO_STATUS_TAREFA,
 } from '../lib/formato';
 import { ligarColunasAjustaveis } from '../lib/colunas';
+import { coresDasMatrizes } from '../lib/cores';
+import { useSessao } from '../lib/sessao';
 import { EtiquetaConsumo, type ComConsumoEEmpresa } from './consumo';
 
 /** Coluna do detalhamento. `n` alinha à direita, para números. */
@@ -105,20 +107,175 @@ interface Fatia<T> { itens: T[]; contagem: number; soma: number | null; cortada:
 const SETA_DELTA = { sobe: '↑', desce: '↓', zero: '=' } as const;
 
 /**
+ * Um nó da hierarquia Empresa → Filial, com os lançamentos embaixo.
+ *
+ * `valor` é a soma do nó, e é por ela que os irmãos se ordenam — a regra da
+ * tela inteira é valor DECRESCENTE, em todos os níveis.
+ */
+interface NoDaUnidade<T> {
+  chave: string;
+  nome: string;
+  cor?: string;
+  valor: number;
+  itens: T[];
+  filhos: Array<NoDaUnidade<T>>;
+}
+
+/**
+ * Agrupa os lançamentos em Empresa → Filial.
+ *
+ * A empresa não vem escrita no lançamento: o relatório devolve `empresa_id`, e
+ * o nome e a cor saem da sessão, pela mesma tabela que pinta as faixas dos
+ * indicadores. Resolver aqui, e não no servidor, é o que mantém a cor de cada
+ * unidade igual nas quatro telas que abrem este detalhamento.
+ */
+function agruparPorUnidade<T>(
+  itens: T[],
+  somar: ((l: T) => number) | undefined,
+  matrizes: Map<number, { nome: string; cor: string }>,
+): Array<NoDaUnidade<T>> {
+  const empresas = new Map<string, NoDaUnidade<T>>();
+  for (const l of itens) {
+    const linha = l as Record<string, unknown>;
+    const id = linha.empresa_id as number | null | undefined;
+    const matriz = id === null || id === undefined ? undefined : matrizes.get(id);
+    const chaveE = String(id ?? 'sem-empresa');
+    if (!empresas.has(chaveE)) {
+      empresas.set(chaveE, {
+        chave: chaveE,
+        nome: matriz?.nome ?? 'Sem empresa',
+        cor: matriz?.cor,
+        valor: 0, itens: [], filhos: [],
+      });
+    }
+    const empresa = empresas.get(chaveE)!;
+    const valor = somar ? somar(l) : 0;
+    empresa.valor += valor;
+    empresa.itens.push(l);
+
+    const nomeFilial = (linha.filial_nome as string) ?? 'Nível empresa';
+    let filial = empresa.filhos.find((f) => f.nome === nomeFilial);
+    if (!filial) {
+      filial = { chave: `${chaveE}:${nomeFilial}`, nome: nomeFilial, cor: empresa.cor,
+        valor: 0, itens: [], filhos: [] };
+      empresa.filhos.push(filial);
+    }
+    filial.valor += valor;
+    filial.itens.push(l);
+  }
+  const desc = (a: NoDaUnidade<T>, b: NoDaUnidade<T>) => b.valor - a.valor;
+  const lista = [...empresas.values()].sort(desc);
+  for (const e of lista) {
+    e.filhos.sort(desc);
+    for (const f of e.filhos) {
+      if (somar) f.itens.sort((a, b) => somar(b) - somar(a));
+    }
+  }
+  return lista;
+}
+
+/**
  * A tabela de um detalhamento — a lista em si, com o aviso de corte.
+ *
+ * Com `hierarquia`, as linhas vêm agrupadas em Empresa → Filial: duas linhas de
+ * grupo, cada uma com o seu subtotal e o seu botão, e os lançamentos só abaixo
+ * da filial. É a mesma leitura do artifact, e existe pelo mesmo motivo: uma
+ * lista plana de duzentos lançamentos responde "quais são", não responde "de
+ * onde vem o peso" — e é essa a pergunta de quem clicou num indicador.
+ *
+ * Os grupos nascem FECHADOS, como os níveis da árvore do artifact, e o teto de
+ * linhas conta os lançamentos, não as linhas de grupo.
  *
  * Está num componente porque cada camada tem a sua, e as alças de ajuste de
  * coluna precisam de uma referência por tabela: uma só, no pai, ligaria as
  * alças sempre à primeira e deixaria as outras sem.
  */
-function TabelaDoDetalhe<T>({ colunas, itens, contagem, cortada }: {
+function TabelaDoDetalhe<T>({ colunas, itens, contagem, cortada, hierarquia, somar }: {
   colunas: Array<ColunaDetalhe<T>>; itens: T[]; contagem: number; cortada: boolean;
+  hierarquia?: boolean; somar?: (l: T) => number;
 }) {
   const tabela = useRef<HTMLTableElement>(null);
+  const { empresas } = useSessao();
+  const [abertos, setAbertos] = useState<Set<string>>(() => new Set());
   useEffect(() => ligarColunasAjustaveis(tabela.current), [colunas, itens]);
+
+  const matrizes = useMemo(() => {
+    const m = new Map<number, { nome: string; cor: string }>();
+    for (const [id, v] of coresDasMatrizes(empresas)) m.set(id, { nome: v.nome, cor: v.cor });
+    return m;
+  }, [empresas]);
+  const arvore = useMemo(
+    () => (hierarquia ? agruparPorUnidade(itens, somar, matrizes) : []),
+    [hierarquia, itens, somar, matrizes],
+  );
+
   if (itens.length === 0) {
     return <p className="vazio">Nenhum registro compõe este número no recorte atual.</p>;
   }
+
+  const alternar = (chave: string) =>
+    setAbertos((a) => {
+      const novo = new Set(a);
+      if (novo.has(chave)) {
+        // Fechar a empresa recolhe as filiais dela: uma filial aberta sob uma
+        // empresa fechada seria uma árvore mentindo sobre si.
+        novo.delete(chave);
+        for (const c of [...novo]) if (c.startsWith(chave + ':')) novo.delete(c);
+      } else novo.add(chave);
+      return novo;
+    });
+
+  const linhaDeGrupo = (no: NoDaUnidade<T>, nivel: 1 | 2) => (
+    <tr key={no.chave} className={`grupo-unidade nivel-${nivel}`}>
+      <th colSpan={colunas.length} scope="rowgroup">
+        <button
+          type="button"
+          className="arv-abrir"
+          aria-expanded={abertos.has(no.chave)}
+          aria-label={`${abertos.has(no.chave) ? 'Recolher' : 'Abrir'} ${no.nome}`}
+          onClick={() => alternar(no.chave)}
+        >
+          {abertos.has(no.chave) ? '−' : '+'}
+        </button>
+        {no.cor && <i className="ponto-unidade" style={{ background: no.cor }} aria-hidden />}
+        <span className="grupo-nome">{no.nome}</span>
+        <span className="grupo-valor">
+          {somar ? moeda(no.valor) : `${inteiro(no.itens.length)} registro(s)`}
+        </span>
+      </th>
+    </tr>
+  );
+
+  const linhaDeItem = (l: T, chave: string) => (
+    <tr key={chave}>
+      {colunas.map((c) => (
+        <td key={c.rotulo} className={c.n ? 'num' : c.texto ? 'texto' : undefined}>
+          {c.valor(l) ?? '—'}
+        </td>
+      ))}
+    </tr>
+  );
+
+  const corpo: ReactNode[] = [];
+  if (hierarquia) {
+    let desenhados = 0;
+    for (const empresa of arvore) {
+      corpo.push(linhaDeGrupo(empresa, 1));
+      if (!abertos.has(empresa.chave)) continue;
+      for (const filial of empresa.filhos) {
+        corpo.push(linhaDeGrupo(filial, 2));
+        if (!abertos.has(filial.chave)) continue;
+        for (const [i, l] of filial.itens.entries()) {
+          if (desenhados >= TETO) break;
+          corpo.push(linhaDeItem(l, `${filial.chave}:${i}`));
+          desenhados += 1;
+        }
+      }
+    }
+  } else {
+    itens.slice(0, TETO).forEach((l, i) => corpo.push(linhaDeItem(l, String(i))));
+  }
+
   return (
     <>
       {/* A altura vem da tela flutuante, não de um teto fixo: esticar a
@@ -132,17 +289,7 @@ function TabelaDoDetalhe<T>({ colunas, itens, contagem, cortada }: {
               ))}
             </tr>
           </thead>
-          <tbody>
-            {itens.slice(0, TETO).map((l, i) => (
-              <tr key={i}>
-                {colunas.map((c) => (
-                  <td key={c.rotulo} className={c.n ? 'num' : c.texto ? 'texto' : undefined}>
-                    {c.valor(l) ?? '—'}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
+          <tbody>{corpo}</tbody>
         </table>
       </div>
       {(itens.length > TETO || cortada) && (
@@ -424,6 +571,8 @@ function CamadasComparativas<T>({ pedido, janela, fatias, recorte }: {
             itens={foco.itens}
             contagem={foco.contagem}
             cortada={foco.cortada}
+            hierarquia
+            somar={pedido.somar}
           />
         )}
       </Camada>
@@ -442,6 +591,8 @@ function CamadasComparativas<T>({ pedido, janela, fatias, recorte }: {
               itens={anterior.itens}
               contagem={anterior.contagem}
               cortada={anterior.cortada}
+              hierarquia
+              somar={pedido.somar}
             />
           )
         }
@@ -459,6 +610,8 @@ function CamadasComparativas<T>({ pedido, janela, fatias, recorte }: {
               itens={recorte.itens}
               contagem={recorte.contagem}
               cortada={recorte.cortada}
+              hierarquia
+              somar={pedido.somar}
             />
           )}
         </Camada>
