@@ -3165,6 +3165,22 @@ camada**, e é ela que fecha com o indicador. Sem isso, a soma visível seria a 
 um mês contra um número de nove, e o detalhamento passaria a acusar uma
 divergência que não existe.
 
+**O mês vem do FIM DA JANELA, não do último mês com linha na lista.** A
+distinção parece miúda e não é. O plano de redução e o rateio podem parar de
+ter movimento antes do fim do recorte — em 09/2026 nenhum dos dois tem
+lançamento —, e pela primeira versão da regra eles comparavam 08/2026 contra
+07/2026 enquanto os vizinhos comparavam 09/2026 contra 08/2026: dois
+detalhamentos abertos lado a lado falavam de meses diferentes sem dizer isso.
+Agora todos falam do mesmo par, e "não veio nada neste mês" é o que a camada
+mostra — uma queda de 100%, que é informação, e não um salto para trás.
+
+Por isso o cabeçalho separa as duas coisas: *"a lista cobre 03/2026 a 08/2026;
+a comparação é do fim da janela"*. Dizer "recorte de 03/2026 a 09/2026"
+esconderia justamente o mês em que o indicador parou.
+
+No app isso nunca foi problema: lá a janela vem de `competencia_fim`, que é o
+filtro, e não dos dados que voltaram.
+
 ### A hierarquia Empresa → Filial, dentro de cada camada
 
 No artifact ela já existia: a árvore do detalhamento é TIPO → EMPRESA → FILIAL →

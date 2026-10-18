@@ -1852,18 +1852,30 @@ const porValorDesc = (itens) => [...itens].sort((a, b) => cent(b.valor) - cent(a
  *
  * Quando o detalhamento cobre o RECORTE inteiro — Objetivo 01, rateio, custo
  * recorrente, plano de redução — não existe "o mês do detalhamento". Aí a
- * comparação é a do ÚLTIMO mês da lista contra o anterior a ele, que é a
+ * comparação é a do ÚLTIMO mês do RECORTE contra o anterior a ele, que é a
  * leitura de quem pergunta "e agora, como está?". Nesse caso a lista inteira
  * continua na tela, numa camada própria, porque é ela — e não o último mês —
  * que soma o valor do indicador.
+ *
+ * O mês vem do RECORTE (`ate`), e não do último mês que por acaso tem linha na
+ * lista. A diferença aparece quando um indicador para de ter movimento antes
+ * do fim da janela: o plano de redução e o rateio não têm nada em 09/2026, e
+ * pela regra antiga eles comparavam 08 contra 07 enquanto os vizinhos
+ * comparavam 09 contra 08 — dois detalhamentos abertos lado a lado falavam de
+ * meses diferentes sem dizer isso. Agora todos falam do mesmo mês, e "não veio
+ * nada neste mês" é o que a camada mostra, que é informação e não um salto
+ * para trás.
  *
  * `temBase` separa "o mês anterior veio vazio" de "não sei o que houve no mês
  * anterior". O segundo acontece no primeiro mês da base e quando o anterior
  * cai fora do recorte; dizer zero ali seria inventar uma queda de 100%.
  */
-function recorteComparativo({ itens, mes, anteriores }) {
+function recorteComparativo({ itens, mes, anteriores, ate }) {
   const meses = mesesDaLista(itens);
-  const mesFoco = mes || meses[meses.length - 1] || '';
+  // Sem `ate` — a janela aberta à direita —, o último mês fechado: a lista
+  // pode terminar num mês PROJETADO, e comparar projeção com realizado seria
+  // medir a régua, não o custo.
+  const mesFoco = mes || ate || mesFechadoMaisRecente() || meses[meses.length - 1] || '';
   const mesAnterior = mesFoco ? mesSoma(mesFoco, -1) : '';
   const doMes = mes ? itens : itens.filter((l) => l.competencia === mesFoco);
   return {
@@ -1960,9 +1972,15 @@ function detalhamentoComparativoHtml({ itens, mes, anteriores, prefixo }) {
   return `<div class="det-comp" data-comparativo="${chave}">
     <p class="det-comp-cab">Detalhamento · <strong>${esc(mesExib(c.mesFoco) || '—')} vs `
       + `${esc(c.temBase ? mesExib(c.mesAnterior) : 'sem base')}</strong>`
+      // No detalhamento de recorte, a lista e o mês comparado são coisas
+      // diferentes, e podem não terminar juntos: o plano de redução cobre de
+      // março a agosto e a comparação é de setembro, porque setembro é o fim
+      // da janela e nada do plano apareceu nele. Dizer "recorte de março a
+      // setembro" esconderia justamente isso.
       + (c.multiMes
-        ? ` <span class="camada-qtd">recorte de ${esc(mesExib(mesesDaLista(itens)[0]))} a `
-          + `${esc(mesExib(c.mesFoco))} — a comparação é do último mês</span>`
+        ? ` <span class="camada-qtd">a lista cobre ${esc(mesExib(mesesDaLista(itens)[0]))} a `
+          + `${esc(mesExib(mesesDaLista(itens)[mesesDaLista(itens).length - 1]))}`
+          + `; a comparação é do fim da janela</span>`
         : '')
       + `</p>
     ${camadas.map((cam) => camadaHtml({ chave, ...cam })).join('')}
@@ -4161,9 +4179,12 @@ async function viewIndicadores() {
             colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
             itens: lancamentosDoPlano(), contagem: null,
             // Detalhamento de RECORTE: a comparação é a do último mês da
-            // vigência contra o anterior, e o recorte inteiro fica na quarta
-            // camada — é ele que soma o número do indicador.
-            comparativo: {},
+            // JANELA contra o anterior, e o recorte inteiro fica na quarta
+            // camada — é ele que soma o número do indicador. O mês sai de
+            // `rf.ate`, e não da lista: o plano pode não ter linha no último
+            // mês, e cair para o penúltimo faria este detalhamento falar de
+            // um mês diferente do dos vizinhos.
+            comparativo: { ate: rf.ate },
             nota: `Custo mensal atual ${brl(plano.totalAtual)}, alvo ${brl(plano.totalAlvo)} — `
               + `${pctTxt(plano.pctReducao)} de redução, medidos em `
               + `${plano.referencia ? mesExib(plano.referencia) : 'nenhum mês'}. `
@@ -4181,7 +4202,7 @@ async function viewIndicadores() {
             titulo: 'Despesas fixas compartilhadas do recorte', tipo: 'indicadores-mes',
             colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
             itens: adequacao.registros,
-            comparativo: {},
+            comparativo: { ate: rf.ate },
             contagem: null,
             nota: `${inteiro(adequacao.registros.length)} lançamento(s) fixo(s) compartilhado(s) na janela. `
               + `Em ${mesExib(adequacao.referencia)}: ${brl(adequacao.compartilhado)} ainda compartilhados e `
@@ -4196,7 +4217,7 @@ async function viewIndicadores() {
       abrir: () => abrirRegistros({
         titulo: 'Custo recorrente — despesas fixas do recorte', tipo: 'indicadores-mes',
         colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
-        itens: fixosDoRecorte(rf), contagem: null, comparativo: {},
+        itens: fixosDoRecorte(rf), contagem: null, comparativo: { ate: rf.ate },
         nota: 'A variação compara o primeiro e o último mês; a lista traz as despesas que formam a série.',
       }),
     },
@@ -4311,7 +4332,7 @@ async function viewIndicadores() {
       abrirRegistros({
         titulo: 'Plano de redução — ' + item.nome, tipo: 'indicadores-mes',
         colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
-        itens: item.registros, contagem: null, comparativo: {},
+        itens: item.registros, contagem: null, comparativo: { ate: rf.ate },
         nota: `Atual ${brl(item.atual)} · alvo ${brl(item.alvo)} · ${pctTxt(item.pctReducao)} de redução.`,
       });
     };

@@ -191,6 +191,44 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
   }
   await fecharModal();
 
+  // -------------------------- todos os indicadores falam do MESMO par de meses
+  //
+  // O mês comparado sai do FIM DA JANELA, não do último mês que por acaso tem
+  // linha na lista. A diferença aparece quando um indicador para de ter
+  // movimento antes do fim do recorte: o plano de redução e o rateio podem não
+  // ter nada no último mês, e pela regra antiga eles comparavam o penúltimo
+  // contra o antepenúltimo enquanto os vizinhos comparavam o último contra o
+  // penúltimo — dois detalhamentos abertos lado a lado falavam de meses
+  // diferentes sem dizer isso.
+  console.log('\nMESMO PAR — todo detalhamento compara o fim da janela contra o mês anterior');
+  const pares = [];
+  for (const ind of INDICADORES) {
+    const achou = await pag.evaluate((c) => {
+      const k = document.querySelector(`.kpi.drill[data-kpi="${c}"]`);
+      if (!k) return false;
+      k.scrollIntoView({ block: 'center' }); k.click(); return true;
+    }, ind.chave);
+    if (!achou) continue;
+    await pag.waitForTimeout(700);
+    const d = await lerDetalhe();
+    if (d) {
+      const m = d.cabecalho.match(/(\d{2}\/\d{4}) vs (\d{2}\/\d{4})/);
+      pares.push({ nome: ind.nome, par: m ? `${m[1]} vs ${m[2]}` : d.cabecalho.slice(0, 40) });
+    }
+    await fecharModal();
+  }
+  const distintos = [...new Set(pares.map((p) => p.par))];
+  ok('todos os indicadores comparam o mesmo par de meses', distintos.length === 1,
+    pares.map((p) => `${p.nome.split(' ')[0]}=${p.par}`).join(' · '));
+  // E esse par é o fim da janela do bloco contra o mês anterior a ele.
+  const esperado = await pag.evaluate(() => {
+    const r = recorteDoBloco('financeiro');
+    const fim = r.ate || mesFechadoMaisRecente();
+    return `${mesExib(fim)} vs ${mesExib(mesSoma(fim, -1))}`;
+  });
+  ok('o par é o fim da janela contra o mês anterior', distintos[0] === esperado,
+    `${distintos[0]} · esperado ${esperado}`);
+
   // ------------------------------------------- recorte: a quarta camada soma
   console.log('\nRECORTE — a camada 4 é a que fecha com o indicador');
   await pag.evaluate(() => {
@@ -206,8 +244,11 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
     const doRecorte = moeda(rec.camadas[3].valor);
     ok('o recorte inteiro soma mais que o último mês sozinho', doRecorte >= doMes,
       `recorte ${doRecorte} · mês ${doMes}`);
-    ok('o cabeçalho avisa que a comparação é do último mês',
-      /recorte de \d{2}\/\d{4} a \d{2}\/\d{4}/.test(rec.cabecalho), rec.cabecalho.slice(0, 110));
+    // A lista e o mês comparado são coisas diferentes e podem não terminar
+    // juntos; o cabeçalho diz as duas.
+    ok('o cabeçalho diz o que a lista cobre e de onde vem a comparação',
+      /a lista cobre \d{2}\/\d{4} a \d{2}\/\d{4}; a comparação é do fim da janela/.test(rec.cabecalho),
+      rec.cabecalho.slice(0, 120));
   } else {
     ok('o detalhamento de recorte traz quatro camadas', false,
       rec ? `${rec.camadas.length} camada(s)` : 'nenhuma área comparativa');
