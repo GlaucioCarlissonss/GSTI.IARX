@@ -480,26 +480,40 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
 
 /** Um nó da variação: quanto no mês em foco, quanto no anterior, e a diferença. */
 interface NoDaVariacao<T> {
-  chave: string;
+  id: string;
   nome: string;
   cor?: string;
   atual: number;
   anterior: number;
+  nAtual: number;
+  nAnterior: number;
   delta: number;
   itens: T[];
   filhos: Array<NoDaVariacao<T>>;
 }
 
 /**
- * A variação aberta por Empresa → Filial.
+ * A chave que faz o MESMO título dos dois meses virar UMA linha.
  *
- * O total da camada diz QUANTO mudou; esta árvore diz DE ONDE veio a mudança.
- * São as duas perguntas que um número de variação levanta, e a segunda é a que
- * leva a uma ação.
+ * Maiúsculas, sem acento e sem espaço repetido: a mesma despesa volta todo mês
+ * digitada com variações que são de digitação, não de natureza, e sem
+ * normalizar ela apareceria duas vezes — uma como despesa nova, outra como
+ * despesa que cessou, quando é a mesma que continuou.
+ */
+const chaveDeTitulo = (t: unknown) =>
+  String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * A variação na MESMA árvore da composição: tipo de despesa → empresa →
+ * filial → título lançado.
  *
- * Percorre a UNIÃO dos dois meses, e não só o mês em foco: uma unidade que
- * gastava e parou é exatamente o que precisa aparecer, e ela não está na lista
- * do mês filtrado — some do olho justamente a redução que alguém conquistou.
+ * O total da camada diz QUANTO mudou; a árvore diz DE ONDE veio. A estrutura
+ * repete a da camada 2 de propósito: quem desce uma não pode ter de reaprender
+ * a outra. O que muda são as colunas — ali um valor, aqui os dois meses.
+ *
+ * Percorre a UNIÃO dos dois meses: uma despesa que havia e parou não está na
+ * lista do mês filtrado, e é exatamente ela que precisa aparecer.
  */
 function agruparVariacao<T>(
   doMes: T[],
@@ -507,48 +521,51 @@ function agruparVariacao<T>(
   somar: ((l: T) => number) | undefined,
   matrizes: Map<number, { nome: string; cor: string }>,
 ): Array<NoDaVariacao<T>> {
-  const empresas = new Map<string, NoDaVariacao<T>>();
+  type Cru = Omit<NoDaVariacao<T>, 'filhos' | 'delta'> & { filhos: Map<string, Cru> };
+  const raiz = new Map<string, Cru>();
+
+  const niveis = (l: T) => {
+    const r = l as Record<string, unknown>;
+    const id = r.empresa_id as number | null | undefined;
+    const matriz = id === null || id === undefined ? undefined : matrizes.get(id);
+    const tipo = String(r.tipo_despesa ?? 'Sem tipo');
+    return [
+      { chave: tipo, nome: tipo, cor: undefined as string | undefined },
+      { chave: String(id ?? 'sem-empresa'), nome: matriz?.nome ?? 'Sem empresa', cor: matriz?.cor },
+      { chave: String(r.filial_nome ?? 'Nível empresa'), nome: String(r.filial_nome ?? 'Nível empresa'), cor: undefined },
+      { chave: chaveDeTitulo(r.descricao ?? r.fornecedor ?? tipo),
+        nome: String(r.descricao ?? r.fornecedor ?? tipo), cor: undefined },
+    ];
+  };
+
   const acumular = (lista: T[], campo: 'atual' | 'anterior') => {
     for (const l of lista) {
-      const linha = l as Record<string, unknown>;
-      const id = linha.empresa_id as number | null | undefined;
-      const matriz = id === null || id === undefined ? undefined : matrizes.get(id);
-      const chaveE = String(id ?? 'sem-empresa');
-      if (!empresas.has(chaveE)) {
-        empresas.set(chaveE, { chave: chaveE, nome: matriz?.nome ?? 'Sem empresa', cor: matriz?.cor,
-          atual: 0, anterior: 0, delta: 0, itens: [], filhos: [] });
+      let mapa = raiz;
+      let caminho = '';
+      for (const n of niveis(l)) {
+        caminho += `\u0000${n.chave}`;
+        if (!mapa.has(n.chave)) {
+          mapa.set(n.chave, { id: caminho, nome: n.nome, cor: n.cor,
+            atual: 0, anterior: 0, nAtual: 0, nAnterior: 0, itens: [], filhos: new Map() });
+        }
+        const no = mapa.get(n.chave)!;
+        no[campo] += somar ? somar(l) : 0;
+        if (campo === 'atual') no.nAtual += 1; else no.nAnterior += 1;
+        no.itens.push(l);
+        mapa = no.filhos;
       }
-      const emp = empresas.get(chaveE)!;
-      const valor = somar ? somar(l) : 0;
-      emp[campo] += valor;
-      emp.itens.push(l);
-
-      const nomeFilial = (linha.filial_nome as string) ?? 'Nível empresa';
-      let fil = emp.filhos.find((f) => f.nome === nomeFilial);
-      if (!fil) {
-        fil = { chave: `${chaveE}:${nomeFilial}`, nome: nomeFilial, cor: emp.cor,
-          atual: 0, anterior: 0, delta: 0, itens: [], filhos: [] };
-        emp.filhos.push(fil);
-      }
-      fil[campo] += valor;
-      fil.itens.push(l);
     }
   };
   acumular(doMes, 'atual');
   acumular(doAnterior, 'anterior');
 
-  // Ordem por variação ABSOLUTA: o que mais mexeu no número vem primeiro, caia
-  // para que lado cair. Ordenar pelo delta com sinal poria as maiores quedas
-  // no fim da lista, que é onde ninguém olha.
-  const ordenar = (a: NoDaVariacao<T>, b: NoDaVariacao<T>) =>
-    Math.abs(b.delta) - Math.abs(a.delta) || a.nome.localeCompare(b.nome, 'pt-BR');
-  const lista = [...empresas.values()];
-  for (const e of lista) {
-    e.delta = e.atual - e.anterior;
-    for (const f of e.filhos) f.delta = f.atual - f.anterior;
-    e.filhos.sort(ordenar);
-  }
-  return lista.sort(ordenar);
+  // Ordem por variação ABSOLUTA em cada nível: o que mais mexeu vem primeiro,
+  // caia para que lado cair.
+  const fechar = (mapa: Map<string, Cru>): Array<NoDaVariacao<T>> =>
+    [...mapa.values()]
+      .map((no) => ({ ...no, delta: no.atual - no.anterior, filhos: fechar(no.filhos) }))
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  return fechar(raiz);
 }
 
 /** A linha é deste mês? A competência chega como MM/AAAA ou AAAA-MM. */
@@ -558,13 +575,6 @@ const mesmaCompetencia = (l: unknown, mes: string) =>
 const SETA = { sobe: '↑', desce: '↓', zero: '=' } as const;
 const sentidoDe = (delta: number) => (delta < 0 ? 'desce' : delta > 0 ? 'sobe' : 'zero');
 
-/**
- * A árvore da variação. Para em FILIAL de propósito: o lançamento aparece no
- * drill-down, onde cabe a ficha inteira dele — e, sobretudo, onde os dois
- * meses podem ser mostrados lado a lado sem que a árvore tenha de emparelhar
- * linha com linha. Emparelhar é a regra da camada 3, e antecipá-la aqui faria
- * o mesmo lançamento aparecer duas vezes, como entrada e como saída.
- */
 function ArvoreDaVariacao<T>({ foco, anterior, janela, pedido, aoAbrir }: {
   foco: Fatia<T>;
   anterior: Fatia<T>;
@@ -597,36 +607,46 @@ function ArvoreDaVariacao<T>({ foco, anterior, janela, pedido, aoAbrir }: {
   }
   if (!arvore.length) return <p className="vazio">Nenhum lançamento nos dois meses.</p>;
 
-  // O peso de cada variação no total do que MEXEU — a soma dos módulos, e não
-  // o delta líquido: com uma unidade subindo e outra caindo o líquido encolhe,
-  // e dividir por ele daria pesos acima de 100%.
-  const mexido = arvore.reduce((s, u) => s + Math.abs(u.delta), 0) || 1;
+  const alternar = (id: string) =>
+    setAbertos((a) => {
+      const n = new Set(a);
+      if (n.has(id)) {
+        // Fechar um nó recolhe o que estava aberto abaixo: um neto visível sob
+        // um pai fechado seria uma árvore mentindo sobre si.
+        n.delete(id);
+        for (const c of [...n]) if (c.startsWith(`${id}\u0000`)) n.delete(c);
+      } else n.add(id);
+      return n;
+    });
+
   const fmt = (v: number) => moeda(v);
 
-  const linha = (no: NoDaVariacao<T>, nivel: 1 | 2) => {
+  const linha = (no: NoDaVariacao<T>, nivel: number, base: number) => {
     const s = sentidoDe(no.delta);
+    const temFilhos = no.filhos.length > 0;
+    const soEm = no.nAtual && !no.nAnterior ? 'novo' : !no.nAtual && no.nAnterior ? 'não veio' : '';
     return (
-      <tr key={no.chave} className={`var-linha nivel-${nivel}`}>
-        <th scope="row">
-          {nivel === 1 ? (
+      <tr key={no.id} className={`var-linha nivel-${nivel}`}>
+        <th scope="row" style={{ paddingLeft: `${(nivel - 1) * 18}px` }}>
+          {temFilhos ? (
             <button
               type="button"
               className="arv-abrir"
-              aria-expanded={abertos.has(no.chave)}
-              aria-label={`${abertos.has(no.chave) ? 'Recolher' : 'Abrir'} as filiais de ${no.nome}`}
-              onClick={() => setAbertos((a) => {
-                const n = new Set(a);
-                if (n.has(no.chave)) n.delete(no.chave); else n.add(no.chave);
-                return n;
-              })}
+              aria-expanded={abertos.has(no.id)}
+              aria-label={`${abertos.has(no.id) ? 'Recolher' : 'Abrir'} ${no.nome}`}
+              onClick={() => alternar(no.id)}
             >
-              {abertos.has(no.chave) ? '−' : '+'}
+              {abertos.has(no.id) ? '−' : '+'}
             </button>
           ) : (
             <span className="arv-vazio" aria-hidden />
           )}
           {no.cor && <i className="ponto-unidade" style={{ background: no.cor }} aria-hidden />}
           <span className="grupo-nome">{no.nome}</span>
+          {soEm && <span className={soEm === 'novo' ? 'marca-novo' : 'marca-cessou'}>{soEm}</span>}
+          {nivel === 4 && no.nAtual + no.nAnterior > 2 && (
+            <span className="var-qtd">{inteiro(no.nAtual + no.nAnterior)} lançamentos</span>
+          )}
         </th>
         <td className="num">{fmt(no.atual)}</td>
         <td className="num">{fmt(no.anterior)}</td>
@@ -643,27 +663,32 @@ function ArvoreDaVariacao<T>({ foco, anterior, janela, pedido, aoAbrir }: {
             <span aria-hidden>
               <i
                 style={{
-                  width: `${Math.min(100, (Math.abs(no.delta) / mexido) * 100)}%`,
+                  width: `${base ? Math.min(100, (Math.abs(no.delta) / base) * 100) : 0}%`,
                   background: s === 'desce' ? 'var(--bom)' : s === 'sobe' ? 'var(--critico)' : 'var(--borda-forte)',
                 }}
               />
             </span>
-            <b>{percentual((Math.abs(no.delta) / mexido) * 100)}</b>
+            <b>{percentual(base ? (Math.abs(no.delta) / base) * 100 : 0)}</b>
           </span>
         </td>
         <td>
-          {no.itens.length > 0 && (
-            <button
-              type="button"
-              className="botao pequeno"
-              onClick={() => aoAbrir(no.nome, no.itens)}
-            >
-              Ver lançamentos
-            </button>
-          )}
+          <button type="button" className="botao pequeno" onClick={() => aoAbrir(no.nome, no.itens)}>
+            Ver
+          </button>
         </td>
       </tr>
     );
+  };
+
+  // O peso é dentro do PAI, como na árvore da composição. A base é a soma dos
+  // MÓDULOS dos irmãos, e não o delta líquido: com um irmão subindo e outro
+  // caindo o líquido encolhe, e dividir por ele daria pesos acima de 100%.
+  const desenhar = (nos: Array<NoDaVariacao<T>>, nivel: number): React.ReactNode[] => {
+    const base = nos.reduce((acc, n) => acc + Math.abs(n.delta), 0);
+    return nos.flatMap((no) => [
+      linha(no, nivel, base),
+      ...(abertos.has(no.id) ? desenhar(no.filhos, nivel + 1) : []),
+    ]);
   };
 
   return (
@@ -671,7 +696,7 @@ function ArvoreDaVariacao<T>({ foco, anterior, janela, pedido, aoAbrir }: {
       <table className="tabela-variacao">
         <thead>
           <tr>
-            <th>Empresa / filial</th>
+            <th>Tipo / empresa / filial / título</th>
             <th className="num">{competenciaExib(janela.foco)}</th>
             <th className="num">{competenciaExib(janela.anterior)}</th>
             <th className="num">Diferença</th>
@@ -679,12 +704,7 @@ function ArvoreDaVariacao<T>({ foco, anterior, janela, pedido, aoAbrir }: {
             <th />
           </tr>
         </thead>
-        <tbody>
-          {arvore.flatMap((e) => [
-            linha(e, 1),
-            ...(abertos.has(e.chave) ? e.filhos.map((f) => linha(f, 2)) : []),
-          ])}
-        </tbody>
+        <tbody>{desenhar(arvore, 1)}</tbody>
       </table>
     </div>
   );

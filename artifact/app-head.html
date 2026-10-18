@@ -854,12 +854,21 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{border-color:var
   font-style:italic}
 .res-falhou{margin:var(--esp-3) 0 0;font-size:var(--txt-2);color:var(--crit)}
 
+/* A marca de quem só existe em um dos dois meses. Pastilha, e não só cor: a
+   palavra está escrita, e é ela que o leitor de tela encontra. */
+.marca-novo,.marca-cessou{display:inline-block;margin-left:var(--esp-4);padding:1px 6px;
+  border-radius:var(--raio-redondo);font-family:var(--mono);font-size:var(--txt-0);
+  letter-spacing:.06em;text-transform:uppercase;border:1px solid currentColor}
+.marca-novo{color:var(--alerta)}
+.marca-cessou{color:var(--bomtxt)}
+
 /* A árvore da VARIAÇÃO, dentro da camada 1. Seis colunas: a unidade, os dois
    meses, a diferença, o peso e o botão. A diferença fala na cor do sentido —
    queda verde, alta vermelha —, e nunca só na cor: a seta e o sinal estão ao
    lado, e o balão repete os três números por extenso. */
 .arvore-unidades tr.nivel-2 .arv-vazio{margin-right:0}
-.camada-corpo [data-variacao] table{min-width:720px}
+.camada-corpo [data-variacao] table{min-width:780px}
+.camada-corpo [data-variacao] td:first-child{min-width:300px}
 .camada-corpo [data-variacao] td:first-child{min-width:230px}
 .camada-corpo [data-variacao] .bt.peq{white-space:nowrap}
 

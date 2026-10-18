@@ -3186,40 +3186,56 @@ filtro, e não dos dados que voltaram.
 O total da camada diz QUANTO mudou; a árvore dentro dela diz DE ONDE veio a
 mudança. São as duas perguntas que um número de variação levanta, e só a
 segunda leva a uma ação: *"subiu R$ 20 mil"* não se resolve; *"subiu R$ 20 mil,
-e R$ 18 mil deles são da MILAGRES"* se resolve.
+e R$ 18 mil deles são do contrato X da MILAGRES"* se resolve.
 
-Uma linha por Empresa, e dentro dela uma por Filial, com o valor nos dois
-meses, a diferença e o peso dela no total. **Ordenadas por variação ABSOLUTA**,
-não pelo delta com sinal: ordenar com sinal poria as maiores quedas no fim da
-lista, que é onde ninguém olha.
+A árvore é **a mesma da camada 2** — tipo de despesa → empresa → filial →
+título lançado. Mesma estrutura de propósito: quem desce a árvore de uma não
+pode ter de reaprender a da outra. O que muda são as colunas: ali um valor,
+aqui os dois meses e a diferença.
 
-A árvore percorre a **união dos dois meses**, e não só o mês em foco. Uma
-unidade que gastava e parou não está na lista do mês filtrado — e é exatamente
-ela que precisa aparecer, ou some do olho justamente a redução que alguém
-conquistou.
+Cada nível é **ordenado por variação ABSOLUTA**, não pelo delta com sinal:
+ordenar com sinal poria as maiores quedas no fim da lista, que é onde ninguém
+olha. A árvore percorre a **união dos dois meses** — uma despesa que havia e
+parou não está na lista do mês filtrado, e é exatamente ela que precisa
+aparecer, ou some do olho justamente a redução que alguém conquistou.
 
-O **peso** é o módulo da variação dividido pela soma dos módulos, e não pelo
-delta líquido: com uma unidade subindo e outra caindo o líquido encolhe, e
-dividir por ele daria pesos acima de 100%.
+O **peso** é dentro do pai, como na árvore da composição: "quanto deste bloco é
+esta linha". A base é a soma dos módulos dos irmãos, e não o delta líquido
+deles — com um irmão subindo e outro caindo o líquido encolhe, e dividir por
+ele daria pesos acima de 100%.
 
-A conferência que importa, e que as duas suítes exigem: **a soma dos deltas por
-empresa é o total do cabeçalho da camada**. Se as duas contas divergirem, uma
-está errada e a tela não denuncia qual.
+### A chave que emparelha o título entre os dois meses
 
-A árvore para em FILIAL de propósito. O lançamento aparece no drill-down, onde
-cabe a ficha inteira dele e onde os dois meses são mostrados juntos, com a
-coluna Competência dizendo de qual mês é cada linha. Descer até o lançamento na
-própria árvore exigiria emparelhar linha com linha — que é a regra da camada 3
-— e, sem ela, o mesmo lançamento apareceria duas vezes: uma como entrada, outra
-como saída.
+Na folha, o mesmo título dos dois meses vira **uma linha**, com o valor de cada
+mês e a diferença. Para isso o título é normalizado: maiúsculas, sem acento e
+sem espaço repetido. A mesma despesa volta todo mês digitada com variações que
+são de digitação, não de natureza; sem normalizar ela apareceria duas vezes —
+uma como despesa nova, outra como despesa que cessou, quando é a mesma que
+continuou.
 
-No artifact o drill-down abre uma segunda tela sobre a primeira; no app ele
-abre **em linha**, abaixo da árvore, porque ali a leitura é continuação da
-mesma tela e empilhar dois diálogos custaria mais do que entrega.
+O caminho até a folha já fixou tipo, empresa e filial, então a chave ali é só o
+título. É o que resta da chave de recorrência completa do enunciado
+(`fornecedor + tipo + centro de custo + unidade`): **`fornecedor` está vazio em
+toda a base** — o favorecido mora na descrição — e **centro de custo não existe
+como campo**. Quando um mesmo título tem mais de um lançamento no mês, a linha
+soma os dois e diz a contagem: somar é inequívoco, e é o que as colunas mostram.
+
+Quem existe em um mês só é marcado: **novo** (só no mês filtrado) ou **não
+veio** (só no anterior). Pastilha com a palavra escrita, não só cor.
+
+A conferência que as duas suítes exigem, nível a nível: **os deltas dos filhos
+somam o pai**, e os do primeiro nível somam o total do cabeçalho. Na base real
+são 103 nós conferidos a cada execução. Se as duas contas divergirem, uma está
+errada e a tela não denuncia qual.
+
+No artifact o drill-down de um nó abre uma segunda tela sobre a primeira; no
+app abre **em linha**, abaixo da árvore, porque ali a leitura é continuação da
+mesma tela. Os dois meses vêm na mesma lista, com a coluna Competência dizendo
+de qual mês é cada linha.
 
 Quando a lista de um dos dois meses vem **cortada** (o app pagina em 300
 linhas), a quebra não é desenhada: somar o que coube mediria a página, não o
-mês, e daria deltas por unidade que não fecham com o total.
+mês, e daria deltas que não fecham com o total.
 
 ### A hierarquia Empresa → Filial, dentro de cada camada
 

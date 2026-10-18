@@ -721,8 +721,22 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
    estão ao lado, e o `title` repete os três números por extenso. */
 .tabela-variacao th[scope="row"] { text-align: left; font-weight: 500; }
 .tabela-variacao tr.nivel-1 > th { font-weight: 600; }
-.tabela-variacao tr.nivel-2 > th { padding-left: 26px; color: var(--tinta-2); }
-.tabela-variacao tr.nivel-2 > th .grupo-nome { font-size: var(--txt-2); }
+/* O recuo por nível vem do `style` da célula; aqui fica só o tom, que vai
+   clareando conforme a árvore desce. */
+.tabela-variacao tr.nivel-2 > th { font-weight: 500; }
+.tabela-variacao tr.nivel-3 > th { color: var(--tinta-2); }
+.tabela-variacao tr.nivel-4 > th { color: var(--tinta-2); font-weight: 400; }
+.tabela-variacao tr.nivel-4 > th .grupo-nome { font-size: var(--txt-2); }
+.var-qtd { margin-left: var(--esp-4); font-family: var(--mono); font-size: var(--txt-0); color: var(--tinta-fraca); }
+/* A marca de quem só existe em um dos dois meses. Pastilha, e não só cor: a
+   palavra está escrita, e é ela que o leitor de tela encontra. */
+.marca-novo, .marca-cessou {
+  display: inline-block; margin-left: var(--esp-4); padding: 1px 6px;
+  border-radius: var(--raio-redondo); font-family: var(--mono); font-size: var(--txt-0);
+  letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid currentColor;
+}
+.marca-novo { color: var(--atencao); }
+.marca-cessou { color: var(--positivo-texto); }
 .barra-variacao { display: inline-flex; align-items: center; gap: var(--esp-4); min-width: 120px; }
 .barra-variacao > span {
   flex: 1 1 auto; height: 7px; min-width: 42px; border-radius: 3px;

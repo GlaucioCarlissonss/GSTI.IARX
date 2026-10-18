@@ -1908,129 +1908,172 @@ const SETA_DELTA = { sobe: '↑', desce: '↓', zero: '=' };
 const sentidoDe = (delta) => (delta < 0 ? 'desce' : delta > 0 ? 'sobe' : 'zero');
 
 /**
- * A variação aberta por Empresa → Filial.
+ * A variação aberta na MESMA árvore da composição: tipo de despesa → empresa →
+ * filial → título lançado.
  *
  * O total da camada diz QUANTO mudou; esta árvore diz DE ONDE veio a mudança.
  * São as duas perguntas que um número de variação levanta, e a segunda é a que
  * leva a uma ação: "subiu R$ 20 mil" não se resolve, "subiu R$ 20 mil, e R$ 18
- * mil deles são da MILAGRES" se resolve.
+ * mil deles são do contrato X da MILAGRES" se resolve.
  *
- * A UNIÃO dos dois meses, e não só o mês filtrado: uma unidade que gastava e
- * parou é exatamente o que precisa aparecer, e ela não está na lista do mês
- * em foco. Some do olho justamente a redução que alguém conquistou.
+ * A estrutura é a mesma da camada 2 de propósito: quem desce a árvore de uma
+ * não pode ter de reaprender a da outra. O que muda são as colunas — ali um
+ * valor, aqui os dois meses e a diferença.
+ *
+ * Percorre a UNIÃO dos dois meses, e não só o mês filtrado: uma despesa que
+ * havia e parou é exatamente o que precisa aparecer, e ela não está na lista do
+ * mês em foco. Some do olho justamente a redução que alguém conquistou.
  */
-function unidadesDaVariacao(c) {
-  const mapa = new Map();
+
+/**
+ * A chave que faz o MESMO título dos dois meses virar UMA linha.
+ *
+ * Maiúsculas, sem acento e sem espaço repetido: a mesma despesa volta todo mês
+ * digitada com variações que são de digitação, não de natureza, e sem
+ * normalizar ela apareceria duas vezes — uma como despesa nova, outra como
+ * despesa que cessou, quando é a mesma que continuou.
+ *
+ * O caminho até aqui já fixou tipo, empresa e filial, então a chave no nível da
+ * folha é só o título. É o que resta da chave de recorrência completa:
+ * `fornecedor` está vazio em toda a base (o favorecido mora na descrição) e
+ * centro de custo não existe como campo — isso está dito em
+ * `docs/regras-de-negocio.md`, e não inventado aqui.
+ */
+const chaveDeTitulo = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toUpperCase().replace(/\s+/g, ' ').trim();
+
+/** Os quatro níveis da árvore, na ordem em que ela desce. */
+const NIVEIS_VARIACAO = [
+  { chave: (l) => String(l.tipo || 'Sem tipo'), rotulo: (l) => String(l.tipo || 'Sem tipo'),
+    cor: (l) => corDoTipo(String(l.tipo || 'Sem tipo')) },
+  { chave: (l) => String(l.empresa), rotulo: (l) => String(nomeEmpresa(l.empresa)) },
+  { chave: (l) => String(l.filial || '(empresa)'),
+    rotulo: (l) => String(l.filial || 'Sem filial (nível empresa)') },
+  { chave: (l) => chaveDeTitulo(l.descricao || l.fornecedor || l.tipo),
+    rotulo: (l) => String(l.descricao || l.fornecedor || l.tipo || 'Lançamento') },
+];
+
+/** Agrupa os dois meses na árvore de quatro níveis, com delta em cada nó. */
+function agruparVariacao(doMes, doAnterior) {
+  const raiz = new Map();
   const acumular = (lista, campo) => {
     for (const l of lista) {
-      // Chaveado pelo ID da empresa, e não pelo nome: a cor da unidade sai do
-      // id, e duas unidades de nome parecido não podem virar uma linha só.
-      const id = l.empresa;
-      if (!mapa.has(id)) {
-        mapa.set(id, { nome: String(nomeEmpresa(id)), cor: corDaMatriz(id),
-          atual: 0, anterior: 0, filiais: new Map() });
+      let mapa = raiz;
+      let caminho = '';
+      for (const nivel of NIVEIS_VARIACAO) {
+        const k = nivel.chave(l);
+        caminho += '\u0000' + k;
+        if (!mapa.has(k)) {
+          mapa.set(k, { id: caminho, nome: nivel.rotulo(l), cor: nivel.cor ? nivel.cor(l) : null,
+            atual: 0, anterior: 0, nAtual: 0, nAnterior: 0, itens: [], filhos: new Map() });
+        }
+        const no = mapa.get(k);
+        no[campo] += cent(l.valor);
+        no[campo === 'atual' ? 'nAtual' : 'nAnterior'] += 1;
+        no.itens.push(l);
+        mapa = no.filhos;
       }
-      const emp = mapa.get(id);
-      emp[campo] += cent(l.valor);
-      const f = String(l.filial || 'Sem filial (nível empresa)');
-      if (!emp.filiais.has(f)) emp.filiais.set(f, { nome: f, atual: 0, anterior: 0, itens: [] });
-      const fil = emp.filiais.get(f);
-      fil[campo] += cent(l.valor);
-      fil.itens.push(l);
     }
   };
-  acumular(c.doMes, 'atual');
-  acumular(c.doAnterior, 'anterior');
+  acumular(doMes, 'atual');
+  acumular(doAnterior, 'anterior');
 
-  // Ordem por variação ABSOLUTA: o que mais mexeu no número vem primeiro, caia
-  // para que lado cair. Ordenar pelo delta com sinal poria as maiores quedas
-  // no fim da lista, que é onde ninguém olha.
-  const ordenar = (a, b) => Math.abs(b.delta) - Math.abs(a.delta)
-    || String(a.nome).localeCompare(String(b.nome), 'pt-BR');
-  const comDelta = (n) => Object.assign(n, { delta: n.atual - n.anterior });
-  return [...mapa.values()].map((e) => {
-    const filiais = [...e.filiais.values()].map(comDelta).sort(ordenar);
-    return Object.assign(comDelta(e), { filiais, itens: filiais.flatMap((f) => f.itens) });
-  }).sort(ordenar);
+  // Ordem por variação ABSOLUTA em cada nível: o que mais mexeu vem primeiro,
+  // caia para que lado cair. Ordenar pelo delta com sinal poria as maiores
+  // quedas no fim da lista, que é onde ninguém olha.
+  const fechar = (mapa) => [...mapa.values()].map((no) => Object.assign(no, {
+    delta: no.atual - no.anterior,
+    filhos: fechar(no.filhos),
+  })).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)
+    || String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  return fechar(raiz);
 }
 
 /** Os lançamentos pendurados em cada nó da árvore de variação, até ela montar. */
 const VARIACAO_PENDENTE = new Map();
 let SEQ_VARIACAO = 0;
 
-/**
- * A árvore da variação. Para em FILIAL de propósito: o lançamento aparece no
- * drill-down, onde cabe a ficha inteira dele — e, sobretudo, onde os dois
- * meses podem ser mostrados lado a lado sem que a árvore tenha de emparelhar
- * linha com linha. Emparelhar é a regra da camada 3, e antecipá-la aqui faria
- * o mesmo lançamento aparecer duas vezes, como entrada e como saída.
- */
 function arvoreDaVariacaoHtml(c) {
-  const unidades = unidadesDaVariacao(c);
-  if (!unidades.length) return '<p class="vazio">Nenhum lançamento nos dois meses.</p>';
+  const arvore = agruparVariacao(c.doMes, c.doAnterior);
+  if (!arvore.length) return '<p class="vazio">Nenhum lançamento nos dois meses.</p>';
 
   const chave = `var${++SEQ_VARIACAO}`;
   const porNo = new Map();
-  // O peso de cada variação no total do que MEXEU — a soma dos módulos, e não
-  // o delta líquido: com uma unidade subindo e outra caindo o líquido encolhe,
-  // e dividir por ele daria pesos acima de 100%.
-  const totalMexido = unidades.reduce((s, u) => s + Math.abs(u.delta), 0);
-
-  const linha = (no, nivel, idNo, pai, cor, alvoDrill) => {
-    const s = sentidoDe(no.delta);
-    const rot = `${no.nome}: ${brl(reais(no.atual))} em ${mesExib(c.mesFoco)} contra `
-      + `${brl(reais(no.anterior))} em ${mesExib(c.mesAnterior)}`;
-    const detalhe = {
-      titulo: no.nome,
-      linhas: [
-        { nome: mesExib(c.mesFoco), valor: brl(reais(no.atual)) },
-        { nome: mesExib(c.mesAnterior), valor: brl(reais(no.anterior)) },
-        { nome: 'Diferença', valor: `${SETA_DELTA[s]} ${brl(reais(Math.abs(no.delta)))}`,
-          cor: s === 'desce' ? 'var(--bomtxt)' : s === 'sobe' ? 'var(--crit)' : 'var(--tinta3)' },
-        { nome: 'Variação', valor: no.anterior
-          ? `${pctTxt(Math.abs((no.delta / no.anterior) * 100))} ${s === 'desce' ? 'de queda' : s === 'sobe' ? 'de alta' : 'sem mudança'}`
-          : (no.atual ? 'não havia no mês anterior' : '—') },
-      ],
-    };
-    return `<tr class="nivel-${nivel}" ${idNo ? `data-no="${idNo}"` : ''} ${pai ? `data-pai="${pai}"` : ''}${pai ? ' hidden' : ''}>
-      <td>${idNo
-        ? `<button type="button" class="arv-abrir" aria-expanded="false" data-abrir-no="${idNo}"
-             aria-label="Abrir as filiais de ${esc(no.nome)}"><span aria-hidden="true">+</span></button>`
-        : '<span class="arv-vazio" aria-hidden="true"></span>'}
-        ${cor ? `<i class="ponto-matriz" style="background:${cor}" aria-hidden="true"></i>` : ''}${esc(no.nome)}</td>
-      <td class="num">${brl(reais(no.atual))}</td>
-      <td class="num">${brl(reais(no.anterior))}</td>
-      <td class="num"><span class="delta ${s}">${SETA_DELTA[s]} ${brl(reais(Math.abs(no.delta)))}</span></td>
-      <td>${barraDeRepresentatividadeHtml(pct(Math.abs(no.delta), totalMexido),
-        s === 'desce' ? 'var(--bom)' : s === 'sobe' ? 'var(--crit)' : 'var(--linha2)', rot, detalhe)}</td>
-      <td>${alvoDrill
-        ? `<button type="button" class="bt peq" data-ver-variacao="${alvoDrill}">Ver lançamentos</button>` : ''}</td>
-    </tr>`;
+  const linhas = [];
+  // O caminho do nó carrega `\u0000` como separador, que serve para agrupar e
+  // NÃO sobrevive a um atributo HTML: no DOM cada nó recebe um id curto e
+  // sequencial. Foi o que quebrou o botão "Ver" na primeira versão desta
+  // árvore — o atributo ia com NUL dentro e a busca no mapa voltava vazia.
+  let seq = 0;
+  const idDom = new Map();
+  const idDe = (no) => {
+    if (!idDom.has(no.id)) idDom.set(no.id, `${chave}n${++seq}`);
+    return idDom.get(no.id);
   };
 
-  const linhas = [];
-  unidades.forEach((e, i) => {
-    const idE = `${chave}:e${i}`;
-    porNo.set(idE, { nome: e.nome, itens: e.itens });
-    linhas.push(linha(e, 1, idE, null, e.cor, e.itens.length ? idE : null));
-    e.filiais.forEach((f, j) => {
-      const idF = `${idE}:f${j}`;
-      porNo.set(idF, { nome: `${e.nome} · ${f.nome}`, itens: f.itens });
-      linhas.push(linha(f, 2, null, idE, null, f.itens.length ? idF : null));
-    });
-  });
+  // O peso é dentro do PAI, como na árvore da composição: "quanto deste bloco
+  // é esta linha". A base é a soma dos MÓDULOS dos irmãos, e não o delta
+  // líquido deles — com um irmão subindo e outro caindo o líquido encolhe, e
+  // dividir por ele daria pesos acima de 100%.
+  const desenhar = (nos, nivel, pai) => {
+    const base = nos.reduce((s, n) => s + Math.abs(n.delta), 0);
+    for (const no of nos) {
+      const s = sentidoDe(no.delta);
+      const temFilhos = no.filhos.length > 0;
+      const id = idDe(no);
+      porNo.set(id, { nome: no.nome, itens: no.itens });
+      const soEm = no.nAtual && !no.nAnterior ? 'novo'
+        : !no.nAtual && no.nAnterior ? 'não veio' : '';
+      const detalhe = {
+        titulo: no.nome,
+        linhas: [
+          { nome: mesExib(c.mesFoco), valor: `${brl(reais(no.atual))} · ${inteiro(no.nAtual)} lançamento(s)` },
+          { nome: mesExib(c.mesAnterior), valor: `${brl(reais(no.anterior))} · ${inteiro(no.nAnterior)} lançamento(s)` },
+          { nome: 'Diferença', valor: `${SETA_DELTA[s]} ${brl(reais(Math.abs(no.delta)))}`,
+            cor: s === 'desce' ? 'var(--bomtxt)' : s === 'sobe' ? 'var(--crit)' : 'var(--tinta3)' },
+          { nome: 'Variação', valor: no.anterior
+            ? `${pctTxt(Math.abs((no.delta / no.anterior) * 100))} ${s === 'desce' ? 'de queda' : s === 'sobe' ? 'de alta' : 'sem mudança'}`
+            : (no.atual ? 'não havia no mês anterior' : '—') },
+        ],
+      };
+      // O recuo de cada nível vem de `.arvore-unidades`, que já desenha os
+      // quatro; o que muda por nível é só quantos espaços de botão vêm antes.
+      const recuo = '<span class="arv-vazio" aria-hidden="true"></span>'.repeat(nivel - 1);
+      linhas.push(`<tr class="nivel-${nivel}"${temFilhos ? ` data-no="${id}"` : ''}${
+        pai ? ` data-pai="${pai}" hidden` : ''}>
+        <td>${recuo}${temFilhos
+          ? `<button type="button" class="arv-abrir" aria-expanded="false" data-abrir-no="${id}"
+               aria-label="Abrir ${esc(no.nome)}"><span aria-hidden="true">+</span></button>`
+          : '<span class="arv-vazio" aria-hidden="true"></span>'}
+          ${no.cor ? `<i class="ponto-matriz" style="background:${no.cor}" aria-hidden="true"></i>` : ''}${esc(no.nome)}
+          ${soEm ? `<span class="marca-${soEm === 'novo' ? 'novo' : 'cessou'}">${soEm}</span>` : ''}
+          ${nivel === 4 && (no.nAtual > 1 || no.nAnterior > 1)
+            ? `<span class="arv-comp">${inteiro(no.nAtual + no.nAnterior)} lançamentos</span>` : ''}</td>
+        <td class="num">${brl(reais(no.atual))}</td>
+        <td class="num">${brl(reais(no.anterior))}</td>
+        <td class="num"><span class="delta ${s}">${SETA_DELTA[s]} ${brl(reais(Math.abs(no.delta)))}</span></td>
+        <td>${barraDeRepresentatividadeHtml(pct(Math.abs(no.delta), base),
+          s === 'desce' ? 'var(--bom)' : s === 'sobe' ? 'var(--crit)' : 'var(--linha2)',
+          `${no.nome}: ${brl(reais(no.atual))} em ${mesExib(c.mesFoco)} contra ${brl(reais(no.anterior))} em ${mesExib(c.mesAnterior)}`,
+          detalhe)}</td>
+        <td><button type="button" class="bt peq" data-ver-variacao="${id}">Ver</button></td>
+      </tr>`);
+      if (temFilhos) desenhar(no.filhos, nivel + 1, id);
+    }
+  };
+  desenhar(arvore, 1, null);
 
   VARIACAO_PENDENTE.set(chave, { porNo, mesFoco: c.mesFoco, mesAnterior: c.mesAnterior });
   return `<div class="rol" data-arvore-det data-variacao="${chave}">
     <table class="arvore-unidades larga">
-    <thead><tr><th>Empresa / filial</th>
+    <thead><tr><th>Tipo / empresa / filial / título</th>
       <th class="num">${esc(mesExib(c.mesFoco))}</th>
       <th class="num">${esc(mesExib(c.mesAnterior))}</th>
       <th class="num">Diferença</th><th>Peso na variação</th><th></th></tr></thead>
     <tbody>${linhas.join('')}</tbody></table></div>`;
 }
 
-/** Liga o "Ver lançamentos" de cada nó da árvore de variação. */
+/** Liga o "Ver" de cada nó da árvore de variação. */
 function ligarArvoreDaVariacao(raiz) {
   const area = raiz.querySelector('[data-variacao]');
   if (!area) return;

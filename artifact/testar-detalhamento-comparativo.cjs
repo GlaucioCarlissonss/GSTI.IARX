@@ -191,98 +191,144 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
   }
   await fecharModal();
 
-  // ------------------------------- camada 1: a variação por empresa e filial
+  // ----------- camada 1: a variação na MESMA árvore da composição, 4 níveis
   //
-  // O total da camada diz QUANTO mudou; a árvore diz DE ONDE veio. A
-  // conferência que importa é a soma: se os deltas por unidade não fecharem
-  // com o total do cabeçalho, uma das duas contas está errada e a tela não
-  // denuncia qual.
-  console.log('\nCAMADA 1 — a variação aberta por empresa e filial');
+  // Tipo de despesa → empresa → filial → título lançado, igual à camada 2:
+  // quem desce a árvore de uma não pode ter de reaprender a da outra. O que
+  // muda são as colunas — ali um valor, aqui os dois meses e a diferença.
+  //
+  // A conferência que importa é a SOMA, em cada nível: se os deltas dos filhos
+  // não fecharem com o pai, uma das contas está errada e a tela não denuncia
+  // qual.
+  console.log('\nCAMADA 1 — a variação na árvore de quatro níveis');
   await pag.evaluate(() => {
     const k = document.querySelector('.kpi.drill[data-kpi="teto-gasto"]');
     k.scrollIntoView({ block: 'center' }); k.click();
   });
   await pag.waitForTimeout(700);
   await abrirCamada('dif');
-  const v = await pag.evaluate(() => {
+
+  const lerArvore = () => pag.evaluate(() => {
     const corpo = document.querySelector('.camada[data-camada="dif"] .camada-corpo');
     const moeda = (t) => {
       const m = t.match(/R\$\s*([\d.]+,\d{2})/);
       return m ? Number(m[1].replace(/\./g, '').replace(',', '.')) : null;
     };
-    const emp = [...corpo.querySelectorAll('tbody tr.nivel-1')];
+    const linha = (tr) => {
+      const td = [...tr.querySelectorAll('td')];
+      const cls = (td[3].querySelector('.delta') || {}).className || '';
+      return {
+        nivel: Number(([...tr.classList].find((c) => c.startsWith('nivel-')) || '').replace('nivel-', '')),
+        nome: td[0].textContent.replace(/\s+/g, ' ').trim(),
+        pai: tr.dataset.pai || null, no: tr.dataset.no || null,
+        atual: moeda(td[1].textContent), anterior: moeda(td[2].textContent),
+        dif: moeda(td[3].textContent),
+        // O sinal, para a soma poder ser feita.
+        sinal: cls.includes('desce') ? -1 : cls.includes('sobe') ? 1 : 0,
+        temVer: !!tr.querySelector('[data-ver-variacao]'),
+        temBalao: !!td[4].querySelector('[data-dica]'),
+      };
+    };
     return {
       colunas: [...corpo.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
-      empresas: emp.length,
-      filiaisOcultas: [...corpo.querySelectorAll('tbody tr.nivel-2')].every((t) => t.hidden),
-      // Cada linha: atual, anterior e a diferença exibida.
-      linhas: emp.map((tr) => {
-        const td = [...tr.querySelectorAll('td')];
-        // A primeira célula é o NOME; os valores começam na segunda.
-        return {
-          nome: td[0].textContent.trim(),
-          atual: moeda(td[1].textContent), anterior: moeda(td[2].textContent),
-          dif: moeda(td[3].textContent),
-          sentido: (td[3].querySelector('.delta') || {}).className || '',
-          temBotao: !!tr.querySelector('[data-ver-variacao]'),
-          temBalao: !!td[4].querySelector('[data-dica]'),
-        };
-      }),
-      // O total do cabeçalho da camada.
+      linhas: [...corpo.querySelectorAll('tbody tr')].map(linha),
       totalCab: moeda(document.querySelector('.camada[data-camada="dif"] .camada-val').textContent),
     };
   });
-  ok('as colunas trazem os dois meses, a diferença e o peso',
-    v.colunas.length === 6 && /^\d{2}\/\d{4}$/.test(v.colunas[1]) && /^\d{2}\/\d{4}$/.test(v.colunas[2])
-      && v.colunas[3] === 'Diferença', v.colunas.join(' | '));
-  ok('há uma linha por empresa', v.empresas > 0, `${v.empresas} empresa(s)`);
-  ok('as filiais nascem fechadas', v.filiaisOcultas);
-  ok('cada empresa tem o seu botão de lançamentos', v.linhas.every((l) => l.temBotao));
-  ok('cada empresa tem balão com os números', v.linhas.every((l) => l.temBalao));
-  // A SOMA: os deltas por empresa fecham com o total da camada.
-  const somaDeltas = v.linhas.reduce((s, l) =>
-    s + (l.sentido.includes('desce') ? -l.dif : l.sentido.includes('sobe') ? l.dif : 0), 0);
-  ok('a soma dos deltas por empresa é o total da camada',
-    Math.abs(Math.abs(somaDeltas) - v.totalCab) < 0.01,
-    `${somaDeltas.toFixed(2)} × ${v.totalCab}`);
-  // E cada linha fecha consigo mesma: atual − anterior = diferença.
-  ok('em cada empresa, atual menos anterior dá a diferença',
-    v.linhas.every((l) => Math.abs(Math.abs(l.atual - l.anterior) - l.dif) < 0.01),
-    v.linhas.map((l) => `${l.nome.slice(0, 10)}:${(l.atual - l.anterior).toFixed(2)}/${l.dif}`).join(' '));
-  // Ordem por variação ABSOLUTA, decrescente.
-  ok('as empresas vêm por variação absoluta decrescente',
-    v.linhas.every((l, i, a) => i === 0 || a[i - 1].dif >= l.dif),
-    v.linhas.map((l) => l.dif).join(' · '));
-  // Verde para queda, vermelho para alta — e o sentido bate com o número.
-  ok('o sentido da cor bate com o sinal da diferença',
-    v.linhas.every((l) => (l.atual < l.anterior ? l.sentido.includes('desce')
-      : l.atual > l.anterior ? l.sentido.includes('sobe') : l.sentido.includes('zero'))));
+  const a = await lerArvore();
+  const porNivel = (n) => a.linhas.filter((l) => l.nivel === n);
 
-  console.log('\nCAMADA 1 — abrir a empresa e o drill-down da filial');
+  ok('o cabeçalho anuncia os quatro níveis',
+    a.colunas[0] === 'Tipo / empresa / filial / título', a.colunas[0]);
+  ok('as colunas trazem os dois meses e a diferença',
+    /^\d{2}\/\d{4}$/.test(a.colunas[1]) && /^\d{2}\/\d{4}$/.test(a.colunas[2])
+      && a.colunas[3] === 'Diferença', a.colunas.join(' | '));
+  ok('os quatro níveis existem', [1, 2, 3, 4].every((n) => porNivel(n).length > 0),
+    [1, 2, 3, 4].map((n) => `n${n}=${porNivel(n).length}`).join(' · '));
+  ok('o nível 1 é o TIPO de despesa, e não a empresa',
+    porNivel(1).length < porNivel(2).length,
+    `${porNivel(1).length} tipo(s) · ${porNivel(2).length} empresa(s)`);
+  ok('só o nível 1 nasce visível',
+    a.linhas.filter((l) => !l.pai).length === porNivel(1).length);
+  ok('cada linha tem balão e botão de ver', a.linhas.every((l) => l.temBalao && l.temVer));
+
+  // A SOMA, nível a nível: os filhos fecham com o pai.
+  const soma = (ls) => ls.reduce((s, l) => s + l.sinal * l.dif, 0);
+  ok('a soma dos deltas do nível 1 é o total da camada',
+    Math.abs(Math.abs(soma(porNivel(1))) - a.totalCab) < 0.01,
+    `${soma(porNivel(1)).toFixed(2)} × ${a.totalCab}`);
+  const filhosDe = (no) => a.linhas.filter((l) => l.pai === no);
+  const paisQuebrados = a.linhas.filter((l) => l.no).filter((pai) => {
+    const f = filhosDe(pai.no);
+    return f.length && Math.abs(soma(f) - pai.sinal * pai.dif) > 0.011;
+  });
+  ok('em todo nível, os filhos somam o pai', paisQuebrados.length === 0,
+    paisQuebrados.slice(0, 3).map((p) => `${p.nome.slice(0, 24)}: ${soma(filhosDe(p.no)).toFixed(2)} × ${(p.sinal * p.dif).toFixed(2)}`).join(' | ')
+      || `${a.linhas.filter((l) => l.no).length} nó(s) conferidos`);
+  // E cada linha fecha consigo mesma.
+  ok('em cada linha, atual menos anterior dá a diferença',
+    a.linhas.every((l) => Math.abs(Math.abs(l.atual - l.anterior) - l.dif) < 0.011));
+  ok('o sentido da cor bate com o sinal', a.linhas.every((l) =>
+    (l.atual < l.anterior ? l.sinal === -1 : l.atual > l.anterior ? l.sinal === 1 : l.sinal === 0)));
+  // Ordem por variação absoluta, dentro de cada pai.
+  const foraDeOrdem = [null, ...a.linhas.filter((l) => l.no).map((l) => l.no)]
+    .map((pai) => a.linhas.filter((l) => l.pai === pai))
+    .filter((irmaos) => irmaos.some((l, i, arr) => i > 0 && arr[i - 1].dif < l.dif));
+  ok('cada nível vem por variação absoluta decrescente', foraDeOrdem.length === 0,
+    foraDeOrdem.length ? `${foraDeOrdem.length} grupo(s) fora de ordem` : 'todos os grupos');
+
+  console.log('\nCAMADA 1 — a folha é o TÍTULO, emparelhado entre os dois meses');
+  const folha = await pag.evaluate(async () => {
+    const corpo = document.querySelector('.camada[data-camada="dif"] .camada-corpo');
+    for (let nivel = 1; nivel <= 3; nivel += 1) {
+      const tr = [...corpo.querySelectorAll(`tbody tr.nivel-${nivel}`)].find((t) => !t.hidden);
+      tr.querySelector('[data-abrir-no]').click();
+      await new Promise((r) => setTimeout(r, 140));
+    }
+    const vis = [...corpo.querySelectorAll('tbody tr.nivel-4')].filter((t) => !t.hidden);
+    return {
+      quantas: vis.length,
+      // Um título que existe nos DOIS meses aparece uma vez só, com os dois
+      // valores — é o que a chave de recorrência compra. Sem ela, apareceria
+      // duas vezes: uma como despesa nova, outra como despesa que cessou.
+      nosDoisMeses: vis.filter((tr) => {
+        const td = [...tr.querySelectorAll('td')];
+        return !/R\$\s*0,00/.test(td[1].textContent) && !/R\$\s*0,00/.test(td[2].textContent);
+      }).length,
+      comMarca: vis.filter((tr) => tr.querySelector('.marca-novo, .marca-cessou')).length,
+      titulosRepetidos: (() => {
+        const n = vis.map((tr) => tr.querySelector('td').textContent.replace(/\s+/g, ' ').trim());
+        return n.length - new Set(n).size;
+      })(),
+    };
+  });
+  ok('a folha traz títulos', folha.quantas > 0, `${folha.quantas} título(s)`);
+  ok('nenhum título se repete na mesma filial', folha.titulosRepetidos === 0,
+    `${folha.titulosRepetidos} repetido(s)`);
+  ok('há título presente nos dois meses, numa linha só',
+    folha.nosDoisMeses > 0, `${folha.nosDoisMeses} de ${folha.quantas}`);
+  ok('quem só existe num dos meses vem marcado', folha.comMarca > 0,
+    `${folha.comMarca} com marca "novo" ou "não veio"`);
+
+  console.log('\nCAMADA 1 — o drill-down de um nó');
   const drill = await pag.evaluate(async () => {
     const corpo = document.querySelector('.camada[data-camada="dif"] .camada-corpo');
-    const antes = [...corpo.querySelectorAll('tbody tr')].filter((t) => !t.hidden).length;
-    corpo.querySelector('[data-abrir-no]').click();
-    await new Promise((r) => setTimeout(r, 200));
-    const depois = [...corpo.querySelectorAll('tbody tr')].filter((t) => !t.hidden).length;
-    const fil = [...corpo.querySelectorAll('tbody tr.nivel-2')].find((t) => !t.hidden);
-    const bt = fil && fil.querySelector('[data-ver-variacao]');
-    if (bt) bt.click();
+    corpo.querySelector('[data-ver-variacao]').click();
     await new Promise((r) => setTimeout(r, 500));
     const topo = [...document.querySelectorAll('.modal')].pop();
-    const nota = topo ? topo.querySelector('.msg').textContent.replace(/\s+/g, ' ') : '';
-    const comps = topo
-      ? [...new Set([...topo.querySelectorAll('tbody tr td:first-child')].map((t) => t.textContent.trim()))]
-      : [];
-    return { antes, depois, modais: document.querySelectorAll('.modal').length, nota, comps };
+    return { modais: document.querySelectorAll('.modal').length,
+      titulo: topo ? (topo.querySelector('h2, .tit') || {}).textContent.trim() : '',
+      nota: topo ? topo.querySelector('.msg').textContent.replace(/\s+/g, ' ') : '',
+      comps: topo
+        ? [...new Set([...topo.querySelectorAll('tbody tr td:first-child')].map((t) => t.textContent.trim()))]
+        : [] };
   });
-  ok('abrir a empresa revela as filiais', drill.depois > drill.antes, `${drill.antes} → ${drill.depois}`);
   ok('o drill-down abre sobre o detalhamento', drill.modais === 2, `${drill.modais} tela(s)`);
+  ok('o drill-down diz de quem é a variação', /^Variação de /.test(drill.titulo), drill.titulo);
   ok('o drill-down traz os DOIS meses', drill.comps.length === 2, drill.comps.join(' e '));
   ok('a nota diz quanto veio de cada mês',
     /lançamento\(s\) em \d{2}\/\d{4}, somando .+; \d+ em \d{2}\/\d{4}, somando/.test(drill.nota),
-    drill.nota.slice(0, 130));
-  // Fecha as duas telas empilhadas.
+    drill.nota.slice(0, 120));
   await fecharModal(); await fecharModal();
 
   // -------------------------- todos os indicadores falam do MESMO par de meses
