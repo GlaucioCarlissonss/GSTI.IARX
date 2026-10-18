@@ -3181,6 +3181,46 @@ esconderia justamente o mês em que o indicador parou.
 No app isso nunca foi problema: lá a janela vem de `competencia_fim`, que é o
 filtro, e não dos dados que voltaram.
 
+### A camada 1: de onde veio a variação
+
+O total da camada diz QUANTO mudou; a árvore dentro dela diz DE ONDE veio a
+mudança. São as duas perguntas que um número de variação levanta, e só a
+segunda leva a uma ação: *"subiu R$ 20 mil"* não se resolve; *"subiu R$ 20 mil,
+e R$ 18 mil deles são da MILAGRES"* se resolve.
+
+Uma linha por Empresa, e dentro dela uma por Filial, com o valor nos dois
+meses, a diferença e o peso dela no total. **Ordenadas por variação ABSOLUTA**,
+não pelo delta com sinal: ordenar com sinal poria as maiores quedas no fim da
+lista, que é onde ninguém olha.
+
+A árvore percorre a **união dos dois meses**, e não só o mês em foco. Uma
+unidade que gastava e parou não está na lista do mês filtrado — e é exatamente
+ela que precisa aparecer, ou some do olho justamente a redução que alguém
+conquistou.
+
+O **peso** é o módulo da variação dividido pela soma dos módulos, e não pelo
+delta líquido: com uma unidade subindo e outra caindo o líquido encolhe, e
+dividir por ele daria pesos acima de 100%.
+
+A conferência que importa, e que as duas suítes exigem: **a soma dos deltas por
+empresa é o total do cabeçalho da camada**. Se as duas contas divergirem, uma
+está errada e a tela não denuncia qual.
+
+A árvore para em FILIAL de propósito. O lançamento aparece no drill-down, onde
+cabe a ficha inteira dele e onde os dois meses são mostrados juntos, com a
+coluna Competência dizendo de qual mês é cada linha. Descer até o lançamento na
+própria árvore exigiria emparelhar linha com linha — que é a regra da camada 3
+— e, sem ela, o mesmo lançamento apareceria duas vezes: uma como entrada, outra
+como saída.
+
+No artifact o drill-down abre uma segunda tela sobre a primeira; no app ele
+abre **em linha**, abaixo da árvore, porque ali a leitura é continuação da
+mesma tela e empilhar dois diálogos custaria mais do que entrega.
+
+Quando a lista de um dos dois meses vem **cortada** (o app pagina em 300
+linhas), a quebra não é desenhada: somar o que coube mediria a página, não o
+mês, e daria deltas por unidade que não fecham com o total.
+
 ### A hierarquia Empresa → Filial, dentro de cada camada
 
 No artifact ela já existia: a árvore do detalhamento é TIPO → EMPRESA → FILIAL →

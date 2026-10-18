@@ -716,6 +716,28 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
   @keyframes pulsar-esqueleto { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.55; } }
 }
 
+/* A árvore da VARIAÇÃO, dentro da camada 1. A diferença fala na cor do
+   sentido — queda verde, alta vermelha —, e nunca só na cor: a seta e o sinal
+   estão ao lado, e o `title` repete os três números por extenso. */
+.tabela-variacao th[scope="row"] { text-align: left; font-weight: 500; }
+.tabela-variacao tr.nivel-1 > th { font-weight: 600; }
+.tabela-variacao tr.nivel-2 > th { padding-left: 26px; color: var(--tinta-2); }
+.tabela-variacao tr.nivel-2 > th .grupo-nome { font-size: var(--txt-2); }
+.barra-variacao { display: inline-flex; align-items: center; gap: var(--esp-4); min-width: 120px; }
+.barra-variacao > span {
+  flex: 1 1 auto; height: 7px; min-width: 42px; border-radius: 3px;
+  background: color-mix(in srgb, var(--tinta-fraca) 18%, transparent); overflow: hidden;
+}
+.barra-variacao > span > i { display: block; height: 100%; border-radius: 3px; min-width: 2px; }
+.barra-variacao > b { flex: none; font-family: var(--mono); font-size: var(--txt-1); font-variant-numeric: tabular-nums; color: var(--tinta-2); }
+/* O drill-down em linha: continuação da árvore, recuado e com fecho próprio. */
+.var-drill { margin-top: var(--esp-7); padding-top: var(--esp-6); border-top: 1px solid var(--borda); }
+.var-drill > h5 {
+  display: flex; align-items: center; gap: var(--esp-5); margin: 0 0 var(--esp-3);
+  font-size: var(--txt-3);
+}
+.var-drill > h5 > button { margin-left: auto; }
+
 /* ------------------------------ detalhamento comparativo (dentro do modal)
    Camadas empilhadas, largura cheia, uma abaixo da outra. Cada cabeçalho fica
    visível com a camada fechada — é por ele que se lê o total sem abrir nada.

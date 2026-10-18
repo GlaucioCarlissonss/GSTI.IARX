@@ -191,6 +191,100 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
   }
   await fecharModal();
 
+  // ------------------------------- camada 1: a variação por empresa e filial
+  //
+  // O total da camada diz QUANTO mudou; a árvore diz DE ONDE veio. A
+  // conferência que importa é a soma: se os deltas por unidade não fecharem
+  // com o total do cabeçalho, uma das duas contas está errada e a tela não
+  // denuncia qual.
+  console.log('\nCAMADA 1 — a variação aberta por empresa e filial');
+  await pag.evaluate(() => {
+    const k = document.querySelector('.kpi.drill[data-kpi="teto-gasto"]');
+    k.scrollIntoView({ block: 'center' }); k.click();
+  });
+  await pag.waitForTimeout(700);
+  await abrirCamada('dif');
+  const v = await pag.evaluate(() => {
+    const corpo = document.querySelector('.camada[data-camada="dif"] .camada-corpo');
+    const moeda = (t) => {
+      const m = t.match(/R\$\s*([\d.]+,\d{2})/);
+      return m ? Number(m[1].replace(/\./g, '').replace(',', '.')) : null;
+    };
+    const emp = [...corpo.querySelectorAll('tbody tr.nivel-1')];
+    return {
+      colunas: [...corpo.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
+      empresas: emp.length,
+      filiaisOcultas: [...corpo.querySelectorAll('tbody tr.nivel-2')].every((t) => t.hidden),
+      // Cada linha: atual, anterior e a diferença exibida.
+      linhas: emp.map((tr) => {
+        const td = [...tr.querySelectorAll('td')];
+        // A primeira célula é o NOME; os valores começam na segunda.
+        return {
+          nome: td[0].textContent.trim(),
+          atual: moeda(td[1].textContent), anterior: moeda(td[2].textContent),
+          dif: moeda(td[3].textContent),
+          sentido: (td[3].querySelector('.delta') || {}).className || '',
+          temBotao: !!tr.querySelector('[data-ver-variacao]'),
+          temBalao: !!td[4].querySelector('[data-dica]'),
+        };
+      }),
+      // O total do cabeçalho da camada.
+      totalCab: moeda(document.querySelector('.camada[data-camada="dif"] .camada-val').textContent),
+    };
+  });
+  ok('as colunas trazem os dois meses, a diferença e o peso',
+    v.colunas.length === 6 && /^\d{2}\/\d{4}$/.test(v.colunas[1]) && /^\d{2}\/\d{4}$/.test(v.colunas[2])
+      && v.colunas[3] === 'Diferença', v.colunas.join(' | '));
+  ok('há uma linha por empresa', v.empresas > 0, `${v.empresas} empresa(s)`);
+  ok('as filiais nascem fechadas', v.filiaisOcultas);
+  ok('cada empresa tem o seu botão de lançamentos', v.linhas.every((l) => l.temBotao));
+  ok('cada empresa tem balão com os números', v.linhas.every((l) => l.temBalao));
+  // A SOMA: os deltas por empresa fecham com o total da camada.
+  const somaDeltas = v.linhas.reduce((s, l) =>
+    s + (l.sentido.includes('desce') ? -l.dif : l.sentido.includes('sobe') ? l.dif : 0), 0);
+  ok('a soma dos deltas por empresa é o total da camada',
+    Math.abs(Math.abs(somaDeltas) - v.totalCab) < 0.01,
+    `${somaDeltas.toFixed(2)} × ${v.totalCab}`);
+  // E cada linha fecha consigo mesma: atual − anterior = diferença.
+  ok('em cada empresa, atual menos anterior dá a diferença',
+    v.linhas.every((l) => Math.abs(Math.abs(l.atual - l.anterior) - l.dif) < 0.01),
+    v.linhas.map((l) => `${l.nome.slice(0, 10)}:${(l.atual - l.anterior).toFixed(2)}/${l.dif}`).join(' '));
+  // Ordem por variação ABSOLUTA, decrescente.
+  ok('as empresas vêm por variação absoluta decrescente',
+    v.linhas.every((l, i, a) => i === 0 || a[i - 1].dif >= l.dif),
+    v.linhas.map((l) => l.dif).join(' · '));
+  // Verde para queda, vermelho para alta — e o sentido bate com o número.
+  ok('o sentido da cor bate com o sinal da diferença',
+    v.linhas.every((l) => (l.atual < l.anterior ? l.sentido.includes('desce')
+      : l.atual > l.anterior ? l.sentido.includes('sobe') : l.sentido.includes('zero'))));
+
+  console.log('\nCAMADA 1 — abrir a empresa e o drill-down da filial');
+  const drill = await pag.evaluate(async () => {
+    const corpo = document.querySelector('.camada[data-camada="dif"] .camada-corpo');
+    const antes = [...corpo.querySelectorAll('tbody tr')].filter((t) => !t.hidden).length;
+    corpo.querySelector('[data-abrir-no]').click();
+    await new Promise((r) => setTimeout(r, 200));
+    const depois = [...corpo.querySelectorAll('tbody tr')].filter((t) => !t.hidden).length;
+    const fil = [...corpo.querySelectorAll('tbody tr.nivel-2')].find((t) => !t.hidden);
+    const bt = fil && fil.querySelector('[data-ver-variacao]');
+    if (bt) bt.click();
+    await new Promise((r) => setTimeout(r, 500));
+    const topo = [...document.querySelectorAll('.modal')].pop();
+    const nota = topo ? topo.querySelector('.msg').textContent.replace(/\s+/g, ' ') : '';
+    const comps = topo
+      ? [...new Set([...topo.querySelectorAll('tbody tr td:first-child')].map((t) => t.textContent.trim()))]
+      : [];
+    return { antes, depois, modais: document.querySelectorAll('.modal').length, nota, comps };
+  });
+  ok('abrir a empresa revela as filiais', drill.depois > drill.antes, `${drill.antes} → ${drill.depois}`);
+  ok('o drill-down abre sobre o detalhamento', drill.modais === 2, `${drill.modais} tela(s)`);
+  ok('o drill-down traz os DOIS meses', drill.comps.length === 2, drill.comps.join(' e '));
+  ok('a nota diz quanto veio de cada mês',
+    /lançamento\(s\) em \d{2}\/\d{4}, somando .+; \d+ em \d{2}\/\d{4}, somando/.test(drill.nota),
+    drill.nota.slice(0, 130));
+  // Fecha as duas telas empilhadas.
+  await fecharModal(); await fecharModal();
+
   // -------------------------- todos os indicadores falam do MESMO par de meses
   //
   // O mês comparado sai do FIM DA JANELA, não do último mês que por acaso tem

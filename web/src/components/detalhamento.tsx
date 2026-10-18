@@ -478,6 +478,218 @@ export function Detalhamento<T>({ pedido, aoFechar }: { pedido: PedidoDetalhe<T>
   );
 }
 
+/** Um nó da variação: quanto no mês em foco, quanto no anterior, e a diferença. */
+interface NoDaVariacao<T> {
+  chave: string;
+  nome: string;
+  cor?: string;
+  atual: number;
+  anterior: number;
+  delta: number;
+  itens: T[];
+  filhos: Array<NoDaVariacao<T>>;
+}
+
+/**
+ * A variação aberta por Empresa → Filial.
+ *
+ * O total da camada diz QUANTO mudou; esta árvore diz DE ONDE veio a mudança.
+ * São as duas perguntas que um número de variação levanta, e a segunda é a que
+ * leva a uma ação.
+ *
+ * Percorre a UNIÃO dos dois meses, e não só o mês em foco: uma unidade que
+ * gastava e parou é exatamente o que precisa aparecer, e ela não está na lista
+ * do mês filtrado — some do olho justamente a redução que alguém conquistou.
+ */
+function agruparVariacao<T>(
+  doMes: T[],
+  doAnterior: T[],
+  somar: ((l: T) => number) | undefined,
+  matrizes: Map<number, { nome: string; cor: string }>,
+): Array<NoDaVariacao<T>> {
+  const empresas = new Map<string, NoDaVariacao<T>>();
+  const acumular = (lista: T[], campo: 'atual' | 'anterior') => {
+    for (const l of lista) {
+      const linha = l as Record<string, unknown>;
+      const id = linha.empresa_id as number | null | undefined;
+      const matriz = id === null || id === undefined ? undefined : matrizes.get(id);
+      const chaveE = String(id ?? 'sem-empresa');
+      if (!empresas.has(chaveE)) {
+        empresas.set(chaveE, { chave: chaveE, nome: matriz?.nome ?? 'Sem empresa', cor: matriz?.cor,
+          atual: 0, anterior: 0, delta: 0, itens: [], filhos: [] });
+      }
+      const emp = empresas.get(chaveE)!;
+      const valor = somar ? somar(l) : 0;
+      emp[campo] += valor;
+      emp.itens.push(l);
+
+      const nomeFilial = (linha.filial_nome as string) ?? 'Nível empresa';
+      let fil = emp.filhos.find((f) => f.nome === nomeFilial);
+      if (!fil) {
+        fil = { chave: `${chaveE}:${nomeFilial}`, nome: nomeFilial, cor: emp.cor,
+          atual: 0, anterior: 0, delta: 0, itens: [], filhos: [] };
+        emp.filhos.push(fil);
+      }
+      fil[campo] += valor;
+      fil.itens.push(l);
+    }
+  };
+  acumular(doMes, 'atual');
+  acumular(doAnterior, 'anterior');
+
+  // Ordem por variação ABSOLUTA: o que mais mexeu no número vem primeiro, caia
+  // para que lado cair. Ordenar pelo delta com sinal poria as maiores quedas
+  // no fim da lista, que é onde ninguém olha.
+  const ordenar = (a: NoDaVariacao<T>, b: NoDaVariacao<T>) =>
+    Math.abs(b.delta) - Math.abs(a.delta) || a.nome.localeCompare(b.nome, 'pt-BR');
+  const lista = [...empresas.values()];
+  for (const e of lista) {
+    e.delta = e.atual - e.anterior;
+    for (const f of e.filhos) f.delta = f.atual - f.anterior;
+    e.filhos.sort(ordenar);
+  }
+  return lista.sort(ordenar);
+}
+
+/** A linha é deste mês? A competência chega como MM/AAAA ou AAAA-MM. */
+const mesmaCompetencia = (l: unknown, mes: string) =>
+  competenciaOrdem(String((l as Record<string, unknown>).competencia ?? '')) === competenciaOrdem(mes);
+
+const SETA = { sobe: '↑', desce: '↓', zero: '=' } as const;
+const sentidoDe = (delta: number) => (delta < 0 ? 'desce' : delta > 0 ? 'sobe' : 'zero');
+
+/**
+ * A árvore da variação. Para em FILIAL de propósito: o lançamento aparece no
+ * drill-down, onde cabe a ficha inteira dele — e, sobretudo, onde os dois
+ * meses podem ser mostrados lado a lado sem que a árvore tenha de emparelhar
+ * linha com linha. Emparelhar é a regra da camada 3, e antecipá-la aqui faria
+ * o mesmo lançamento aparecer duas vezes, como entrada e como saída.
+ */
+function ArvoreDaVariacao<T>({ foco, anterior, janela, pedido, aoAbrir }: {
+  foco: Fatia<T>;
+  anterior: Fatia<T>;
+  janela: NonNullable<ReturnType<typeof janelaDoPedido>>;
+  pedido: PedidoDetalhe<T>;
+  aoAbrir: (titulo: string, itens: T[]) => void;
+}) {
+  const { empresas } = useSessao();
+  const [abertos, setAbertos] = useState<Set<string>>(() => new Set());
+  const matrizes = useMemo(() => {
+    const m = new Map<number, { nome: string; cor: string }>();
+    for (const [id, v] of coresDasMatrizes(empresas)) m.set(id, { nome: v.nome, cor: v.cor });
+    return m;
+  }, [empresas]);
+  const arvore = useMemo(
+    () => agruparVariacao(foco.itens, anterior.itens, pedido.somar, matrizes),
+    [foco.itens, anterior.itens, pedido.somar, matrizes],
+  );
+
+  // Uma lista cortada mediria a página, não o mês: somar o que coube daria
+  // deltas por unidade que não fecham com o total da camada.
+  if (foco.cortada || anterior.cortada) {
+    return (
+      <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
+        A lista de um dos dois meses veio cortada, e somar o que coube daria uma variação por
+        unidade que não fecha com o total. Estreite o recorte de unidades acima para abrir a
+        quebra.
+      </p>
+    );
+  }
+  if (!arvore.length) return <p className="vazio">Nenhum lançamento nos dois meses.</p>;
+
+  // O peso de cada variação no total do que MEXEU — a soma dos módulos, e não
+  // o delta líquido: com uma unidade subindo e outra caindo o líquido encolhe,
+  // e dividir por ele daria pesos acima de 100%.
+  const mexido = arvore.reduce((s, u) => s + Math.abs(u.delta), 0) || 1;
+  const fmt = (v: number) => moeda(v);
+
+  const linha = (no: NoDaVariacao<T>, nivel: 1 | 2) => {
+    const s = sentidoDe(no.delta);
+    return (
+      <tr key={no.chave} className={`var-linha nivel-${nivel}`}>
+        <th scope="row">
+          {nivel === 1 ? (
+            <button
+              type="button"
+              className="arv-abrir"
+              aria-expanded={abertos.has(no.chave)}
+              aria-label={`${abertos.has(no.chave) ? 'Recolher' : 'Abrir'} as filiais de ${no.nome}`}
+              onClick={() => setAbertos((a) => {
+                const n = new Set(a);
+                if (n.has(no.chave)) n.delete(no.chave); else n.add(no.chave);
+                return n;
+              })}
+            >
+              {abertos.has(no.chave) ? '−' : '+'}
+            </button>
+          ) : (
+            <span className="arv-vazio" aria-hidden />
+          )}
+          {no.cor && <i className="ponto-unidade" style={{ background: no.cor }} aria-hidden />}
+          <span className="grupo-nome">{no.nome}</span>
+        </th>
+        <td className="num">{fmt(no.atual)}</td>
+        <td className="num">{fmt(no.anterior)}</td>
+        <td className="num">
+          <span className={`delta ${s === 'zero' ? 'neutro' : s}`}>
+            {SETA[s]} {fmt(Math.abs(no.delta))}
+          </span>
+        </td>
+        <td>
+          <span
+            className="barra-variacao"
+            title={`${no.nome}: ${fmt(no.atual)} em ${competenciaExib(janela.foco)} contra ${fmt(no.anterior)} em ${competenciaExib(janela.anterior)}`}
+          >
+            <span aria-hidden>
+              <i
+                style={{
+                  width: `${Math.min(100, (Math.abs(no.delta) / mexido) * 100)}%`,
+                  background: s === 'desce' ? 'var(--bom)' : s === 'sobe' ? 'var(--critico)' : 'var(--borda-forte)',
+                }}
+              />
+            </span>
+            <b>{percentual((Math.abs(no.delta) / mexido) * 100)}</b>
+          </span>
+        </td>
+        <td>
+          {no.itens.length > 0 && (
+            <button
+              type="button"
+              className="botao pequeno"
+              onClick={() => aoAbrir(no.nome, no.itens)}
+            >
+              Ver lançamentos
+            </button>
+          )}
+        </td>
+      </tr>
+    );
+  };
+
+  return (
+    <div className="tabela-envolucro">
+      <table className="tabela-variacao">
+        <thead>
+          <tr>
+            <th>Empresa / filial</th>
+            <th className="num">{competenciaExib(janela.foco)}</th>
+            <th className="num">{competenciaExib(janela.anterior)}</th>
+            <th className="num">Diferença</th>
+            <th>Peso na variação</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {arvore.flatMap((e) => [
+            linha(e, 1),
+            ...(abertos.has(e.chave) ? e.filhos.map((f) => linha(f, 2)) : []),
+          ])}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /**
  * As camadas de um detalhamento comparativo.
  *
@@ -493,6 +705,10 @@ function CamadasComparativas<T>({ pedido, janela, fatias, recorte }: {
   recorte: { itens: T[]; contagem: number; soma: number | null; cortada: boolean };
 }) {
   const formatar = pedido.formatarTotal ?? ((v: number) => moeda(v));
+  // O drill-down da variação abre EM LINHA, abaixo da árvore: uma segunda tela
+  // flutuante por cima desta empilharia dois diálogos para uma leitura que é
+  // continuação da primeira.
+  const [aberto, setAberto] = useState<{ nome: string; itens: T[] } | null>(null);
   const carregando = fatias === null;
   const erro = fatias && 'erro' in fatias ? fatias.erro : null;
   const prontas = fatias && !('erro' in fatias) ? fatias : null;
@@ -557,9 +773,41 @@ function CamadasComparativas<T>({ pedido, janela, fatias, recorte }: {
               Sem {competenciaExib(janela.anterior)} não há diferença a medir.
             </p>
           ) : (
-            <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
-              A quebra da variação por empresa e filial entra na próxima entrega.
-            </p>
+            <>
+              <ArvoreDaVariacao
+                foco={foco}
+                anterior={anterior}
+                janela={janela}
+                pedido={pedido}
+                aoAbrir={(nome, itens) => setAberto({ nome, itens })}
+              />
+              {aberto && (
+                <section className="var-drill">
+                  <h5>
+                    Variação de {aberto.nome}
+                    <button type="button" className="botao pequeno" onClick={() => setAberto(null)}>
+                      Fechar
+                    </button>
+                  </h5>
+                  {/* Os dois meses na MESMA lista: duas tabelas separadas
+                      obrigariam a guardar um total de cabeça para comparar com
+                      o outro. A coluna Competência diz de qual mês é a linha. */}
+                  <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
+                    {inteiro(aberto.itens.filter((l) => mesmaCompetencia(l, janela.foco)).length)}{' '}
+                    lançamento(s) em {competenciaExib(janela.foco)} e{' '}
+                    {inteiro(aberto.itens.filter((l) => mesmaCompetencia(l, janela.anterior)).length)} em{' '}
+                    {competenciaExib(janela.anterior)}.
+                  </p>
+                  <TabelaDoDetalhe
+                    colunas={pedido.colunas}
+                    itens={aberto.itens}
+                    contagem={aberto.itens.length}
+                    cortada={false}
+                    somar={pedido.somar}
+                  />
+                </section>
+              )}
+            </>
           )
         }
       </Camada>

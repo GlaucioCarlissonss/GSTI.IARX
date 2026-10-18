@@ -83,7 +83,9 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   const fechar = async () => {
     await pag.evaluate(() => {
       const bts = [...document.querySelectorAll('.modal button, [role="dialog"] button')];
-      const f = bts.find((b) => b.textContent.trim() === 'Fechar');
+      // O drill-down da variação também tem um "Fechar"; o que encerra a tela
+      // é o do rodapé do modal, fora dele.
+      const f = bts.find((b) => b.textContent.trim() === 'Fechar' && !b.closest('.var-drill'));
       if (f) f.click();
     });
     await pag.waitForTimeout(300);
@@ -227,6 +229,96 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   ok('o cabeçalho da camada recebe foco', porTeclado.focado);
   ok('o foco é visível', porTeclado.contorno !== '0px', porTeclado.contorno);
   ok('Enter abre a camada', porTeclado.aberta);
+
+  // ------------------------------- camada 1: a variação por empresa e filial
+  //
+  // A conferência que importa é a soma: se os deltas por unidade não fecharem
+  // com o total do cabeçalho, uma das duas contas está errada e a tela não
+  // denuncia qual.
+  console.log('\nCAMADA 1 — a variação aberta por empresa e filial');
+  // Abrir só se estiver fechada: o clique ALTERNA, e uma seção anterior pode
+  // já ter deixado esta camada aberta.
+  await pag.evaluate(() => {
+    const bt = [...document.querySelectorAll('.camada-bt')]
+      .find((b) => /diferença vs mês anterior/i.test(b.textContent));
+    if (bt && bt.getAttribute('aria-expanded') !== 'true') bt.click();
+  });
+  await pag.waitForTimeout(600);
+  const v = await pag.evaluate(() => {
+    const sec = [...document.querySelectorAll('.camada')]
+      .find((x) => /diferença vs mês anterior/i.test(x.textContent));
+    const corpo = sec && sec.querySelector('.tabela-variacao');
+    if (!corpo) return null;
+    const moeda = (t) => {
+      const m = t.match(/R\$\s*([\d.]+,\d{2})/);
+      return m ? Number(m[1].replace(/\./g, '').replace(',', '.')) : null;
+    };
+    const emp = [...corpo.querySelectorAll('tbody tr.nivel-1')];
+    const cab = [...document.querySelectorAll('.camada')]
+      .find((s) => /diferença vs mês anterior/i.test(s.textContent));
+    return {
+      colunas: [...corpo.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
+      empresas: emp.length,
+      semFiliaisAbertas: corpo.querySelectorAll('tbody tr.nivel-2').length === 0,
+      linhas: emp.map((tr) => {
+        const td = [...tr.querySelectorAll('td')];
+        return {
+          nome: tr.querySelector('th').textContent.trim(),
+          atual: moeda(td[0].textContent), anterior: moeda(td[1].textContent),
+          dif: moeda(td[2].textContent),
+          sentido: (td[2].querySelector('.delta') || {}).className || '',
+          temBotao: !!tr.querySelector('button.pequeno'),
+          temTitulo: !!td[3].querySelector('[title]'),
+        };
+      }),
+      totalCab: cab ? moeda(cab.querySelector('.camada-val').textContent) : null,
+    };
+  });
+  if (!v) {
+    ok('a camada 1 traz a árvore da variação', false, 'nenhuma .tabela-variacao');
+  } else {
+    ok('as colunas trazem os dois meses, a diferença e o peso',
+      v.colunas.length === 6 && /^\d{2}\/\d{4}$/.test(v.colunas[1]) && v.colunas[3] === 'Diferença',
+      v.colunas.join(' | '));
+    ok('há uma linha por empresa', v.empresas > 0, `${v.empresas} empresa(s)`);
+    ok('as filiais nascem fechadas', v.semFiliaisAbertas);
+    ok('cada empresa tem o seu botão de lançamentos', v.linhas.every((l) => l.temBotao));
+    ok('cada empresa tem o title com os números', v.linhas.every((l) => l.temTitulo));
+    const soma = v.linhas.reduce((s, l) =>
+      s + (l.sentido.includes('desce') ? -l.dif : l.sentido.includes('sobe') ? l.dif : 0), 0);
+    ok('a soma dos deltas por empresa é o total da camada',
+      Math.abs(Math.abs(soma) - v.totalCab) < 0.01, `${soma.toFixed(2)} × ${v.totalCab}`);
+    ok('em cada empresa, atual menos anterior dá a diferença',
+      v.linhas.every((l) => Math.abs(Math.abs(l.atual - l.anterior) - l.dif) < 0.01));
+    ok('as empresas vêm por variação absoluta decrescente',
+      v.linhas.every((l, i, a) => i === 0 || a[i - 1].dif >= l.dif),
+      v.linhas.map((l) => l.dif).join(' · '));
+    ok('o sentido da cor bate com o sinal da diferença',
+      v.linhas.every((l) => (l.atual < l.anterior ? l.sentido.includes('desce')
+        : l.atual > l.anterior ? l.sentido.includes('sobe') : l.sentido.includes('neutro'))));
+
+    const drill = await pag.evaluate(async () => {
+      const sec = [...document.querySelectorAll('.camada')]
+        .find((x) => /diferença vs mês anterior/i.test(x.textContent));
+      const corpo = sec.querySelector('.tabela-variacao');
+      corpo.querySelector('tbody tr.nivel-1 .arv-abrir').click();
+      await new Promise((r) => setTimeout(r, 250));
+      const comFiliais = corpo.querySelectorAll('tbody tr.nivel-2').length;
+      const bt = corpo.querySelector('tbody tr.nivel-2 button.pequeno');
+      if (bt) bt.click();
+      await new Promise((r) => setTimeout(r, 400));
+      const d = document.querySelector('.var-drill');
+      return { comFiliais, abriu: !!d,
+        telas: document.querySelectorAll('.modal, [role="dialog"]').length,
+        linhas: d ? d.querySelectorAll('tbody tr').length : 0,
+        titulo: d ? d.querySelector('h5').textContent.replace('Fechar', '').trim() : '' };
+    });
+    ok('abrir a empresa revela as filiais', drill.comFiliais > 0, `${drill.comFiliais} filial(is)`);
+    ok('o drill-down abre em linha, sem empilhar outra tela',
+      drill.abriu && drill.telas === 1, `${drill.telas} tela(s)`);
+    ok('o drill-down lista os lançamentos', drill.linhas > 0, `${drill.linhas} linha(s)`);
+    ok('o drill-down diz de quem é a variação', /^Variação de /.test(drill.titulo), drill.titulo);
+  }
 
   // --------------------------------------------- contraste das camadas novas
   console.log('\nCONTRASTE — o que foi acrescentado passa na régua AA, nos dois temas');

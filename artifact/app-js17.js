@@ -1905,6 +1905,162 @@ function deltaDoComparativo(c) {
 }
 
 const SETA_DELTA = { sobe: '↑', desce: '↓', zero: '=' };
+const sentidoDe = (delta) => (delta < 0 ? 'desce' : delta > 0 ? 'sobe' : 'zero');
+
+/**
+ * A variação aberta por Empresa → Filial.
+ *
+ * O total da camada diz QUANTO mudou; esta árvore diz DE ONDE veio a mudança.
+ * São as duas perguntas que um número de variação levanta, e a segunda é a que
+ * leva a uma ação: "subiu R$ 20 mil" não se resolve, "subiu R$ 20 mil, e R$ 18
+ * mil deles são da MILAGRES" se resolve.
+ *
+ * A UNIÃO dos dois meses, e não só o mês filtrado: uma unidade que gastava e
+ * parou é exatamente o que precisa aparecer, e ela não está na lista do mês
+ * em foco. Some do olho justamente a redução que alguém conquistou.
+ */
+function unidadesDaVariacao(c) {
+  const mapa = new Map();
+  const acumular = (lista, campo) => {
+    for (const l of lista) {
+      // Chaveado pelo ID da empresa, e não pelo nome: a cor da unidade sai do
+      // id, e duas unidades de nome parecido não podem virar uma linha só.
+      const id = l.empresa;
+      if (!mapa.has(id)) {
+        mapa.set(id, { nome: String(nomeEmpresa(id)), cor: corDaMatriz(id),
+          atual: 0, anterior: 0, filiais: new Map() });
+      }
+      const emp = mapa.get(id);
+      emp[campo] += cent(l.valor);
+      const f = String(l.filial || 'Sem filial (nível empresa)');
+      if (!emp.filiais.has(f)) emp.filiais.set(f, { nome: f, atual: 0, anterior: 0, itens: [] });
+      const fil = emp.filiais.get(f);
+      fil[campo] += cent(l.valor);
+      fil.itens.push(l);
+    }
+  };
+  acumular(c.doMes, 'atual');
+  acumular(c.doAnterior, 'anterior');
+
+  // Ordem por variação ABSOLUTA: o que mais mexeu no número vem primeiro, caia
+  // para que lado cair. Ordenar pelo delta com sinal poria as maiores quedas
+  // no fim da lista, que é onde ninguém olha.
+  const ordenar = (a, b) => Math.abs(b.delta) - Math.abs(a.delta)
+    || String(a.nome).localeCompare(String(b.nome), 'pt-BR');
+  const comDelta = (n) => Object.assign(n, { delta: n.atual - n.anterior });
+  return [...mapa.values()].map((e) => {
+    const filiais = [...e.filiais.values()].map(comDelta).sort(ordenar);
+    return Object.assign(comDelta(e), { filiais, itens: filiais.flatMap((f) => f.itens) });
+  }).sort(ordenar);
+}
+
+/** Os lançamentos pendurados em cada nó da árvore de variação, até ela montar. */
+const VARIACAO_PENDENTE = new Map();
+let SEQ_VARIACAO = 0;
+
+/**
+ * A árvore da variação. Para em FILIAL de propósito: o lançamento aparece no
+ * drill-down, onde cabe a ficha inteira dele — e, sobretudo, onde os dois
+ * meses podem ser mostrados lado a lado sem que a árvore tenha de emparelhar
+ * linha com linha. Emparelhar é a regra da camada 3, e antecipá-la aqui faria
+ * o mesmo lançamento aparecer duas vezes, como entrada e como saída.
+ */
+function arvoreDaVariacaoHtml(c) {
+  const unidades = unidadesDaVariacao(c);
+  if (!unidades.length) return '<p class="vazio">Nenhum lançamento nos dois meses.</p>';
+
+  const chave = `var${++SEQ_VARIACAO}`;
+  const porNo = new Map();
+  // O peso de cada variação no total do que MEXEU — a soma dos módulos, e não
+  // o delta líquido: com uma unidade subindo e outra caindo o líquido encolhe,
+  // e dividir por ele daria pesos acima de 100%.
+  const totalMexido = unidades.reduce((s, u) => s + Math.abs(u.delta), 0);
+
+  const linha = (no, nivel, idNo, pai, cor, alvoDrill) => {
+    const s = sentidoDe(no.delta);
+    const rot = `${no.nome}: ${brl(reais(no.atual))} em ${mesExib(c.mesFoco)} contra `
+      + `${brl(reais(no.anterior))} em ${mesExib(c.mesAnterior)}`;
+    const detalhe = {
+      titulo: no.nome,
+      linhas: [
+        { nome: mesExib(c.mesFoco), valor: brl(reais(no.atual)) },
+        { nome: mesExib(c.mesAnterior), valor: brl(reais(no.anterior)) },
+        { nome: 'Diferença', valor: `${SETA_DELTA[s]} ${brl(reais(Math.abs(no.delta)))}`,
+          cor: s === 'desce' ? 'var(--bomtxt)' : s === 'sobe' ? 'var(--crit)' : 'var(--tinta3)' },
+        { nome: 'Variação', valor: no.anterior
+          ? `${pctTxt(Math.abs((no.delta / no.anterior) * 100))} ${s === 'desce' ? 'de queda' : s === 'sobe' ? 'de alta' : 'sem mudança'}`
+          : (no.atual ? 'não havia no mês anterior' : '—') },
+      ],
+    };
+    return `<tr class="nivel-${nivel}" ${idNo ? `data-no="${idNo}"` : ''} ${pai ? `data-pai="${pai}"` : ''}${pai ? ' hidden' : ''}>
+      <td>${idNo
+        ? `<button type="button" class="arv-abrir" aria-expanded="false" data-abrir-no="${idNo}"
+             aria-label="Abrir as filiais de ${esc(no.nome)}"><span aria-hidden="true">+</span></button>`
+        : '<span class="arv-vazio" aria-hidden="true"></span>'}
+        ${cor ? `<i class="ponto-matriz" style="background:${cor}" aria-hidden="true"></i>` : ''}${esc(no.nome)}</td>
+      <td class="num">${brl(reais(no.atual))}</td>
+      <td class="num">${brl(reais(no.anterior))}</td>
+      <td class="num"><span class="delta ${s}">${SETA_DELTA[s]} ${brl(reais(Math.abs(no.delta)))}</span></td>
+      <td>${barraDeRepresentatividadeHtml(pct(Math.abs(no.delta), totalMexido),
+        s === 'desce' ? 'var(--bom)' : s === 'sobe' ? 'var(--crit)' : 'var(--linha2)', rot, detalhe)}</td>
+      <td>${alvoDrill
+        ? `<button type="button" class="bt peq" data-ver-variacao="${alvoDrill}">Ver lançamentos</button>` : ''}</td>
+    </tr>`;
+  };
+
+  const linhas = [];
+  unidades.forEach((e, i) => {
+    const idE = `${chave}:e${i}`;
+    porNo.set(idE, { nome: e.nome, itens: e.itens });
+    linhas.push(linha(e, 1, idE, null, e.cor, e.itens.length ? idE : null));
+    e.filiais.forEach((f, j) => {
+      const idF = `${idE}:f${j}`;
+      porNo.set(idF, { nome: `${e.nome} · ${f.nome}`, itens: f.itens });
+      linhas.push(linha(f, 2, null, idE, null, f.itens.length ? idF : null));
+    });
+  });
+
+  VARIACAO_PENDENTE.set(chave, { porNo, mesFoco: c.mesFoco, mesAnterior: c.mesAnterior });
+  return `<div class="rol" data-arvore-det data-variacao="${chave}">
+    <table class="arvore-unidades larga">
+    <thead><tr><th>Empresa / filial</th>
+      <th class="num">${esc(mesExib(c.mesFoco))}</th>
+      <th class="num">${esc(mesExib(c.mesAnterior))}</th>
+      <th class="num">Diferença</th><th>Peso na variação</th><th></th></tr></thead>
+    <tbody>${linhas.join('')}</tbody></table></div>`;
+}
+
+/** Liga o "Ver lançamentos" de cada nó da árvore de variação. */
+function ligarArvoreDaVariacao(raiz) {
+  const area = raiz.querySelector('[data-variacao]');
+  if (!area) return;
+  const reg = VARIACAO_PENDENTE.get(area.dataset.variacao);
+  if (!reg) return;
+  for (const bt of area.querySelectorAll('[data-ver-variacao]')) {
+    bt.onclick = (ev) => {
+      ev.stopPropagation();
+      const no = reg.porNo.get(bt.dataset.verVariacao);
+      if (!no) return;
+      // Os dois meses na MESMA lista, do mais recente para o mais antigo e,
+      // dentro de cada um, do maior valor para o menor. Duas telas separadas
+      // obrigariam a guardar um total de cabeça para comparar com o outro.
+      const itens = [...no.itens].sort((a, b) =>
+        String(b.competencia).localeCompare(String(a.competencia)) || cent(b.valor) - cent(a.valor));
+      const doFoco = itens.filter((l) => l.competencia === reg.mesFoco);
+      const doAnt = itens.filter((l) => l.competencia === reg.mesAnterior);
+      abrirRegistros({
+        titulo: `Variação de ${no.nome}`,
+        tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true,
+        itens, contagem: null,
+        nota: `${inteiro(doFoco.length)} lançamento(s) em ${mesExib(reg.mesFoco)}, somando `
+          + `${brl(reais(somaC(doFoco.map((l) => l.valor))))}; `
+          + `${inteiro(doAnt.length)} em ${mesExib(reg.mesAnterior)}, somando `
+          + `${brl(reais(somaC(doAnt.map((l) => l.valor))))}. `
+          + 'A coluna Competência diz de qual mês é cada linha.',
+      });
+    };
+  }
+}
 
 /** Uma camada: cabeçalho fixo com título e valor, corpo que nasce fechado. */
 function camadaHtml({ chave, id, rotulo, valor }) {
@@ -1962,7 +2118,7 @@ function detalhamentoComparativoHtml({ itens, mes, anteriores, prefixo }) {
     dif: () => !c.temBase
       ? `<p class="vazio">${esc(c.mesAnterior ? `Não há ${mesExib(c.mesAnterior)} neste recorte.`
           : 'Não há mês anterior.')} Sem ele não há diferença a medir.</p>`
-      : '<p class="nota">A quebra da variação por empresa e filial entra na próxima entrega.</p>',
+      : arvoreDaVariacaoHtml(c),
     veio: () => arvore(c.doMes),
     ant: () => c.temBase ? arvore(c.doAnterior)
       : `<p class="vazio">${esc(mesExib(c.mesAnterior) || 'O mês anterior')} não está no recorte.</p>`,
@@ -2009,6 +2165,7 @@ function ligarDetalhamentoComparativo(raiz) {
         corpo.innerHTML = montar ? montar() : '';
         corpo.dataset.montado = '1';
         ligarArvoreDoDetalhamento(corpo);
+        ligarArvoreDaVariacao(corpo);
         ligarDicasDaTela(corpo);
       }
       bt.setAttribute('aria-expanded', String(abrir));
