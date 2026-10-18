@@ -810,6 +810,50 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{border-color:var
 .bloco-corpo{animation:abrir-bloco .14s ease-out}
 @keyframes abrir-bloco{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.bloco-corpo{animation:none}}
+/* ------------------------------------------------------------ Resultados
+   O bloco é IRMÃO das caixas de módulo, nunca filho: a borda mais marcada e o
+   espaço acima dizem que ele é de outra ordem — o placar das três frentes, e
+   não um quarto módulo. */
+.bloco-resultados{border-color:var(--linha2);box-shadow:var(--sombra-alta)}
+.bloco-resultados>header{display:flex;align-items:flex-end;gap:var(--esp-6);flex-wrap:wrap}
+.bloco-resultados>header h2{font-size:var(--txt-6)}
+.bloco-resultados>header .nota{flex:1 1 320px;min-width:0}
+.campo-mes-resultados{flex:none;min-width:150px}
+.grade-resultados{display:grid;gap:var(--esp-6);grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:860px){.grade-resultados{grid-template-columns:1fr}}
+.cartao-resultado{
+  display:flex;flex-direction:column;gap:var(--esp-3);min-width:0;
+  padding:var(--esp-7) var(--esp-8);
+  border:1px solid var(--linha);border-left:3px solid var(--linha2);
+  border-radius:var(--raio-m);background:var(--sup2);
+}
+/* A cor da faixa entra pela borda esquerda, e nunca sozinha: o texto abaixo
+   diz "atingida", "parcialmente atingida" ou "não atingida" por extenso. */
+.cartao-resultado.faixa-verde{border-left-color:var(--bom)}
+.cartao-resultado.faixa-laranja{border-left-color:var(--alerta)}
+.cartao-resultado.faixa-vermelho{border-left-color:var(--crit)}
+.cartao-resultado.erro{border-left-color:var(--crit)}
+.cartao-resultado h3{display:flex;flex-direction:column;gap:var(--esp-1);font-size:var(--txt-4)}
+.res-oque{font-family:var(--sans);font-size:var(--txt-1);font-weight:var(--peso-reg);
+  letter-spacing:0;color:var(--tinta3)}
+/* O resultado é o que a pessoa veio ler: fala na voz de display, como o
+   número de um cartão de indicador. */
+.res-valor{margin:var(--esp-2) 0 0;font-family:var(--display);font-size:var(--txt-7);
+  font-weight:var(--peso-forte);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.res-linha{display:grid;grid-template-columns:max-content 1fr;gap:var(--esp-1) var(--esp-5);margin:0}
+.res-linha dt{font-family:var(--mono);font-size:var(--txt-1);letter-spacing:.09em;
+  text-transform:uppercase;color:var(--tinta3)}
+.res-linha dd{margin:0;font-family:var(--mono);font-size:var(--txt-3);
+  font-variant-numeric:tabular-nums;color:var(--tinta2)}
+.res-linha dd.res-ating{color:var(--tinta);font-weight:var(--peso-forte)}
+.res-texto{margin:var(--esp-3) 0 0;font-size:var(--txt-2);font-weight:var(--peso-forte)}
+.faixa-verde .res-texto{color:var(--bomtxt)}
+.faixa-laranja .res-texto{color:var(--alerta)}
+.faixa-vermelho .res-texto{color:var(--crit)}
+.faixa-sem_meta .res-texto,.faixa-sem_dados .res-texto{color:var(--tinta3);font-weight:var(--peso-reg);
+  font-style:italic}
+.res-falhou{margin:var(--esp-3) 0 0;font-size:var(--txt-2);color:var(--crit)}
+
 /* ------------------------------ detalhamento comparativo (dentro do modal)
    Camadas empilhadas, largura cheia, uma abaixo da outra. Cada cabeçalho fica
    visível com a camada fechada — é por ele que se lê o total sem abrir nada. */

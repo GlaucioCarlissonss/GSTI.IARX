@@ -2929,6 +2929,178 @@ function barrasComparativasHtml(antes, depois, corAntes, corDepois, teto, detalh
   </span>`;
 }
 
+// ------------------------------------------------------------ Resultados
+//
+// O BLOCO QUE RESPONDE "A GENTE BATEU A META DESTE MÊS?", nos três módulos de
+// uma vez.
+//
+// Os indicadores de cada módulo respondem bem a pergunta de dentro dele —
+// quanto custou, quantas tarefas saíram no prazo, qual foi a conformidade.
+// Nenhum deles responde a de cima: das três frentes, quais fecharam o mês
+// dentro do que foi combinado? Para saber isso era preciso abrir os três
+// blocos e comparar cada número com a meta dele, de cabeça.
+//
+// Este bloco fica ABAIXO e FORA das caixas de módulo, de propósito: ele não
+// pertence a nenhuma das três, e pendurá-lo em uma faria procurar o resultado
+// de Projetos dentro de Financeiro — o mesmo motivo que tirou os Indicadores
+// Gerais de dentro dos módulos operacionais.
+
+/**
+ * A direção da meta sai de `DIRECAO_META`, que já existe e já rege a leitura
+ * dos indicadores: `'minimo'` é alvo de piso (maior é melhor) e `'maximo'` é
+ * alvo de teto (menor é melhor). Uma segunda tabela aqui seria uma segunda
+ * chance de as duas divergirem.
+ */
+const menorEhMelhor = (modulo) => DIRECAO_META[modulo] === 'maximo';
+
+/** Um recorte de UM mês, sem herdar os filtros de bloco nenhum. */
+const recorteDoMes = (comp) => ({ ...recorteVazio(), de: comp, ate: comp });
+
+/** Os meses que podem ser lidos: os da base, até o último fechado, do mais novo. */
+function mesesComResultado() {
+  const fechado = mesFechadoMaisRecente();
+  const vistos = new Set();
+  for (const l of Loja.todosDoEscopo()) {
+    if (l.competencia && l.competencia <= fechado) vistos.add(l.competencia);
+  }
+  return ordenado([...vistos]).reverse();
+}
+
+/**
+ * Resultado e meta de um módulo num mês.
+ *
+ * Roda os MESMOS calculadores que desenham os indicadores — só que sobre um
+ * recorte de um mês só. É isso que garante que o número do Resultados seja o
+ * número do módulo: recalcular por outro caminho abriria espaço para os dois
+ * divergirem sem ninguém perceber.
+ */
+function resultadoDoMes(modulo, comp) {
+  const r = recorteDoMes(comp);
+  if (modulo === 'financeiro') {
+    // Despesa RECONHECIDA do mês contra o teto de gasto — é o Objetivo 03.
+    const p = calcularObjetivo03(r).serie.find((x) => x.comp === comp);
+    return { resultado: p ? p.total : null, meta: p ? p.teto : tetosVigentes(comp).geral, moeda: true };
+  }
+  if (modulo === 'projetos') {
+    const p = calcularProjetos(r);
+    // Sem tarefa entregue no mês não há percentual: 0% diria "nenhuma saiu no
+    // prazo", quando o que houve foi nenhuma entrega.
+    return { resultado: p.entregues ? p.pct : null, meta: p.meta, moeda: false };
+  }
+  const s = calcularSla(r);
+  return { resultado: s.total ? s.pct : null, meta: s.meta, moeda: false };
+}
+
+/**
+ * O atingimento e a faixa do semáforo.
+ *
+ * A faixa é decidida pelo percentual ARREDONDADO, que é o que aparece na tela:
+ * um 99,96% exibido como "100,0%" e pintado de laranja seria a tela
+ * contradizendo a si mesma.
+ */
+function atingimentoDaMeta(modulo, { resultado, meta }) {
+  if (resultado === null || resultado === undefined) return { faixa: 'SEM_DADOS' };
+  if (meta === null || meta === undefined || !(Number(meta) > 0)) {
+    return { faixa: 'SEM_META', resultado };
+  }
+  const menor = menorEhMelhor(modulo);
+  // Dividir pelo resultado exige resultado: gasto zero contra um teto positivo
+  // não é "meta superada", é mês sem despesa reconhecida.
+  if (menor && !(resultado > 0)) return { faixa: 'SEM_DADOS' };
+  const pct = Math.round((menor ? (meta / resultado) : (resultado / meta)) * 1000) / 10;
+  return {
+    faixa: pct >= 100 ? 'VERDE' : pct >= 70 ? 'LARANJA' : 'VERMELHO',
+    pct, resultado, meta, menor,
+  };
+}
+
+/** O texto que acompanha a faixa, com o valor da meta por extenso. */
+function textoDaMeta(a, moeda) {
+  if (a.faixa === 'SEM_DADOS') return 'Sem dados no período';
+  if (a.faixa === 'SEM_META') return 'Sem meta cadastrada';
+  const valor = moeda ? brl(a.meta) : `${pctTxt(a.meta)}`;
+  return a.faixa === 'VERDE' ? `Meta ${valor} atingida`
+    : a.faixa === 'LARANJA' ? `Meta ${valor} parcialmente atingida`
+    : `Meta ${valor} não atingida`;
+}
+
+const MODULOS_RESULTADO = [
+  { chave: 'financeiro', nome: 'Financeiro', oQue: 'despesa reconhecida contra o teto de gasto' },
+  { chave: 'projetos', nome: 'Projetos', oQue: 'tarefas entregues no prazo' },
+  { chave: 'sla', nome: 'SLA', oQue: 'chamados resolvidos dentro do prazo' },
+];
+
+/** Os três cartões de um mês. Separado do bloco para o seletor repintar só eles. */
+function cartoesDeResultadoHtml(comp) {
+  if (!comp) {
+    return '<p class="vazio">Nenhum mês fechado na base deste cliente. '
+      + 'Carregue lançamentos em Sistema › Dados para o bloco ter o que medir.</p>';
+  }
+  return `<div class="grade-resultados">${MODULOS_RESULTADO.map((m) => {
+    let dados;
+    try {
+      dados = resultadoDoMes(m.chave, comp);
+    } catch (e) {
+      // O erro de um módulo não pode apagar os outros dois: o cartão diz o que
+      // falhou e onde olhar, e os vizinhos seguem sendo lidos.
+      return `<article class="cartao-resultado erro" data-modulo="${m.chave}">
+        <h3>${esc(m.nome)}</h3>
+        <p class="res-falhou">Não foi possível calcular o resultado de ${esc(mesExib(comp))}.
+          Recarregue a tela; se persistir, confira os dados do módulo ${esc(m.nome)}.</p>
+      </article>`;
+    }
+    const a = atingimentoDaMeta(m.chave, dados);
+    const semNumero = a.faixa === 'SEM_DADOS';
+    return `<article class="cartao-resultado faixa-${a.faixa.toLowerCase()}" data-modulo="${m.chave}">
+      <h3>${esc(m.nome)}<span class="res-oque">${esc(m.oQue)}</span></h3>
+      <p class="res-valor">${semNumero ? '—'
+        : dados.moeda ? brl(dados.resultado) : pctTxt(dados.resultado)}</p>
+      <dl class="res-linha">
+        <dt>Meta</dt><dd>${dados.meta === null || dados.meta === undefined ? '—'
+          : dados.moeda ? brl(dados.meta) : pctTxt(dados.meta)}</dd>
+        <dt>Atingimento</dt><dd class="res-ating">${a.pct === undefined ? '—' : pctTxt(a.pct)}</dd>
+      </dl>
+      <p class="res-texto">${esc(textoDaMeta(a, dados.moeda))}</p>
+    </article>`;
+  }).join('')}</div>`;
+}
+
+/**
+ * O bloco inteiro, com o seletor de mês próprio.
+ *
+ * O mês é DESTE bloco, e não dos filtros dos módulos: cada um dos três tem a
+ * sua janela, e três janelas diferentes não produzem "o mês do resultado".
+ */
+function blocoResultadosHtml() {
+  const meses = mesesComResultado();
+  if (!E.mesResultados || !meses.includes(E.mesResultados)) E.mesResultados = meses[0] || '';
+  return `
+    <section class="bloco bloco-resultados" data-dobra-padrao="aberto" style="margin-top:var(--esp-10)">
+      <header>
+        <h2>Resultados</h2>
+        <span class="nota">O atingimento da meta do mês nos três módulos, lado a lado —
+          é a leitura de cima, que nenhum indicador sozinho dá.</span>
+        ${meses.length ? `<label class="campo campo-mes-resultados">
+          <span>Mês</span>
+          <select data-mes-resultados>${meses.map((m) =>
+            `<option value="${m}"${m === E.mesResultados ? ' selected' : ''}>${mesExib(m)}</option>`).join('')}</select>
+        </label>` : ''}
+      </header>
+      <div data-cartoes-resultado>${cartoesDeResultadoHtml(E.mesResultados)}</div>
+    </section>`;
+}
+
+/** Liga o seletor de mês: repinta só os cartões, nunca o bloco inteiro. */
+function ligarBlocoResultados(raiz) {
+  const sel = (raiz || el('#pagina')).querySelector('[data-mes-resultados]');
+  if (!sel) return;
+  sel.onchange = () => {
+    E.mesResultados = sel.value;
+    const area = (raiz || el('#pagina')).querySelector('[data-cartoes-resultado]');
+    if (area) area.innerHTML = cartoesDeResultadoHtml(E.mesResultados);
+  };
+}
+
 async function viewIndicadores() {
   await Loja.configuracao();
   for (const e of escopoEmpresas()) await Loja.slaDa(e);
@@ -3576,7 +3748,12 @@ async function viewIndicadores() {
         tempo de resolução —, e aparece como <strong>vencido</strong> quando o prazo já passou:
         ${inteiro(conf.resumo.vencidos)} no recorte.`,
     })}
-    </section>`;
+    </section>
+
+    <!-- RESULTADOS: irmão das três caixas de módulo, nunca filho de uma delas.
+         Fica por último porque é a leitura de cima — quem desce a página passa
+         pelos indicadores de cada frente e chega ao placar das três. -->
+    ${blocoResultadosHtml()}`;
 
   // ----------------------------------------------------------- desenho
   // OBJETIVO 03 — as três faixas, o total e o teto como linha de referência.
@@ -4109,6 +4286,7 @@ async function viewIndicadores() {
   });
   ligarArvoresDeUnidade();
   ligarDicasDaTela();
+  ligarBlocoResultados();
   el('#pagina').querySelectorAll('tr[data-centro]').forEach((tr) => {
     tr.style.cursor = 'pointer';
     tr.onclick = (ev) => {

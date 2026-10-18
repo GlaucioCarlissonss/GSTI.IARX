@@ -33,6 +33,7 @@ import {
   type NoEmpresa,
 } from '../components/graficos';
 import { LegendaDeConsumo } from '../components/consumo';
+import { BlocoResultados } from '../components/resultados';
 import { coresDasMatrizes, fatiasPorMatriz } from '../lib/cores';
 import { inteiro, moeda, moedaCurta, percentual } from '../lib/formato';
 
@@ -677,6 +678,11 @@ export function PaginaIndicadoresGerais() {
         </Cartao>
         </Cartao>
       </div>
+
+      {/* RESULTADOS: irmão das caixas de módulo, nunca filho de uma delas.
+          Fica por último porque é a leitura de cima — quem desce a página passa
+          pelos indicadores de cada frente e chega ao placar das três. */}
+      <BlocoResultados params={escopo.params} />
 
       <Dica estado={dica} />
       {detalhe && <Detalhamento pedido={detalhe} aoFechar={() => setDetalhe(null)} />}

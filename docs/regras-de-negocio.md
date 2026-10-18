@@ -3201,6 +3201,77 @@ sempre, sem camada nenhuma.
 Medido por `artifact/testar-detalhamento-comparativo.cjs` e
 `web/verificar-detalhamento-comparativo.cjs`, nos dois temas.
 
+## O bloco Resultados
+
+Os indicadores de cada módulo respondem bem a pergunta de dentro dele: quanto
+custou, quantas tarefas saíram no prazo, qual foi a conformidade. Nenhum
+responde a de cima — **das três frentes, quais fecharam o mês dentro do que foi
+combinado?** Para saber isso era preciso abrir os três blocos e comparar cada
+número com a meta dele, de cabeça.
+
+O bloco Resultados fica **abaixo e fora** das caixas de módulo, em largura
+total, com três cartões lado a lado (um por coluna abaixo de 860px). Fora, e
+não dentro: ele não pertence a nenhuma das três frentes, e pendurá-lo em uma
+faria procurar o resultado de Projetos dentro de Financeiro — o mesmo motivo
+que tirou os Indicadores Gerais de dentro dos módulos operacionais.
+
+### A conta, e a direção que a decide
+
+Atingimento = resultado ÷ meta onde **maior é melhor**, e meta ÷ resultado onde
+**menor é melhor**. A direção não é escolha de quem cadastra: já existe no
+sistema como `DIRECAO_META`, em `artifact/app-js1.js` e em
+`server/src/domain/metas.ts`, com `'minimo'` para alvo de piso (SLA, Projetos)
+e `'maximo'` para alvo de teto (custo). O bloco lê de lá — uma segunda tabela
+seria uma segunda chance de as duas divergirem, e o sintoma seria o mês mais
+caro do ano aparecendo em verde.
+
+| faixa | atingimento | texto |
+| --- | --- | --- |
+| verde | ≥ 100% | Meta {valor} atingida |
+| laranja | 70% a 99,9% | Meta {valor} parcialmente atingida |
+| vermelho | < 70% | Meta {valor} não atingida |
+| cinza | sem meta cadastrada | Sem meta cadastrada |
+| cinza | sem resultado no mês | Sem dados no período |
+
+A faixa é decidida pelo percentual **arredondado**, que é o que aparece na
+tela: um 99,96% exibido como "100,0%" e pintado de laranja seria a tela
+contradizendo a si mesma.
+
+Três divisões que não podem explodir, e não explodem: meta ausente, zero ou
+negativa cai em "sem meta"; resultado ausente cai em "sem dados"; e gasto zero
+contra um teto positivo cai em "sem dados", porque não gastar nada não é
+"meta superada", é mês sem despesa.
+
+### O mês é do bloco
+
+Cada módulo tem a sua janela de filtro, e três janelas diferentes não produzem
+"o mês do resultado". O bloco tem seletor próprio, que abre no **último mês
+fechado** — o mês em curso está pela metade, e medi-lo contra a meta cheia
+reprovaria todo começo de mês por incompletude. Trocar o mês repinta só os
+cartões; as caixas de módulo e os filtros delas não são tocados.
+
+### Nenhuma conta nova
+
+O resultado sai dos MESMOS calculadores que desenham os indicadores, rodados
+sobre um recorte de um mês só: `calcularObjetivo03`, `calcularProjetos` e
+`calcularSla` no artifact; `/api/indicadores` e `/api/dashboards/financeiro` no
+app. Recalcular por outro caminho abriria espaço para o bloco e o módulo
+divergirem sem ninguém perceber.
+
+### O que falta no app, e por quê
+
+No artifact os três cartões são completos. No app, **o cartão Financeiro fica
+sem meta**: o teto de gasto do Objetivo 03 é um valor em **reais**, e a tabela
+`metas` do servidor guarda apenas `alvo_pct` — não existe coluna para teto, nem
+`tipoMeta`, nem `contextoTeto`. O cartão diz "Sem meta cadastrada" e explica a
+ressalva em vez de comparar o custo com um alvo de outra natureza. Fechar isso
+é mudança de modelo no servidor, e fica para a entrega do serviço de
+consolidação.
+
+Medido por `artifact/testar-resultados.cjs`, `web/verificar-resultados.cjs` e
+`web/testar-regra-resultados.mjs` — este último sem navegador, porque a regra é
+pura e subir um Chromium para conferir uma divisão custaria minutos por caso.
+
 ## Expansões previstas
 
 O modelo já acomoda novos tipos de despesa, filiais, empresas, filas e tópicos

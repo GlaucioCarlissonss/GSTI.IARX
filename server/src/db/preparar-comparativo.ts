@@ -75,4 +75,15 @@ if (outra && tipo2) {
   console.log(`segunda matriz semeada: ${mes} (2) e ${anterior} (1)`);
 }
 
-console.log(`mês anterior semeado: ${anterior} — 3 lançamento(s)`);
+// UM TERCEIRO MÊS, dois atrás. Com um mês fechado só, nenhum seletor de mês
+// pode ser exercido por conferência nenhuma: o bloco Resultados nasceria com
+// uma opção, e trocar o mês não teria para onde ir.
+const retrasado = paraExibicao(somarMeses(competenciaAtual(), -2));
+criarLancamento(ctx, { filialId: sede.id, tipoDespesaId: tipo, competencia: retrasado,
+  valor: 11500, natureza: 'fixa', classificacao: 'despesa',
+  descricao: 'Licença corporativa de antivírus', justificativa: 'base de verificação' });
+criarLancamento(ctx, { filialId: sede.id, tipoDespesaId: tipo, competencia: retrasado,
+  valor: 2800, natureza: 'fixa', classificacao: 'despesa',
+  descricao: 'Telefonia da sede', justificativa: 'base de verificação' });
+
+console.log(`mês anterior semeado: ${anterior} — 3 lançamento(s) · ${retrasado} — 2`);
