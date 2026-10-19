@@ -478,6 +478,18 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
         registros: Number((texto.match(/(\d+) registro\(s\)/) || [])[1] ?? -1),
         confere: /confere com o indicador/.test(texto),
         diverge: /diverge do indicador|não confere/i.test(texto),
+        // O MESMO formato do detalhamento de Custo fixo: a linha que nomeia
+        // os dois meses comparados e as três camadas recolhidas. O cartão já
+        // diz que o mês variou; ao abrir os registros, a pergunta seguinte é
+        // sempre "variou por causa de quê?".
+        cabecalhoComparativo: (texto.match(/\d{2}\/\d{4} vs \d{2}\/\d{4}/) || [''])[0],
+        camadas: [...m.querySelectorAll('[aria-expanded]')]
+          .map((b) => (b.textContent || '').replace(/\s+/g, ' ').trim())
+          .filter((t) => /Diferença vs mês anterior|O que veio no mês filtrado|o que não veio/i.test(t)),
+        recolhidas: [...m.querySelectorAll('[aria-expanded]')]
+          .filter((b) => /Diferença vs mês anterior|O que veio no mês filtrado|o que não veio/i
+            .test(b.textContent || ''))
+          .every((b) => b.getAttribute('aria-expanded') === 'false'),
         texto: texto.slice(0, 220),
       };
     });
@@ -492,6 +504,17 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
       // teria dois números e nenhum jeito de saber qual vale.
       ok(`${mod}: a soma dos registros confere com o cartão (${valorNoCartao})`,
         modal.confere && !modal.diverge, modal.texto.slice(0, 120));
+      // Só o financeiro compara mês a mês: tarefa e chamado não têm valor em
+      // reais, e as camadas se apoiam nele para dizer de onde veio a variação.
+      // Exigi-las ali devolveria três listas sem número para comparar.
+      if (mod === 'financeiro') {
+        ok('financeiro: traz a linha de quais meses se comparam',
+          /\d{2}\/\d{4} vs \d{2}\/\d{4}/.test(modal.cabecalhoComparativo),
+          modal.cabecalhoComparativo || '—');
+        ok('financeiro: traz as três camadas do detalhamento comparativo',
+          modal.camadas.length === 3, modal.camadas.map((c) => c.slice(0, 34)).join(' | '));
+        ok('financeiro: e todas nascem recolhidas', modal.recolhidas);
+      }
     }
     await pag.keyboard.press('Escape');
     await pag.waitForTimeout(500);

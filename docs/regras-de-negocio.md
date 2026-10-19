@@ -3495,6 +3495,29 @@ frentes parecem bem. Olhando a faixa, vê-se que vermelho, laranja e verde vêm
 nessa ordem: não é um bom mês isolado, é uma subida de três meses. A conclusão
 muda, e nenhum dos cartões sozinho a daria.
 
+### "Ver registros" abre o mesmo detalhamento comparativo
+
+O cartão diz que o mês variou — a seta e os pontos percentuais estão nele. A
+pergunta seguinte é sempre a mesma: **variou por causa de quê?** Por isso o
+drill-down do cartão Financeiro abre com as **mesmas três camadas** do
+detalhamento de Custo fixo, e não com a lista solta: diferença vs mês anterior,
+o que veio no mês filtrado, e o mês anterior repartido entre o que veio e o que
+não veio. Sem elas, responder exigia abrir este mês, anotar, trocar o seletor,
+abrir o anterior e comparar de cabeça.
+
+A árvore Tipo → Empresa → Filial → Lançamento que ficava solta no modal passou
+para **dentro da camada 2**, que é onde ela responde "o que veio no mês": nada
+se perde, e deixar as duas lado a lado mostraria a mesma lista duas vezes.
+
+O mês anterior é montado pela **mesma regra** do mês em foco — despesa
+reconhecida, pelo mesmo calculador. Comparar o reconhecido de um mês com o
+total do outro produziria uma diferença que é só a mudança de critério.
+
+**Só o Financeiro compara.** Tarefa e chamado não têm valor em reais, e as
+camadas se apoiam nele para dizer de onde veio a variação; exigi-las ali
+devolveria três listas sem número para comparar. Os cartões de Projetos e SLA
+abrem a lista dos registros do mês, como abriam.
+
 ### Onde as duas superfícies ainda falam diferente, e por quê
 
 A regra é a mesma, e isso é conferido caso a caso por

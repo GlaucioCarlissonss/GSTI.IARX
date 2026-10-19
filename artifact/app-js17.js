@@ -3644,12 +3644,29 @@ function abrirRegistrosDoResultado(modulo, comp) {
   const r = recorteDoMes(comp);
   const nome = (MODULOS_RESULTADO.find((m) => m.chave === modulo) || {}).nome || modulo;
   if (modulo === 'financeiro') {
-    const p = calcularObjetivo03(r).serie.find((x) => x.comp === comp);
-    const itens = [...((p && p.itens) || [])].sort((a, b) => cent(b.valor) - cent(a.valor));
+    const reconhecidasDe = (mes) => {
+      if (!mes) return [];
+      const ponto = calcularObjetivo03(recorteDoMes(mes)).serie.find((x) => x.comp === mes);
+      return [...((ponto && ponto.itens) || [])];
+    };
+    const itens = reconhecidasDe(comp).sort((a, b) => cent(b.valor) - cent(a.valor));
     abrirRegistros({
       titulo: `${nome} — registros de ${mesExib(comp)}`,
-      tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
+      tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true,
       itens, contagem: null,
+      // AS MESMAS TRÊS CAMADAS do detalhamento de Custo fixo, e não só a
+      // árvore. O cartão de Resultados já diz que o mês variou — a seta e os
+      // pontos percentuais estão nele —, e ao abrir os registros a pergunta
+      // seguinte é sempre a mesma: variou por causa de quê? Sem as camadas, a
+      // resposta exigia abrir este mês, anotar, trocar o seletor, abrir o
+      // anterior e comparar de cabeça. A camada 2 continua trazendo a árvore
+      // que estava aqui, então nada se perde ao ganhá-las.
+      //
+      // O mês anterior é montado pela MESMA regra do mês em foco — despesa
+      // reconhecida, pelo mesmo calculador —, porque comparar o reconhecido de
+      // um mês com o total do outro produziria uma diferença que é só a
+      // mudança de critério.
+      comparativo: { mes: comp, anteriores: reconhecidasDe(mesSoma(comp, -1)) },
       nota: `${inteiro(itens.length)} despesa(s) reconhecida(s), somando `
         + `${brl(reais(somaC(itens.map((l) => l.valor))))}. Do maior para o menor valor.`,
     });

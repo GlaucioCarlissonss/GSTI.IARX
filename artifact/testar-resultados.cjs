@@ -465,18 +465,22 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
     bt.click();
     await new Promise((r) => setTimeout(r, 600));
     const m = document.querySelector('.modal');
-    // O detalhamento financeiro abre em ÁRVORE: a última coluna é a barra de
-    // representatividade, não o valor, e os níveis se intercalam. A ordem que
-    // se confere é a do nível 1, que é onde a árvore promete decrescente.
-    const vals = [...document.querySelectorAll('.modal tbody tr.nivel-1')]
-      .map((tr) => {
-        const t = tr.querySelector('td.num');
-        return t ? Number(t.textContent.replace(/[^\d,]/g, '').replace(',', '.')) : null;
-      }).filter((v) => v !== null);
     return { rotulo, abriu: !!m,
       titulo: m ? (m.querySelector('h2, .tit') || {}).textContent.trim() : '',
       nota: m ? m.querySelector('.msg').textContent.replace(/\s+/g, ' ').trim().slice(0, 100) : '',
-      decrescente: vals.every((v, i, a) => i === 0 || a[i - 1] >= v), amostra: vals.length };
+      // O MESMO formato do detalhamento de Custo fixo: a linha que diz quais
+      // dois meses estão sendo comparados, e as três camadas recolhidas.
+      cabecalhoComparativo: m
+        ? ((m.querySelector('.det-comp > p, .det-comp-cab, .camada-cab') || {}).textContent || '').trim()
+        : '',
+      camadas: m ? [...m.querySelectorAll('[data-camada]')].map((c) => {
+        const b = c.querySelector('[aria-expanded]');
+        return { rot: (c.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 44),
+          aberta: b ? b.getAttribute('aria-expanded') : '?' };
+      }) : [],
+      // A árvore passou para DENTRO da camada 2: não pode ter sobrado uma
+      // solta ao lado das camadas, que seria a mesma lista duas vezes.
+      arvoreSolta: m ? m.querySelectorAll('.det-comp ~ [data-arvore-det]').length : 0 };
   });
   if (!reg) {
     ok('o cartão tem o botão de registros', false);
@@ -484,7 +488,37 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
     ok('o botão nomeia o mês', /Ver registros de \d{2}\/\d{4}/.test(reg.rotulo), reg.rotulo);
     ok('ele abre a tela flutuante', reg.abriu);
     ok('com o módulo e o mês no título', /— registros de \d{2}\/\d{4}$/.test(reg.titulo), reg.titulo);
-    ok('do maior para o menor valor', reg.decrescente, `${reg.amostra} valor(es) conferidos`);
+    ok('traz a linha de quais meses se comparam',
+      /\d{2}\/\d{4} vs \d{2}\/\d{4}/.test(reg.cabecalhoComparativo), reg.cabecalhoComparativo);
+    ok('traz as três camadas do detalhamento comparativo', reg.camadas.length === 3,
+      reg.camadas.map((c) => c.rot).join(' | '));
+    ok('e todas nascem recolhidas', reg.camadas.every((c) => c.aberta === 'false'),
+      reg.camadas.map((c) => c.aberta).join(','));
+    ok('sem árvore duplicada ao lado das camadas', reg.arvoreSolta === 0, String(reg.arvoreSolta));
+
+    // A ordenação decrescente continua sendo promessa da árvore — que agora
+    // mora DENTRO da camada 2. Conferi-la sem abrir a camada leria uma lista
+    // vazia, e uma lista vazia passa em "está decrescente" sem provar nada.
+    const ordem = await pag.evaluate(async () => {
+      const bts = [...document.querySelectorAll('.modal [data-camada] [aria-expanded]')];
+      if (!bts[1]) return null;
+      bts[1].click();
+      await new Promise((r) => setTimeout(r, 600));
+      const vals = [...document.querySelectorAll('.modal [data-camada] tbody tr.nivel-1')]
+        .map((tr) => {
+          const t = tr.querySelector('td.num');
+          return t ? Number(t.textContent.replace(/[^\d,]/g, '').replace(',', '.')) : null;
+        }).filter((v) => v !== null);
+      return { quantos: vals.length,
+        decrescente: vals.every((v, i, a) => i === 0 || a[i - 1] >= v) };
+    });
+    if (!ordem || ordem.quantos === 0) {
+      ok('a camada 2 traz a árvore da composição', false,
+        'nenhuma linha de nível 1 depois de abrir a camada');
+    } else {
+      ok('a camada 2 traz a árvore da composição', true, `${ordem.quantos} tipo(s)`);
+      ok('do maior para o menor valor', ordem.decrescente, `${ordem.quantos} valor(es) conferidos`);
+    }
     await pag.evaluate(() => {
       const b = document.querySelector('.modal [data-c]'); if (b) b.click();
     });
