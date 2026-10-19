@@ -289,6 +289,60 @@ function gradeDaOnda(n, goLive, linhas) {
   await pag.evaluate(() => { const b = document.querySelector('.modal [data-c]'); if (b) b.click(); });
   await pag.waitForTimeout(300);
 
+  // ------------------------------------- a leitura dentro dos indicadores
+  //
+  // O plano entra como QUADRO do painel da Visão Micro, e não como bloco
+  // próprio: ele mede o mesmo projeto que os outros quadros, e um painel é o
+  // lugar onde essas leituras se confrontam de relance.
+  console.log('\nINDICADORES — o plano entra no painel da Visão Micro');
+  const { abrirBlocos } = require('./ajuda-testes.cjs');
+  await irPara(pag, 'Indicadores Gerais', 2500);
+  await pag.evaluate(() => render());
+  await pag.waitForTimeout(1200);
+  await abrirBlocos(pag);
+  await pag.waitForTimeout(900);
+
+  const micro = await pag.evaluate(() => {
+    const q = document.querySelector('[data-quadro="plano-acao"]');
+    if (!q) return null;
+    const t = q.textContent.replace(/\s+/g, ' ');
+    const linhas = [...q.querySelectorAll('tbody tr')].map((tr) =>
+      [...tr.cells].map((c) => c.textContent.replace(/\s+/g, ' ').trim()));
+    return { texto: t, linhas,
+      dentroDoPainel: !!q.closest('.painel-spin'),
+      // A Macro é outra caixa: o quadro não pode ter vazado para lá.
+      dentroDaMicro: /Visão Micro/.test(
+        (q.closest('.bloco-grupo') || { textContent: '' }).textContent) };
+  });
+  if (!micro) {
+    ok('o quadro do plano aparece na Visão Micro', false, 'nenhum [data-quadro="plano-acao"]');
+  } else {
+    ok('o quadro do plano aparece na Visão Micro', true);
+    ok('e fica dentro do painel, junto das outras leituras do projeto',
+      micro.dentroDoPainel && micro.dentroDaMicro,
+      `painel=${micro.dentroDoPainel} micro=${micro.dentroDaMicro}`);
+    ok('traz o placar do plano', /Ações do plano/.test(micro.texto) && /Atrasadas/.test(micro.texto));
+    ok('a 1ª onda aparece marcada como em produção',
+      /em produção/.test(micro.texto) && /Porto Velho/.test(micro.texto));
+    // Onda sem ação nenhuma mostra "—", e não 0%: zero afirmaria um fracasso
+    // que ninguém mediu, e é a mesma regra da aderência do cronograma.
+    const semAcao = micro.linhas.find((l) => /^4ª/.test(l[0] || ''));
+    ok('onda sem ação mostra "—", e não 0%',
+      !!semAcao && semAcao[semAcao.length - 1] === '—', (semAcao || []).join(' | '));
+    ok('o rodapé manda para a aba onde a lista vem inteira',
+      /Gestão de Projetos › Plano de Ação/.test(micro.texto));
+  }
+
+  // Sem plano carregado, o quadro não existe — e o painel não quebra.
+  await pag.evaluate(() => { E.planoAcao = []; render(); });
+  await pag.waitForTimeout(900);
+  const semPlano = await pag.evaluate(() => ({
+    quadro: !!document.querySelector('[data-quadro="plano-acao"]'),
+    painel: !!document.querySelector('.painel-spin'),
+  }));
+  ok('sem plano carregado o quadro some, e o painel continua de pé',
+    !semPlano.quadro && semPlano.painel, JSON.stringify(semPlano));
+
   console.log(`\n=== erros de console: ${erros.length ? erros.join(' | ') : 'nenhum'} ===`);
   console.log(`=== ✗=${falhas.length} ===`);
   if (falhas.length) falhas.forEach((f) => console.log('  ✗ ' + f));

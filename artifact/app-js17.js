@@ -4311,6 +4311,15 @@ async function viewIndicadores() {
       </div>
 
     ${painelSpincareHtml(spin, [
+      // O PLANO DE AÇÃO entra como quadro, e não como bloco próprio: ele mede
+      // o mesmo projeto que os demais quadros, e um painel é justamente o
+      // lugar onde essas leituras se confrontam de relance. Vem primeiro
+      // porque responde a pergunta mais urgente das quatro — o que está
+      // segurando a próxima virada.
+      ...(planoAcoes().length ? [{ chave: 'plano-acao', largo: true,
+        titulo: 'Plano de ação — o que falta até cada virada',
+        apoio: 'datas de dia, farol contra hoje',
+        corpo: planoResumoHtml() }] : []),
       // A árvore por unidade das TAREFAS entra como mais um quadro em vez de
       // sumir: ela é a mesma leitura por empresa e filial que os dois
       // indicadores do topo resumem, e só aparece quando há tarefa.

@@ -629,3 +629,79 @@ function removerPlanoDeAcao() {
     } }],
   });
 }
+
+// ------------------------------------------- a leitura dentro dos indicadores
+
+/**
+ * O plano resumido, para o painel da Visão Micro dos Indicadores Gerais.
+ *
+ * É a MESMA leitura da tela de Projetos, rodada sobre as mesmas ações — não um
+ * segundo cálculo. Aqui ela responde uma pergunta de cima: das quatro ondas,
+ * quais estão em dia para virar, e o que está segurando as que não estão.
+ *
+ * A lista mostra só o que está ATRASADO, e não as 146: o painel é de relance,
+ * e uma tabela inteira dentro dele vira a tela de Projetos num lugar onde ela
+ * não cabe. Quem quer o resto abre a aba, que o rodapé indica.
+ */
+function planoResumoHtml() {
+  const acoes = planoAcoes();
+  if (!acoes.length) return '';
+  const p = planoPlacar(acoes);
+  const ondas = planoPorOnda(acoes);
+  const atrasadas = acoes.filter((a) => a.farol === 'ATRASADO')
+    .sort((a, b) => a.diasParaPrazo - b.diasParaPrazo);
+  const vencendo = acoes.filter((a) => a.farol === 'VENCE').length;
+
+  return `
+    <div class="kpis" style="margin-bottom:var(--esp-6)">
+      <div class="kpi"><span class="r">Ações do plano</span>
+        <span class="n">${inteiro(p.total)}</span>
+        <span class="a">${inteiro(p.validas)} valem para o percentual</span></div>
+      <div class="kpi"><span class="r">Concluídas</span>
+        <span class="n" style="color:${PLANO_COR_SITUACAO['Concluído']}">${
+          p.pctConcluido === null ? '—' : pctTxt(p.pctConcluido)}</span>
+        <span class="a">${inteiro(p.concluidas)} de ${inteiro(p.validas)}</span></div>
+      <div class="kpi"><span class="r">Atrasadas</span>
+        <span class="n"${p.atrasadas ? ` style="color:${PLANO_COR_SITUACAO['Atrasado']}"` : ''}>${
+          inteiro(p.atrasadas)}</span>
+        <span class="a">${vencendo ? `${inteiro(vencendo)} vencendo em até 3 dias`
+          : 'nenhuma vencendo nos próximos 3 dias'}</span></div>
+    </div>
+
+    <div class="rol"><table>
+      <thead><tr><th>Onda</th><th>Go-live</th><th class="n">Ações</th>
+        <th class="n">Concl.</th><th class="n">Atrasadas</th><th class="n">%</th></tr></thead>
+      <tbody>${ondas.map((o) => `<tr>
+        <td><strong>${inteiro(o.onda)}ª</strong>${o.emProducao
+          ? ' <span class="tag" style="color:var(--bomtxt);border-color:var(--bomtxt)">em produção</span>'
+          : ''}<div class="arv-comp">${o.unidades.map((u) => esc(u)).join(' · ')}</div></td>
+        <td>${esc(diaExib(o.virada))}</td>
+        <td class="n">${inteiro(o.total)}</td>
+        <td class="n">${inteiro(o.concluidas)}</td>
+        <td class="n"${o.atrasadas ? ' style="color:var(--crit);font-weight:700"' : ''}>${
+          inteiro(o.atrasadas)}</td>
+        <td class="n">${o.pctConcluido === null ? '—' : pctTxt(o.pctConcluido)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+
+    ${atrasadas.length ? `
+      <h4 class="titulo-mini">O que está atrasado${
+        atrasadas.length > 8 ? ` — as 8 mais antigas de ${inteiro(atrasadas.length)}` : ''}</h4>
+      <div class="rol"><table>
+        <thead><tr><th class="n">Onda</th><th>Ação</th><th>Área</th><th>Líder</th>
+          <th class="n">Atraso</th></tr></thead>
+        <tbody>${atrasadas.slice(0, 8).map((a) => `<tr>
+          <td class="n">${inteiro(a.onda)}ª</td>
+          <td class="texto">${esc(a.tarefa)}</td>
+          <td>${esc(a.area || '—')}</td>
+          <td>${esc(a.lider && a.lider !== '-' ? a.lider : '—')}</td>
+          <td class="n" style="color:var(--crit);font-weight:700">${
+            inteiro(Math.abs(a.diasParaPrazo))}d</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`
+      : '<p class="nota" style="margin-top:var(--esp-5)">Nenhuma ação atrasada.</p>'}
+
+    <p class="nota" style="margin-top:var(--esp-5)">Em
+      <strong>Gestão de Projetos › Plano de Ação</strong> a lista vem inteira, com os cortes por
+      onda, área e líder. O farol é recalculado contra hoje, ${esc(diaExib(planoHojeISO()))}.</p>`;
+}
