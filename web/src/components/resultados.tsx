@@ -19,7 +19,7 @@ import { api } from '../lib/api';
 import { useDados } from '../lib/sessao';
 import { competenciaExib, competenciaOrdem, competenciaSoma, moeda, percentual } from '../lib/formato';
 import type { LeituraDeMeta } from './graficos';
-import { atingimentoDaMeta, textoDaMeta, type DirecaoMeta } from '../lib/resultados';
+import { atingimentoDaMeta, textoDaMeta, type Atingimento, type DirecaoMeta } from '../lib/resultados';
 
 interface CartaoResultado {
   chave: string;
@@ -49,7 +49,60 @@ function alvoDaLeitura(m: LeituraDeMeta | null | undefined): number | null {
   return typeof (m as { alvo?: number }).alvo === 'number' ? (m as { alvo: number }).alvo : null;
 }
 
-function Cartao({ c }: { c: CartaoResultado }) {
+/**
+ * A BARRA DE ATINGIMENTO: o quanto da meta foi cumprido, em comprimento.
+ *
+ * O preenchimento para em 100% de propósito. Uma barra que passasse da caixa
+ * perderia a referência — "cheia" deixaria de querer dizer "meta atingida" —, e
+ * duas metas superadas por margens diferentes ficariam com a mesma aparência
+ * de transbordo. O excedente vira uma marca no fim e uma frase ao lado.
+ *
+ * `role="progressbar"` com `aria-valuenow` é o que faz o leitor de tela
+ * anunciar o número; o `aria-label` carrega a frase da meta por extenso,
+ * porque "83,5" sozinho não diz de quê.
+ */
+function BarraDeAtingimento({ a, c, fmt, mes }: {
+  a: Atingimento; c: CartaoResultado; fmt: (v: number) => string; mes: string;
+}) {
+  if (a.pct === undefined) {
+    return <div className="res-barra vazia" aria-hidden><span /></div>;
+  }
+  const cheio = Math.max(0, Math.min(100, a.pct));
+  const excedeu = a.pct > 100;
+  const cor = a.faixa === 'VERDE' ? 'var(--bom)'
+    : a.faixa === 'LARANJA' ? 'var(--atencao)' : 'var(--critico)';
+  const dica = [
+    `Resultado: ${c.resultado === null ? '—' : fmt(c.resultado)}`,
+    `Meta: ${c.meta === null ? '—' : fmt(c.meta)}`,
+    `Atingimento: ${percentual(a.pct)}`,
+    c.direcao === 'maximo'
+      ? 'Direção: menor é melhor — a meta é um teto'
+      : 'Direção: maior é melhor — a meta é um piso',
+    `Mês de referência: ${competenciaExib(mes)}`,
+  ].join('\n');
+  return (
+    <>
+      <div
+        className={`res-barra faixa-${a.faixa.toLowerCase()}`}
+        role="progressbar"
+        aria-valuenow={Number(a.pct.toFixed(1))}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${textoDaMeta(a, c.meta, fmt)} — atingimento de ${percentual(a.pct)}`}
+        title={dica}
+      >
+        <span className="res-trilha" aria-hidden>
+          <i style={{ width: `${cheio.toFixed(1)}%`, background: cor }} />
+          {excedeu && <em className="res-excedeu" />}
+        </span>
+        <b className="res-pct">{percentual(a.pct)}</b>
+      </div>
+      {excedeu && <p className="res-excesso">Meta superada em {percentual(a.pct - 100)}.</p>}
+    </>
+  );
+}
+
+function Cartao({ c, mes }: { c: CartaoResultado; mes: string }) {
   const a = atingimentoDaMeta(c.direcao, c.resultado, c.meta);
   const semNumero = a.faixa === 'SEM_DADOS';
   const fmt = (v: number) => (c.emReais ? moeda(v) : percentual(v));
@@ -66,6 +119,7 @@ function Cartao({ c }: { c: CartaoResultado }) {
         <dt>Atingimento</dt>
         <dd className="res-ating">{a.pct === undefined ? '—' : percentual(a.pct)}</dd>
       </dl>
+      <BarraDeAtingimento a={a} c={c} fmt={fmt} mes={mes} />
       <p className="res-texto">{textoDaMeta(a, c.meta, fmt)}</p>
       {c.ressalva && <p className="res-ressalva">{c.ressalva}</p>}
     </article>
@@ -220,7 +274,7 @@ export function BlocoResultados({
       ) : (
         <div className="grade-resultados">
           {cartoes.map((c) => (
-            <Cartao c={c} key={c.chave} />
+            <Cartao c={c} mes={emFoco} key={c.chave} />
           ))}
         </div>
       )}

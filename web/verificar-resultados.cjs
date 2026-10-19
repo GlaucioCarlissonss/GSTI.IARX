@@ -171,6 +171,63 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   // tem é o bundle — e deixava um erro de console que não era do produto.
 
   // ------------------------------------------------------------ contraste
+  console.log('\nBARRA — preenchimento, acessibilidade e dica');
+  // Procura um mês em que algum cartão tenha meta E resultado: no mês padrão a
+  // base de verificação pode não ter nenhum, e uma asserção que nunca é
+  // exercida não protege nada.
+  const mesesDisponiveis = await pag.$$eval('[data-mes-resultados] option', (os) => os.map((o) => o.value));
+  for (const m of mesesDisponiveis) {
+    await pag.evaluate(async (valor) => {
+      const sel = document.querySelector('[data-mes-resultados]');
+      const nativo = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+      nativo.call(sel, valor);
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }, m);
+    await pag.waitForTimeout(1600);
+    const achou = await pag.$$eval('.cartao-resultado .res-barra',
+      (bs) => bs.some((b) => !b.classList.contains('vazia')));
+    if (achou) { console.log(`  · mês com barra preenchida: ${m}`); break; }
+  }
+  const barras = await pag.evaluate(() => [...document.querySelectorAll('.cartao-resultado')]
+    .map((c) => {
+      const b = c.querySelector('.res-barra');
+      const i = c.querySelector('.res-trilha > i');
+      return { mod: c.dataset.modulo,
+        faixa: ([...c.classList].find((x) => x.startsWith('faixa-')) || '').replace('faixa-', ''),
+        temBarra: !!b, vazia: !!(b && b.classList.contains('vazia')),
+        papel: b && b.getAttribute('role'),
+        agora: b && b.getAttribute('aria-valuenow'),
+        min: b && b.getAttribute('aria-valuemin'), max: b && b.getAttribute('aria-valuemax'),
+        rotulo: (b && b.getAttribute('aria-label')) || '',
+        dica: (b && b.getAttribute('title')) || '',
+        largura: i ? parseFloat(i.style.width) : null,
+        pct: (c.querySelector('.res-pct') || {}).textContent || '' };
+    }));
+  ok('todo cartão tem barra', barras.every((b) => b.temBarra), `${barras.length} cartão(ões)`);
+  const comMeta = barras.filter((b) => !b.vazia);
+  ok('sem atingimento, a barra fica neutra e vazia',
+    barras.filter((b) => b.faixa === 'sem_dados' || b.faixa === 'sem_meta').every((b) => b.vazia),
+    barras.map((b) => `${b.mod}=${b.vazia ? 'vazia' : 'cheia'}`).join(' · '));
+  if (comMeta.length) {
+    ok('o preenchimento nunca passa de 100%', comMeta.every((b) => b.largura <= 100),
+      comMeta.map((b) => `${b.mod}:${b.largura}%`).join(' · '));
+    ok('o preenchimento é proporcional ao atingimento',
+      comMeta.every((b) => Math.abs(b.largura - Math.min(100, Number(b.agora))) < 0.2),
+      comMeta.map((b) => `${b.largura}/${b.agora}`).join(' · '));
+    ok('o percentual sai com uma casa decimal',
+      comMeta.every((b) => /^\d+,\d%$/.test(b.pct.trim())), comMeta.map((b) => b.pct).join(' · '));
+    ok('a barra é um progressbar com valor, mínimo e máximo',
+      comMeta.every((b) => b.papel === 'progressbar' && b.min === '0' && b.max === '100'
+        && Number.isFinite(Number(b.agora))));
+    ok('com a frase da meta no rótulo',
+      comMeta.every((b) => /atingimento de/.test(b.rotulo)), comMeta[0].rotulo.slice(0, 70));
+    ok('a dica traz resultado, meta, atingimento, direção e mês',
+      comMeta.every((b) => ['Resultado', 'Meta', 'Atingimento', 'Direção', 'Mês de referência']
+        .every((x) => b.dica.includes(x))), comMeta[0].dica.replace(/\n/g, ' · ').slice(0, 120));
+  } else {
+    console.log('  · nenhum cartão com meta nesta base; o preenchimento não pôde ser exercido');
+  }
+
   console.log('\nCONTRASTE — o bloco passa na régua AA, nos dois temas');
   for (const tema of ['light', 'dark']) {
     await pag.evaluate((t) => document.documentElement.setAttribute('data-theme', t), tema);

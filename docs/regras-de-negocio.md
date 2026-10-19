@@ -3349,6 +3349,25 @@ negativa cai em "sem meta"; resultado ausente cai em "sem dados"; e gasto zero
 contra um teto positivo cai em "sem dados", porque não gastar nada não é
 "meta superada", é mês sem despesa.
 
+### A barra de atingimento
+
+O quanto da meta foi cumprido, em comprimento, na cor do semáforo.
+
+**O preenchimento para em 100%.** Uma barra que passasse da caixa perderia a
+referência — "cheia" deixaria de querer dizer "meta atingida" —, e duas metas
+superadas por margens diferentes ficariam com a mesma aparência de transbordo.
+O excedente vira uma marca hachurada no fim da trilha e uma frase ao lado:
+*"Meta superada em 25,0%"*. Exatamente na meta não conta como superação.
+
+O percentual sai com **uma casa decimal**, ao lado da barra. Sem atingimento —
+sem meta ou sem resultado — a trilha fica neutra e vazia, sem número.
+
+Acessibilidade: `role="progressbar"` com `aria-valuenow`, `aria-valuemin` e
+`aria-valuemax`, e o `aria-label` carregando a frase da meta por extenso, porque
+"83,5" sozinho não diz de quê. O balão (hover e foco) traz os cinco dados:
+resultado, meta, atingimento, **direção da meta** por extenso — "menor é melhor,
+a meta é um teto" — e o mês de referência.
+
 ### O mês é do bloco
 
 Cada módulo tem a sua janela de filtro, e três janelas diferentes não produzem

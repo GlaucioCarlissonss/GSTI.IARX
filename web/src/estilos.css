@@ -697,6 +697,25 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
 }
 .res-linha dd { margin: 0; font-family: var(--mono); font-size: var(--txt-3); font-variant-numeric: tabular-nums; color: var(--tinta-2); }
 .res-linha dd.res-ating { color: var(--tinta); font-weight: 600; }
+/* A barra de atingimento. O preenchimento para em 100%: uma barra que
+   passasse da caixa perderia a referência. O excedente vira a marca no fim e
+   a frase abaixo. */
+.res-barra { display: flex; align-items: center; gap: var(--esp-5); margin-top: var(--esp-4); }
+.res-trilha {
+  position: relative; flex: 1 1 auto; height: 9px; min-width: 60px; border-radius: 5px;
+  background: color-mix(in srgb, var(--tinta-fraca) 20%, transparent); overflow: hidden;
+}
+.res-trilha > i { display: block; height: 100%; border-radius: 5px; min-width: 2px; }
+.res-trilha > .res-excedeu {
+  position: absolute; inset: 0 0 0 auto; width: 14px;
+  background: repeating-linear-gradient(45deg, var(--superficie-2) 0 2px, transparent 2px 5px);
+}
+.res-pct { flex: none; font-family: var(--mono); font-size: var(--txt-2); font-variant-numeric: tabular-nums; }
+.res-barra.vazia > span {
+  flex: 1 1 auto; height: 9px; border-radius: 5px; opacity: 0.4;
+  background: color-mix(in srgb, var(--tinta-fraca) 14%, transparent);
+}
+.res-excesso { margin: var(--esp-2) 0 0; font-size: var(--txt-1); color: var(--positivo-texto); }
 .res-texto { margin: var(--esp-3) 0 0; font-size: var(--txt-2); font-weight: 600; }
 .faixa-verde .res-texto { color: var(--positivo-texto); }
 .faixa-laranja .res-texto { color: var(--atencao); }

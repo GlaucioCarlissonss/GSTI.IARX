@@ -3387,6 +3387,51 @@ function textoDaMeta(a, moeda) {
     : `Meta ${valor} não atingida`;
 }
 
+/**
+ * A BARRA DE ATINGIMENTO: o quanto da meta foi cumprido, em comprimento.
+ *
+ * O preenchimento para em 100% de propósito. Uma barra que passasse da caixa
+ * perderia a referência — "cheia" deixaria de querer dizer "meta atingida" —, e
+ * duas metas superadas por margens diferentes ficariam com a mesma aparência de
+ * transbordo. O excedente vira uma marca no fim da barra e uma frase ao lado,
+ * que é onde ele se lê sem desmontar a escala.
+ *
+ * `role="progressbar"` com `aria-valuenow` é o que faz o leitor de tela
+ * anunciar o número; o `aria-label` carrega a frase da meta por extenso,
+ * porque "83,5" sozinho não diz de quê.
+ */
+function barraDeAtingimentoHtml(a, dados, modulo, comp) {
+  if (a.pct === undefined) {
+    return '<div class="res-barra vazia" aria-hidden="true"><span></span></div>';
+  }
+  const cheio = Math.max(0, Math.min(100, a.pct));
+  const excedeu = a.pct > 100;
+  const cor = a.faixa === 'VERDE' ? 'var(--bom)'
+    : a.faixa === 'LARANJA' ? 'var(--alerta)' : 'var(--crit)';
+  const fmt = (v) => (dados.moeda ? brl(v) : pctTxt(v));
+  const detalhe = {
+    titulo: `${modulo.nome} · ${mesExib(comp)}`,
+    linhas: [
+      { nome: 'Resultado', valor: fmt(dados.resultado) },
+      { nome: 'Meta', valor: fmt(dados.meta) },
+      { nome: 'Atingimento', valor: pctTxt(a.pct), cor },
+      { nome: 'Direção da meta', valor: a.menor
+        ? 'menor é melhor — a meta é um teto' : 'maior é melhor — a meta é um piso' },
+      { nome: 'Mês de referência', valor: mesExib(comp) },
+    ],
+  };
+  return `<div class="res-barra faixa-${a.faixa.toLowerCase()}"
+      role="progressbar" aria-valuenow="${a.pct.toFixed(1)}" aria-valuemin="0" aria-valuemax="100"
+      aria-label="${esc(textoDaMeta(a, dados.moeda))} — atingimento de ${esc(pctTxt(a.pct))}"
+      data-dica="${esc(JSON.stringify(detalhe))}">
+    <span class="res-trilha" aria-hidden="true"
+      ><i style="width:${cheio.toFixed(1)}%;background:${cor}"></i
+      >${excedeu ? '<em class="res-excedeu" title="meta superada"></em>' : ''}</span>
+    <b class="res-pct">${pctTxt(a.pct)}</b>
+  </div>
+  ${excedeu ? `<p class="res-excesso">Meta superada em ${esc(pctTxt(a.pct - 100))}.</p>` : ''}`;
+}
+
 const MODULOS_RESULTADO = [
   { chave: 'financeiro', nome: 'Financeiro', oQue: 'despesa reconhecida contra o teto de gasto' },
   { chave: 'projetos', nome: 'Projetos', oQue: 'tarefas entregues no prazo' },
@@ -3423,6 +3468,7 @@ function cartoesDeResultadoHtml(comp) {
           : dados.moeda ? brl(dados.meta) : pctTxt(dados.meta)}</dd>
         <dt>Atingimento</dt><dd class="res-ating">${a.pct === undefined ? '—' : pctTxt(a.pct)}</dd>
       </dl>
+      ${barraDeAtingimentoHtml(a, dados, m, comp)}
       <p class="res-texto">${esc(textoDaMeta(a, dados.moeda))}</p>
     </article>`;
   }).join('')}</div>`;
@@ -3460,7 +3506,7 @@ function ligarBlocoResultados(raiz) {
   sel.onchange = () => {
     E.mesResultados = sel.value;
     const area = (raiz || el('#pagina')).querySelector('[data-cartoes-resultado]');
-    if (area) area.innerHTML = cartoesDeResultadoHtml(E.mesResultados);
+    if (area) { area.innerHTML = cartoesDeResultadoHtml(E.mesResultados); ligarDicasDaTela(area); }
   };
 }
 

@@ -846,6 +846,23 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{border-color:var
 .res-linha dd{margin:0;font-family:var(--mono);font-size:var(--txt-3);
   font-variant-numeric:tabular-nums;color:var(--tinta2)}
 .res-linha dd.res-ating{color:var(--tinta);font-weight:var(--peso-forte)}
+/* A barra de atingimento. O preenchimento para em 100%: uma barra que
+   passasse da caixa perderia a referência, e duas metas superadas por margens
+   diferentes ficariam com a mesma aparência de transbordo. O excedente vira a
+   marca no fim e a frase abaixo. */
+.res-barra{display:flex;align-items:center;gap:var(--esp-5);margin-top:var(--esp-4)}
+.res-trilha{position:relative;flex:1 1 auto;height:9px;min-width:60px;border-radius:5px;
+  background:color-mix(in srgb,var(--tinta3) 20%,transparent);overflow:hidden}
+.res-trilha>i{display:block;height:100%;border-radius:5px;min-width:2px}
+/* A marca do excedente: uma faixa no fim da trilha, hachurada para não se
+   confundir com preenchimento. */
+.res-trilha>.res-excedeu{position:absolute;inset:0 0 0 auto;width:14px;
+  background:repeating-linear-gradient(45deg,var(--sup) 0 2px,transparent 2px 5px)}
+.res-pct{flex:none;font-family:var(--mono);font-size:var(--txt-2);font-variant-numeric:tabular-nums}
+.res-barra.vazia .res-trilha{opacity:.4}
+.res-barra.vazia>span{flex:1 1 auto;height:9px;border-radius:5px;
+  background:color-mix(in srgb,var(--tinta3) 14%,transparent)}
+.res-excesso{margin:var(--esp-2) 0 0;font-size:var(--txt-1);color:var(--bomtxt)}
 .res-texto{margin:var(--esp-3) 0 0;font-size:var(--txt-2);font-weight:var(--peso-forte)}
 .faixa-verde .res-texto{color:var(--bomtxt)}
 .faixa-laranja .res-texto{color:var(--alerta)}

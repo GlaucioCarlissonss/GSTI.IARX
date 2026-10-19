@@ -330,6 +330,87 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
         document.querySelector('.cartao-resultado[data-modulo="financeiro"] .res-texto').textContent)));
   }
 
+  // ------------------------------------------- a barra de atingimento
+  //
+  // O preenchimento para em 100%: uma barra que passasse da caixa perderia a
+  // referência, e duas metas superadas por margens diferentes ficariam com a
+  // mesma aparência de transbordo.
+  console.log('\nBARRA — preenchimento, teto em 100% e o excedente marcado');
+  const barras = await pag.evaluate(async () => {
+    const comp = document.querySelector('[data-mes-resultados]').value;
+    const res = resultadoDoMes('financeiro', comp).resultado;
+    if (!(res > 0)) return { semBase: true };
+    const original = E.metas;
+    const saida = [];
+    // menor é melhor: teto acima do gasto atinge; muito acima, supera.
+    for (const [caso, fator, faixa] of [['superada', 1.25, 'verde'], ['na-meta', 1, 'verde'],
+      ['parcial', 0.8, 'laranja'], ['nao-atingida', 0.5, 'vermelho']]) {
+      E.metas = [{ nome: 't', modulo: 'financeiro', tipoMeta: 'objetivo-03', contextoTeto: 'fixas',
+        valorTeto: res * fator, ativo: true, cliente: E.clienteSel, alvoPct: 0 }];
+      const area = document.querySelector('[data-cartoes-resultado]');
+      area.innerHTML = cartoesDeResultadoHtml(comp);
+      ligarDicasDaTela(area);
+      await new Promise((r) => setTimeout(r, 60));
+      const c = area.querySelector('.cartao-resultado[data-modulo="financeiro"]');
+      const b = c.querySelector('.res-barra');
+      const i = c.querySelector('.res-trilha > i');
+      saida.push({ caso, faixaEsperada: faixa,
+        faixa: ([...c.classList].find((x) => x.startsWith('faixa-')) || '').replace('faixa-', ''),
+        papel: b.getAttribute('role'),
+        agora: Number(b.getAttribute('aria-valuenow')),
+        min: b.getAttribute('aria-valuemin'), max: b.getAttribute('aria-valuemax'),
+        rotulo: b.getAttribute('aria-label') || '',
+        largura: parseFloat(i.style.width),
+        corFundo: i.style.background,
+        pct: c.querySelector('.res-pct').textContent.trim(),
+        excedeu: !!c.querySelector('.res-excedeu'),
+        excesso: (c.querySelector('.res-excesso') || {}).textContent || '',
+        temDica: !!b.dataset.dica,
+        dica: b.dataset.dica || '' });
+    }
+    E.metas = original;
+    const area = document.querySelector('[data-cartoes-resultado]');
+    area.innerHTML = cartoesDeResultadoHtml(comp);
+    ligarDicasDaTela(area);
+    const semMeta = area.querySelector('.cartao-resultado[data-modulo="projetos"] .res-barra');
+    return { semBase: false, saida, barraVazia: !!(semMeta && semMeta.classList.contains('vazia')) };
+  });
+  if (barras.semBase) {
+    console.log('  · o mês em foco não tem despesa reconhecida; a barra não pode ser exercida');
+  } else {
+    for (const b of barras.saida) {
+      ok(`${b.caso}: a faixa é ${b.faixaEsperada}`, b.faixa === b.faixaEsperada, b.faixa);
+    }
+    ok('o preenchimento é proporcional ao atingimento',
+      barras.saida.every((b) => Math.abs(b.largura - Math.min(100, b.agora)) < 0.2),
+      barras.saida.map((b) => `${b.caso}:${b.largura}%/${b.agora}`).join(' · '));
+    ok('o preenchimento NUNCA passa de 100%', barras.saida.every((b) => b.largura <= 100),
+      barras.saida.map((b) => b.largura).join(' · '));
+    ok('quem supera a meta é marcado',
+      barras.saida.find((b) => b.caso === 'superada').excedeu
+        && !barras.saida.find((b) => b.caso === 'parcial').excedeu);
+    ok('e a frase diz de quanto foi a superação',
+      /Meta superada em 25,0%/.test(barras.saida.find((b) => b.caso === 'superada').excesso),
+      barras.saida.find((b) => b.caso === 'superada').excesso.trim());
+    ok('exatamente na meta não conta como superada',
+      !barras.saida.find((b) => b.caso === 'na-meta').excedeu);
+    ok('o percentual sai com uma casa decimal',
+      barras.saida.every((b) => /^\d+,\d%$/.test(b.pct)), barras.saida.map((b) => b.pct).join(' · '));
+    // Acessibilidade: a barra se anuncia.
+    ok('a barra é um progressbar', barras.saida.every((b) => b.papel === 'progressbar'));
+    ok('com valor, mínimo e máximo',
+      barras.saida.every((b) => Number.isFinite(b.agora) && b.min === '0' && b.max === '100'));
+    ok('e com a frase da meta no rótulo',
+      barras.saida.every((b) => /Meta .+ (atingida|parcialmente atingida|não atingida) — atingimento de/.test(b.rotulo)),
+      barras.saida[0].rotulo.slice(0, 70));
+    // O balão traz as cinco informações do enunciado.
+    const d = barras.saida[0].dica;
+    ok('o balão traz resultado, meta, atingimento, direção e mês',
+      ['Resultado', 'Meta', 'Atingimento', 'Direção da meta', 'Mês de referência']
+        .every((x) => d.includes(x)), d.slice(0, 120));
+    ok('sem atingimento, a barra fica neutra e vazia', barras.barraVazia);
+  }
+
   console.log(`\n=== erros de console: ${erros.length ? erros.slice(0, 5).join(' | ') : 'nenhum'} ===`);
   console.log(`=== ✗=${falhas.length} ===`);
   if (falhas.length) falhas.forEach((f) => console.log('  ✗ ' + f));
