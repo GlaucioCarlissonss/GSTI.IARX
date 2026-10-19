@@ -13,7 +13,7 @@ const MODULOS_NAV = [
   // gestor procurar SLA dentro de Financeiro.
   { id:'indicadores', rotulo:'Indicadores Gerais',  abas:['indicadores_gerais'] },
   { id:'financeiro', rotulo:'Controle Financeiro',  abas:['painel', 'lancamentos', 'relatorio', 'conferencia'] },
-  { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos', 'spincare'] },
+  { id:'projetos',   rotulo:'Gestão de Projetos',   abas:['projetos', 'spincare', 'planoacao'] },
   { id:'suporte',    rotulo:'Gestão de Suporte TI', abas:['sla', 'chamados', 'OSTICK', 'BITRIX24', 'integracoes'] },
   { id:'sistema',    rotulo:'Sistema',              abas:['dados', 'clientes', 'cadastros', 'metas', 'slas', 'feriados', 'reducao', 'reconhecedores', 'acessos', 'auditoria'] },
 ];
@@ -26,6 +26,7 @@ const ABAS = [
   { id:'conferencia', rotulo:'Conferência',  view: viewConferencia },
   { id:'projetos',    rotulo:'Projetos',     view: viewProjetos },
   { id:'spincare',    rotulo:'Projeto SpinCare', view: viewSpincare },
+  { id:'planoacao',   rotulo:'Plano de Ação', view: viewPlanoAcao },
   { id:'sla',         rotulo:'Indicadores',  view: () => viewSla('indicadores') },
   { id:'chamados',    rotulo:'Chamados',     view: () => viewSla('chamados') },
   // As duas entradas por sistema de origem são a MESMA tela de chamados, com a
@@ -51,7 +52,7 @@ const ABAS = [
 // Usuários e acessos e Auditoria olham o cliente inteiro. Um selo único no
 // grupo seria impreciso — por isso o ponto vai por aba, só nestas três.
 const ESCOPO_CLIENTE = new Set(['clientes', 'metas', 'reducao', 'reconhecedores', 'acessos',
-  'auditoria', 'spincare', 'feriados']);
+  'auditoria', 'spincare', 'planoacao', 'feriados']);
 
 /** Módulo a que a aba pertence. */
 const moduloDaAba = (aba) => MODULOS_NAV.find((m) => m.abas.includes(aba)) || MODULOS_NAV[0];
@@ -168,6 +169,9 @@ const FILTROS_DA_TELA = {
   // foco a escolher, e oferecer o seletor sugeriria um recorte que a tela
   // não tem — as unidades são colunas dentro de cada atividade.
   spincare:    {},
+  // O plano é do PROJETO, que é do cliente: as ondas atravessam as unidades,
+  // e um seletor de unidade aqui prometeria um recorte que a tela não tem.
+  planoacao:   {},
   sla:         { empresa: true, filial: true, base: false },
   chamados:    { empresa: true, filial: true, base: false },
   OSTICK:      { empresa: true, filial: true, base: false },

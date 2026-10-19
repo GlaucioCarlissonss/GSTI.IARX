@@ -201,6 +201,94 @@ function gradeDaOnda(n, goLive, linhas) {
     divergente.some((p) => /go-live/i.test(p) && /Vale o cronograma/i.test(p)),
     divergente.join(' | ').slice(0, 120));
 
+  // --------------------------------------------------------------- a tela
+  console.log('\nA TELA — aba própria, placar e ordem por urgência');
+  const { irPara } = require('./ajuda-testes.cjs');
+  await irPara(pag, 'Plano de Ação', 1400);
+  const abas = await pag.$$eval('#abas button', (b) => b.map((x) => x.textContent.trim()));
+  ok('a aba fica ao lado do Controle Único, dentro de Projetos',
+    abas.includes('Plano de Ação') && abas.includes('Projeto SpinCare'), abas.join(' · '));
+  const vazio = await pag.textContent('#pagina');
+  ok('sem carga, a tela diz o que fazer em vez de mostrar zeros',
+    /Nenhuma ação carregada ainda/i.test(vazio));
+  ok('e explica que o farol é recalculado contra hoje',
+    /recalculado contra\s+hoje/i.test(vazio.replace(/\s+/g, ' ')));
+
+  // Com ações no estado: é o mesmo caminho que a carga usa para pintar.
+  await pag.evaluate(() => {
+    const c = E.clienteSel;
+    E.planoAcao = [
+      { cliente: c, onda: 1, n: 1, tarefa: 'Ação no prazo', area: 'Compras', lider: 'P1',
+        inicio: '2026-10-05', fim: '2026-10-31', status: 'Em andamento', link: '',
+        observacoes: '', evolucoes: 'uma evolução registrada' },
+      { cliente: c, onda: 1, n: 5, tarefa: 'Ação atrasada', area: 'Faturamento', lider: 'P2',
+        inicio: '2026-10-13', fim: '2026-10-14', status: 'Em andamento', link: '',
+        observacoes: '', evolucoes: '' },
+      { cliente: c, onda: 1, n: 2, tarefa: 'Ação concluída', area: 'Faturamento', lider: 'P2',
+        inicio: '2026-10-07', fim: '2026-10-13', status: 'Concluído', link: '',
+        observacoes: '', evolucoes: '' },
+      { cliente: c, onda: 2, n: 6, tarefa: 'Ação cancelada', area: 'TI', lider: 'P3',
+        inicio: '2026-10-13', fim: '2026-10-14', status: 'Cancelado', link: '',
+        observacoes: '', evolucoes: '' },
+    ];
+    render();
+  });
+  await pag.waitForTimeout(800);
+
+  const tela = await pag.evaluate(() => {
+    const txt = document.querySelector('#pagina').textContent.replace(/\s+/g, ' ');
+    const kpi = (rot) => {
+      const k = [...document.querySelectorAll('.kpi')]
+        .find((x) => (x.querySelector('.r') || {}).textContent.trim() === rot);
+      return k ? (k.querySelector('.n') || {}).textContent.trim() : null;
+    };
+    return {
+      total: kpi('Total de ações'), concluidas: kpi('Concluídas'),
+      emAndamento: kpi('Em andamento'), atrasadas: kpi('Atrasadas'), pct: kpi('% concluído'),
+      farois: [...document.querySelectorAll('.acao-plano')]
+        .map((tr) => tr.cells[8].textContent.trim()),
+      ondas: [...document.querySelectorAll('.acao-plano')].map((tr) => tr.cells[0].textContent.trim()),
+      temEmProducao: /em produção/.test(txt),
+      diaNoCabecalho: /19\/10\/2026/.test(txt),
+    };
+  });
+  ok('o placar conta as quatro', tela.total === '4', String(tela.total));
+  ok('a atrasada sai do "em andamento" e vira atrasada',
+    tela.emAndamento === '1' && tela.atrasadas === '1',
+    `andamento=${tela.emAndamento} atrasadas=${tela.atrasadas}`);
+  ok('a cancelada sai do denominador: 1 de 3 dá 33,3%', tela.pct === '33,3%', String(tela.pct));
+  ok('o cabeçalho diz contra que dia o farol foi calculado', tela.diaNoCabecalho);
+  // A ordem do arquivo é a de quem o escreveu; a da tela é a de quem precisa
+  // agir. Atrasado primeiro, cancelado por último.
+  ok('a lista vem da mais urgente para a menos',
+    tela.farois.join(' → ') === 'Atrasado 5d → No prazo 12d → Concluído → Cancelado',
+    tela.farois.join(' → '));
+  ok('a 1ª onda aparece marcada como em produção', tela.temEmProducao);
+
+  console.log('\nA TELA — os cortes e a ficha da ação');
+  await pag.selectOption('[data-corte-plano="situacao"]', 'Atrasado');
+  await pag.waitForTimeout(700);
+  const filtrado = await pag.$$eval('.acao-plano', (trs) =>
+    trs.map((tr) => tr.cells[2].textContent.trim()));
+  ok('filtrar por situação deixa só as atrasadas',
+    filtrado.length === 1 && /Ação atrasada/.test(filtrado[0]), filtrado.join(' · '));
+  await pag.click('#pf-limpar');
+  await pag.waitForTimeout(700);
+  ok('limpar devolve as quatro',
+    (await pag.$$eval('.acao-plano', (t) => t.length)) === 4);
+
+  await pag.click('.acao-plano');
+  await pag.waitForTimeout(600);
+  const ficha = await pag.evaluate(() => {
+    const m = document.querySelector('.modal');
+    return m ? m.textContent.replace(/\s+/g, ' ') : null;
+  });
+  ok('clicar na ação abre a ficha dela', !!ficha && /nº 5/.test(ficha), (ficha || '').slice(0, 70));
+  ok('com a situação e o farol por extenso',
+    !!ficha && /Atrasado/.test(ficha) && /Fim planejado/.test(ficha));
+  await pag.evaluate(() => { const b = document.querySelector('.modal [data-c]'); if (b) b.click(); });
+  await pag.waitForTimeout(300);
+
   console.log(`\n=== erros de console: ${erros.length ? erros.join(' | ') : 'nenhum'} ===`);
   console.log(`=== ✗=${falhas.length} ===`);
   if (falhas.length) falhas.forEach((f) => console.log('  ✗ ' + f));

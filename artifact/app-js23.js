@@ -321,3 +321,311 @@ async function importarPlanoDeAcao(ondas, nomeArquivo) {
   E.planoAcaoRelatorio = lido;
   return lido;
 }
+
+// ----------------------------------------------------------------- a tela
+
+/** Os cortes da tela. Só de sessão: recorte de leitura não é configuração. */
+function planoFiltro() {
+  if (!E.planoFiltro) E.planoFiltro = { onda: '', area: '', situacao: '', lider: '', busca: '' };
+  return E.planoFiltro;
+}
+
+/** As ações que passam pelos cortes, já derivadas e ordenadas. */
+function planoFiltradas() {
+  const f = planoFiltro();
+  const texto = spinChaveNome(f.busca);
+  return planoAcoes()
+    .filter((a) => (!f.onda || String(a.onda) === f.onda)
+      && (!f.area || a.area === f.area)
+      && (!f.situacao || a.situacao === f.situacao)
+      && (!f.lider || a.lider === f.lider)
+      && (!texto || spinChaveNome(`${a.tarefa} ${a.area} ${a.lider} ${a.evolucoes}`).includes(texto)))
+    // O MAIS URGENTE PRIMEIRO, e não pela numeração da planilha: a ordem do
+    // arquivo é a de quem o escreveu, e não responde "o que fazer agora".
+    // Atrasado antes de vencendo, vencendo antes de no prazo, e dentro de
+    // cada grupo o prazo mais próximo na frente.
+    .sort((a, b) => (PLANO_URGENCIA[a.farol] - PLANO_URGENCIA[b.farol])
+      || ((a.diasParaPrazo ?? 1e9) - (b.diasParaPrazo ?? 1e9))
+      || (a.onda - b.onda) || (a.n - b.n));
+}
+
+/** A ordem de urgência dos faróis. Menor vem primeiro. */
+const PLANO_URGENCIA = { ATRASADO: 0, VENCE: 1, NO_PRAZO: 2, SEM_DATA: 3, CONCLUIDO: 4, CANCELADO: 5 };
+
+/** Os valores distintos de um campo, para montar um corte. */
+const planoValoresDe = (campo) => ordenado([...new Set(planoAcoes()
+  .map((a) => a[campo]).filter((v) => v && v !== '-'))]);
+
+function viewPlanoAcao() {
+  const acoes = planoAcoes();
+  const carga = (E.config || {}).planoAcaoCarga || null;
+  const placar = planoPlacar(acoes);
+
+  el('#pagina').innerHTML = `
+    <div class="msg"><strong>A base é a planilha "Plano de Ação — Implantação SpinCare".</strong>
+      Ela responde o que o Controle Único não responde: <strong>o que falta fazer, por quem e até
+      quando</strong>, em datas de dia — não de mês. O farol é recalculado contra
+      <strong>hoje</strong> toda vez que a tela abre; o que vem escrito na planilha foi calculado
+      no dia em que alguém a abriu, e é descartado na carga.</div>
+
+    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:var(--esp-8)">
+      <header><h2>Carga da planilha</h2>
+        <span class="nota">${carga
+          ? `última carga em ${esc(carga.quando || '—')} · ${inteiro(carga.total || 0)} ação(ões)`
+          : 'nenhuma carga ainda'}</span></header>
+      <div class="filtros" style="box-shadow:none;border:0;padding:0">
+        <div class="campo" style="min-width:300px">
+          <label for="plano-arq">Arquivo .xlsx do Plano de Ação</label>
+          <input type="file" id="plano-arq" accept=".xlsx"></div>
+        <button class="bt pri" id="plano-carregar" disabled>Conferir e carregar</button>
+        ${acoes.length ? '<button class="bt fant perigo" id="plano-limpar">Remover o plano carregado</button>' : ''}
+      </div>
+      <div id="plano-resultado" style="margin-top:var(--esp-7)">${
+        E.planoAcaoRelatorio ? relatorioPlanoHtml(E.planoAcaoRelatorio) : ''}</div>
+    </section>
+
+    ${!acoes.length ? `<section class="bloco" style="margin-top:var(--esp-8)">
+        <header><h2>Execução do plano</h2></header>
+        <p class="vazio">Nenhuma ação carregada ainda. Suba a planilha acima para ver o placar,
+          o farol de cada ação e o que está atrasado.</p>
+      </section>`
+      : `${placarPlanoHtml(placar)}${ondasDoPlanoHtml()}${listagemPlanoHtml()}`}`;
+
+  const arq = el('#plano-arq');
+  const bt = el('#plano-carregar');
+  arq.addEventListener('change', () => { bt.disabled = !arq.files.length; });
+  bt.addEventListener('click', () => carregarPlanoDeAcao(arq, bt));
+  const limpar = el('#plano-limpar');
+  if (limpar) limpar.addEventListener('click', () => removerPlanoDeAcao());
+  ligarListagemPlano();
+  dobrarBlocos();
+}
+
+/** O placar do plano inteiro — os cinco baldes e o percentual. */
+function placarPlanoHtml(p) {
+  const cartao = (rot, valor, apoio, cor) => `<div class="kpi${cor ? ' drill' : ''}"
+    ${cor ? `data-placar="${esc(rot)}" tabindex="0" role="button"` : ''}>
+    <span class="r">${esc(rot)}</span>
+    <span class="n"${cor ? ` style="color:${cor}"` : ''}>${valor}</span>
+    ${apoio ? `<span class="a">${esc(apoio)}</span>` : ''}</div>`;
+  return `
+    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:var(--esp-8)">
+      <header><h2>Execução do plano</h2>
+        <span class="nota">recalculado contra hoje, ${esc(diaExib(planoHojeISO()))}</span></header>
+      <div class="kpis">
+        ${cartao('Total de ações', inteiro(p.total), `${inteiro(p.validas)} valem para o percentual`)}
+        ${cartao('Concluídas', inteiro(p.concluidas), 'entregues', PLANO_COR_SITUACAO['Concluído'])}
+        ${cartao('Em andamento', inteiro(p.emAndamento), 'começadas e no prazo', PLANO_COR_SITUACAO['Em andamento'])}
+        ${cartao('Não iniciadas', inteiro(p.naoIniciadas), 'ainda no prazo', PLANO_COR_SITUACAO['Não iniciado'])}
+        ${cartao('Atrasadas', inteiro(p.atrasadas), 'prazo vencido, em aberto', PLANO_COR_SITUACAO['Atrasado'])}
+        ${cartao('% concluído', p.pctConcluido === null ? '—' : pctTxt(p.pctConcluido),
+          'canceladas fora do denominador')}
+      </div>
+      ${p.canceladas ? `<p class="nota" style="margin-top:var(--esp-5)">
+        ${inteiro(p.canceladas)} ação(ões) cancelada(s) — fora do cálculo, como no plano.</p>` : ''}
+    </section>`;
+}
+
+/** Uma linha por onda: o placar dela e o estado da virada. */
+function ondasDoPlanoHtml() {
+  const ondas = planoPorOnda(planoAcoes());
+  return `
+    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:var(--esp-8)">
+      <header><h2>Por onda</h2>
+        <span class="nota">a virada de cada frente, e o que falta para ela</span></header>
+      <div class="rol"><table>
+        <thead><tr><th>Onda</th><th>Unidades</th><th>Go-live</th>
+          <th class="n">Ações</th><th class="n">Concluídas</th><th class="n">Atrasadas</th>
+          <th class="n">% concl.</th></tr></thead>
+        <tbody>${ondas.map((o) => `<tr>
+          <td><strong>${inteiro(o.onda)}ª</strong>${o.emProducao
+            ? ' <span class="tag" style="color:var(--bomtxt);border-color:var(--bomtxt)">em produção</span>' : ''}</td>
+          <td>${o.unidades.map((u) => esc(u)).join(' · ')}</td>
+          <td>${esc(diaExib(o.virada))}</td>
+          <td class="n">${inteiro(o.total)}</td>
+          <td class="n">${inteiro(o.concluidas)}</td>
+          <td class="n"${o.atrasadas ? ' style="color:var(--crit);font-weight:700"' : ''}>${inteiro(o.atrasadas)}</td>
+          <td class="n">${o.pctConcluido === null ? '—' : pctTxt(o.pctConcluido)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+      <p class="nota" style="margin-top:var(--esp-5)">Uma onda pode estar
+        <strong>em produção com ações em aberto</strong> — a virada é um fato, e o que falta é
+        estabilização. É por isso que as duas colunas não dizem a mesma coisa.</p>
+    </section>`;
+}
+
+/** A lista das ações, do mais urgente para o menos. */
+function listagemPlanoHtml() {
+  const f = planoFiltro();
+  const lista = planoFiltradas();
+  const total = planoAcoes().length;
+  return `
+    <section class="bloco" data-dobra-padrao="aberto" style="margin-top:var(--esp-8)">
+      <header><h2>Ações</h2>
+        <span class="nota">${inteiro(lista.length)} de ${inteiro(total)} ·
+          da mais urgente para a menos</span></header>
+      <div class="filtros" style="box-shadow:none;border:0;padding:0 0 var(--esp-7)">
+        ${cortePlanoHtml('onda', 'Onda', SPIN_ONDAS.map((o) =>
+          ({ valor: String(o.n), rotulo: `${o.n}ª — ${diaExib(o.virada)}` })))}
+        ${cortePlanoHtml('situacao', 'Situação', PLANO_SITUACOES)}
+        ${cortePlanoHtml('area', 'Área responsável', planoValoresDe('area'))}
+        ${cortePlanoHtml('lider', 'Líder de equipe', planoValoresDe('lider'))}
+        <div class="campo" style="min-width:200px">
+          <label for="pf-busca">Buscar</label>
+          <input id="pf-busca" type="search" value="${esc(f.busca)}"
+            placeholder="tarefa, área, líder ou evolução"></div>
+        <button class="bt fant" id="pf-limpar">Limpar filtros</button>
+      </div>
+      ${!lista.length ? '<p class="vazio">Nenhuma ação neste recorte.</p>' : `
+      <div class="rol"><table>
+        <thead><tr><th class="n">Onda</th><th class="n">Nº</th><th>Tarefa</th>
+          <th>Área</th><th>Líder</th><th>Início</th><th>Fim</th>
+          <th>Situação</th><th>Farol</th></tr></thead>
+        <tbody>${lista.map((a) => `<tr class="acao-plano" data-acao="${a.onda}__${a.n}"
+            ${a.evolucoes ? 'style="cursor:pointer"' : ''}>
+          <td class="n">${inteiro(a.onda)}ª</td>
+          <td class="n">${inteiro(a.n)}</td>
+          <td class="texto">${esc(a.tarefa)}${a.evolucoes
+            ? '<span class="arv-comp" style="display:block">tem evolução registrada</span>' : ''}</td>
+          <td>${esc(a.area || '—')}</td>
+          <td>${esc(a.lider && a.lider !== '-' ? a.lider : '—')}</td>
+          <td>${esc(a.inicio ? diaExib(a.inicio) : '—')}</td>
+          <td>${esc(a.fim ? diaExib(a.fim) : '—')}</td>
+          <td><span style="color:${PLANO_COR_SITUACAO[a.situacao] || 'var(--tinta2)'}">${
+            esc(a.situacao)}</span></td>
+          <td><span class="tag" style="color:${PLANO_COR_FAROL[a.farol]};border-color:${
+            PLANO_COR_FAROL[a.farol]}">${esc(a.farolRotulo)}</span></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`}
+    </section>`;
+}
+
+function cortePlanoHtml(campo, rotulo, opcoes) {
+  const f = planoFiltro();
+  return `<div class="campo" style="min-width:150px">
+    <label for="pf-${campo}">${esc(rotulo)}</label>
+    <select id="pf-${campo}" data-corte-plano="${campo}">
+      <option value="">Todos</option>
+      ${opcoes.map((o) => {
+        const valor = typeof o === 'string' ? o : o.valor;
+        const nome = typeof o === 'string' ? o : o.rotulo;
+        return `<option value="${esc(valor)}"${f[campo] === valor ? ' selected' : ''}>${esc(nome)}</option>`;
+      }).join('')}
+    </select></div>`;
+}
+
+/** Liga os cortes, a busca e o clique que abre a evolução da ação. */
+function ligarListagemPlano() {
+  const area = el('#pagina');
+  for (const sel of area.querySelectorAll('[data-corte-plano]')) {
+    sel.onchange = () => { planoFiltro()[sel.dataset.cortePlano] = sel.value; render(); };
+  }
+  const busca = el('#pf-busca');
+  if (busca) {
+    busca.onchange = () => { planoFiltro().busca = busca.value; render(); };
+  }
+  const limpar = el('#pf-limpar');
+  if (limpar) {
+    limpar.onclick = () => { E.planoFiltro = null; render(); };
+  }
+  for (const tr of area.querySelectorAll('.acao-plano')) {
+    tr.onclick = () => abrirAcaoDoPlano(tr.dataset.acao);
+  }
+}
+
+/** A ficha de uma ação: o que ela é, e o que foi registrado sobre ela. */
+function abrirAcaoDoPlano(chave) {
+  const [onda, n] = String(chave).split('__');
+  const a = planoAcoes().find((x) => String(x.onda) === onda && String(x.n) === n);
+  if (!a) return;
+  const linha = (nome, valor) => `<dt>${esc(nome)}</dt><dd>${valor}</dd>`;
+  abrirModal({
+    titulo: `${a.onda}ª onda · nº ${a.n}`,
+    corpo: `
+      <h3 style="margin-bottom:var(--esp-5)">${esc(a.tarefa)}</h3>
+      <dl class="ficha">
+        ${linha('Área responsável', esc(a.area || '—'))}
+        ${linha('Líder de equipe', esc(a.lider && a.lider !== '-' ? a.lider : '—'))}
+        ${linha('Início', esc(a.inicio ? diaExib(a.inicio) : '—'))}
+        ${linha('Fim planejado', esc(a.fim ? diaExib(a.fim) : '—'))}
+        ${linha('Situação', `<span style="color:${PLANO_COR_SITUACAO[a.situacao]}">${esc(a.situacao)}</span>`)}
+        ${linha('Farol', `<span class="tag" style="color:${PLANO_COR_FAROL[a.farol]};border-color:${
+          PLANO_COR_FAROL[a.farol]}">${esc(a.farolRotulo)}</span>`)}
+        ${a.link ? linha('Sala remota', `<a href="${esc(a.link)}" target="_blank" rel="noopener">abrir</a>`) : ''}
+      </dl>
+      ${a.evolucoes ? `<div class="msg" style="margin-top:var(--esp-7)">
+        <strong>Evoluções registradas.</strong> ${esc(a.evolucoes)}</div>` : ''}
+      ${a.observacoes ? `<div class="msg" style="margin-top:var(--esp-5)">
+        <strong>Observações.</strong> ${esc(a.observacoes)}</div>` : ''}`,
+    acoes: '<button type="button" class="bt" data-c>Fechar</button>',
+    aoMontar({ raiz, fechar }) { raiz.querySelector('[data-c]').onclick = fechar; },
+  });
+}
+
+/** O relatório da carga: o que entrou, e o que ficou faltando. */
+function relatorioPlanoHtml(lido) {
+  const d = lido.diagnostico;
+  return `
+    <div class="msg"><strong>${inteiro(d.total)} ação(ões) carregada(s)</strong> em
+      ${inteiro(lido.ondas.length)} onda(s): ${lido.ondas
+        .map((o) => `${o.onda}ª com ${inteiro(o.lidas)}`).join(' · ')}.</div>
+    <div class="kpis" style="margin-top:var(--esp-5)">
+      <div class="kpi"><span class="r">Sem área responsável</span>
+        <span class="n"${d.semArea ? ' style="color:var(--alerta)"' : ''}>${inteiro(d.semArea)}</span></div>
+      <div class="kpi"><span class="r">Sem líder de equipe</span>
+        <span class="n"${d.semLider ? ' style="color:var(--alerta)"' : ''}>${inteiro(d.semLider)}</span></div>
+      <div class="kpi"><span class="r">Sem data de fim</span>
+        <span class="n"${d.semFim ? ' style="color:var(--alerta)"' : ''}>${inteiro(d.semFim)}</span></div>
+    </div>
+    ${lido.problemas.length ? `<div class="msg erro" style="margin-top:var(--esp-5)">
+      <strong>${inteiro(lido.problemas.length)} aviso(s) na leitura.</strong>
+      <ul style="margin:var(--esp-4) 0 0;padding-left:var(--esp-9)">
+        ${lido.problemas.slice(0, 20).map((p) => `<li>${esc(p)}</li>`).join('')}
+      </ul>${lido.problemas.length > 20
+        ? `<p class="nota">e mais ${inteiro(lido.problemas.length - 20)}.</p>` : ''}</div>` : ''}`;
+}
+
+/** Lê o arquivo escolhido e grava. A mensagem de erro diz o que fazer. */
+async function carregarPlanoDeAcao(campo, botao) {
+  const alvo = el('#plano-resultado');
+  const arquivo = campo.files && campo.files[0];
+  if (!arquivo) return;
+  botao.disabled = true;
+  alvo.innerHTML = '<p class="msg">Lendo a planilha…</p>';
+  try {
+    const ondas = await abaDoPlanoDeAcao(new Uint8Array(await arquivo.arrayBuffer()));
+    if (!ondas) {
+      throw new Error('O arquivo não tem nenhuma aba chamada "Onda 1", "Onda 2"… com o '
+        + 'cabeçalho esperado ("Nº", "Tarefa", "Área Responsável", "Líder de Equipe", '
+        + '"Data Início", "Data Fim", "Qtd Dias", "Status da Ação"). '
+        + 'Confira se é o Plano de Ação da implantação SpinCare.');
+    }
+    await importarPlanoDeAcao(ondas, arquivo.name);
+    await render();
+  } catch (e) {
+    E.planoAcaoRelatorio = null;
+    alvo.innerHTML = `<div class="msg erro"><strong>A carga não foi feita.</strong>
+      ${esc(e && e.message ? e.message : String(e))}</div>`;
+    botao.disabled = false;
+  }
+}
+
+/** Remove o plano do cliente em foco. O dos outros clientes fica. */
+function removerPlanoDeAcao() {
+  const quantas = planoAcoes().length;
+  abrirModal({
+    titulo: 'Remover o plano carregado',
+    corpo: `<div class="msg alerta"><strong>Isto apaga ${inteiro(quantas)} ação(ões)
+      deste cliente.</strong> As telas que leem deste plano voltam a ficar vazias até uma carga
+      nova. A planilha de origem não é tocada.</div>`,
+    acoes: [{ rotulo: 'Remover', classe: 'bt perigo', acao: async () => {
+      const outras = (E.planoAcao || []).filter((a) => a.cliente !== E.clienteSel);
+      await Loja.gravarCatalogo('planoacao', outras);
+      await Loja.gravarConfiguracao({ planoAcaoCarga: null });
+      E.planoAcaoRelatorio = null;
+      await Loja.auditar({ entidade: 'planoacao', acao: 'excluir',
+        descricao: `${quantas} ação(ões) removida(s) do Plano de Ação` });
+      await render();
+    } }],
+  });
+}

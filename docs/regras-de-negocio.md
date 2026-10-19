@@ -1349,6 +1349,122 @@ por uma seria tirá-lo justamente de quem ele também rege.
 toda vaga sem cor: dar-lhe uma das oito cores faria a legenda prometer uma
 empresa que não existe.
 
+## O cronograma mudou: cinco ondas viraram quatro, e a ordem inverteu
+
+O `PLANO_DE_ACAO_SPINCARE` substituiu o cronograma que o sistema carregava. A
+mudança não foi de detalhe:
+
+| | antes | agora |
+| --- | --- | --- |
+| 1ª | Paraíba (3 unidades) — 01/10 | **Porto Velho/RO + Rio/RJ — 01/10** |
+| 2ª | RO + SP + RJ — 01/10 | Paraíba (3 unidades) — 03/11 |
+| 3ª | DF + MT + GO — 01/11 | 8 unidades — 01/12 |
+| 4ª | RN×2 + CE + AM — 01/12 | PE + AL + AM + **SP** — 04/01 |
+| 5ª | BA + SE + PE + AL — 01/01 | *(não existe mais)* |
+
+São as **mesmas 17 unidades**, reagrupadas: São Paulo saiu de outubro e foi
+para janeiro; Natal, Aracaju, Salvador e Fortaleza subiram para dezembro.
+Enquanto o sistema carregava a lista antiga, a tela afirmava que a Paraíba
+virou em 01/10 — quando quem entrou em produção foram **Porto Velho e Rio de
+Janeiro**. É a tela que vai à diretoria.
+
+As `chaves` das colunas do Controle Único acompanham a **unidade**, não a onda:
+`uc_sp` continua existindo, agora na 4ª.
+
+**O plano não nomeia fases.** Abertura, Validação, Consolidação, Escala e
+Finalização vinham do cronograma anterior, e reaproveitá-los numa composição
+diferente carimbaria um rótulo que o documento não dá. A onda passa a se
+identificar pelo número e pela data da virada.
+
+**Pacientes: o total vale, a divisão não.** 1.922 continua certo — são as
+mesmas unidades —, mas o plano novo não publica a contagem de cada uma, e
+repartir o total entre as ondas novas seria um palpite indistinguível do dado
+real. A coluna mostra "—" e a tela diz por quê.
+
+### A virada declarada vence a virada deduzida
+
+A Visão Macro pergunta "a unidade **virou**?", e esta documentação sempre disse
+que essa não é a mesma pergunta que "as atividades dela acabaram" — uma unidade
+pode entrar em produção com pendências. O código fazia o contrário: deduzia a
+virada de **todas** as atividades estarem concluídas.
+
+Porto Velho e Rio são exatamente o caso que isso nega: em produção desde 01/10,
+com ações do plano ainda em aberto. O cronograma passa a poder **declarar** a
+data realizada (`viradaRealizada`), e a declaração vence a dedução. Sem
+declaração, a dedução antiga continua valendo — é melhor que nada enquanto
+ninguém informou a virada.
+
+## Plano de Ação: o que falta fazer, por quem e até quando
+
+O Controle Único responde "como está cada **atividade** em cada unidade". O
+plano de ação responde outra coisa: 146 ações em quatro ondas, com **datas de
+dia** — não de mês —, área responsável e líder de equipe.
+
+**Cadastro próprio, e não tarefas do módulo de Projetos.** A tarefa do sistema
+tem competência mensal, e o valor deste plano está no dia: "vence em 2 dias" e
+"atrasado 5 dias" são a leitura que faz a sala de guerra agir. Arredondá-las
+para o mês apagaria o plano e deixaria um calendário que não cobra nada de
+ninguém.
+
+### O farol é recalculado contra hoje
+
+A planilha traz a coluna "Farol (Prazo)" **já escrita** — "🟢 No prazo 12d" —, e
+ela é descartada na carga. Esse texto foi calculado contra o dia em que alguém
+abriu o arquivo; gravá-lo faria o painel envelhecer em silêncio, dizendo "vence
+em 2 dias" uma semana depois. É a mesma razão pela qual "fora do SLA" nunca é
+gravado.
+
+| farol | quando |
+| --- | --- |
+| Concluído | status concluído, **antes** de olhar o prazo |
+| Cancelado | status cancelado, idem |
+| Sem data | sem data de fim — não se inventa prazo |
+| Atrasado *N*d | prazo vencido e a ação em aberto |
+| Vence em *N*d | faltam até **3** dias |
+| No prazo *N*d | falta mais que isso |
+
+Concluída e cancelada saem **antes** da pergunta de prazo: uma ação entregue na
+semana passada não está atrasada, e pintá-la de vermelho encheria a lista de
+urgências de coisa resolvida. Três dias é o limite do amarelo porque é o que a
+planilha usa — mudá-lo aqui faria a tela e o documento do cliente discordarem
+sobre o que é urgente. Dias **corridos**, como o plano conta; o motor de horas
+úteis existe para o SLA, que é outro compromisso.
+
+**A situação não é o status cru.** A ação em aberto com prazo vencido conta como
+**atrasada**, que é como a aba BASE da planilha soma, e é o que faz os cinco
+baldes fecharem o total sem contar ninguém duas vezes. **A cancelada sai do
+denominador** do percentual: ela foi tirada do plano, e mantê-la embaixo da
+divisão impediria chegar a 100%.
+
+**A régua da conferência é o próprio documento do cliente.** Com o relógio
+parado em 19/10/2026, o farol calculado reproduz palavra por palavra o que a
+planilha imprimiu nas nove linhas da 1ª onda, e o placar reproduz a linha do
+dashboard dela: 2 não iniciadas, 2 em andamento, 2 atrasadas, 3 concluídas,
+33%.
+
+### O que a carga recusa, e o que ela conta
+
+- **"Qtd Dias" não é gravado**: diverge do intervalo em várias linhas, e o que
+  vale são as duas pontas.
+- **O cabeçalho é achado pelo conteúdo**, não por contagem de linha: as abas
+  trazem título, unidades e data da virada antes dele.
+- **O go-live da aba é conferido contra o cronograma, nunca o sobrescreve.** O
+  cronograma é código revisado; uma planilha trocada por engano não pode
+  remontar as ondas sozinha. A divergência vira aviso.
+- **Número repetido na aba é recusado** — das duas linhas não há como saber qual
+  vale. A identidade é onda + nº.
+- **O vazio é contado**: sem área, sem líder, sem data de fim e status
+  desconhecido entram no diagnóstico em vez de serem preenchidos com palpite.
+  `-` é ausência escrita de propósito, contada junto com o branco.
+
+### A tela ordena por urgência, não pela planilha
+
+A ordem do arquivo é a de quem o escreveu e não responde "o que fazer agora".
+A lista vem **atrasado → vencendo → no prazo → sem data → concluído →
+cancelado**, e dentro de cada grupo o prazo mais próximo na frente. A linha por
+onda mostra a virada ao lado do que falta, com a marca "em produção" onde a
+virada foi declarada — as duas colunas não dizem a mesma coisa, de propósito.
+
 ## Projeto SpinCare: o Controle Único como cadastro próprio
 
 A planilha `Controle Único do Projeto SpinCare` é a fonte da verdade da
