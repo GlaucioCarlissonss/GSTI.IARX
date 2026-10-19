@@ -73,35 +73,73 @@ const SPIN_CRITERIOS_PADRAO = {
 };
 
 /**
- * As ondas de implantação, com a fase, o mês e as unidades de cada uma.
+ * As ondas de implantação, com o mês, as unidades e a virada de cada uma.
  *
- * As fases 3 a 5 ainda NÃO têm coluna na planilha — as vagas `unidade_7` a
- * `unidade_10` existem e estão vazias. Elas ficam aqui mesmo assim, porque é o
- * cronograma que o cliente apresenta, e uma unidade sem coluna precisa
- * aparecer como PENDENTE em vez de sumir da tela.
+ * FONTE: `PLANO_DE_ACAO_SPINCARE`, que substituiu o cronograma anterior. A
+ * mudança não foi de detalhe — a ORDEM DAS ONDAS INVERTEU:
  *
- * A composição das ondas 4 e 5 segue o CRONOGRAMA, que diverge da planilha:
- * a aba Parâmetros troca as duas listas entre dezembro e janeiro. O cronograma
- * é o documento que o cliente apresenta à diretoria, e foi ele que o pedido
- * transcreveu.
+ *   antes                                    agora
+ *   1ª  Paraíba (3 unidades)   01/10    →    1ª  Porto Velho/RO + Rio/RJ   01/10
+ *   2ª  RO + SP + RJ           01/10    →    2ª  Paraíba (3 unidades)      03/11
+ *   3ª  DF + MT + GO           01/11    →    3ª  8 unidades                01/12
+ *   4ª  RN×2 + CE + AM         01/12    →    4ª  PE + AL + AM + SP         04/01
+ *   5ª  BA + SE + PE + AL      01/01    →    (não existe: 5 ondas viraram 4)
+ *
+ * São as MESMAS 17 unidades, reagrupadas — São Paulo saiu de outubro e foi
+ * para janeiro, e Natal, Aracaju, Salvador e Fortaleza subiram para dezembro.
+ * Manter o cronograma antigo faria a tela afirmar que a Paraíba virou em
+ * 01/10, quando quem virou foram Porto Velho e Rio de Janeiro.
+ *
+ * As `chaves` são as colunas do Controle Único e acompanham a unidade, não a
+ * onda: `uc_sp` continua existindo, só que agora na 4ª.
+ *
+ * As unidades das ondas 3 e 4 sem coluna ficam aqui mesmo assim — a planilha
+ * não diz que elas não começaram, ela ainda não pergunta, e some-las da tela
+ * esconderia o que falta.
+ *
+ * O plano NÃO NOMEIA FASES. Os nomes anteriores (Abertura, Validação…) vinham
+ * do cronograma velho, e reaproveitá-los numa composição diferente seria
+ * carimbar um rótulo que o documento não dá: a onda se identifica pelo número
+ * e pela data de virada.
  */
 const SPIN_ONDAS = [
-  { n: 1, fase: 'Abertura', periodo: 'Setembro', mes: '2026-09', virada: '2026-10-01',
-    unidades: ['HR João Pessoa/PB', 'HM João Pessoa/PB', 'HR Campina Grande/PB'],
-    chaves: ['hr_pb', 'hm_pb', 'hr_cg'], pacientes: 483 },
-  { n: 2, fase: 'Validação', periodo: 'Outubro', mes: '2026-10', virada: '2026-10-01',
-    unidades: ['HM Porto Velho/RO', 'UC Union/SP', 'UC Union/RJ'],
-    chaves: ['hm_ro', 'uc_sp', 'uc_rj'], pacientes: 99 },
-  { n: 3, fase: 'Consolidação', periodo: 'Novembro', mes: '2026-11', virada: '2026-11-01',
-    unidades: ['HM Brasília/DF', 'HM Cuiabá/MT', 'HM Goiás/GO'],
-    chaves: [], pacientes: 241 },
-  { n: 4, fase: 'Escala', periodo: 'Dezembro', mes: '2026-12', virada: '2026-12-01',
-    unidades: ['HR Natal/RN', 'Aliança Natal/RN', 'HM Fortaleza/CE', 'HM Manaus/AM'],
-    chaves: [], pacientes: 641 },
-  { n: 5, fase: 'Finalização', periodo: 'Janeiro', mes: '2027-01', virada: '2027-01-01',
-    unidades: ['HR Salvador/BA', 'Aliança Aracaju/SE', 'HR Recife/PE', 'HR Maceió/AL'],
-    chaves: [], pacientes: 458 },
+  { n: 1, fase: '', periodo: 'Outubro', mes: '2026-10', virada: '2026-10-01',
+    unidades: ['MHC Porto Velho/RO', 'UC Rio de Janeiro/RJ'],
+    chaves: ['hm_ro', 'uc_rj'], pacientes: null,
+    // JÁ EM PRODUÇÃO desde 01/10, informado pela gestão. Ver `viradaRealizada`.
+    viradaRealizada: '2026-10-01' },
+  { n: 2, fase: '', periodo: 'Novembro', mes: '2026-11', virada: '2026-11-03',
+    unidades: ['HR João Pessoa/PB', 'HR Campina Grande/PB', 'MHC João Pessoa/PB'],
+    chaves: ['hr_pb', 'hr_cg', 'hm_pb'], pacientes: null, viradaRealizada: null },
+  { n: 3, fase: '', periodo: 'Dezembro', mes: '2026-12', virada: '2026-12-01',
+    unidades: ['MHC Brasília/DF', 'MHC Goiânia/GO', 'MHC Cuiabá/MT', 'AHC Natal/RN',
+      'HR Natal/RN', 'MHC Fortaleza/CE', 'AHC Aracaju/SE', 'HR Salvador/BA'],
+    chaves: [], pacientes: null, viradaRealizada: null },
+  { n: 4, fase: '', periodo: 'Janeiro', mes: '2027-01', virada: '2027-01-04',
+    unidades: ['HR Recife/PE', 'HR Maceió/AL', 'MHC Manaus/AM', 'UC São Paulo/SP'],
+    chaves: ['', '', '', 'uc_sp'], pacientes: null, viradaRealizada: null },
 ];
+
+/**
+ * O total de pacientes do cronograma.
+ *
+ * Fica FORA das ondas porque o plano novo reagrupou as unidades sem publicar a
+ * contagem de cada uma: o total segue valendo (são as mesmas 17 unidades), mas
+ * a divisão por onda deixou de ser conhecida. Repartir 1.922 entre as ondas
+ * novas exigiria um palpite indistinguível do dado real — e a tela prefere
+ * dizer "—" e explicar por quê.
+ */
+const SPIN_PACIENTES_TOTAL = 1922;
+
+/**
+ * Como a onda se apresenta na tela.
+ *
+ * O cronograma anterior nomeava fases; o plano novo não. Em vez de reaproveitar
+ * os nomes antigos numa composição diferente — o que carimbaria um rótulo que
+ * o documento não dá —, a onda sem fase se identifica pela data da virada, que
+ * é o que o plano publica e o que o gestor procura.
+ */
+const nomeDaOnda = (o) => (o && o.fase ? o.fase : `go-live ${diaExib((o || {}).virada)}`);
 
 /**
  * A grafia canônica de cada pessoa.
@@ -850,7 +888,7 @@ function barrasPorUnidadeHtml(p) {
   const corDaOnda = (o) => (o.n === 1 ? 'var(--bom)' : o.n === 2 ? 'var(--s2)' : 'var(--tinta3)');
   return p.porOnda.map((o) => `
     <div class="faixa-onda" style="background:${fundo(o)}">
-      <b style="color:${corDaOnda(o)}">${inteiro(o.n)}ª ONDA — ${esc(o.fase.toUpperCase())} ·
+      <b style="color:${corDaOnda(o)}">${inteiro(o.n)}ª ONDA — ${esc(nomeDaOnda(o).toUpperCase())} ·
         virada em ${esc(mesExib(o.mes))}</b>
       <div class="barras-unidade">
         ${o.unidades.map((u) => `<button type="button" class="barra-unidade"
@@ -1004,7 +1042,7 @@ function ligarPainelSpincare(p) {
         + `com ${pctTxt(u.pctPonderado)} de avanço ponderado.`);
     });
     ligarDica(bt, () => ({ titulo: u.rotulo, linhas: [
-      { nome: 'Onda', valor: `${inteiro(u.onda)}ª — ${(SPIN_ONDAS[u.onda - 1] || {}).fase || ''}` },
+      { nome: 'Onda', valor: `${inteiro(u.onda)}ª — ${nomeDaOnda(SPIN_ONDAS[u.onda - 1])}` },
       { nome: 'Avanço ponderado', valor: pctTxt(u.pctPonderado) },
       { nome: 'Conclusão', valor: `${pctTxt(u.pctConclusao)} (${inteiro(u.concluidas)} de ${inteiro(u.total)})` },
     ] }));
@@ -1054,37 +1092,60 @@ function calcularCronograma(hoje) {
       const validas = acompanhadas.filter((a) => a.avanco !== null);
       const concluidas = validas.filter((a) => a.unidades[chave] === 'Concluído');
       const pendentes = validas.filter((a) => a.unidades[chave] !== 'Concluído');
-      const virou = validas.length > 0 && pendentes.length === 0;
+      // A VIRADA DECLARADA VENCE A INFERIDA.
+      //
+      // "Virou" era deduzido de todas as atividades estarem concluídas — e
+      // isso contradiz a separação que a Visão Macro existe para manter:
+      // tarefa pendente não muda a resposta da Macro, porque uma unidade pode
+      // entrar em produção com pendências, e uma unidade sem pendência nenhuma
+      // pode não ter entrado. Porto Velho e Rio são exatamente o primeiro
+      // caso: em produção desde 01/10, com ações do plano ainda em aberto.
+      //
+      // Quando o cronograma declara a data realizada, é ela que responde. Sem
+      // declaração, a dedução antiga continua valendo — é melhor que nada
+      // enquanto ninguém informou a virada.
+      const declarada = o.viradaRealizada || null;
+      const virou = declarada ? true : (validas.length > 0 && pendentes.length === 0);
       const passou = o.mes < mesAtual;
       return {
         nome, chave, onda: o.n,
         acompanhada: !!chave && validas.length > 0,
         total: validas.length, concluidas: concluidas.length, pendentes,
         pct: pct(concluidas.length, validas.length),
-        virou,
-        // Sem coluna na planilha o estado é PENDENTE, mesmo com o mês vencido.
-        estado: !chave || !validas.length ? 'PENDENTE'
+        virou, viradaDeclarada: !!declarada,
+        // Sem coluna na planilha o estado é PENDENTE, mesmo com o mês vencido
+        // — a não ser que a virada tenha sido declarada, que é fato e não
+        // medição.
+        estado: declarada ? 'CUMPRIDO'
+          : !chave || !validas.length ? 'PENDENTE'
           : virou ? 'CUMPRIDO' : (passou ? 'NÃO CUMPRIDO' : 'PENDENTE'),
         dataPlanejada: o.virada,
-        // A data realizada só existe quando a virada aconteceu, e é a do mês
-        // planejado: a planilha não guarda a data efetiva da virada.
-        dataRealizada: virou ? o.virada : null,
+        // A data realizada é a declarada quando existe; senão, a planejada,
+        // porque a planilha não guarda a data efetiva da virada.
+        dataRealizada: declarada || (virou ? o.virada : null),
       };
     });
-    const acompanhadas = unidades.filter((u) => u.acompanhada);
-    const viradas = acompanhadas.filter((u) => u.virou);
+    // Com a virada declarada, a aderência é do CRONOGRAMA e não da planilha:
+    // todas as unidades da onda contam, inclusive as sem coluna, porque a
+    // declaração vale para a onda inteira.
+    const base = o.viradaRealizada ? unidades : unidades.filter((u) => u.acompanhada);
+    const viradas = base.filter((u) => u.virou);
     return {
-      ...o, unidades, acompanhadas: acompanhadas.length, viradas: viradas.length,
+      ...o, unidades, acompanhadas: base.length, viradas: viradas.length,
       // A aderência do mês: realizadas ÷ planejadas. Sem unidade acompanhada
       // ela é nula, e não zero — zero afirmaria um fracasso não medido.
-      aderencia: acompanhadas.length ? pct(viradas.length, acompanhadas.length) : null,
-      estado: !acompanhadas.length ? 'PENDENTE'
-        : viradas.length === acompanhadas.length ? 'CUMPRIDO'
+      aderencia: base.length ? pct(viradas.length, base.length) : null,
+      estado: o.viradaRealizada ? 'CUMPRIDO'
+        : !base.length ? 'PENDENTE'
+        : viradas.length === base.length ? 'CUMPRIDO'
         : (o.mes < mesAtual ? 'NÃO CUMPRIDO' : 'PENDENTE'),
     };
   });
   return { ondas, mesAtual,
-    pacientes: SPIN_ONDAS.reduce((s, o) => s + o.pacientes, 0),
+    // O total é do cronograma, não a soma das ondas: a divisão por onda deixou
+    // de ser conhecida quando o plano novo reagrupou as unidades.
+    pacientes: SPIN_PACIENTES_TOTAL,
+    pacientesPorOndaConhecido: SPIN_ONDAS.every((o) => o.pacientes !== null),
     filiais: SPIN_ONDAS.reduce((s, o) => s + o.unidades.length, 0),
     acompanhadas: ondas.reduce((s, o) => s + o.acompanhadas, 0) };
 }
@@ -1101,7 +1162,9 @@ function cronogramaHtml(c) {
     <div class="cards-plano" style="margin-top:0">
       <div class="card-plano forte"><span class="card-rot">Total de pacientes</span>
         <strong>${inteiro(c.pacientes)}</strong>
-        <span class="card-apoio">nas ${inteiro(c.filiais)} filiais do cronograma</span></div>
+        <span class="card-apoio">nas ${inteiro(c.filiais)} filiais do cronograma${
+          c.pacientesPorOndaConhecido ? ''
+            : ' · a divisão por onda não veio no plano novo'}</span></div>
       <div class="card-plano"><span class="card-rot">Filiais a migrar</span>
         <strong>${inteiro(c.filiais)}</strong>
         <span class="card-apoio">em ${inteiro(c.ondas.length)} fases</span></div>
@@ -1116,13 +1179,15 @@ function cronogramaHtml(c) {
       <tbody>${c.ondas.map((o) => `
         <tr class="fase-linha" data-fase="${inteiro(o.n)}">
           <td><button type="button" class="arv-abrir" aria-expanded="false"
-              aria-label="Abrir as unidades da fase ${esc(o.fase)}">+</button>
-            <strong>${inteiro(o.n)} · ${esc(o.fase)}</strong></td>
+              aria-label="Abrir as unidades da ${inteiro(o.n)}ª onda">+</button>
+            <strong>${inteiro(o.n)}ª onda</strong><div class="arv-comp">${esc(nomeDaOnda(o))}</div></td>
           <td>${esc(o.periodo)}<div class="arv-comp">virada em ${esc(mesExib(o.mes))}</div></td>
           <td>${o.unidades.map((u) => `<span class="tag" style="color:${
             SPIN_CORES_ESTADO[u.estado]};border-color:${SPIN_CORES_ESTADO[u.estado]}">${
             esc(u.nome)}</span>`).join(' ')}</td>
-          <td class="n">${inteiro(o.pacientes)}</td>
+          <td class="n">${o.pacientes === null
+            ? '<span class="vazio2" title="As 17 unidades são as mesmas, só reagrupadas pelo plano novo: o total segue valendo, a divisão por onda ainda não foi informada.">—</span>'
+            : inteiro(o.pacientes)}</td>
           <td class="n">${o.aderencia === null ? '<span class="vazio2">sem medição</span>'
             : `<strong style="color:${SPIN_CORES_ESTADO[o.estado]}">${pctTxt(o.aderencia)}</strong>
                <div class="arv-comp">${inteiro(o.viradas)} de ${inteiro(o.acompanhadas)}</div>`}</td>
@@ -1185,7 +1250,7 @@ function ligarCronograma(c) {
         + `Prazo macro: ${unidade.estado}.`);
     });
     ligarDica(tr, () => ({ titulo: unidade.nome, linhas: [
-      { nome: 'Fase', valor: `${unidade.onda}ª — ${(SPIN_ONDAS[unidade.onda - 1] || {}).fase || ''}` },
+      { nome: 'Onda', valor: `${unidade.onda}ª — ${nomeDaOnda(SPIN_ONDAS[unidade.onda - 1])}` },
       { nome: 'Data planejada', valor: diaExib(unidade.dataPlanejada) },
       { nome: 'Data realizada', valor: unidade.dataRealizada ? diaExib(unidade.dataRealizada) : '—' },
       { nome: 'Prazo macro', valor: unidade.estado, cor: SPIN_CORES_ESTADO[unidade.estado] },
@@ -1483,7 +1548,7 @@ function listagemSpincareHtml() {
         ${corteSpinHtml('statusConsolidado', 'Status', distintos((a) => [a.statusConsolidado]))}
         ${corteSpinHtml('farol', 'Farol', distintos((a) => [a.farol]))}
         ${corteSpinHtml('onda', 'Onda', SPIN_ONDAS.filter((o) => o.chaves.length)
-          .map((o) => ({ valor: String(o.n), rotulo: `${o.n}ª — ${o.fase}` })))}
+          .map((o) => ({ valor: String(o.n), rotulo: `${o.n}ª — ${nomeDaOnda(o)}` })))}
         ${corteSpinHtml('unidade', 'Unidade', SPIN_UNIDADES.filter((u) =>
           todas.some((a) => (a.unidades || {})[u.k])).map((u) => ({ valor: u.k, rotulo: u.rotulo })))}
         <button class="bt fant" id="sf-limpar">Limpar filtros</button>
