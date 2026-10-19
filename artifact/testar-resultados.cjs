@@ -248,6 +248,7 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
       }];
       const area = document.querySelector('[data-cartoes-resultado]');
       area.innerHTML = cartoesDeResultadoHtml(comp);
+      ligarBlocoResultados();
       await new Promise((r) => setTimeout(r, 60));
       const c = area.querySelector('.cartao-resultado[data-modulo="financeiro"]');
       const cor = getComputedStyle(c).borderLeftColor;
@@ -262,6 +263,7 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
     }
     E.metas = original;
     document.querySelector('[data-cartoes-resultado]').innerHTML = cartoesDeResultadoHtml(comp);
+    ligarBlocoResultados();
     // Três cores distintas: se duas faixas pintassem igual, a cor não seria canal.
     // Vai como campo do objeto, e não pendurado no array: a serialização entre
     // o navegador e o Node descarta chave não-numérica de array.
@@ -304,6 +306,7 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
             cliente: E.clienteSel, alvoPct: 0 }];
           const area = document.querySelector('[data-cartoes-resultado]');
           area.innerHTML = cartoesDeResultadoHtml(comp);
+          ligarBlocoResultados();
           const c = area.querySelector('.cartao-resultado[data-modulo="financeiro"]');
           for (const sel of ['.res-texto', '.res-valor', '.res-ating', '.res-oque']) {
             const e = c.querySelector(sel);
@@ -316,6 +319,7 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
         }
         E.metas = original;
         document.querySelector('[data-cartoes-resultado]').innerHTML = cartoesDeResultadoHtml(comp);
+        ligarBlocoResultados();
         document.documentElement.removeAttribute('data-theme');
         return saida;
       }, tema);
@@ -328,6 +332,113 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
     ok('o estado da meta volta ao normal depois do teste',
       await pag.evaluate(() => /Sem meta cadastrada|Meta/.test(
         document.querySelector('.cartao-resultado[data-modulo="financeiro"] .res-texto').textContent)));
+  }
+
+  // ------------------------------------------- a faixa mês a mês
+  console.log('\nFAIXA MÊS A MÊS — cores por status, seleção e drill-down');
+  const faixa = await pag.evaluate(() => {
+    const c = document.querySelector('.cartao-resultado[data-modulo="financeiro"]');
+    const meses = [...c.querySelectorAll('.res-mes')];
+    return {
+      quantos: meses.length,
+      selecionado: document.querySelector('[data-mes-resultados]').value,
+      marcados: meses.filter((m) => m.getAttribute('aria-pressed') === 'true')
+        .map((m) => m.dataset.mesFaixa),
+      // Cada mês tem rótulo escrito, ponto colorido, rótulo acessível e balão.
+      completos: meses.every((m) => m.querySelector('.res-mes-rot').textContent.trim()
+        && m.querySelector('.res-mes-pt') && (m.getAttribute('aria-label') || '').length > 8),
+      comDica: meses.filter((m) => m.dataset.dica).length,
+      cores: [...new Set(meses.map((m) =>
+        ([...m.classList].find((x) => x.startsWith('faixa-')) || '').replace('faixa-', '')))],
+      // Cronológica: o mês mais antigo primeiro.
+      ordem: meses.map((m) => m.dataset.mesFaixa),
+      todosOsCartoes: [...document.querySelectorAll('.cartao-resultado')]
+        .map((x) => x.querySelectorAll('.res-mes').length),
+    };
+  });
+  ok('a faixa existe nos três cartões', faixa.todosOsCartoes.every((n) => n === faixa.quantos),
+    faixa.todosOsCartoes.join(' · '));
+  ok('a faixa vem em ordem cronológica',
+    faixa.ordem.every((m, i, a) => i === 0 || a[i - 1] < m), faixa.ordem.join(' '));
+  ok('no máximo treze meses', faixa.quantos <= 13, `${faixa.quantos} mês(es)`);
+  ok('exatamente um mês vem marcado, e é o do seletor',
+    faixa.marcados.length === 1 && faixa.marcados[0] === faixa.selecionado,
+    `${faixa.marcados.join(',')} × ${faixa.selecionado}`);
+  ok('cada mês traz rótulo, ponto e nome acessível', faixa.completos);
+  ok('cada mês traz balão com os números', faixa.comDica === faixa.quantos,
+    `${faixa.comDica} de ${faixa.quantos}`);
+
+  console.log('\nFAIXA — clicar num mês move o bloco inteiro');
+  const clique = await pag.evaluate(async () => {
+    const c = document.querySelector('.cartao-resultado[data-modulo="financeiro"]');
+    const meses = [...c.querySelectorAll('.res-mes')];
+    const antes = document.querySelector('[data-mes-resultados]').value;
+    const alvo = meses.find((m) => m.dataset.mesFaixa !== antes);
+    if (!alvo) return null;
+    const querido = alvo.dataset.mesFaixa;
+    alvo.click();
+    await new Promise((r) => setTimeout(r, 300));
+    const sel = document.querySelector('[data-mes-resultados]');
+    return { antes, querido, seletor: sel.value,
+      // Os TRÊS cartões moveram juntos.
+      marcadosPorCartao: [...document.querySelectorAll('.cartao-resultado')].map((x) => {
+        const m = x.querySelector('.res-mes[aria-pressed="true"]');
+        return m ? m.dataset.mesFaixa : null;
+      }) };
+  });
+  if (!clique) {
+    console.log('  · a base tem um mês só; o clique na faixa não pode ser exercido');
+  } else {
+    ok('clicar move o seletor do bloco', clique.seletor === clique.querido,
+      `${clique.antes} → ${clique.seletor} (queria ${clique.querido})`);
+    ok('os três cartões movem juntos',
+      clique.marcadosPorCartao.every((m) => m === clique.querido),
+      clique.marcadosPorCartao.join(' · '));
+  }
+
+  console.log('\nDELTA — a variação do atingimento contra o mês anterior');
+  const delta = await pag.evaluate(() => [...document.querySelectorAll('.cartao-resultado')]
+    .map((c) => ({ mod: c.dataset.modulo,
+      texto: ((c.querySelector('.res-delta') || {}).textContent || '').replace(/\s+/g, ' ').trim() })));
+  ok('todo cartão diz a variação, ou por que não há',
+    delta.every((d) => /p\.p\./.test(d.texto) || /Sem comparação com \d{2}\/\d{4}/.test(d.texto)),
+    delta.map((d) => `${d.mod}: ${d.texto}`).join(' · ').slice(0, 150));
+  ok('a variação é em pontos percentuais, não em percentual de percentual',
+    delta.every((d) => !/p\.p\./.test(d.texto) || /\d+,\d p\.p\./.test(d.texto)));
+
+  console.log('\nREGISTROS — o botão abre o que compõe o resultado do mês');
+  const reg = await pag.evaluate(async () => {
+    const c = document.querySelector('.cartao-resultado[data-modulo="financeiro"]');
+    const bt = c.querySelector('[data-ver-mes]');
+    if (!bt) return null;
+    const rotulo = bt.textContent.trim();
+    bt.click();
+    await new Promise((r) => setTimeout(r, 600));
+    const m = document.querySelector('.modal');
+    // O detalhamento financeiro abre em ÁRVORE: a última coluna é a barra de
+    // representatividade, não o valor, e os níveis se intercalam. A ordem que
+    // se confere é a do nível 1, que é onde a árvore promete decrescente.
+    const vals = [...document.querySelectorAll('.modal tbody tr.nivel-1')]
+      .map((tr) => {
+        const t = tr.querySelector('td.num');
+        return t ? Number(t.textContent.replace(/[^\d,]/g, '').replace(',', '.')) : null;
+      }).filter((v) => v !== null);
+    return { rotulo, abriu: !!m,
+      titulo: m ? (m.querySelector('h2, .tit') || {}).textContent.trim() : '',
+      nota: m ? m.querySelector('.msg').textContent.replace(/\s+/g, ' ').trim().slice(0, 100) : '',
+      decrescente: vals.every((v, i, a) => i === 0 || a[i - 1] >= v), amostra: vals.length };
+  });
+  if (!reg) {
+    ok('o cartão tem o botão de registros', false);
+  } else {
+    ok('o botão nomeia o mês', /Ver registros de \d{2}\/\d{4}/.test(reg.rotulo), reg.rotulo);
+    ok('ele abre a tela flutuante', reg.abriu);
+    ok('com o módulo e o mês no título', /— registros de \d{2}\/\d{4}$/.test(reg.titulo), reg.titulo);
+    ok('do maior para o menor valor', reg.decrescente, `${reg.amostra} valor(es) conferidos`);
+    await pag.evaluate(() => {
+      const b = document.querySelector('.modal [data-c]'); if (b) b.click();
+    });
+    await pag.waitForTimeout(250);
   }
 
   // ------------------------------------------- a barra de atingimento
@@ -349,6 +460,7 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
         valorTeto: res * fator, ativo: true, cliente: E.clienteSel, alvoPct: 0 }];
       const area = document.querySelector('[data-cartoes-resultado]');
       area.innerHTML = cartoesDeResultadoHtml(comp);
+      ligarBlocoResultados();
       ligarDicasDaTela(area);
       await new Promise((r) => setTimeout(r, 60));
       const c = area.querySelector('.cartao-resultado[data-modulo="financeiro"]');
@@ -371,6 +483,7 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
     E.metas = original;
     const area = document.querySelector('[data-cartoes-resultado]');
     area.innerHTML = cartoesDeResultadoHtml(comp);
+    ligarBlocoResultados();
     ligarDicasDaTela(area);
     const semMeta = area.querySelector('.cartao-resultado[data-modulo="projetos"] .res-barra');
     return { semBase: false, saida, barraVazia: !!(semMeta && semMeta.classList.contains('vazia')) };

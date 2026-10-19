@@ -67,6 +67,9 @@ rotasProjetos.get('/tarefas', (req, res) => {
       ),
       status: req.query.status ? (String(req.query.status) as never) : undefined,
       apenasAtrasadas: req.query.atrasadas === 'true',
+      competenciaInicio: req.query.competencia_inicio ? String(req.query.competencia_inicio) : undefined,
+      competenciaFim: req.query.competencia_fim ? String(req.query.competencia_fim) : undefined,
+      apenasEntregues: req.query.entregues === 'true',
     }),
   );
 });

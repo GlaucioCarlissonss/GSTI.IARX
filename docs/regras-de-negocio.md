@@ -3384,6 +3384,65 @@ sobre um recorte de um mês só: `calcularObjetivo03`, `calcularProjetos` e
 app. Recalcular por outro caminho abriria espaço para o bloco e o módulo
 divergirem sem ninguém perceber.
 
+### A faixa mês a mês
+
+A barra diz como foi **este** mês. Ela sozinha não distingue um mês ruim
+isolado de uma queda que já dura um semestre — e são leituras que pedem reações
+opostas. Por isso cada cartão ganhou uma faixa com os **treze meses fechados
+mais recentes**, do mais antigo para o mais novo, cada um com um marcador na
+cor do semáforo daquele mês.
+
+A cor nunca anda sozinha: o mês vem escrito no marcador (`jul/26`), o
+`aria-label` carrega a frase inteira da situação ("07/2026: Meta 80,0% não
+atingida") e a dica abre resultado, meta, atingimento e situação. Quem não
+distingue as cores lê a mesma coisa que quem distingue.
+
+**Clicar num mês move o bloco inteiro**, e não o cartão clicado. Três cartões
+em três meses diferentes seriam três leituras que não se comparam — que é
+exatamente o que este bloco existe para evitar. Junto do mês vai o botão
+"Ver registros de MM/AAAA", que abre os lançamentos, as tarefas entregues ou
+os registros de atendimento daquele mês, no mesmo recorte que produziu o
+número; o rodapé da tela flutuante confere a soma contra o cartão.
+
+Abaixo da barra, a variação do atingimento contra o mês anterior em **pontos
+percentuais** — de 80% para 90% a diferença é de 10 p.p., e dizer "subiu
+12,5%" sobre dois percentuais é o tipo de frase que ninguém confere de cabeça.
+Aqui, ao contrário do custo, **subir é bom**: a seta para cima é verde porque o
+que sobe é o atingimento da meta.
+
+### Treze meses não podem custar treze consultas
+
+No artifact a série já está em memória. No app ela viria do servidor, e um
+pedido por mês seria um N+1 de 26 requisições a cada abertura da tela.
+
+As duas rotas que o bloco já chamava passaram a devolver a quebra mensal que
+**já calculavam e descartavam**: `conformidadeSla` e `entregaDeTarefas` agrupam
+por competência para medir a meta mês a mês desde a vigência por período, e
+agora expõem esse agrupamento como `serie`; `evolucao_mensal` do dashboard
+financeiro ganhou `lancamentos`, que é o que distingue um mês de R$ 0,00 de um
+mês sem registro nenhum — o zero da série é só o preenchimento do buraco do
+gráfico. O bloco pede as duas rotas **uma vez**, sobre a janela inteira, e
+trocar o mês selecionado não vai ao servidor.
+
+Duas decisões acompanham a série:
+
+- **O alvo vem por mês**, e não um só para o período. A vigência da meta muda
+  no meio de uma janela longa, e carimbar o alvo de hoje em janeiro diria que
+  janeiro descumpriu uma regra que ainda não existia.
+- **A janela é preenchida**, e não só os meses com registro. Um mês sem chamado
+  não é um mês ausente: é um mês sem resultado, e ele some da faixa se a série
+  listar apenas o que o `GROUP BY` devolveu. Pior, a meta dele some junto — e a
+  régua pela qual o mês seguinte será medido deixa de aparecer exatamente onde
+  seria mais útil. Sem janela no recorte não há como saber onde o período
+  começa, e aí só restam os meses com registro: inventar bordas seria pior que
+  a lacuna.
+
+Para o detalhamento por mês, `/api/projetos/tarefas` ganhou janela de
+competência sobre o mês de fim **planejado** — a mesma por onde o indicador
+conta — e o recorte `entregues`, que é concluída **com** mês de fim real. Sem
+eles, abrir "as tarefas de 07/2026" trazia a lista inteira do cliente e a
+conferência do rodapé acusava uma divergência que não existia.
+
 ### O que falta no app, e por quê
 
 No artifact os três cartões são completos. No app, **o cartão Financeiro fica

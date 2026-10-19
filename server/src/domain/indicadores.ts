@@ -46,6 +46,25 @@ export interface RecorteIndicadores {
   reconhecido?: boolean;
 }
 
+/**
+ * Os meses que a série mensal deve ter.
+ *
+ * Com janela no recorte, TODOS os meses dela — inclusive os que não têm um
+ * único registro. Um mês sem chamado não é um mês ausente: ele é um mês sem
+ * resultado, e some da faixa se a série só listar o que o `GROUP BY` devolveu.
+ * Pior, a meta dele some junto, e aí a régua pela qual o mês seguinte será
+ * medido deixa de aparecer exatamente onde ela seria mais útil.
+ *
+ * Sem janela não há como saber onde o período começa, e aí só restam os meses
+ * com registro — inventar bordas seria pior que a lacuna.
+ */
+function mesesDaSerie(recorte: RecorteIndicadores, comRegistro: string[]): string[] {
+  if (recorte.competenciaInicio && recorte.competenciaFim) {
+    return intervalo(paraInterno(recorte.competenciaInicio), paraInterno(recorte.competenciaFim));
+  }
+  return comRegistro;
+}
+
 function janela(recorte: RecorteIndicadores, coluna: string) {
   const condicoes: string[] = [];
   const params: unknown[] = [];
@@ -318,6 +337,30 @@ export function conformidadeSla(ctx: Contexto, recorte: RecorteIndicadores = {})
     fora: totais.total - totais.dentro,
     pct_dentro: pct,
     meta,
+    // A MESMA quebra por mês que a meta já consome, agora também devolvida.
+    // Ela estava sendo calculada e descartada: quem quisesse o resultado de
+    // treze meses tinha de pedir treze vezes a rota, e o bloco de Resultados
+    // da web faria exatamente isso para desenhar a faixa mês a mês.
+    //
+    // O alvo vem por mês, e não um só para a série: a vigência da meta muda no
+    // meio de um período longo, e carimbar o alvo de hoje em janeiro diria que
+    // janeiro descumpriu uma regra que ainda não existia.
+    serie: (() => {
+      const mapa = new Map(porMes.filter((m) => m.competencia).map((m) => [m.competencia, m]));
+      return mesesDaSerie(recorte, [...mapa.keys()]).map((mes) => {
+        const m = mapa.get(mes);
+        return {
+          competencia: paraExibicao(mes),
+          competencia_interna: mes,
+          total: m?.total ?? 0,
+          dentro: m?.dentro ?? 0,
+          // Mês sem chamado não tem percentual: 0 % diria "nenhum dentro do
+          // prazo", quando o que houve foi nenhum chamado.
+          pct: m?.total ? percentual(m.dentro, m.total) : null,
+          alvo: alvoDe(ctx, 'sla', paraExibicao(mes)),
+        };
+      });
+    })(),
     // A mesma meta na forma que o cartão consome. Acrescentada ao lado do
     // número, e não no lugar dele: o artifact e os testes leem `meta` como
     // número, e trocá-la quebraria os dois.
@@ -939,6 +982,25 @@ export function entregaDeTarefas(ctx: Contexto, recorte: RecorteIndicadores = {}
     // "fora do prazo" enquanto o mês planejado não passou.
     pct_no_prazo: pct,
     meta,
+    // A quebra por mês, pelo mesmo motivo do SLA: ela já era calculada para a
+    // meta e descartada, e sem ela a faixa mês a mês custaria uma requisição
+    // por mês. O alvo acompanha cada ponto, porque a vigência muda.
+    serie: (() => {
+      const mapa = new Map(porMesProj.filter((m) => m.competencia).map((m) => [m.competencia, m]));
+      return mesesDaSerie(recorte, [...mapa.keys()]).map((mes) => {
+        const m = mapa.get(mes);
+        return {
+          competencia: paraExibicao(mes),
+          competencia_interna: mes,
+          entregues: m?.entregues ?? 0,
+          no_prazo: m?.no_prazo ?? 0,
+          // Mês sem entrega não tem percentual — não é 0 % no prazo, é nada
+          // entregue, e as duas coisas se leem de formas opostas.
+          pct: m?.entregues ? percentual(m.no_prazo ?? 0, m.entregues) : null,
+          alvo: alvoDe(ctx, 'projetos', paraExibicao(mes)),
+        };
+      });
+    })(),
     meta_leitura: leituraMensalDeMeta(
       ctx,
       'projetos',

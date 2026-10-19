@@ -204,19 +204,27 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
     .prepare(
       `SELECT l.competencia,
               COALESCE(SUM(CASE WHEN l.classificacao = 'despesa' THEN l.valor_centavos ELSE 0 END), 0) AS despesa,
-              COALESCE(SUM(CASE WHEN l.classificacao = 'investimento' THEN l.valor_centavos ELSE 0 END), 0) AS investimento
+              COALESCE(SUM(CASE WHEN l.classificacao = 'investimento' THEN l.valor_centavos ELSE 0 END), 0) AS investimento,
+              COUNT(*) AS lancamentos
          FROM lancamentos l WHERE ${where} AND l.competencia BETWEEN ? AND ?
         GROUP BY l.competencia`,
     )
-    .all(...params, inicioSerie, fimSerie) as Array<{ competencia: string; despesa: number; investimento: number }>;
+    .all(...params, inicioSerie, fimSerie) as Array<{
+    competencia: string; despesa: number; investimento: number; lancamentos: number;
+  }>;
   const mapaSerie = new Map(linhasSerie.map((l) => [l.competencia, l]));
   const evolucaoMensal = intervalo(inicioSerie, fimSerie).map((mes) => {
     const l = mapaSerie.get(mes);
     return {
       competencia: paraExibicao(mes),
+      competencia_interna: mes,
       despesa: paraReais(l?.despesa ?? 0),
       investimento: paraReais(l?.investimento ?? 0),
       total: paraReais((l?.despesa ?? 0) + (l?.investimento ?? 0)),
+      // `intervalo` preenche o buraco com zero para a linha do gráfico não
+      // saltar meses. A contagem é o que distingue os dois zeros: mês sem
+      // lançamento nenhum não custou R$ 0,00 — não há o que dizer dele.
+      lancamentos: l?.lancamentos ?? 0,
     };
   });
 

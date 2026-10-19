@@ -846,6 +846,29 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{border-color:var
 .res-linha dd{margin:0;font-family:var(--mono);font-size:var(--txt-3);
   font-variant-numeric:tabular-nums;color:var(--tinta2)}
 .res-linha dd.res-ating{color:var(--tinta);font-weight:var(--peso-forte)}
+/* A faixa mês a mês. Cada mês é um botão com o rótulo do mês e um ponto na
+   cor do semáforo — a cor nunca sozinha: o número do mês está escrito, o
+   `aria-label` diz a situação por extenso e o balão traz os quatro valores. */
+.res-meses{display:flex;gap:3px;margin-top:var(--esp-5);flex-wrap:wrap}
+.res-mes{display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:var(--esp-2) var(--esp-3);border:1px solid transparent;border-radius:var(--raio-p);
+  background:none;font:inherit;cursor:pointer}
+.res-mes-rot{font-family:var(--mono);font-size:var(--txt-0);color:var(--tinta3)}
+.res-mes-pt{width:14px;height:5px;border-radius:3px;background:var(--linha2)}
+.res-mes.faixa-verde .res-mes-pt{background:var(--bom)}
+.res-mes.faixa-laranja .res-mes-pt{background:var(--alerta)}
+.res-mes.faixa-vermelho .res-mes-pt{background:var(--crit)}
+.res-mes:hover{background:var(--sup3)}
+.res-mes:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
+/* O mês selecionado: moldura e rótulo em tinta cheia. A seleção não é só a
+   cor do ponto, que já carrega o semáforo. */
+.res-mes.sel{border-color:var(--linha2);background:var(--sup)}
+.res-mes.sel .res-mes-rot{color:var(--tinta);font-weight:var(--peso-forte)}
+.res-mes.sel .res-mes-pt{height:7px}
+.res-delta{margin:var(--esp-3) 0 0;font-size:var(--txt-2)}
+.res-delta.vazio-delta{color:var(--tinta3);font-style:italic}
+.res-ver{margin-top:var(--esp-5);align-self:flex-start}
+
 /* A barra de atingimento. O preenchimento para em 100%: uma barra que
    passasse da caixa perderia a referência, e duas metas superadas por margens
    diferentes ficariam com a mesma aparência de transbordo. O excedente vira a

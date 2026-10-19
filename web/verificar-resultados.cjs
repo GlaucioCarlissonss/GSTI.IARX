@@ -228,6 +228,194 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
     console.log('  · nenhum cartão com meta nesta base; o preenchimento não pôde ser exercido');
   }
 
+  // ------------------------------------------------------ faixa mês a mês
+  console.log('\nFAIXA MÊS A MÊS — um marcador por mês, na cor do semáforo dele');
+  // Volta ao mês mais recente: as seções acima varreram os meses à procura de
+  // uma barra preenchida e podem ter parado em qualquer um.
+  const voltarAoUltimo = async () => {
+    const ultimo = await pag.$eval('[data-mes-resultados]', (s) => s.options[0].value);
+    await pag.evaluate((valor) => {
+      const sel = document.querySelector('[data-mes-resultados]');
+      const nativo = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+      nativo.call(sel, valor);
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }, ultimo);
+    await pag.waitForTimeout(900);
+    return ultimo;
+  };
+  const ultimoMes = await voltarAoUltimo();
+
+  const faixa = await pag.evaluate(() => {
+    const c = document.querySelector('.cartao-resultado[data-modulo="sla"]');
+    const g = c && c.querySelector('.res-meses');
+    if (!g) return null;
+    const bs = [...g.querySelectorAll('.res-mes')];
+    return {
+      papel: g.getAttribute('role'),
+      rotuloGrupo: g.getAttribute('aria-label') || '',
+      meses: bs.map((b) => b.dataset.mesFaixa),
+      faixas: bs.map((b) => ([...b.classList].find((x) => x.startsWith('faixa-')) || '').replace('faixa-', '')),
+      // Cor sozinha não informa quem não a distingue: o rótulo escrito tem de
+      // estar visível, e o aria-label tem de dizer a situação por extenso.
+      rotulos: bs.map((b) => (b.querySelector('.res-mes-rot') || {}).textContent || ''),
+      ariaLabels: bs.map((b) => b.getAttribute('aria-label') || ''),
+      pressed: bs.map((b) => b.getAttribute('aria-pressed')),
+      dicas: bs.map((b) => b.getAttribute('title') || ''),
+      // Cronológico: a faixa se lê da esquerda para a direita, como o tempo.
+      cronologico: bs.every((b, i, a) => i === 0
+        || `${a[i - 1].dataset.mesFaixa.slice(3)}-${a[i - 1].dataset.mesFaixa.slice(0, 2)}`
+        < `${b.dataset.mesFaixa.slice(3)}-${b.dataset.mesFaixa.slice(0, 2)}`),
+      emLinha: bs.every((b, i, a) => i === 0
+        || Math.abs(b.getBoundingClientRect().top - a[i - 1].getBoundingClientRect().top) < 2),
+    };
+  });
+  if (!faixa) {
+    ok('o cartão de SLA tem a faixa mês a mês', false, 'nenhum .res-meses');
+  } else {
+    ok('o cartão de SLA tem a faixa mês a mês', faixa.meses.length >= 2, `${faixa.meses.length} mês(es)`);
+    ok('a faixa é um grupo rotulado para leitor de tela',
+      faixa.papel === 'group' && /SLA/.test(faixa.rotuloGrupo), faixa.rotuloGrupo);
+    ok('os meses vêm do mais antigo para o mais novo', faixa.cronologico, faixa.meses.join(' → '));
+    ok('a faixa cabe numa linha só', faixa.emLinha);
+    ok('todo mês tem rótulo escrito, e não só a cor',
+      faixa.rotulos.every((r) => r.trim().length > 0), faixa.rotulos.join(' · '));
+    ok('todo mês diz a situação por extenso no aria-label',
+      faixa.ariaLabels.every((r) => /atingida|Sem (meta|dados)/.test(r)), faixa.ariaLabels[0]);
+    ok('a dica de cada mês traz resultado, meta, atingimento e situação',
+      faixa.dicas.every((d) => ['Resultado', 'Meta', 'Atingimento', 'Situação'].every((x) => d.includes(x))),
+      (faixa.dicas[0] || '').replace(/\n/g, ' · ').slice(0, 110));
+    ok('exatamente um mês está marcado como selecionado',
+      faixa.pressed.filter((p) => p === 'true').length === 1, faixa.pressed.join(','));
+    ok('o mês selecionado é o do seletor',
+      faixa.meses[faixa.pressed.indexOf('true')] === ultimoMes,
+      `${faixa.meses[faixa.pressed.indexOf('true')]} × ${ultimoMes}`);
+    // A base de verificação dá a cada mês fechado uma cor diferente de
+    // propósito: uma faixa monocromática passaria com o código pintando tudo
+    // igual, e não provaria que o marcador tem a cor do SEU mês.
+    ok('meses com resultados diferentes têm faixas diferentes',
+      new Set(faixa.faixas).size >= 2, faixa.meses.map((m, i) => `${m}=${faixa.faixas[i]}`).join(' · '));
+  }
+
+  console.log('\nFAIXA — clicar num mês move o BLOCO inteiro, sem ir ao servidor');
+  // Três cartões em três meses diferentes seriam três leituras que não se
+  // comparam — que é exatamente o que este bloco existe para evitar.
+  const pedidos = [];
+  const contar = (r) => { if (/\/api\//.test(r.url())) pedidos.push(r.url()); };
+  pag.on('request', contar);
+  const clique = await pag.evaluate(async () => {
+    const alvo = [...document.querySelectorAll('.cartao-resultado[data-modulo="sla"] .res-mes')]
+      .find((b) => b.getAttribute('aria-pressed') !== 'true');
+    if (!alvo) return null;
+    const mes = alvo.dataset.mesFaixa;
+    const valor = (m) => (document.querySelector(
+      `.cartao-resultado[data-modulo="${m}"] .res-valor`) || {}).textContent;
+    const antes = ['financeiro', 'projetos', 'sla'].map(valor);
+    alvo.click();
+    await new Promise((r) => setTimeout(r, 900));
+    return {
+      pedido: mes,
+      // O cartão Financeiro lia `totais_mes`, que ignora a janela do recorte e
+      // devolve sempre o último mês com dado: trocar o mês não mexia nele.
+      // Agora o número sai da série, e é o do mês escolhido.
+      valoresMudaram: ['financeiro', 'projetos', 'sla']
+        .map((m, i) => `${m}: ${antes[i]} → ${valor(m)}`),
+      financeiroMudou: antes[0] !== valor('financeiro'),
+      seletor: document.querySelector('[data-mes-resultados]').value,
+      // TODOS os cartões seguem o mês, e não só aquele em que se clicou.
+      selecionadoEmCada: [...document.querySelectorAll('.cartao-resultado')].map((c) => {
+        const s = c.querySelector('.res-mes[aria-pressed="true"]');
+        return `${c.dataset.modulo}=${s ? s.dataset.mesFaixa : '—'}`;
+      }),
+      rotuloDoBotao: ((document.querySelector('.cartao-resultado .res-ver') || {}).textContent || '').trim(),
+    };
+  });
+  pag.off('request', contar);
+  if (!clique) {
+    console.log('  · a faixa tem um mês só nesta base; o clique não pôde ser exercido');
+  } else {
+    ok('clicar num mês da faixa passa a selecioná-lo',
+      clique.seletor === clique.pedido, `${clique.pedido} → ${clique.seletor}`);
+    ok('os três cartões vão para o MESMO mês',
+      clique.selecionadoEmCada.every((s) => s.endsWith(clique.pedido)),
+      clique.selecionadoEmCada.join(' · '));
+    ok('o botão de registros acompanha o mês escolhido',
+      clique.rotuloDoBotao.includes(clique.pedido), clique.rotuloDoBotao);
+    // O cartão Financeiro é o que mais precisa disto: ele lia `totais_mes`,
+    // que ignora a janela do recorte, e por isso mostrava sempre o último mês
+    // com dado — o seletor mexia nos outros dois e nele não.
+    ok('o valor do cartão Financeiro segue o mês escolhido',
+      clique.financeiroMudou, clique.valoresMudaram.join(' · '));
+    // O N+1 que esta entrega existe para não cometer: treze meses não podem
+    // virar treze idas. A série inteira já veio nas duas consultas do bloco.
+    ok('trocar de mês NÃO dispara consulta nova',
+      pedidos.length === 0, pedidos.map((u) => u.replace(B, '')).join(' | ') || 'nenhuma');
+  }
+
+  console.log('\nDELTA — a variação do atingimento, em pontos percentuais');
+  // De volta ao mês mais recente: o clique acima pode ter parado no mês mais
+  // ANTIGO da faixa, e esse não tem anterior com que se comparar.
+  await voltarAoUltimo();
+  const delta = await pag.evaluate(() => [...document.querySelectorAll('.cartao-resultado')]
+    .map((c) => ({
+      mod: c.dataset.modulo,
+      texto: ((c.querySelector('.res-delta') || {}).textContent || '').trim(),
+      vazio: !!(c.querySelector('.res-delta') || {}).classList?.contains('vazio-delta'),
+    })));
+  ok('todo cartão traz a linha da variação', delta.every((d) => d.texto.length > 0),
+    delta.map((d) => `${d.mod}: ${d.texto}`).join(' · '));
+  const comDelta = delta.filter((d) => !d.vazio);
+  if (comDelta.length) {
+    ok('a variação é em pontos percentuais, com seta e mês de comparação',
+      comDelta.every((d) => /p\.p\./.test(d.texto) && /[↑↓=]/.test(d.texto) && /vs \d{2}\/\d{4}/.test(d.texto)),
+      comDelta.map((d) => d.texto).join(' · '));
+  } else {
+    console.log('  · nenhum cartão com dois meses comparáveis; a variação não pôde ser exercida');
+  }
+
+  console.log('\nREGISTROS — o mês abre os registros que o compõem');
+  await voltarAoUltimo();
+  for (const mod of ['financeiro', 'projetos', 'sla']) {
+    const bt = await pag.$(`.cartao-resultado[data-modulo="${mod}"] .res-ver`);
+    if (!bt) { ok(`${mod}: tem botão de ver registros`, false); continue; }
+    if (await bt.isDisabled()) {
+      console.log(`  · ${mod}: sem registro no mês em foco; o botão fica desabilitado, como deve`);
+      continue;
+    }
+    const valorNoCartao = await pag.$eval(
+      `.cartao-resultado[data-modulo="${mod}"] .res-valor`, (e) => e.textContent.trim());
+    await bt.click();
+    await pag.waitForTimeout(1500);
+    const modal = await pag.evaluate(() => {
+      const m = document.querySelector('.modal, [role="dialog"]');
+      if (!m) return null;
+      const texto = m.textContent.replace(/\s+/g, ' ');
+      return {
+        titulo: ((m.querySelector('h2, h3') || {}).textContent || '').trim(),
+        // O financeiro abre em modo COMPARATIVO, com as três camadas
+        // recolhidas: contar `tbody tr` aqui daria zero e não provaria nada.
+        // O que vale nos dois modos é o cabeçalho de conferência.
+        registros: Number((texto.match(/(\d+) registro\(s\)/) || [])[1] ?? -1),
+        confere: /confere com o indicador/.test(texto),
+        diverge: /diverge do indicador|não confere/i.test(texto),
+        texto: texto.slice(0, 220),
+      };
+    });
+    if (!modal) {
+      ok(`${mod}: abre a tela flutuante dos registros`, false, 'nenhum modal');
+    } else {
+      ok(`${mod}: abre a tela flutuante dos registros`, true, modal.texto.slice(0, 60));
+      ok(`${mod}: o título diz de que mês é`, /\d{2}\/\d{4}/.test(modal.titulo), modal.titulo);
+      ok(`${mod}: a lista traz registros`, modal.registros > 0, `${modal.registros} registro(s)`);
+      // A conferência é a promessa inteira deste drill-down: a lista tem de
+      // somar o MESMO número que estava no cartão. Se divergisse, o gestor
+      // teria dois números e nenhum jeito de saber qual vale.
+      ok(`${mod}: a soma dos registros confere com o cartão (${valorNoCartao})`,
+        modal.confere && !modal.diverge, modal.texto.slice(0, 120));
+    }
+    await pag.keyboard.press('Escape');
+    await pag.waitForTimeout(500);
+  }
+
   console.log('\nCONTRASTE — o bloco passa na régua AA, nos dois temas');
   for (const tema of ['light', 'dark']) {
     await pag.evaluate((t) => document.documentElement.setAttribute('data-theme', t), tema);

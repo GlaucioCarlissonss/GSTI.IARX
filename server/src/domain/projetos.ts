@@ -396,6 +396,20 @@ export interface FiltroTarefas {
   responsavel?: string;
   status?: StatusTarefa;
   apenasAtrasadas?: boolean;
+  /**
+   * Janela sobre o mês de fim PLANEJADO — a mesma competência pela qual o
+   * indicador de entrega conta. Sem ela, abrir "as tarefas de 07/2026" trazia
+   * a lista inteira do cliente, e a conferência com o número da tela
+   * acusava divergência em todo mês que não fosse o único existente.
+   */
+  competenciaInicio?: string;
+  competenciaFim?: string;
+  /**
+   * Só o que foi de fato ENTREGUE: concluída e com mês de fim real. É o
+   * denominador do percentual no prazo — concluída sem data de entrega não
+   * entra nele, e trazê-la aqui somaria mais linhas do que o indicador conta.
+   */
+  apenasEntregues?: boolean;
 }
 
 /**
@@ -432,6 +446,17 @@ export function listarTarefasDaEmpresa(ctx: Contexto, filtro: FiltroTarefas = {}
   if (filtro.status) {
     condicoes.push('t.status = ?');
     params.push(filtro.status);
+  }
+  if (filtro.apenasEntregues) {
+    condicoes.push("t.status = 'concluida' AND t.mes_fim_real IS NOT NULL");
+  }
+  if (filtro.competenciaInicio) {
+    condicoes.push('t.mes_fim_planejado >= ?');
+    params.push(paraInterno(filtro.competenciaInicio));
+  }
+  if (filtro.competenciaFim) {
+    condicoes.push('t.mes_fim_planejado <= ?');
+    params.push(paraInterno(filtro.competenciaFim));
   }
 
   const linhas = db()

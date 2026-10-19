@@ -3432,6 +3432,75 @@ function barraDeAtingimentoHtml(a, dados, modulo, comp) {
   ${excedeu ? `<p class="res-excesso">Meta superada em ${esc(pctTxt(a.pct - 100))}.</p>` : ''}`;
 }
 
+/**
+ * A FAIXA MÊS A MÊS: o atingimento de cada mês, na cor do seu semáforo.
+ *
+ * A barra responde "como estamos NESTE mês"; a faixa responde "e nos
+ * anteriores". Sem ela, um mês ruim parece crise e um mês bom parece virada,
+ * quando os dois podem ser o normal da série.
+ *
+ * Clicar num mês move o BLOCO inteiro, e não só este cartão: três cartões em
+ * três meses diferentes lado a lado seriam três leituras que não se comparam,
+ * e o seletor acima deixaria de dizer a verdade.
+ *
+ * Custa pouco: medido em 4 ms para 27 combinações de mês e módulo sobre 2.038
+ * lançamentos — os calculadores são baratos sobre um recorte de um mês. Por
+ * isso não há cache aqui; guardar resultado para economizar 4 ms seria trocar
+ * um custo que não existe por uma chance de servir dado velho.
+ */
+function faixaDeMesesHtml(modulo, meses, selecionado) {
+  if (meses.length < 2) return '';
+  const botoes = meses.map((m) => {
+    let dados;
+    try { dados = resultadoDoMes(modulo.chave, m); } catch (e) { dados = null; }
+    const a = dados ? atingimentoDaMeta(modulo.chave, dados) : { faixa: 'SEM_DADOS' };
+    const fmt = (v) => (dados && dados.moeda ? brl(v) : pctTxt(v));
+    const detalhe = dados ? {
+      titulo: `${modulo.nome} · ${mesExib(m)}`,
+      linhas: [
+        { nome: 'Resultado', valor: dados.resultado === null ? '—' : fmt(dados.resultado) },
+        { nome: 'Meta', valor: dados.meta === null || dados.meta === undefined ? '—' : fmt(dados.meta) },
+        { nome: 'Atingimento', valor: a.pct === undefined ? '—' : pctTxt(a.pct) },
+        { nome: 'Situação', valor: textoDaMeta(a, dados.moeda) },
+      ],
+    } : null;
+    const sel = m === selecionado;
+    return `<button type="button" class="res-mes faixa-${a.faixa.toLowerCase()}${sel ? ' sel' : ''}"
+      data-mes-faixa="${m}" aria-pressed="${sel}"
+      aria-label="${esc(mesExib(m))}: ${esc(textoDaMeta(a, dados && dados.moeda))}"
+      ${detalhe ? `data-dica="${esc(JSON.stringify(detalhe))}"` : ''}>
+      <span class="res-mes-rot">${esc(mesExib(m).slice(0, 2))}</span>
+      <span class="res-mes-pt" aria-hidden="true"></span></button>`;
+  }).join('');
+  return `<div class="res-meses" role="group"
+    aria-label="Atingimento mês a mês de ${esc(modulo.nome)}">${botoes}</div>`;
+}
+
+/**
+ * A variação do atingimento contra o mês anterior, em PONTOS PERCENTUAIS.
+ *
+ * Pontos percentuais, e não percentual do percentual: de 80% para 90% a
+ * diferença é de 10 p.p., e dizer "subiu 12,5%" sobre dois percentuais é o
+ * tipo de frase que ninguém consegue conferir de cabeça.
+ */
+function deltaDoAtingimentoHtml(modulo, comp) {
+  const anterior = mesSoma(comp, -1);
+  let a; let b;
+  try {
+    a = atingimentoDaMeta(modulo.chave, resultadoDoMes(modulo.chave, comp));
+    b = atingimentoDaMeta(modulo.chave, resultadoDoMes(modulo.chave, anterior));
+  } catch (e) { return ''; }
+  if (a.pct === undefined || b.pct === undefined) {
+    return `<p class="res-delta vazio-delta">Sem comparação com ${esc(mesExib(anterior))}.</p>`;
+  }
+  const d = Math.round((a.pct - b.pct) * 10) / 10;
+  // Aqui, ao contrário do custo, SUBIR é bom: é o atingimento da meta.
+  const sentido = d > 0 ? 'desce' : d < 0 ? 'sobe' : 'zero';
+  const seta = d > 0 ? '↑' : d < 0 ? '↓' : '=';
+  return `<p class="res-delta"><span class="delta ${sentido}">${seta} ${pctTxt(Math.abs(d))
+    .replace('%', ' p.p.')}</span> <span class="camada-qtd">vs ${esc(mesExib(anterior))}</span></p>`;
+}
+
 const MODULOS_RESULTADO = [
   { chave: 'financeiro', nome: 'Financeiro', oQue: 'despesa reconhecida contra o teto de gasto' },
   { chave: 'projetos', nome: 'Projetos', oQue: 'tarefas entregues no prazo' },
@@ -3440,6 +3509,9 @@ const MODULOS_RESULTADO = [
 
 /** Os três cartões de um mês. Separado do bloco para o seletor repintar só eles. */
 function cartoesDeResultadoHtml(comp) {
+  // Os treze meses mais recentes disponíveis, do mais antigo para o mais novo:
+  // a faixa se lê da esquerda para a direita, como o tempo.
+  const meses = mesesComResultado().slice(0, 13).reverse();
   if (!comp) {
     return '<p class="vazio">Nenhum mês fechado na base deste cliente. '
       + 'Carregue lançamentos em Sistema › Dados para o bloco ter o que medir.</p>';
@@ -3470,6 +3542,9 @@ function cartoesDeResultadoHtml(comp) {
       </dl>
       ${barraDeAtingimentoHtml(a, dados, m, comp)}
       <p class="res-texto">${esc(textoDaMeta(a, dados.moeda))}</p>
+      ${deltaDoAtingimentoHtml(m, comp)}
+      ${faixaDeMesesHtml(m, meses, comp)}
+      <button type="button" class="bt peq res-ver" data-ver-mes="${m.chave}">Ver registros de ${esc(mesExib(comp))}</button>
     </article>`;
   }).join('')}</div>`;
 }
@@ -3501,13 +3576,79 @@ function blocoResultadosHtml() {
 
 /** Liga o seletor de mês: repinta só os cartões, nunca o bloco inteiro. */
 function ligarBlocoResultados(raiz) {
-  const sel = (raiz || el('#pagina')).querySelector('[data-mes-resultados]');
+  const area0 = raiz || el('#pagina');
+  const sel = area0.querySelector('[data-mes-resultados]');
   if (!sel) return;
-  sel.onchange = () => {
-    E.mesResultados = sel.value;
-    const area = (raiz || el('#pagina')).querySelector('[data-cartoes-resultado]');
-    if (area) { area.innerHTML = cartoesDeResultadoHtml(E.mesResultados); ligarDicasDaTela(area); }
+
+  const repintar = () => {
+    const area = area0.querySelector('[data-cartoes-resultado]');
+    if (!area) return;
+    area.innerHTML = cartoesDeResultadoHtml(E.mesResultados);
+    ligarDicasDaTela(area);
+    ligarAcoesDosCartoes(area);
+    // O seletor é a outra face do mesmo estado: clicar na faixa tem de movê-lo
+    // junto, ou os dois passariam a dizer meses diferentes.
+    if (sel.value !== E.mesResultados) sel.value = E.mesResultados;
   };
+
+  /** A faixa de meses e o "ver registros" de cada cartão. */
+  function ligarAcoesDosCartoes(area) {
+    for (const bt of area.querySelectorAll('[data-mes-faixa]')) {
+      bt.onclick = () => {
+        // Move o BLOCO inteiro: três cartões em três meses diferentes seriam
+        // três leituras que não se comparam.
+        E.mesResultados = bt.dataset.mesFaixa;
+        repintar();
+      };
+    }
+    for (const bt of area.querySelectorAll('[data-ver-mes]')) {
+      bt.onclick = () => abrirRegistrosDoResultado(bt.dataset.verMes, E.mesResultados);
+    }
+  }
+
+  sel.onchange = () => { E.mesResultados = sel.value; repintar(); };
+  ligarAcoesDosCartoes(area0);
+}
+
+/**
+ * Os registros que compõem o resultado de um módulo num mês.
+ *
+ * Cada módulo tem o seu tipo de registro — lançamento, tarefa, chamado —, e a
+ * lista de cada um sai da MESMA consulta que o cálculo usa. Do maior para o
+ * menor onde há valor; onde não há, na ordem que o módulo já usa.
+ */
+function abrirRegistrosDoResultado(modulo, comp) {
+  const r = recorteDoMes(comp);
+  const nome = (MODULOS_RESULTADO.find((m) => m.chave === modulo) || {}).nome || modulo;
+  if (modulo === 'financeiro') {
+    const p = calcularObjetivo03(r).serie.find((x) => x.comp === comp);
+    const itens = [...((p && p.itens) || [])].sort((a, b) => cent(b.valor) - cent(a.valor));
+    abrirRegistros({
+      titulo: `${nome} — registros de ${mesExib(comp)}`,
+      tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true, arvore: true,
+      itens, contagem: null,
+      nota: `${inteiro(itens.length)} despesa(s) reconhecida(s), somando `
+        + `${brl(reais(somaC(itens.map((l) => l.valor))))}. Do maior para o menor valor.`,
+    });
+    return;
+  }
+  if (modulo === 'projetos') {
+    const itens = tarefasDoRecorte(r, 'entregues');
+    abrirRegistros({
+      titulo: `${nome} — tarefas entregues em ${mesExib(comp)}`,
+      tipo: 'indicadores', colunas: COLUNAS_TAREFA, itens, contagem: null,
+      nota: `${inteiro(itens.length)} tarefa(s) entregue(s) com competência planejada em `
+        + `${mesExib(comp)}. O resultado é quantas delas saíram no prazo.`,
+    });
+    return;
+  }
+  const itens = ticketsDoRecorte(r);
+  abrirRegistros({
+    titulo: `${nome} — atendimentos de ${mesExib(comp)}`,
+    tipo: 'indicadores', colunas: COLUNAS_TICKET, itens, contagem: null,
+    nota: `${inteiro(itens.length)} registro(s) de atendimento em ${mesExib(comp)}. `
+      + 'O resultado é o percentual deles dentro do prazo.',
+  });
 }
 
 async function viewIndicadores() {

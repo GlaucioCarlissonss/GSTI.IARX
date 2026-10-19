@@ -723,6 +723,35 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
 .faixa-sem_meta .res-texto, .faixa-sem_dados .res-texto { color: var(--tinta-fraca); font-weight: 400; font-style: italic; }
 .res-ressalva { margin: 2px 0 0; font-size: var(--txt-1); color: var(--tinta-fraca); }
 .res-falhou { color: var(--critico); text-align: left; padding: 0; }
+
+/* A VARIAÇÃO DO ATINGIMENTO, em pontos percentuais. Aqui subir é bom — é o
+   atingimento, e não o custo —, e por isso a classe do sentido é invertida
+   na origem, no componente, e não aqui. */
+.res-delta { margin: var(--esp-3) 0 0; font-size: var(--txt-2); }
+.res-delta.vazio-delta { color: var(--tinta-fraca); font-style: italic; }
+
+/* A FAIXA MÊS A MÊS: treze semáforos lado a lado, do mais antigo ao mais
+   novo. O rótulo escrito fica visível porque cor sozinha não informa quem
+   não a distingue; o ponto colorido é o reforço, nunca o único sinal. */
+.res-meses { display: flex; gap: 3px; margin-top: var(--esp-5); flex-wrap: wrap; }
+.res-mes {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: var(--esp-2) var(--esp-3); border: 1px solid transparent;
+  border-radius: var(--raio-p); background: none; font: inherit; cursor: pointer;
+}
+.res-mes-rot { font-family: var(--mono); font-size: var(--txt-0); color: var(--tinta-fraca); }
+.res-mes-pt { width: 14px; height: 5px; border-radius: 3px; background: var(--borda-forte); }
+.res-mes.faixa-verde .res-mes-pt { background: var(--bom); }
+.res-mes.faixa-laranja .res-mes-pt { background: var(--atencao); }
+.res-mes.faixa-vermelho .res-mes-pt { background: var(--critico); }
+.res-mes:hover { background: var(--superficie-2); }
+.res-mes:focus-visible { outline: 2px solid var(--serie-1); outline-offset: 1px; }
+/* O mês selecionado: moldura e rótulo em tinta cheia. A seleção não é só a
+   cor do ponto, que já carrega o semáforo. */
+.res-mes.sel { border-color: var(--borda-forte); background: var(--superficie); }
+.res-mes.sel .res-mes-rot { color: var(--tinta); font-weight: 600; }
+.res-mes.sel .res-mes-pt { height: 7px; }
+.res-ver { margin-top: var(--esp-5); align-self: flex-start; }
 /* O esqueleto: a forma do cartão enquanto o número não chegou. Pulsa de leve,
    e para de pulsar para quem pediu menos movimento. */
 .cartao-resultado.esqueleto { gap: var(--esp-5); }
