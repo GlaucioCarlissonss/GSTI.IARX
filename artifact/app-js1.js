@@ -69,6 +69,9 @@ const E = {
   reconhecedores: [],       // quem, na origem, lança despesa que já chega conferida
   spincare: [],             // atividades do Controle Único do Projeto SpinCare, por cliente
   spincareRelatorio: null,  // o relatório da última carga, para sobreviver ao repintar
+  planoAcao: [],            // ações do Plano de Ação da implantação, por cliente
+  planoAcaoRelatorio: null, // o relatório da última carga do plano
+  planoFiltro: null,        // os cortes da tela do plano, só na sessão
   spinFiltro: null,         // os cortes da listagem do Controle Único, só na sessão
   feriados: [],             // dias sem expediente, por cliente — saem do cálculo de horas úteis
   aba: 'painel',
@@ -461,11 +464,11 @@ const Loja = {
   async catalogos() {
     const ler = async (p) => { const s = await E.db.doc('catalogo/' + p).get(); return s.exists ? (s.data().itens || []) : []; };
     const [empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao, reconhecedores,
-      spincare, feriados] =
+      spincare, feriados, planoAcao] =
       await Promise.all(['empresas','filiais','tipos','filas','cenarios','metas','slasCad','reducao',
-        'reconhecedores','spincare','feriados'].map(ler));
+        'reconhecedores','spincare','feriados','planoacao'].map(ler));
     Object.assign(E, { empresas, filiais, tipos, filas, cenarios, metas, slasCad, reducao,
-      reconhecedores, spincare, feriados });
+      reconhecedores, spincare, feriados, planoAcao });
   },
   async lancDaEmpresa(empresa) {
     const snap = await E.db.collection('lanc').where('empresa','==',empresa).get();
