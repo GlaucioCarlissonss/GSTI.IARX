@@ -3237,6 +3237,41 @@ Quando a lista de um dos dois meses vem **cortada** (o app pagina em 300
 linhas), a quebra não é desenhada: somar o que coube mediria a página, não o
 mês, e daria deltas que não fecham com o total.
 
+### A camada 3: o que veio, o que não veio, e o que é novo
+
+O mês anterior partido em dois, mais os novos do mês filtrado — três grupos,
+cada um com subtotal e contagem no cabeçalho e a **mesma árvore da
+composição** dentro.
+
+| grupo | o que é |
+| --- | --- |
+| **Não veio** | estava no mês anterior e não aparece no filtrado |
+| **Veio** | mesma despesa nos dois meses |
+| **Novos** | não existia no mês anterior |
+
+Nasce aberto só o que **cessou**: é ele que leva a uma decisão — contrato
+encerrado, lançamento esquecido ou despesa que mudou de nome. "O que se
+repetiu" costuma ser a maior lista e a menos acionável. Os outros dois montam
+a árvore no primeiro clique; três árvores de uma vez custariam, num mês cheio,
+três vezes o que custa a pergunta que a pessoa veio fazer.
+
+**A classificação é por CHAVE, não por linha.** A pergunta "esta despesa
+voltou?" é sobre a despesa, não sobre o registro. Classificar linha a linha
+exigiria emparelhar 1 para 1, e com três lançamentos do mesmo contrato num mês
+e um no outro não há par certo — é a ambiguidade que o enunciado manda não
+resolver no chute. Por chave não há chute: ou a despesa existe nos dois meses,
+ou não existe. O que varia dentro da chave — quantos lançamentos, quanto somam
+— aparece ao lado.
+
+**A conferência fecha dos dois lados**, escrita no rodapé da camada: *veio +
+não veio = o mês anterior inteiro*, e *repetidos + novos = o mês filtrado
+inteiro*. Em vermelho quando não fecha. Sem ela, um erro de classificação
+sumiria entre três listas grandes — e as duas suítes calculam a soma por conta
+própria em vez de ler a frase da tela.
+
+Com a lista de um dos meses **cortada**, a camada não classifica: diria que uma
+despesa cessou quando ela só ficou fora da página.
+
 ### A hierarquia Empresa → Filial, dentro de cada camada
 
 No artifact ela já existia: a árvore do detalhamento é TIPO → EMPRESA → FILIAL →

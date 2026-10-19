@@ -331,6 +331,87 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
     drill.nota.slice(0, 120));
   await fecharModal(); await fecharModal();
 
+  // ----------- camada 3: o mês anterior partido em veio, não veio e novos
+  //
+  // A asserção central é a CONFERÊNCIA DOS DOIS LADOS: veio + não veio é o mês
+  // anterior inteiro, e repetidos + novos é o mês filtrado inteiro. Sem ela,
+  // um erro de classificação sumiria entre três listas grandes.
+  console.log('\nCAMADA 3 — veio × não veio, e os novos');
+  await pag.evaluate(() => {
+    const k = document.querySelector('.kpi.drill[data-kpi="teto-gasto"]');
+    k.scrollIntoView({ block: 'center' }); k.click();
+  });
+  await pag.waitForTimeout(700);
+  await abrirCamada('ant');
+  const c3 = await pag.evaluate(() => {
+    const corpo = document.querySelector('.camada[data-camada="ant"] .camada-corpo');
+    const moeda = (t) => {
+      const m = t.match(/R\$\s*([\d.]+,\d{2})/);
+      return m ? Number(m[1].replace(/\./g, '').replace(',', '.')) : null;
+    };
+    const num = (t) => Number((t.match(/(\d[\d.]*) lançamento/) || [])[1]?.replace(/\./g, '') || 0);
+    const g = {};
+    for (const s of corpo.querySelectorAll('.grupo-rec')) {
+      g[s.dataset.grupo] = {
+        rot: s.querySelector('.grupo-rot').textContent.trim(),
+        soma: moeda(s.querySelector('.grupo-val').textContent),
+        qtd: num(s.querySelector('.grupo-val').textContent),
+        aberto: s.querySelector('.grupo-bt').getAttribute('aria-expanded') === 'true',
+        nota: s.querySelector('.grupo-nota').textContent.trim().length,
+        arvore: s.querySelectorAll('[data-arvore-det] table').length,
+      };
+    }
+    const cab = (id) => {
+      const s = [...document.querySelectorAll('.camada')].find((x) => x.dataset.camada === id);
+      return moeda(s.querySelector('.camada-val').textContent);
+    };
+    return { g, confere: corpo.querySelector('.grupo-confere').textContent.replace(/\s+/g, ' ').trim(),
+      divergiu: corpo.querySelector('.grupo-confere').classList.contains('erro'),
+      totalAnterior: cab('ant'), totalFoco: cab('veio') };
+  });
+  ok('os três grupos existem', ['naoveio', 'veio', 'novos'].every((k) => c3.g[k]),
+    Object.keys(c3.g).join(' · '));
+  ok('só "não veio" nasce aberto',
+    c3.g.naoveio.aberto && !c3.g.veio.aberto && !c3.g.novos.aberto,
+    `naoveio=${c3.g.naoveio.aberto} veio=${c3.g.veio.aberto} novos=${c3.g.novos.aberto}`);
+  ok('cada grupo traz subtotal e contagem',
+    ['naoveio', 'veio', 'novos'].every((k) => c3.g[k].soma !== null && c3.g[k].qtd >= 0),
+    ['naoveio', 'veio', 'novos'].map((k) => `${k}=${c3.g[k].soma}/${c3.g[k].qtd}`).join(' · '));
+  ok('cada grupo explica o que significa',
+    ['naoveio', 'veio', 'novos'].every((k) => c3.g[k].nota > 40));
+  ok('o grupo aberto traz a MESMA árvore da composição', c3.g.naoveio.arvore === 1);
+  // A conferência, calculada aqui e não lida da tela.
+  ok('veio + não veio = o mês anterior inteiro',
+    Math.abs(c3.g.veio.soma + c3.g.naoveio.soma - c3.totalAnterior) < 0.01,
+    `${(c3.g.veio.soma + c3.g.naoveio.soma).toFixed(2)} × ${c3.totalAnterior}`);
+  ok('a tela declara que confere, e não diverge', !c3.divergiu, c3.confere.slice(0, 80));
+  ok('a frase de conferência traz os dois lados',
+    /que veio \+.+que não veio =.+repetido \+.+novo =/.test(c3.confere), c3.confere.slice(0, 150));
+
+  console.log('\nCAMADA 3 — abrir um grupo fechado monta a árvore dele');
+  const abriuGrupo = await pag.evaluate(async () => {
+    const corpo = document.querySelector('.camada[data-camada="ant"] .camada-corpo');
+    const g = corpo.querySelector('.grupo-rec[data-grupo="novos"]');
+    const antes = g.querySelectorAll('[data-arvore-det] tbody tr').length;
+    g.querySelector('.grupo-bt').click();
+    await new Promise((r) => setTimeout(r, 250));
+    const depois = g.querySelectorAll('[data-arvore-det] tbody tr').length;
+    // A árvore de dentro tem de ficar operável.
+    const bt = g.querySelector('[data-abrir-no]');
+    const visAntes = [...g.querySelectorAll('[data-arvore-det] tbody tr')].filter((t) => !t.hidden).length;
+    if (bt) bt.click();
+    await new Promise((r) => setTimeout(r, 150));
+    return { antes, depois,
+      anunciado: g.querySelector('.grupo-bt').getAttribute('aria-expanded') === 'true',
+      visAntes, visDepois: [...g.querySelectorAll('[data-arvore-det] tbody tr')].filter((t) => !t.hidden).length };
+  });
+  ok('o grupo fechado não tinha árvore montada', abriuGrupo.antes === 0);
+  ok('abrir monta a árvore', abriuGrupo.depois > 0, `${abriuGrupo.depois} linha(s)`);
+  ok('o estado é anunciado', abriuGrupo.anunciado);
+  ok('a árvore dentro do grupo abre os níveis',
+    abriuGrupo.visDepois > abriuGrupo.visAntes, `${abriuGrupo.visAntes} → ${abriuGrupo.visDepois}`);
+  await fecharModal();
+
   // -------------------------- todos os indicadores falam do MESMO par de meses
   //
   // O mês comparado sai do FIM DA JANELA, não do último mês que por acaso tem

@@ -505,6 +505,140 @@ const chaveDeTitulo = (t: unknown) =>
     .toUpperCase().replace(/\s+/g, ' ').trim();
 
 /**
+ * A chave de RECORRÊNCIA: o que faz o lançamento do mês anterior e o do mês
+ * filtrado serem "a mesma despesa que se repetiu".
+ *
+ * Tipo + empresa + filial + título normalizado. É o que resta da chave do
+ * enunciado (`fornecedor + tipo + centro de custo + unidade`): `fornecedor`
+ * está vazio em toda a base — o favorecido mora na descrição — e centro de
+ * custo não existe como campo.
+ */
+const chaveDeRecorrencia = (l: unknown) => {
+  const r = l as Record<string, unknown>;
+  const tipo = String(r.tipo_despesa ?? 'Sem tipo');
+  return [tipo, String(r.empresa_id ?? ''), String(r.filial_nome ?? '(empresa)'),
+    chaveDeTitulo(r.descricao ?? r.fornecedor ?? tipo)].join('\u0000');
+};
+
+/**
+ * O mês anterior partido em o que SE REPETIU e o que CESSOU, mais o que é NOVO
+ * no mês filtrado.
+ *
+ * A classificação é por CHAVE, não por linha: a pergunta "esta despesa voltou?"
+ * é sobre a despesa, não sobre o registro. Classificar linha a linha exigiria
+ * emparelhar 1 para 1, e com três lançamentos do mesmo contrato num mês e um
+ * no outro não há par certo — é a ambiguidade que o enunciado manda não
+ * resolver no chute. Por chave não há chute.
+ */
+function classificarRecorrencia<T>(doMes: T[], doAnterior: T[]) {
+  const noFoco = new Set(doMes.map(chaveDeRecorrencia));
+  const noAnterior = new Set(doAnterior.map(chaveDeRecorrencia));
+  return {
+    veio: doAnterior.filter((l) => noFoco.has(chaveDeRecorrencia(l))),
+    naoVeio: doAnterior.filter((l) => !noFoco.has(chaveDeRecorrencia(l))),
+    novos: doMes.filter((l) => !noAnterior.has(chaveDeRecorrencia(l))),
+    // O mesmo "veio" visto do lado do mês filtrado: existe para a conferência
+    // fechar dos dois lados.
+    repetidos: doMes.filter((l) => noAnterior.has(chaveDeRecorrencia(l))),
+  };
+}
+
+/**
+ * A CAMADA 3: três grupos, cada um com subtotal e contagem no cabeçalho e a
+ * MESMA árvore da composição dentro. Nasce aberto só o que CESSOU: é ele que
+ * leva a uma ação, e é o que a pessoa veio ver.
+ *
+ * A conferência vai escrita no rodapé e fecha dos dois lados — sem ela, um
+ * erro de classificação sumiria entre três listas grandes.
+ */
+function VeioOuNaoVeio<T>({ foco, anterior, janela, pedido }: {
+  foco: Fatia<T>;
+  anterior: Fatia<T>;
+  janela: NonNullable<ReturnType<typeof janelaDoPedido>>;
+  pedido: PedidoDetalhe<T>;
+}) {
+  const [abertos, setAbertos] = useState<Set<string>>(() => new Set(['naoveio']));
+  const r = useMemo(
+    () => classificarRecorrencia(foco.itens, anterior.itens),
+    [foco.itens, anterior.itens],
+  );
+  if (foco.cortada || anterior.cortada) {
+    return (
+      <p className="vazio" style={{ padding: 0, textAlign: 'left' }}>
+        A lista de um dos dois meses veio cortada: classificar o que coube diria que uma despesa
+        cessou quando ela só ficou fora da página. Estreite o recorte de unidades acima.
+      </p>
+    );
+  }
+  const soma = (l: T[]) => (pedido.somar ? l.reduce((s, x) => s + pedido.somar!(x), 0) : 0);
+  const grupo = (id: string, rotulo: string, itens: T[], tom: string, nota: React.ReactNode) => {
+    const aberto = abertos.has(id);
+    return (
+      <section className={`grupo-rec tom-${tom}`} data-grupo={id} key={id}>
+        <h5>
+          <button
+            type="button"
+            className="grupo-bt"
+            aria-expanded={aberto}
+            aria-controls={`grec-${id}`}
+            onClick={() => setAbertos((a) => {
+              const n = new Set(a);
+              if (n.has(id)) n.delete(id); else n.add(id);
+              return n;
+            })}
+          >
+            <span className="camada-seta" aria-hidden>{aberto ? '−' : '+'}</span>
+            <span className="grupo-rot">{rotulo}</span>
+            <span className="grupo-val">
+              {moeda(soma(itens))} <span className="camada-qtd">{inteiro(itens.length)} lançamento(s)</span>
+            </span>
+          </button>
+        </h5>
+        <p className="grupo-nota">{nota}</p>
+        <div className="grupo-corpo" id={`grec-${id}`} hidden={!aberto}>
+          {aberto && (
+            <TabelaDoDetalhe
+              colunas={pedido.colunas}
+              itens={itens}
+              contagem={itens.length}
+              cortada={false}
+              hierarquia
+              somar={pedido.somar}
+            />
+          )}
+        </div>
+      </section>
+    );
+  };
+
+  const perto = (a: number, b: number) => Math.abs(a - b) < 0.01;
+  const fecha = perto(soma(r.veio) + soma(r.naoVeio), soma(anterior.itens))
+    && perto(soma(r.repetidos) + soma(r.novos), soma(foco.itens));
+
+  return (
+    <div className="veio-ou-nao">
+      {grupo('naoveio', 'Não veio — cessou neste mês', r.naoVeio, 'alerta',
+        <>Estava em {competenciaExib(janela.anterior)} e não aparece em {competenciaExib(janela.foco)}.
+          É a lista que leva a uma decisão: contrato encerrado, lançamento esquecido ou despesa
+          que mudou de nome.</>)}
+      {grupo('veio', 'Veio — repetiu no mês filtrado', r.veio, 'bom',
+        <>Mesma despesa nos dois meses, pela chave <strong>tipo + empresa + filial + título</strong>.
+          Os valores aqui são os de {competenciaExib(janela.anterior)}.</>)}
+      {grupo('novos', 'Novos — só no mês filtrado', r.novos, 'novo',
+        <>Não existia em {competenciaExib(janela.anterior)}. Entra como conferência do outro lado:
+          o que veio mais o que é novo tem de dar o mês filtrado inteiro.</>)}
+      <p className={`grupo-confere${fecha ? '' : ' erro'}`}>
+        {fecha ? 'Confere dos dois lados.' : 'DIVERGE — confira os números abaixo.'}{' '}
+        {competenciaExib(janela.anterior)}: {moeda(soma(r.veio))} que veio +{' '}
+        {moeda(soma(r.naoVeio))} que não veio = {moeda(soma(anterior.itens))}.{' '}
+        {competenciaExib(janela.foco)}: {moeda(soma(r.repetidos))} repetido +{' '}
+        {moeda(soma(r.novos))} novo = {moeda(soma(foco.itens))}.
+      </p>
+    </div>
+  );
+}
+
+/**
  * A variação na MESMA árvore da composição: tipo de despesa → empresa →
  * filial → título lançado.
  *
@@ -854,14 +988,7 @@ function CamadasComparativas<T>({ pedido, janela, fatias, recorte }: {
           anterior === null ? (
             <p className="vazio">{competenciaExib(janela.anterior)} não pôde ser carregado.</p>
           ) : (
-            <TabelaDoDetalhe
-              colunas={pedido.colunas}
-              itens={anterior.itens}
-              contagem={anterior.contagem}
-              cortada={anterior.cortada}
-              hierarquia
-              somar={pedido.somar}
-            />
+            <VeioOuNaoVeio foco={foco} anterior={anterior} janela={janela} pedido={pedido} />
           )
         }
       </Camada>

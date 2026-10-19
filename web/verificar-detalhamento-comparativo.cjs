@@ -333,6 +333,77 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
     ok('o drill-down diz de quem é a variação', /^Variação de /.test(drill.titulo), drill.titulo);
   }
 
+  // ----------- camada 3: o mês anterior partido em veio, não veio e novos
+  console.log('\nCAMADA 3 — veio × não veio, e os novos');
+  await pag.evaluate(() => {
+    const bt = [...document.querySelectorAll('.camada-bt')]
+      .find((b) => /o que veio × o que não veio/i.test(b.textContent));
+    if (bt && bt.getAttribute('aria-expanded') !== 'true') bt.click();
+  });
+  await pag.waitForTimeout(700);
+  const c3 = await pag.evaluate(() => {
+    const sec = [...document.querySelectorAll('.camada')]
+      .find((x) => /o que veio × o que não veio/i.test(x.textContent));
+    const corpo = sec && sec.querySelector('.veio-ou-nao');
+    if (!corpo) return null;
+    const moeda = (t) => {
+      const m = t.match(/R\$\s*([\d.]+,\d{2})/);
+      return m ? Number(m[1].replace(/\./g, '').replace(',', '.')) : null;
+    };
+    const num = (t) => Number((t.match(/(\d[\d.]*) lançamento/) || [])[1]?.replace(/\./g, '') || 0);
+    const g = {};
+    for (const x of corpo.querySelectorAll('.grupo-rec')) {
+      g[x.dataset.grupo] = {
+        soma: moeda(x.querySelector('.grupo-val').textContent),
+        qtd: num(x.querySelector('.grupo-val').textContent),
+        aberto: x.querySelector('.grupo-bt').getAttribute('aria-expanded') === 'true',
+        nota: x.querySelector('.grupo-nota').textContent.trim().length,
+        tabela: x.querySelectorAll('table').length,
+      };
+    }
+    return { g, confere: corpo.querySelector('.grupo-confere').textContent.replace(/\s+/g, ' ').trim(),
+      divergiu: corpo.querySelector('.grupo-confere').classList.contains('erro'),
+      totalAnterior: moeda(sec.querySelector('.camada-val').textContent) };
+  });
+  if (!c3) {
+    ok('a camada 3 traz os três grupos', false, 'nenhuma .veio-ou-nao');
+  } else {
+    ok('os três grupos existem', ['naoveio', 'veio', 'novos'].every((k) => c3.g[k]),
+      Object.keys(c3.g).join(' · '));
+    ok('só "não veio" nasce aberto',
+      c3.g.naoveio.aberto && !c3.g.veio.aberto && !c3.g.novos.aberto,
+      `naoveio=${c3.g.naoveio.aberto} veio=${c3.g.veio.aberto} novos=${c3.g.novos.aberto}`);
+    ok('cada grupo traz subtotal e contagem',
+      ['naoveio', 'veio', 'novos'].every((k) => c3.g[k].soma !== null),
+      ['naoveio', 'veio', 'novos'].map((k) => `${k}=${c3.g[k].soma}/${c3.g[k].qtd}`).join(' · '));
+    ok('cada grupo explica o que significa',
+      ['naoveio', 'veio', 'novos'].every((k) => c3.g[k].nota > 40));
+    ok('os grupos fechados não montam a tabela',
+      c3.g.veio.tabela === 0 && c3.g.novos.tabela === 0,
+      `veio=${c3.g.veio.tabela} novos=${c3.g.novos.tabela}`);
+    ok('veio + não veio = o mês anterior inteiro',
+      Math.abs(c3.g.veio.soma + c3.g.naoveio.soma - c3.totalAnterior) < 0.01,
+      `${(c3.g.veio.soma + c3.g.naoveio.soma).toFixed(2)} × ${c3.totalAnterior}`);
+    ok('a tela declara que confere, e não diverge', !c3.divergiu, c3.confere.slice(0, 80));
+    ok('a frase de conferência traz os dois lados',
+      /que veio \+.+que não veio =.+repetido \+.+novo =/.test(c3.confere), c3.confere.slice(0, 150));
+
+    const abriu = await pag.evaluate(async () => {
+      const sec = [...document.querySelectorAll('.camada')]
+        .find((x) => /o que veio × o que não veio/i.test(x.textContent));
+      const g = sec.querySelector('.grupo-rec[data-grupo="novos"]');
+      g.querySelector('.grupo-bt').click();
+      await new Promise((r) => setTimeout(r, 300));
+      return { tabela: g.querySelectorAll('table').length,
+        anunciado: g.querySelector('.grupo-bt').getAttribute('aria-expanded') === 'true',
+        grupos: g.querySelectorAll('tr.grupo-unidade').length };
+    });
+    ok('abrir o grupo monta a tabela', abriu.tabela > 0);
+    ok('o estado é anunciado', abriu.anunciado);
+    ok('o grupo traz a MESMA hierarquia da composição', abriu.grupos > 0,
+      `${abriu.grupos} linha(s) de grupo`);
+  }
+
   // --------------------------------------------- contraste das camadas novas
   console.log('\nCONTRASTE — o que foi acrescentado passa na régua AA, nos dois temas');
   for (const tema of ['light', 'dark']) {

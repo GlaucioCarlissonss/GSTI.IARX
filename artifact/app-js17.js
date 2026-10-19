@@ -1942,6 +1942,51 @@ const sentidoDe = (delta) => (delta < 0 ? 'desce' : delta > 0 ? 'sobe' : 'zero')
 const chaveDeTitulo = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toUpperCase().replace(/\s+/g, ' ').trim();
 
+/**
+ * A chave de RECORRÊNCIA: o que faz o lançamento do mês anterior e o do mês
+ * filtrado serem "a mesma despesa que se repetiu".
+ *
+ * Tipo de despesa + empresa + filial + título normalizado. É o que resta da
+ * chave do enunciado (`fornecedor + tipo + centro de custo + unidade`):
+ * `fornecedor` está vazio em toda a base — o favorecido mora na descrição — e
+ * centro de custo não existe como campo. Está dito em
+ * `docs/regras-de-negocio.md`, e não inventado aqui.
+ */
+const chaveDeRecorrencia = (l) => [
+  String(l.tipo || 'Sem tipo'),
+  String(l.empresa),
+  String(l.filial || '(empresa)'),
+  chaveDeTitulo(l.descricao || l.fornecedor || l.tipo),
+].join('\u0000');
+
+/**
+ * O mês anterior partido em o que SE REPETIU e o que CESSOU, mais o que é NOVO
+ * no mês filtrado.
+ *
+ * A classificação é por CHAVE, não por linha: a pergunta "esta despesa voltou?"
+ * é sobre a despesa, não sobre o registro. Classificar linha a linha exigiria
+ * emparelhar 1 para 1, e com três lançamentos do mesmo contrato num mês e um
+ * no outro não há par certo — é a ambiguidade que o enunciado manda não
+ * resolver no chute. Por chave não há chute: ou a despesa existe nos dois
+ * meses, ou não existe.
+ *
+ * O que varia dentro da chave — quantos lançamentos, quanto somam — é dito ao
+ * lado, e é por ali que se vê a despesa que voltou menor ou partida em duas.
+ */
+function classificarRecorrencia(doMes, doAnterior) {
+  const noFoco = new Set(doMes.map(chaveDeRecorrencia));
+  const noAnterior = new Set(doAnterior.map(chaveDeRecorrencia));
+  return {
+    veio: doAnterior.filter((l) => noFoco.has(chaveDeRecorrencia(l))),
+    naoVeio: doAnterior.filter((l) => !noFoco.has(chaveDeRecorrencia(l))),
+    novos: doMes.filter((l) => !noAnterior.has(chaveDeRecorrencia(l))),
+    // O mesmo "veio", visto do lado do mês filtrado. Existe para a conferência
+    // fechar dos dois lados: veio + não veio = mês anterior, e
+    // repetidos + novos = mês filtrado.
+    repetidos: doMes.filter((l) => noAnterior.has(chaveDeRecorrencia(l))),
+  };
+}
+
 /** Os quatro níveis da árvore, na ordem em que ela desce. */
 const NIVEIS_VARIACAO = [
   { chave: (l) => String(l.tipo || 'Sem tipo'), rotulo: (l) => String(l.tipo || 'Sem tipo'),
@@ -2105,6 +2150,105 @@ function ligarArvoreDaVariacao(raiz) {
   }
 }
 
+/**
+ * A CAMADA 3: o mês anterior partido em o que veio e o que não veio, mais os
+ * novos do mês filtrado.
+ *
+ * Três grupos, cada um com subtotal e contagem no próprio cabeçalho e a MESMA
+ * árvore da composição dentro — tipo → empresa → filial → lançamento. Quem
+ * desce uma árvore do detalhamento não pode ter de reaprender a outra.
+ *
+ * Os grupos nascem fechados, menos o que CESSOU: é ele que leva a uma ação, e
+ * é o que a pessoa veio ver. "O que se repetiu" costuma ser a maior lista e a
+ * menos acionável.
+ *
+ * A conferência vai escrita no rodapé, e fecha dos dois lados: veio + não veio
+ * é o mês anterior inteiro, e repetidos + novos é o mês filtrado inteiro. Sem
+ * ela, um erro de classificação sumiria entre três listas grandes.
+ */
+function camadaVeioOuNaoHtml(c, prefixo) {
+  const r = classificarRecorrencia(c.doMes, c.doAnterior);
+  const soma = (l) => somaC(l.map((x) => x.valor));
+  // As árvores dos grupos FECHADOS não são montadas: três árvores de uma vez
+  // custariam, num mês cheio, três vezes o que custa a pergunta que a pessoa
+  // veio fazer. Cada uma nasce no primeiro clique do seu grupo.
+  const chaveG = `grp${++SEQ_VARIACAO}`;
+  const construtores = {};
+  GRUPOS_PENDENTES.set(chaveG, construtores);
+  const grupo = (id, rotulo, itens, tom, nota, aberto) => {
+    construtores[id] = () => (itens.length
+      ? arvoreDoDetalhamentoHtml([...itens].sort((a, b) => cent(b.valor) - cent(a.valor)), prefixo)
+      : '<p class="vazio">Nenhum lançamento neste grupo.</p>');
+    return `
+    <section class="grupo-rec tom-${tom}" data-grupo="${id}">
+      <h5><button type="button" class="grupo-bt" aria-expanded="${aberto}"
+          aria-controls="grec-${id}" data-abrir-grupo="${id}">
+        <span class="bloco-seta" aria-hidden="true">${aberto ? '−' : '+'}</span>
+        <span class="grupo-rot">${esc(rotulo)}</span>
+        <span class="grupo-val">${brl(reais(soma(itens)))}
+          <span class="camada-qtd">${inteiro(itens.length)} lançamento(s)</span></span>
+      </button></h5>
+      <p class="grupo-nota">${nota}</p>
+      <div class="grupo-corpo" id="grec-${id}"${aberto ? '' : ' hidden'}>${
+        aberto ? construtores[id]() : ''}</div>
+    </section>`;
+  };
+
+  const confere = (a, b, total) => Math.abs(a + b - total) < 1;
+  const okAnterior = confere(soma(r.veio), soma(r.naoVeio), soma(c.doAnterior));
+  const okFoco = confere(soma(r.repetidos), soma(r.novos), soma(c.doMes));
+
+  return `<div class="veio-ou-nao" data-grupos="${chaveG}">
+    ${grupo('naoveio', 'Não veio — cessou neste mês', r.naoVeio, 'alerta',
+      `Estava em ${esc(mesExib(c.mesAnterior))} e não aparece em ${esc(mesExib(c.mesFoco))}. `
+      + 'É a lista que leva a uma decisão: contrato encerrado, lançamento esquecido ou despesa que mudou de nome.', true)}
+    ${grupo('veio', 'Veio — repetiu no mês filtrado', r.veio, 'bom',
+      `Mesma despesa nos dois meses, pela chave <strong>tipo + empresa + filial + título</strong>. `
+      + `Os valores aqui são os de ${esc(mesExib(c.mesAnterior))}.`, false)}
+    ${grupo('novos', 'Novos — só no mês filtrado', r.novos, 'novo',
+      `Não existia em ${esc(mesExib(c.mesAnterior))}. Entra como conferência do outro lado: `
+      + 'o que veio mais o que é novo tem de dar o mês filtrado inteiro.', false)}
+    <p class="grupo-confere${okAnterior && okFoco ? '' : ' erro'}">
+      ${okAnterior && okFoco ? 'Confere dos dois lados.' : 'DIVERGE — confira os números abaixo.'}
+      ${esc(mesExib(c.mesAnterior))}: ${brl(reais(soma(r.veio)))} que veio +
+      ${brl(reais(soma(r.naoVeio)))} que não veio = ${brl(reais(soma(c.doAnterior)))}.
+      ${esc(mesExib(c.mesFoco))}: ${brl(reais(soma(r.repetidos)))} repetido +
+      ${brl(reais(soma(r.novos)))} novo = ${brl(reais(soma(c.doMes)))}.</p>
+  </div>`;
+}
+
+/** Os construtores de árvore de cada grupo da camada 3, até ela montar. */
+const GRUPOS_PENDENTES = new Map();
+
+/** Liga os três grupos da camada 3, montando a árvore no primeiro clique. */
+function ligarGruposDeRecorrencia(raiz) {
+  const area = raiz.querySelector('[data-grupos]');
+  if (!area) return;
+  const construtores = GRUPOS_PENDENTES.get(area.dataset.grupos) || {};
+  for (const bt of area.querySelectorAll('[data-abrir-grupo]')) {
+    const id = bt.dataset.abrirGrupo;
+    const corpo = area.querySelector(`#grec-${CSS.escape(id)}`);
+    // O grupo que já nasceu aberto teve a árvore montada junto com o HTML.
+    if (bt.getAttribute('aria-expanded') === 'true') {
+      ligarArvoreDoDetalhamento(corpo);
+      ligarDicasDaTela(corpo);
+      corpo.dataset.montado = '1';
+    }
+    bt.onclick = () => {
+      const abrir = bt.getAttribute('aria-expanded') !== 'true';
+      if (abrir && !corpo.dataset.montado) {
+        corpo.innerHTML = construtores[id] ? construtores[id]() : '';
+        corpo.dataset.montado = '1';
+        ligarArvoreDoDetalhamento(corpo);
+        ligarDicasDaTela(corpo);
+      }
+      bt.setAttribute('aria-expanded', String(abrir));
+      bt.firstElementChild.textContent = abrir ? '−' : '+';
+      corpo.hidden = !abrir;
+    };
+  }
+}
+
 /** Uma camada: cabeçalho fixo com título e valor, corpo que nasce fechado. */
 function camadaHtml({ chave, id, rotulo, valor }) {
   const idCorpo = `${chave}-${id}`;
@@ -2163,7 +2307,7 @@ function detalhamentoComparativoHtml({ itens, mes, anteriores, prefixo }) {
           : 'Não há mês anterior.')} Sem ele não há diferença a medir.</p>`
       : arvoreDaVariacaoHtml(c),
     veio: () => arvore(c.doMes),
-    ant: () => c.temBase ? arvore(c.doAnterior)
+    ant: () => c.temBase ? camadaVeioOuNaoHtml(c, prefixo)
       : `<p class="vazio">${esc(mesExib(c.mesAnterior) || 'O mês anterior')} não está no recorte.</p>`,
     recorte: () => arvore(c.recorte),
   });
@@ -2209,6 +2353,7 @@ function ligarDetalhamentoComparativo(raiz) {
         corpo.dataset.montado = '1';
         ligarArvoreDoDetalhamento(corpo);
         ligarArvoreDaVariacao(corpo);
+        ligarGruposDeRecorrencia(corpo);
         ligarDicasDaTela(corpo);
       }
       bt.setAttribute('aria-expanded', String(abrir));

@@ -854,6 +854,33 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{border-color:var
   font-style:italic}
 .res-falhou{margin:var(--esp-3) 0 0;font-size:var(--txt-2);color:var(--crit)}
 
+/* Os três grupos da camada 3 — o que veio, o que não veio, o que é novo.
+   Cada um com subtotal no cabeçalho e a mesma árvore da composição dentro.
+   O tom entra pela borda esquerda e nunca sozinho: o rótulo diz por extenso
+   de que grupo se trata, e a nota abaixo diz o que ele significa. */
+.veio-ou-nao{display:flex;flex-direction:column;gap:var(--esp-5)}
+.grupo-rec{border:1px solid var(--linha);border-left:3px solid var(--linha2);
+  border-radius:var(--raio-m);background:var(--sup2);overflow:hidden}
+.grupo-rec.tom-alerta{border-left-color:var(--crit)}
+.grupo-rec.tom-bom{border-left-color:var(--bom)}
+.grupo-rec.tom-novo{border-left-color:var(--alerta)}
+.grupo-rec>h5{margin:0}
+.grupo-bt{display:flex;align-items:center;gap:var(--esp-5);width:100%;
+  padding:var(--esp-6) var(--esp-7);font:inherit;color:inherit;background:none;border:0;
+  cursor:pointer;text-align:left}
+.grupo-bt:hover{background:var(--sup3)}
+.grupo-bt:focus-visible{outline:2px solid var(--s1);outline-offset:-2px}
+.grupo-rot{flex:1 1 auto;min-width:0;font-size:var(--txt-3);font-weight:var(--peso-forte)}
+.grupo-val{flex:none;font-family:var(--mono);font-size:var(--txt-3);font-variant-numeric:tabular-nums}
+.grupo-nota{margin:0;padding:0 var(--esp-7) var(--esp-5) calc(var(--esp-7) + 26px);
+  font-size:var(--txt-2);line-height:1.45;color:var(--tinta2)}
+.grupo-corpo{padding:0 var(--esp-7) var(--esp-7)}
+/* A conferência: é ela que impede um erro de classificação de sumir entre
+   três listas grandes. Em vermelho quando não fecha. */
+.grupo-confere{margin:0;padding:var(--esp-5) var(--esp-7);border:1px dashed var(--linha2);
+  border-radius:var(--raio-m);font-size:var(--txt-2);color:var(--tinta2)}
+.grupo-confere.erro{border-color:var(--crit);color:var(--crit);font-weight:var(--peso-forte)}
+
 /* A marca de quem só existe em um dos dois meses. Pastilha, e não só cor: a
    palavra está escrita, e é ela que o leitor de tela encontra. */
 .marca-novo,.marca-cessou{display:inline-block;margin-left:var(--esp-4);padding:1px 6px;
