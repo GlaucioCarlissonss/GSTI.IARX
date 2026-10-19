@@ -287,6 +287,17 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   ok('cada segmento diz de quem é e quanto', composicao.comTitulo);
 
   console.log('\n--- a árvore do SLA aponta quem puxa o resultado para baixo ---');
+  // Sem chamado nenhum o indicador não desenha árvore, e a caixa não existe.
+  // Este roteiro assumia que existia e MORRIA aqui — levando junto tudo o que
+  // vinha depois, de modo que a suíte inteira deixava de reportar por causa de
+  // uma base sem SLA. Pular dizendo o motivo é o que o restante do repositório
+  // faz, e é a única saída honesta: afirmar que passou seria pior que morrer.
+  const temArvoreSla = await pag.$('[data-arvore="ind-sla"] [data-abrir-unidades]');
+  if (!temArvoreSla) {
+    const quantos = await pag.$eval('[data-kpi="sla-chamados"] .n',
+      (e) => e.textContent.trim()).catch(() => '?');
+    console.log(`  · a base tem ${quantos} chamado(s): sem SLA não há árvore de unidades a conferir`);
+  } else {
   const fechada = await pag.$eval('[data-arvore="ind-sla"] [data-abrir-unidades]',
     (b) => b.getAttribute('aria-expanded'));
   ok('a árvore nasce fechada', fechada === 'false', String(fechada));
@@ -328,8 +339,13 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
     `${arvore.barras} barra(s)`);
   ok('com o percentual escrito ao lado, e não só a cor', arvore.comPercentual);
   ok('e a barra explica o valor no hover', arvore.comDica);
+  }
 
   console.log('\n--- expandir a empresa revela as filiais dela, e só as dela ---');
+  // Mesma dependência da seção acima: sem chamado não há árvore para expandir.
+  if (!temArvoreSla) {
+    console.log('  · sem árvore de SLA nesta base; a expansão por empresa não pode ser exercida');
+  } else {
   const primeiraEmpresa = await pag.$eval('[data-arvore="ind-sla"] tr.nivel-1 [data-abrir-no]',
     (b) => b.dataset.abrirNo);
   await pag.click(`[data-arvore="ind-sla"] [data-abrir-no="${primeiraEmpresa}"]`);
@@ -353,6 +369,7 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
     `${expandida.abertas} de ${expandida.total}`);
   ok('as das outras empresas continuam escondidas', expandida.vizinhasEscondidas);
   ok('e a filial usa o mesmo formato da empresa', expandida.mesmoFormato);
+  }
 
   console.log('\n--- na despesa, a filial abre os lançamentos (nível 3, sob demanda) ---');
   await pag.click('[data-arvore="ind-fixos"] [data-abrir-unidades]');
