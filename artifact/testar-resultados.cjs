@@ -348,6 +348,10 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
       completos: meses.every((m) => m.querySelector('.res-mes-rot').textContent.trim()
         && m.querySelector('.res-mes-pt') && (m.getAttribute('aria-label') || '').length > 8),
       comDica: meses.filter((m) => m.dataset.dica).length,
+      // O rótulo é o mesmo dos dois lados — "jul/26", e não "07". Duas
+      // superfícies que nomeiam o mesmo mês de formas diferentes obrigam a
+      // traduzir de cabeça ao comparar o celular com o navegador.
+      rotulos: meses.map((m) => m.querySelector('.res-mes-rot').textContent.trim()),
       cores: [...new Set(meses.map((m) =>
         ([...m.classList].find((x) => x.startsWith('faixa-')) || '').replace('faixa-', '')))],
       // Cronológica: o mês mais antigo primeiro.
@@ -367,6 +371,10 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
   ok('cada mês traz rótulo, ponto e nome acessível', faixa.completos);
   ok('cada mês traz balão com os números', faixa.comDica === faixa.quantos,
     `${faixa.comDica} de ${faixa.quantos}`);
+  // O mesmo rótulo do app: mês abreviado e ano de dois dígitos. "07" sozinho
+  // obrigaria a traduzir de cabeça ao comparar as duas telas.
+  ok('o rótulo do mês é o mesmo do app (mmm/aa)',
+    faixa.rotulos.every((r) => /^[a-z]{3}\/\d{2}$/.test(r)), faixa.rotulos.join(' · '));
 
   console.log('\nFAIXA — clicar num mês move o bloco inteiro');
   const clique = await pag.evaluate(async () => {
@@ -394,6 +402,48 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
     ok('os três cartões movem juntos',
       clique.marcadosPorCartao.every((m) => m === clique.querido),
       clique.marcadosPorCartao.join(' · '));
+  }
+
+  // A FAIXA PELO TECLADO. Repintar troca o HTML inteiro da área, e o botão
+  // que tinha o foco deixa de existir: sem cuidado, o foco volta ao `body` e
+  // quem navega por teclado precisa tabular desde o topo da página a cada mês
+  // que escolhe — justamente na peça feita para se percorrer mês a mês.
+  console.log('\nFAIXA — percorrível pelo teclado, e o foco não se perde ao escolher');
+  const porTeclado = await pag.evaluate(async () => {
+    const c = document.querySelector('.cartao-resultado[data-modulo="sla"]');
+    const meses = [...c.querySelectorAll('.res-mes')];
+    const alvo = meses.find((m) => m.getAttribute('aria-pressed') !== 'true');
+    if (!alvo) return null;
+    const querido = alvo.dataset.mesFaixa;
+    alvo.focus();
+    const focou = document.activeElement === alvo;
+    return { focou, querido, ehBotao: alvo.tagName === 'BUTTON',
+      // Um botão nativo já está na ordem de tabulação; um `tabindex="-1"` o
+      // tiraria dela sem mudar nada do que se vê.
+      foraDaTabulacao: alvo.getAttribute('tabindex') === '-1' };
+  });
+  if (!porTeclado) {
+    console.log('  · todos os meses já selecionados; o teclado não pôde ser exercido');
+  } else {
+    ok('o mês é um botão nativo, na ordem de tabulação',
+      porTeclado.ehBotao && !porTeclado.foraDaTabulacao);
+    ok('o mês recebe foco', porTeclado.focou);
+    await pag.keyboard.press('Enter');
+    await pag.waitForTimeout(400);
+    const depois = await pag.evaluate(() => {
+      const f = document.activeElement;
+      return { ehBody: f === document.body,
+        naFaixa: !!(f && f.classList && f.classList.contains('res-mes')),
+        mes: f && f.dataset ? f.dataset.mesFaixa : null,
+        modulo: f && f.closest ? (f.closest('[data-modulo]') || {}).dataset?.modulo : null,
+        selecionado: document.querySelector('[data-mes-resultados]').value };
+    });
+    ok('Enter escolhe o mês', depois.selecionado === porTeclado.querido,
+      `${depois.selecionado} (queria ${porTeclado.querido})`);
+    ok('e o foco continua no mesmo botão, e não volta ao topo da página',
+      depois.naFaixa && !depois.ehBody && depois.mes === porTeclado.querido
+        && depois.modulo === 'sla',
+      `foco em ${depois.modulo || '—'}/${depois.mes || (depois.ehBody ? 'body' : '?')}`);
   }
 
   console.log('\nDELTA — a variação do atingimento contra o mês anterior');

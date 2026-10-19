@@ -351,6 +351,87 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
       pedidos.length === 0, pedidos.map((u) => u.replace(B, '')).join(' | ') || 'nenhuma');
   }
 
+  // A FAIXA PELO TECLADO, a mesma conferência que a irmã do artifact faz.
+  // Lá a área inteira é repintada a cada escolha, e sem cuidado o foco volta
+  // ao `body`; aqui o React reaproveita os nós e o foco sobrevive sozinho —
+  // o que esta seção garante é que continue sobrevivendo.
+  console.log('\nFAIXA — percorrível pelo teclado, e o foco não se perde ao escolher');
+  await voltarAoUltimo();
+  const porTeclado = await pag.evaluate(() => {
+    const c = document.querySelector('.cartao-resultado[data-modulo="sla"]');
+    const meses = [...c.querySelectorAll('.res-mes')];
+    const alvo = meses.find((m) => m.getAttribute('aria-pressed') !== 'true');
+    if (!alvo) return null;
+    alvo.focus();
+    return {
+      querido: alvo.dataset.mesFaixa,
+      ehBotao: alvo.tagName === 'BUTTON',
+      foraDaTabulacao: alvo.getAttribute('tabindex') === '-1',
+      focou: document.activeElement === alvo,
+    };
+  });
+  if (!porTeclado) {
+    console.log('  · todos os meses já selecionados; o teclado não pôde ser exercido');
+  } else {
+    ok('o mês é um botão nativo, na ordem de tabulação',
+      porTeclado.ehBotao && !porTeclado.foraDaTabulacao);
+    ok('o mês recebe foco', porTeclado.focou);
+    await pag.keyboard.press('Enter');
+    await pag.waitForTimeout(700);
+    const depois = await pag.evaluate(() => {
+      const f = document.activeElement;
+      return {
+        ehBody: f === document.body,
+        naFaixa: !!(f && f.classList && f.classList.contains('res-mes')),
+        mes: f && f.dataset ? f.dataset.mesFaixa : null,
+        modulo: f && f.closest ? (f.closest('[data-modulo]') || {}).dataset?.modulo : null,
+        selecionado: document.querySelector('[data-mes-resultados]').value,
+      };
+    });
+    ok('Enter escolhe o mês', depois.selecionado === porTeclado.querido,
+      `${depois.selecionado} (queria ${porTeclado.querido})`);
+    ok('e o foco continua no mesmo botão, e não volta ao topo da página',
+      depois.naFaixa && !depois.ehBody && depois.mes === porTeclado.querido
+        && depois.modulo === 'sla',
+      `foco em ${depois.modulo || '—'}/${depois.mes || (depois.ehBody ? 'body' : '?')}`);
+  }
+
+  console.log('\nFAIXA — a 390px ela cabe sem empurrar a página');
+  await pag.setViewportSize({ width: 390, height: 900 });
+  await pag.waitForTimeout(400);
+  const noCelular = await pag.evaluate(() => {
+    const g = document.querySelector('.cartao-resultado[data-modulo="sla"] .res-meses');
+    if (!g) return null;
+    const bs = [...g.querySelectorAll('.res-mes')];
+    const r = g.getBoundingClientRect();
+    return {
+      rolaLado: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      transborda: bs.some((b) => b.getBoundingClientRect().right > r.right + 1),
+      // WCAG 2.2 AA pede 24×24 CSS px de alvo; abaixo disso o dedo erra.
+      menorAlvo: Math.round(Math.min(...bs.map((b) => {
+        const x = b.getBoundingClientRect();
+        return Math.min(x.width, x.height);
+      }))),
+      rotulos: bs.map((b) => (b.querySelector('.res-mes-rot') || {}).textContent || ''),
+    };
+  });
+  if (!noCelular) {
+    ok('a faixa existe no celular', false, 'sem .res-meses a 390px');
+  } else {
+    ok('a página não rola para o lado', !noCelular.rolaLado);
+    ok('nenhum mês vaza do grupo', !noCelular.transborda);
+    ok('o alvo de cada mês tem ao menos 24px', noCelular.menorAlvo >= 24,
+      `${noCelular.menorAlvo}px`);
+    // O MESMO rótulo do artifact: mês abreviado e ano de dois dígitos. Duas
+    // superfícies que nomeiam o mesmo mês de formas diferentes obrigam a
+    // traduzir de cabeça ao comparar o celular com o navegador.
+    ok('o rótulo do mês é o mesmo do artifact (mmm/aa)',
+      noCelular.rotulos.every((r) => /^[a-z]{3}\/\d{2}$/.test(r.trim())),
+      noCelular.rotulos.join(' · '));
+  }
+  await pag.setViewportSize({ width: 1500, height: 1100 });
+  await pag.waitForTimeout(400);
+
   console.log('\nDELTA — a variação do atingimento, em pontos percentuais');
   // De volta ao mês mais recente: o clique acima pode ter parado no mês mais
   // ANTIGO da faixa, e esse não tem anterior com que se comparar.

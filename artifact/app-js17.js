@@ -3469,7 +3469,7 @@ function faixaDeMesesHtml(modulo, meses, selecionado) {
       data-mes-faixa="${m}" aria-pressed="${sel}"
       aria-label="${esc(mesExib(m))}: ${esc(textoDaMeta(a, dados && dados.moeda))}"
       ${detalhe ? `data-dica="${esc(JSON.stringify(detalhe))}"` : ''}>
-      <span class="res-mes-rot">${esc(mesExib(m).slice(0, 2))}</span>
+      <span class="res-mes-rot">${esc(mesCurto(m))}</span>
       <span class="res-mes-pt" aria-hidden="true"></span></button>`;
   }).join('');
   return `<div class="res-meses" role="group"
@@ -3583,12 +3583,35 @@ function ligarBlocoResultados(raiz) {
   const repintar = () => {
     const area = area0.querySelector('[data-cartoes-resultado]');
     if (!area) return;
+    // DE ONDE VEIO O COMANDO, para o foco voltar para lá.
+    //
+    // Repintar troca o HTML inteiro da área, e o elemento que tinha o foco
+    // deixa de existir: o navegador devolve o foco ao `body`. Para quem usa
+    // mouse isso é invisível; para quem navega por teclado, escolher um mês
+    // custa voltar ao topo da página e tabular tudo de novo — e a faixa, que
+    // existe para se percorrer mês a mês, é justamente onde esse custo mais
+    // dói. Guardar a identidade do botão e devolver o foco a ele depois é o
+    // que mantém o lugar.
+    const ativo = document.activeElement;
+    const daFaixa = ativo && area.contains(ativo) && ativo.dataset
+      ? ativo.dataset.mesFaixa : null;
+    const doModulo = daFaixa
+      ? (ativo.closest('[data-modulo]') || {}).dataset : null;
     area.innerHTML = cartoesDeResultadoHtml(E.mesResultados);
     ligarDicasDaTela(area);
     ligarAcoesDosCartoes(area);
     // O seletor é a outra face do mesmo estado: clicar na faixa tem de movê-lo
     // junto, ou os dois passariam a dizer meses diferentes.
     if (sel.value !== E.mesResultados) sel.value = E.mesResultados;
+    if (daFaixa) {
+      // O mesmo mês, no cartão do mesmo módulo: a faixa foi redesenhada, e
+      // sem o módulo o foco cairia no primeiro cartão que tivesse aquele mês.
+      const volta = area.querySelector(
+        `[data-modulo="${CSS.escape(doModulo && doModulo.modulo ? doModulo.modulo : '')}"] `
+        + `[data-mes-faixa="${CSS.escape(daFaixa)}"]`,
+      ) || area.querySelector(`[data-mes-faixa="${CSS.escape(daFaixa)}"]`);
+      if (volta) volta.focus();
+    }
   };
 
   /** A faixa de meses e o "ver registros" de cada cartão. */

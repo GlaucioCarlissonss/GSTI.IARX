@@ -351,7 +351,10 @@ export function BlocoResultados({
       {
         chave: 'sla' as const,
         nome: 'SLA',
-        oQue: 'chamados dentro do prazo',
+        // A mesma frase do artifact, palavra por palavra: o cartão do celular
+        // e o do navegador descrevem a mesma medida, e descrevê-la com outras
+        // palavras faz duvidar se é a mesma.
+        oQue: 'chamados resolvidos dentro do prazo',
         direcao: 'minimo' as const,
         emReais: false,
         pontos: porMes(ind.dados.sla.serie, (l) => l.competencia, (l) => ({

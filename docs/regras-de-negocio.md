@@ -3453,9 +3453,66 @@ ressalva em vez de comparar o custo com um alvo de outra natureza. Fechar isso
 é mudança de modelo no servidor, e fica para a entrega do serviço de
 consolidação.
 
-Medido por `artifact/testar-resultados.cjs`, `web/verificar-resultados.cjs` e
-`web/testar-regra-resultados.mjs` — este último sem navegador, porque a regra é
-pura e subir um Chromium para conferir uma divisão custaria minutos por caso.
+### O que o bloco mudou na leitura
+
+**Antes.** Os três números existiam, cada um dentro da caixa do seu módulo, e
+cada meta existia na página de Metas. Responder "as três frentes fecharam o mês
+dentro do combinado?" exigia abrir Financeiro, anotar o custo, lembrar o teto,
+abrir Projetos, anotar o percentual, lembrar que a meta era 80%, abrir SLA,
+repetir — e fazer três divisões de cabeça. A pergunta era respondível, mas
+custava cinco minutos e um papel, e por isso raramente era feita.
+
+**Depois.** Um bloco, três cartões, um mês. Cada cartão diz o resultado, a
+meta, o atingimento, a cor da faixa, a frase do estado, a variação contra o mês
+anterior e os treze meses em série. O que era uma conta de cabeça virou uma
+olhada; o que era um número solto virou um número com régua ao lado.
+
+### Três meses, três leituras
+
+Os exemplos abaixo são da base de verificação, onde cada mês fechado recebe
+uma cor de propósito. A meta de SLA e a de Projetos são as mesmas, 80%.
+
+**09/2026 — meta atingida (verde).** O SLA resolveu 90% dos chamados dentro do
+prazo contra uma meta de 80%: o atingimento é 90 ÷ 80 = **112,5%**. A barra
+enche até o fim, para em 100% e ganha a marca do excedente; ao lado, "Meta
+superada em 12,5%". A frase é "Meta 80,0% atingida". A variação contra agosto é
+**↑ 25,0 p.p.** — e a seta para cima é verde porque o que subiu foi o
+atingimento, não o custo.
+
+**08/2026 — parcialmente atingida (laranja).** Projetos entregou 3 de 4 tarefas
+no prazo, 75% contra 80%: o atingimento é 75 ÷ 80 = **93,8%**. Perto, e ainda
+assim fora: a barra fica em 93,8% e a frase é "Meta 80,0% parcialmente
+atingida". É a faixa que existe para distinguir "quase" de "não" — tratá-las
+igual faria o gestor reagir a um mês de 93,8% como reage a um de 12,5%.
+
+**07/2026 — não atingida (vermelho).** Nenhuma das 2 tarefas do mês saiu no
+prazo: 0% contra 80%, atingimento **0%**. A barra fica vazia de cor cheia, a
+frase é "Meta 80,0% não atingida", e a faixa mostra que este foi o começo da
+série — o que vem depois é recuperação, e não queda.
+
+**A leitura que só a faixa dá.** Olhando os três cartões de setembro, as três
+frentes parecem bem. Olhando a faixa, vê-se que vermelho, laranja e verde vêm
+nessa ordem: não é um bom mês isolado, é uma subida de três meses. A conclusão
+muda, e nenhum dos cartões sozinho a daria.
+
+### Onde as duas superfícies ainda falam diferente, e por quê
+
+A regra é a mesma, e isso é conferido caso a caso por
+`web/testar-consistencia-resultados.mjs`: a mesma tabela de 18 entradas passa
+pelas duas implementações e as três saídas — faixa, percentual e frase —
+têm de bater, inclusive nas bordas exatas (100,0% é verde; 99,9% é laranja;
+70,0% é laranja; 69,9% é vermelho).
+
+O que resta diferente é um só, e é de modelo, não de apresentação: o cartão
+Financeiro do app descreve "custo realizado do mês" e o do artifact, "despesa
+reconhecida contra o teto de gasto". O app não tem teto porque o servidor não
+tem onde guardá-lo, e o cartão diz isso na ressalva em vez de comparar o custo
+com um alvo de outra natureza.
+
+Medido por `artifact/testar-resultados.cjs`, `web/verificar-resultados.cjs`,
+`web/testar-regra-resultados.mjs` e `web/testar-consistencia-resultados.mjs` —
+os dois últimos sem navegador para a parte pura, porque subir um Chromium para
+conferir uma divisão custaria minutos por caso.
 
 ## Expansões previstas
 
