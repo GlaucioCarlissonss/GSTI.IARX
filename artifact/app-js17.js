@@ -3342,7 +3342,22 @@ function resultadoDoMes(modulo, comp) {
   if (modulo === 'financeiro') {
     // Despesa RECONHECIDA do mês contra o teto de gasto — é o Objetivo 03.
     const p = calcularObjetivo03(r).serie.find((x) => x.comp === comp);
-    return { resultado: p ? p.total : null, meta: p ? p.teto : tetosVigentes(comp).geral, moeda: true };
+    // COM O FILTRO DE FIXAS, a meta troca junto com o resultado.
+    //
+    // Medir só a despesa fixa contra o teto GERAL — que é a soma das três
+    // faixas — daria um atingimento inflado por construção: um numerador
+    // menor sobre o mesmo denominador. A meta tem de ser o teto da MESMA
+    // faixa que o número mede, senão a comparação deixa de ser uma comparação.
+    //
+    // Os dois já vêm prontos da série: `calcularObjetivo03` separa as faixas
+    // para o detalhamento do Objetivo 03 e resolve o teto de cada uma por
+    // competência. Recalcular aqui abriria espaço para o bloco e o farol
+    // divergirem sem ninguém perceber.
+    const tetos = p ? p.tetos : tetosVigentes(comp);
+    if (E.resultadosSoFixas) {
+      return { resultado: p ? p.fixas : null, meta: tetos.fixas, moeda: true };
+    }
+    return { resultado: p ? p.total : null, meta: p ? p.teto : tetos.geral, moeda: true };
   }
   if (modulo === 'projetos') {
     const p = calcularProjetos(r);
@@ -3531,8 +3546,17 @@ function cartoesDeResultadoHtml(comp) {
     }
     const a = atingimentoDaMeta(m.chave, dados);
     const semNumero = a.faixa === 'SEM_DADOS';
-    return `<article class="cartao-resultado faixa-${a.faixa.toLowerCase()}" data-modulo="${m.chave}">
-      <h3>${esc(m.nome)}<span class="res-oque">${esc(m.oQue)}</span></h3>
+    // O filtro só alcança o Financeiro — os outros dois não têm despesa. O
+    // cartão filtrado DIZ que está filtrado, e diz na frase que descreve o que
+    // ele mede: uma marca só no cabeçalho do bloco faria o número menor
+    // parecer queda de custo para quem chega na tela com o filtro já ligado.
+    const filtrado = m.chave === 'financeiro' && E.resultadosSoFixas;
+    const oQue = filtrado ? 'despesa fixa recorrente contra o teto de fixas' : m.oQue;
+    return `<article class="cartao-resultado faixa-${a.faixa.toLowerCase()}${
+      filtrado ? ' res-filtrado' : ''}" data-modulo="${m.chave}">
+      <h3>${esc(m.nome)}${filtrado
+        ? '<span class="marca-filtro" title="O cartão está restrito à despesa recorrente fixa.'
+          + ' A meta é o teto de fixas.">só fixas</span>' : ''}<span class="res-oque">${esc(oQue)}</span></h3>
       <p class="res-valor">${semNumero ? '—'
         : dados.moeda ? brl(dados.resultado) : pctTxt(dados.resultado)}</p>
       <dl class="res-linha">
@@ -3568,6 +3592,13 @@ function blocoResultadosHtml() {
           <span>Mês</span>
           <select data-mes-resultados>${meses.map((m) =>
             `<option value="${m}"${m === E.mesResultados ? ' selected' : ''}>${mesExib(m)}</option>`).join('')}</select>
+        </label>` : ''}
+        ${meses.length ? `<label class="filtro-fixas" title="${esc(
+          'Restringe o cartão Financeiro à despesa recorrente fixa, e troca a meta '
+          + 'junto: o teto de fixas no lugar do teto geral.')}">
+          <input type="checkbox" data-so-fixas${E.resultadosSoFixas ? ' checked' : ''}>
+          <span>Somente despesas fixas (recorrentes)</span>
+          <small>Afeta o cartão Financeiro; Projetos e SLA não têm despesa.</small>
         </label>` : ''}
       </header>
       <div data-cartoes-resultado>${cartoesDeResultadoHtml(E.mesResultados)}</div>
@@ -3630,6 +3661,22 @@ function ligarBlocoResultados(raiz) {
   }
 
   sel.onchange = () => { E.mesResultados = sel.value; repintar(); };
+
+  // O FILTRO DE FIXAS. Repinta os cartões inteiros, e não só o número: com
+  // ele a meta muda, logo mudam o atingimento, a barra, a faixa dos treze
+  // meses e a variação contra o mês anterior. Trocar só o valor exibido
+  // deixaria um número novo debaixo de uma régua velha, que é a forma mais
+  // silenciosa de uma tela mentir.
+  const chave = area0.querySelector('[data-so-fixas]');
+  if (chave) {
+    chave.onchange = () => {
+      E.resultadosSoFixas = chave.checked;
+      repintar();
+      // O comando saiu daqui: o foco fica onde está, porque a caixa de
+      // seleção não é repintada junto com os cartões.
+    };
+  }
+
   ligarAcoesDosCartoes(area0);
 }
 
@@ -3644,14 +3691,20 @@ function abrirRegistrosDoResultado(modulo, comp) {
   const r = recorteDoMes(comp);
   const nome = (MODULOS_RESULTADO.find((m) => m.chave === modulo) || {}).nome || modulo;
   if (modulo === 'financeiro') {
+    // O MESMO recorte do cartão, filtro incluído: o modal que listasse tudo
+    // sob um cartão que soma só as fixas acusaria uma divergência que não
+    // existe, e quem conferisse na mão não acharia o número de volta.
+    const soFixas = !!E.resultadosSoFixas;
+    const ehFixa = (l) => l.natureza === 'fixa' && l.classificacao !== 'investimento';
     const reconhecidasDe = (mes) => {
       if (!mes) return [];
       const ponto = calcularObjetivo03(recorteDoMes(mes)).serie.find((x) => x.comp === mes);
-      return [...((ponto && ponto.itens) || [])];
+      const itens = [...((ponto && ponto.itens) || [])];
+      return soFixas ? itens.filter(ehFixa) : itens;
     };
     const itens = reconhecidasDe(comp).sort((a, b) => cent(b.valor) - cent(a.valor));
     abrirRegistros({
-      titulo: `${nome} — registros de ${mesExib(comp)}`,
+      titulo: `${nome}${soFixas ? ' (só fixas)' : ''} — registros de ${mesExib(comp)}`,
       tipo: 'indicadores-mes', colunas: COLUNAS_LANCAMENTO_COMPLETO, larga: true,
       itens, contagem: null,
       // AS MESMAS TRÊS CAMADAS do detalhamento de Custo fixo, e não só a
@@ -3667,8 +3720,10 @@ function abrirRegistrosDoResultado(modulo, comp) {
       // um mês com o total do outro produziria uma diferença que é só a
       // mudança de critério.
       comparativo: { mes: comp, anteriores: reconhecidasDe(mesSoma(comp, -1)) },
-      nota: `${inteiro(itens.length)} despesa(s) reconhecida(s), somando `
-        + `${brl(reais(somaC(itens.map((l) => l.valor))))}. Do maior para o menor valor.`,
+      nota: `${inteiro(itens.length)} despesa(s) ${soFixas ? 'FIXA(S) ' : ''}reconhecida(s), somando `
+        + `${brl(reais(somaC(itens.map((l) => l.valor))))}. Do maior para o menor valor.`
+        + (soFixas ? ' O filtro "somente despesas fixas" está ligado: pontuais e'
+          + ' investimentos ficaram de fora, aqui e no cartão.' : ''),
     });
     return;
   }

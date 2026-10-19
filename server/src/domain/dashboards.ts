@@ -205,12 +205,26 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
       `SELECT l.competencia,
               COALESCE(SUM(CASE WHEN l.classificacao = 'despesa' THEN l.valor_centavos ELSE 0 END), 0) AS despesa,
               COALESCE(SUM(CASE WHEN l.classificacao = 'investimento' THEN l.valor_centavos ELSE 0 END), 0) AS investimento,
+              -- A parcela RECORRENTE FIXA do mês, que é outra pergunta que a
+              -- quebra por classificação não responde: um equipamento é
+              -- investimento e não se repete; uma licença é despesa e se
+              -- repete todo mês. Quem quer saber "quanto custa manter isto
+              -- ligado" precisa da segunda, não da primeira.
+              --
+              -- Investimento fica FORA mesmo quando a natureza é fixa, que é
+              -- como o Objetivo 03 do artifact separa as três faixas — as
+              -- duas pontas têm de contar a mesma coisa sob o mesmo nome.
+              COALESCE(SUM(CASE WHEN l.natureza = 'fixa' AND l.classificacao <> 'investimento'
+                                THEN l.valor_centavos ELSE 0 END), 0) AS fixa,
+              COALESCE(SUM(CASE WHEN l.natureza = 'fixa' AND l.classificacao <> 'investimento'
+                                THEN 1 ELSE 0 END), 0) AS lancamentos_fixa,
               COUNT(*) AS lancamentos
          FROM lancamentos l WHERE ${where} AND l.competencia BETWEEN ? AND ?
         GROUP BY l.competencia`,
     )
     .all(...params, inicioSerie, fimSerie) as Array<{
     competencia: string; despesa: number; investimento: number; lancamentos: number;
+    fixa: number; lancamentos_fixa: number;
   }>;
   const mapaSerie = new Map(linhasSerie.map((l) => [l.competencia, l]));
   const evolucaoMensal = intervalo(inicioSerie, fimSerie).map((mes) => {
@@ -221,10 +235,14 @@ export function dashboardFinanceiro(ctx: Contexto, escopo: EscopoDashboard = {})
       despesa: paraReais(l?.despesa ?? 0),
       investimento: paraReais(l?.investimento ?? 0),
       total: paraReais((l?.despesa ?? 0) + (l?.investimento ?? 0)),
+      fixa: paraReais(l?.fixa ?? 0),
       // `intervalo` preenche o buraco com zero para a linha do gráfico não
       // saltar meses. A contagem é o que distingue os dois zeros: mês sem
-      // lançamento nenhum não custou R$ 0,00 — não há o que dizer dele.
+      // lançamento nenhum não custou R$ 0,00 — não há o que dizer dele. Vale
+      // para a parcela fixa pelo mesmo motivo: um mês inteiro de pontuais não
+      // tem custo fixo "de R$ 0,00", tem custo fixo nenhum a declarar.
       lancamentos: l?.lancamentos ?? 0,
+      lancamentos_fixa: l?.lancamentos_fixa ?? 0,
     };
   });
 

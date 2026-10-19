@@ -819,6 +819,26 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{border-color:var
 .bloco-resultados>header h2{font-size:var(--txt-6)}
 .bloco-resultados>header .nota{flex:1 1 320px;min-width:0}
 .campo-mes-resultados{flex:none;min-width:150px}
+/* O FILTRO DE NATUREZA do bloco. Fica ao lado do seletor de mês, que é o
+   outro recorte do bloco, e diz por extenso que alcança só o Financeiro —
+   Projetos e SLA não têm despesa, e um filtro sem escopo escrito faria
+   suspeitar que eles também foram recortados. */
+.filtro-fixas{display:flex;align-items:center;gap:var(--esp-4);flex-wrap:wrap;
+  flex:none;max-width:320px;padding:var(--esp-4) var(--esp-6);
+  border:1px solid var(--linha);border-radius:var(--raio-m);background:var(--sup2);
+  font-size:var(--txt-2);cursor:pointer}
+.filtro-fixas:hover{border-color:var(--linha2)}
+.filtro-fixas:focus-within{outline:2px solid var(--s1);outline-offset:1px}
+.filtro-fixas input{flex:none;margin:0;cursor:pointer}
+.filtro-fixas>span{font-weight:var(--peso-forte)}
+.filtro-fixas>small{flex:1 1 100%;font-size:var(--txt-1);line-height:1.35;color:var(--tinta2)}
+/* A pastilha do cartão filtrado. Pastilha, e não só uma cor de borda: a
+   palavra está escrita, e é ela que o leitor de tela encontra. */
+.marca-filtro{display:inline-block;margin-left:var(--esp-4);padding:1px 7px;
+  border:1px solid currentColor;border-radius:var(--raio-redondo);
+  font-family:var(--mono);font-size:var(--txt-0);letter-spacing:.06em;
+  text-transform:uppercase;color:var(--s1t);vertical-align:middle}
+.cartao-resultado.res-filtrado{border-left:3px solid var(--s1)}
 .grade-resultados{display:grid;gap:var(--esp-6);grid-template-columns:repeat(3,minmax(0,1fr))}
 @media (max-width:860px){.grade-resultados{grid-template-columns:1fr}}
 .cartao-resultado{

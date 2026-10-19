@@ -520,6 +520,95 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
     await pag.waitForTimeout(500);
   }
 
+  // ------------------------------------------- filtro de despesas fixas
+  console.log('\nFILTRO DE FIXAS — restringe o cartão Financeiro, e só ele');
+  await voltarAoUltimo();
+  const lerFin = () => pag.evaluate(() => {
+    const c = document.querySelector('.cartao-resultado[data-modulo="financeiro"]');
+    const outro = (m) => {
+      const x = document.querySelector(`.cartao-resultado[data-modulo="${m}"]`);
+      return `${(x.querySelector('.res-valor') || {}).textContent}|${
+        (x.querySelectorAll('.res-linha dd')[0] || {}).textContent}`;
+    };
+    return {
+      oQue: ((c.querySelector('.res-oque') || {}).textContent || '').trim(),
+      marca: ((c.querySelector('.marca-filtro') || {}).textContent || '').trim(),
+      borda: c.classList.contains('res-filtrado'),
+      valor: (c.querySelector('.res-valor') || {}).textContent.trim(),
+      valorNum: Number(String((c.querySelector('.res-valor') || {}).textContent)
+        .replace(/[^\d,]/g, '').replace(/\./g, '').replace(',', '.')),
+      projetos: outro('projetos'), sla: outro('sla'),
+    };
+  });
+  const chaveFixas = await pag.$('[data-so-fixas]');
+  if (!chaveFixas) {
+    ok('o bloco tem o filtro de despesas fixas', false, 'nenhum [data-so-fixas]');
+  } else {
+    ok('o bloco tem o filtro de despesas fixas', true);
+    ok('ele nasce DESLIGADO — o padrão é o custo inteiro', !(await chaveFixas.isChecked()));
+    const antes = await lerFin();
+    // Treze meses de duas somas já vieram nas duas consultas do bloco: ligar
+    // o filtro é recálculo em memória, e ir ao servidor aqui seria o N+1 que
+    // a entrega anterior existe para não cometer.
+    const pedidosFiltro = [];
+    const contarFiltro = (r) => { if (/\/api\//.test(r.url())) pedidosFiltro.push(r.url()); };
+    pag.on('request', contarFiltro);
+    await chaveFixas.click();
+    await pag.waitForTimeout(900);
+    pag.off('request', contarFiltro);
+    const depois = await lerFin();
+    ok('ligar o filtro NÃO dispara consulta nova', pedidosFiltro.length === 0,
+      pedidosFiltro.map((u) => u.replace(B, '')).join(' | ') || 'nenhuma');
+    ok('o cartão se diz filtrado, por escrito e não só por cor',
+      /só fixas/i.test(depois.marca) && depois.borda, depois.marca || '—');
+    ok('a frase do cartão passa a nomear a faixa medida',
+      /fixa/i.test(depois.oQue) && depois.oQue !== antes.oQue,
+      `${antes.oQue} → ${depois.oQue}`);
+    ok('o resultado encolhe: pontuais e investimentos saem',
+      depois.valorNum < antes.valorNum, `${antes.valor} → ${depois.valor}`);
+    // O filtro é de DESPESA: tarefa e chamado não têm natureza. Mexer neles
+    // seria o filtro prometendo um recorte que ele não faz.
+    ok('Projetos e SLA ficam intactos',
+      depois.projetos === antes.projetos && depois.sla === antes.sla,
+      `${depois.projetos} · ${depois.sla}`);
+
+    // O drill-down segue o cartão, e o rodapé confere a soma contra ele.
+    const btFin = await pag.$('.cartao-resultado[data-modulo="financeiro"] .res-ver');
+    if (btFin && !(await btFin.isDisabled())) {
+      await btFin.click();
+      await pag.waitForTimeout(1600);
+      const mf = await pag.evaluate(() => {
+        const m = document.querySelector('.modal, [role="dialog"]');
+        if (!m) return null;
+        const t = m.textContent.replace(/\s+/g, ' ');
+        return { titulo: ((m.querySelector('h2, h3') || {}).textContent || '').trim(),
+          diz: /pontuais e investimentos ficaram de fora/i.test(t),
+          confere: /confere com o indicador/.test(t),
+          diverge: /diverge do indicador|não confere/i.test(t) };
+      });
+      if (!mf) {
+        ok('o drill-down segue o filtro', false, 'nenhum modal');
+      } else {
+        ok('o drill-down se diz filtrado no título',
+          /fixa/i.test(mf.titulo), mf.titulo);
+        ok('e explica o que ficou de fora', mf.diz);
+        ok('a soma do modal confere com o cartão filtrado', mf.confere && !mf.diverge);
+      }
+      await pag.keyboard.press('Escape');
+      await pag.waitForTimeout(500);
+    } else {
+      console.log('  · sem registro fixo no mês em foco; o drill-down filtrado não pôde ser exercido');
+    }
+
+    // Desligar devolve o estado anterior, inteiro.
+    await chaveFixas.click();
+    await pag.waitForTimeout(900);
+    const voltou = await lerFin();
+    ok('desligar o filtro devolve o custo inteiro',
+      voltou.valor === antes.valor && !voltou.marca,
+      `${voltou.valor} × ${antes.valor}`);
+  }
+
   console.log('\nCONTRASTE — o bloco passa na régua AA, nos dois temas');
   for (const tema of ['light', 'dark']) {
     await pag.evaluate((t) => document.documentElement.setAttribute('data-theme', t), tema);

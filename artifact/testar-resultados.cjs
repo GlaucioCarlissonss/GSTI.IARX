@@ -530,6 +530,130 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
   // O preenchimento para em 100%: uma barra que passasse da caixa perderia a
   // referência, e duas metas superadas por margens diferentes ficariam com a
   // mesma aparência de transbordo.
+  // ------------------------------------------- filtro de despesas fixas
+  //
+  // A armadilha desta peça: filtrar o NUMERADOR e deixar o denominador. Medir
+  // só a despesa fixa contra o teto GERAL — que é a soma das três faixas —
+  // daria um atingimento inflado por construção, e inflado de um jeito que a
+  // tela não denuncia: o número continua parecendo um percentual plausível.
+  console.log('\nFILTRO DE FIXAS — restringe o cartão e troca a meta junto');
+  const semFiltro = await pag.evaluate(() => {
+    const c = document.querySelector('.cartao-resultado[data-modulo="financeiro"]');
+    const dd = c.querySelectorAll('.res-linha dd');
+    const outro = (m) => {
+      const x = document.querySelector(`.cartao-resultado[data-modulo="${m}"]`);
+      return `${(x.querySelector('.res-valor') || {}).textContent}|${
+        (x.querySelectorAll('.res-linha dd')[0] || {}).textContent}`;
+    };
+    return {
+      oQue: ((c.querySelector('.res-oque') || {}).textContent || '').trim(),
+      marca: !!c.querySelector('.marca-filtro'),
+      valor: (c.querySelector('.res-valor') || {}).textContent.trim(),
+      meta: dd[0] ? dd[0].textContent.trim() : null,
+      ating: dd[1] ? dd[1].textContent.trim() : null,
+      faixa: ([...c.classList].find((x) => x.startsWith('faixa-')) || '').replace('faixa-', ''),
+      cores: [...c.querySelectorAll('.res-mes')].map((b) =>
+        ([...b.classList].find((x) => x.startsWith('faixa-')) || '').replace('faixa-', '')).join(','),
+      projetos: outro('projetos'), sla: outro('sla'),
+    };
+  });
+  const chave = await pag.$('[data-so-fixas]');
+  if (!chave) {
+    ok('o bloco tem o filtro de despesas fixas', false, 'nenhum [data-so-fixas]');
+  } else {
+    ok('o bloco tem o filtro de despesas fixas', true);
+    ok('ele nasce DESLIGADO — o padrão é o custo inteiro',
+      !(await chave.isChecked()) && !semFiltro.marca);
+    await chave.click();
+    await pag.waitForTimeout(700);
+    const comFiltro = await pag.evaluate(() => {
+      const c = document.querySelector('.cartao-resultado[data-modulo="financeiro"]');
+      const dd = c.querySelectorAll('.res-linha dd');
+      const outro = (m) => {
+        const x = document.querySelector(`.cartao-resultado[data-modulo="${m}"]`);
+        return `${(x.querySelector('.res-valor') || {}).textContent}|${
+          (x.querySelectorAll('.res-linha dd')[0] || {}).textContent}`;
+      };
+      const num = (t) => Number(String(t).replace(/[^\d,]/g, '').replace(/\./g, '').replace(',', '.'));
+      return {
+        oQue: ((c.querySelector('.res-oque') || {}).textContent || '').trim(),
+        marca: ((c.querySelector('.marca-filtro') || {}).textContent || '').trim(),
+        valor: (c.querySelector('.res-valor') || {}).textContent.trim(),
+        valorNum: num((c.querySelector('.res-valor') || {}).textContent),
+        meta: dd[0] ? dd[0].textContent.trim() : null,
+        ating: dd[1] ? dd[1].textContent.trim() : null,
+        faixa: ([...c.classList].find((x) => x.startsWith('faixa-')) || '').replace('faixa-', ''),
+        temBordaDeFiltro: c.classList.contains('res-filtrado'),
+        cores: [...c.querySelectorAll('.res-mes')].map((b) =>
+          ([...b.classList].find((x) => x.startsWith('faixa-')) || '').replace('faixa-', '')).join(','),
+        projetos: outro('projetos'), sla: outro('sla'),
+      };
+    });
+    const numAntes = Number(String(semFiltro.valor).replace(/[^\d,]/g, '')
+      .replace(/\./g, '').replace(',', '.'));
+    ok('o cartão se diz filtrado, por escrito e não só por cor',
+      /só fixas/i.test(comFiltro.marca) && comFiltro.temBordaDeFiltro, comFiltro.marca);
+    ok('a frase do cartão passa a nomear a faixa medida',
+      /fixa/i.test(comFiltro.oQue) && comFiltro.oQue !== semFiltro.oQue,
+      `${semFiltro.oQue} → ${comFiltro.oQue}`);
+    ok('o resultado encolhe: pontuais e investimentos saem',
+      comFiltro.valorNum < numAntes, `${semFiltro.valor} → ${comFiltro.valor}`);
+    // O CORAÇÃO DA ENTREGA: a meta é a da MESMA faixa que o número mede.
+    // Com o teto geral igual ao de fixas nesta base, o valor exibido pode
+    // coincidir — o que não pode coincidir é o ATINGIMENTO, que é onde a
+    // troca de denominador aparece.
+    ok('o atingimento é recalculado contra a meta de fixas',
+      comFiltro.ating !== semFiltro.ating,
+      `${semFiltro.ating} → ${comFiltro.ating} (meta ${semFiltro.meta} → ${comFiltro.meta})`);
+    ok('a faixa mês a mês é repintada junto', comFiltro.cores !== semFiltro.cores,
+      `${semFiltro.cores} → ${comFiltro.cores}`);
+    // O filtro é de DESPESA: tarefa e chamado não têm natureza. Mexer neles
+    // seria o filtro prometendo um recorte que ele não faz.
+    ok('Projetos e SLA ficam intactos',
+      comFiltro.projetos === semFiltro.projetos && comFiltro.sla === semFiltro.sla,
+      `${comFiltro.projetos} · ${comFiltro.sla}`);
+
+    // O drill-down tem de seguir o cartão: uma lista com tudo embaixo de um
+    // cartão que soma só as fixas acusaria divergência onde não há.
+    await pag.click('.cartao-resultado[data-modulo="financeiro"] .res-ver');
+    await pag.waitForTimeout(800);
+    const modalFiltrado = await pag.evaluate(() => {
+      const m = document.querySelector('.modal');
+      if (!m) return null;
+      const t = m.textContent.replace(/\s+/g, ' ');
+      return { titulo: (m.querySelector('h2, .tit') || {}).textContent.trim(),
+        diz: /FIXA\(S\)/.test(t) && /somente despesas fixas/i.test(t),
+        // O ponto é separador de MILHAR: parar nele corta "R$ 82.593,90" em
+        // "R$ 82" e a conferência compara dois textos diferentes do mesmo
+        // número. O fim do valor são os centavos.
+        soma: (t.match(/somando (R\$[\s \d.]*,\d{2})/) || [])[1] || '' };
+    });
+    if (!modalFiltrado) {
+      ok('o drill-down segue o filtro', false, 'nenhum modal');
+    } else {
+      ok('o drill-down se diz filtrado no título',
+        /só fixas/i.test(modalFiltrado.titulo), modalFiltrado.titulo);
+      ok('e explica o que ficou de fora', modalFiltrado.diz);
+      ok('a soma do modal é a do cartão filtrado',
+        modalFiltrado.soma.replace(/\s/g, ' ') === comFiltro.valor.replace(/\s/g, ' '),
+        `${modalFiltrado.soma} × ${comFiltro.valor}`);
+    }
+    await pag.evaluate(() => { const b = document.querySelector('.modal [data-c]'); if (b) b.click(); });
+    await pag.waitForTimeout(250);
+
+    // Desligar devolve o estado anterior, inteiro.
+    await chave.click();
+    await pag.waitForTimeout(700);
+    const voltou = await pag.evaluate(() => {
+      const c = document.querySelector('.cartao-resultado[data-modulo="financeiro"]');
+      return { valor: (c.querySelector('.res-valor') || {}).textContent.trim(),
+        marca: !!c.querySelector('.marca-filtro') };
+    });
+    ok('desligar o filtro devolve o custo inteiro',
+      voltou.valor === semFiltro.valor && !voltou.marca,
+      `${voltou.valor} × ${semFiltro.valor}`);
+  }
+
   console.log('\nBARRA — preenchimento, teto em 100% e o excedente marcado');
   const barras = await pag.evaluate(async () => {
     const comp = document.querySelector('[data-mes-resultados]').value;

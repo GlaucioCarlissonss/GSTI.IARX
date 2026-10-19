@@ -3518,6 +3518,50 @@ camadas se apoiam nele para dizer de onde veio a variação; exigi-las ali
 devolveria três listas sem número para comparar. Os cartões de Projetos e SLA
 abrem a lista dos registros do mês, como abriam.
 
+### O filtro "somente despesas fixas"
+
+O custo de um mês mistura três coisas que se leem de formas opostas: a licença
+que se repete todo mês, a consultoria que aconteceu uma vez, e o equipamento
+que foi comprado. Perguntar "o custo está sob controle?" sobre a soma das três
+é perguntar duas coisas ao mesmo tempo, e um mês com uma compra grande aparece
+como descontrole quando foi uma decisão.
+
+O bloco ganhou uma chave que restringe o cartão Financeiro à **despesa
+recorrente fixa**. Ela fica ao lado do seletor de mês — é o outro recorte do
+bloco — e diz por extenso que alcança só o Financeiro: Projetos e SLA não têm
+despesa, e um filtro sem escopo escrito faria suspeitar que eles também foram
+recortados.
+
+**A meta troca junto com o resultado, e é esse o ponto.** Medir só a despesa
+fixa contra o teto GERAL — que é a soma das três faixas — daria um atingimento
+inflado por construção: numerador de uma faixa sobre denominador de três. Com o
+filtro ligado, a meta passa a ser o **teto de fixas**, que é a régua da mesma
+faixa que o número mede. Trocar só o valor exibido deixaria um número novo
+debaixo de uma régua velha, que é a forma mais silenciosa de uma tela mentir.
+
+Por isso o filtro repinta o cartão inteiro: resultado, meta, atingimento,
+barra, a faixa dos treze meses e a variação contra o mês anterior. E o
+drill-down acompanha — um modal que listasse tudo sob um cartão que soma só as
+fixas acusaria uma divergência que não existe.
+
+**Investimento fica de fora mesmo quando a natureza é fixa**, que é como o
+Objetivo 03 já separava as três faixas. As duas pontas contam a mesma coisa sob
+o mesmo nome.
+
+**Nenhuma conta nova, de novo.** No artifact, `calcularObjetivo03` já separava
+as faixas e já resolvia o teto de cada uma por competência — o filtro só escolhe
+qual par ler. No app, `evolucao_mensal` passou a trazer a parcela fixa do mês
+junto da contagem dela, então ligar a chave recalcula em memória e **não vai ao
+servidor**, como o seletor de mês.
+
+**O filtro expõe uma distorção que já existia.** Numa base em que só a faixa de
+fixas tem teto cadastrado, o teto "geral" vale o teto de fixas — e o cartão
+estava comparando o total das três faixas contra ele. Na base do cliente isso
+dava 53,0% de atingimento em 08/2026; com o filtro, 92,0%. O segundo número é o
+que se pode defender: os dois lados da divisão passam a ser a mesma faixa. A
+leitura sem filtro só volta a valer quando os tetos de pontuais e de
+investimentos também estiverem cadastrados.
+
 ### Onde as duas superfícies ainda falam diferente, e por quê
 
 A regra é a mesma, e isso é conferido caso a caso por
@@ -3531,6 +3575,12 @@ Financeiro do app descreve "custo realizado do mês" e o do artifact, "despesa
 reconhecida contra o teto de gasto". O app não tem teto porque o servidor não
 tem onde guardá-lo, e o cartão diz isso na ressalva em vez de comparar o custo
 com um alvo de outra natureza.
+
+Isso alcança o filtro de fixas: no app ele **restringe o número**, a faixa e o
+drill-down, mas a meta continua ausente — sem teto geral também não há teto de
+fixas. A metade "nova meta" do filtro só existe no artifact, e só passará a
+existir no app quando a tabela `metas` do servidor puder guardar valor em reais
+por faixa.
 
 Medido por `artifact/testar-resultados.cjs`, `web/verificar-resultados.cjs`,
 `web/testar-regra-resultados.mjs` e `web/testar-consistencia-resultados.mjs` —

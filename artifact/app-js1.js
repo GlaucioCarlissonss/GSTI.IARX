@@ -102,6 +102,16 @@ const E = {
   filtros: { tipos: new Set(), naturezas: new Set(), classificacoes: new Set(), busca:'', de:'', ate:'' },
   filtrosSla: { filas: new Set(), status: new Set(), niveis: new Set(), sla: new Set(),
                 sistemas: new Set(), setores: new Set(), busca:'' },
+  /** O bloco Resultados tem recorte PRÓPRIO: o mês e o filtro de natureza.
+   *  Separado dos filtros de módulo de propósito — cada módulo tem a sua
+   *  janela, e três janelas diferentes não produzem "o mês do resultado".
+   *  Só de sessão, como todo recorte de leitura. */
+  mesResultados: '',
+  /** Restringe o cartão Financeiro à despesa recorrente fixa. Com ele a META
+   *  troca junto: o teto de fixas no lugar do teto geral, que é a soma das
+   *  três faixas. Medir só as fixas contra o teto geral daria um atingimento
+   *  inflado por construção. */
+  resultadosSoFixas: false,
   config: null,             // preferências da empresa (endereço do osTicket, etc.)
 };
 

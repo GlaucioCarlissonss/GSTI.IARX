@@ -47,6 +47,8 @@ interface CartaoResultado {
   emReais: boolean;
   /** Dito na tela quando o número não pôde ser montado — nunca um número falso. */
   ressalva?: string;
+  /** O filtro de natureza alcança este cartão, e ele diz isso na tela. */
+  filtrado?: boolean;
   /** O resultado de cada mês da janela, indexado por MM/AAAA. */
   pontos: Map<string, PontoResultado>;
 }
@@ -63,7 +65,11 @@ interface RespostaIndicadores {
 }
 
 interface RespostaFinanceiro {
-  evolucao_mensal: Array<{ competencia: string; total: number; lancamentos: number }>;
+  evolucao_mensal: Array<{
+    competencia: string; total: number; lancamentos: number;
+    /** A parcela recorrente fixa do mês, que o filtro de natureza isola. */
+    fixa: number; lancamentos_fixa: number;
+  }>;
 }
 
 const VAZIO: PontoResultado = { resultado: null, meta: null, registros: 0 };
@@ -213,9 +219,23 @@ function Cartao({ c, mes, meses, aoEscolher, aoDetalhar }: {
   const a = atingimentoDaMeta(c.direcao, p.resultado, p.meta);
   const fmt = (v: number) => (c.emReais ? moeda(v) : percentual(v));
   return (
-    <article className={`cartao-resultado faixa-${a.faixa.toLowerCase()}`} data-modulo={c.chave}>
+    <article
+      className={`cartao-resultado faixa-${a.faixa.toLowerCase()}${c.filtrado ? ' res-filtrado' : ''}`}
+      data-modulo={c.chave}
+    >
       <h3>
         {c.nome}
+        {/* O cartão filtrado DIZ que está filtrado, e diz aqui: uma marca só
+            no cabeçalho do bloco faria o número menor parecer queda de custo
+            para quem chega na tela com o filtro já ligado. */}
+        {c.filtrado && (
+          <span
+            className="marca-filtro"
+            title="O cartão está restrito à despesa recorrente fixa."
+          >
+            só fixas
+          </span>
+        )}
         <span className="res-oque">{c.oQue}</span>
       </h3>
       <p className="res-valor">{p.resultado === null ? '—' : fmt(p.resultado)}</p>
@@ -260,6 +280,9 @@ export function BlocoResultados({
   params: Record<string, unknown>;
 }) {
   const [mes, setMes] = useState<string>('');
+  // O filtro de natureza do bloco. Recorte de leitura, e por isso só de
+  // sessão — como o mês, e pelo mesmo motivo: não é configuração do cliente.
+  const [soFixas, setSoFixas] = useState(false);
   const [detalhe, setDetalhe] = useState<PedidoDetalhe<Record<string, unknown>> | null>(null);
 
   // A lista de meses sai da mesma rota que a tela de Financeiro usa. Pedir ao
@@ -320,20 +343,28 @@ export function BlocoResultados({
       {
         chave: 'financeiro' as const,
         nome: 'Financeiro',
-        oQue: 'custo realizado do mês',
+        oQue: soFixas
+          ? 'despesa fixa recorrente do mês'
+          : 'custo realizado do mês',
         direcao: 'maximo' as const,
         emReais: true,
         // O teto de gasto do Objetivo 03 ainda não existe neste servidor: a
         // tabela de metas guarda alvo em PERCENTUAL, e teto é valor em reais.
         // Enquanto não existir, o cartão diz que não há meta em vez de comparar
-        // o custo com um alvo de outra natureza.
+        // o custo com um alvo de outra natureza — e isso vale com o filtro
+        // ligado ou desligado: sem teto geral também não há teto de fixas.
         ressalva: 'O teto de gasto ainda não é cadastrável nesta instalação.',
+        filtrado: soFixas,
         pontos: porMes(fin.dados.evolucao_mensal, (l) => l.competencia, (l) => ({
           // Mês sem lançamento nenhum não custou R$ 0,00 — não há o que dizer
           // dele, e o zero da série é só o preenchimento do buraco do gráfico.
-          resultado: l.lancamentos ? l.total : null,
+          // Vale igual para a parcela fixa: um mês só de pontuais não tem
+          // custo fixo "de R$ 0,00", tem custo fixo nenhum a declarar.
+          resultado: soFixas
+            ? (l.lancamentos_fixa ? l.fixa : null)
+            : (l.lancamentos ? l.total : null),
           meta: null,
-          registros: l.lancamentos,
+          registros: soFixas ? l.lancamentos_fixa : l.lancamentos,
         })),
       },
       {
@@ -364,7 +395,10 @@ export function BlocoResultados({
         })),
       },
     ];
-  }, [ind.dados, fin.dados]);
+    // `soFixas` entra na dependência, e não nas consultas: a série dos treze
+    // meses já traz as duas somas, então ligar o filtro recalcula em memória
+    // e não vai ao servidor — o mesmo trato do seletor de mês.
+  }, [ind.dados, fin.dados, soFixas]);
 
   /**
    * OS REGISTROS QUE COMPÕEM O RESULTADO DO MÊS.
@@ -378,9 +412,17 @@ export function BlocoResultados({
     const janela = { ...params, competencia_inicio: emFoco, competencia_fim: emFoco };
     const quando = competenciaExib(emFoco);
     if (c.chave === 'financeiro') {
+      // O MESMO recorte do cartão, filtro incluído: o modal que listasse tudo
+      // sob um cartão que soma só as fixas acusaria uma divergência que não
+      // existe, e quem conferisse na mão não acharia o número de volta.
       setDetalhe(detalheDeLancamentos(
-        `Custo de ${quando}`, janela, p.resultado,
-        'Os lançamentos que somam o resultado do mês, do maior para o menor valor.',
+        soFixas ? `Despesa fixa de ${quando}` : `Custo de ${quando}`,
+        soFixas ? { ...janela, natureza: 'fixa' } : janela,
+        p.resultado,
+        soFixas
+          ? 'Só a despesa recorrente fixa do mês, do maior para o menor valor —'
+            + ' pontuais e investimentos ficaram de fora, aqui e no cartão.'
+          : 'Os lançamentos que somam o resultado do mês, do maior para o menor valor.',
       ));
     } else if (c.chave === 'projetos') {
       setDetalhe(detalheDeTarefas(
@@ -415,6 +457,21 @@ export function BlocoResultados({
                 </option>
               ))}
             </select>
+          </label>
+        )}
+        {faixa.length > 0 && (
+          <label
+            className="filtro-fixas"
+            title="Restringe o cartão Financeiro à despesa recorrente fixa."
+          >
+            <input
+              type="checkbox"
+              checked={soFixas}
+              onChange={(e) => setSoFixas(e.target.checked)}
+              data-so-fixas
+            />
+            <span>Somente despesas fixas (recorrentes)</span>
+            <small>Afeta o cartão Financeiro; Projetos e SLA não têm despesa.</small>
           </label>
         )}
       </header>
