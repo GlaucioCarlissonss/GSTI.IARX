@@ -1544,6 +1544,58 @@ cancelado**, e dentro de cada grupo o prazo mais próximo na frente. A linha por
 onda mostra a virada ao lado do que falta, com a marca "em produção" onde a
 virada foi declarada — as duas colunas não dizem a mesma coisa, de propósito.
 
+### Onde as regras moram, nas duas superfícies
+
+O cronograma e o plano existem **duas vezes**, e isso é deliberado: o artifact
+é um arquivo só, sem servidor, e precisa das regras dentro dele. O risco é que
+duas cópias divergem na primeira correção feita de um lado só — e a
+divergência é **silenciosa**: os dois lados seguem desenhando um placar
+plausível, e ninguém descobre até um gestor comparar o celular com o navegador
+na frente do outro.
+
+| o quê | artifact | servidor | conferência |
+| --- | --- | --- | --- |
+| cronograma de ondas | `app-js21.js` (`SPIN_ONDAS`) | `domain/cronograma.ts` | `test/cronograma.test.ts`, `testar-cronograma-ondas.cjs`, `verificar-cronograma.cjs` |
+| regras do plano | `app-js23.js` | `domain/plano-acao.ts` | `test/plano-acao.test.ts`, `testar-plano-acao.cjs` |
+| leitura da planilha | `app-js23.js` (`planoLerOndas`) | `domain/carga-plano-acao.ts` | `test/carga-plano-acao.test.ts` |
+| tela | `viewPlanoAcao` | `pages/PlanoAcao.tsx` | `verificar-plano-acao.cjs` |
+
+**Quem corrigir uma regra corrige as duas cópias, e as duas conferências.** É
+o que as suítes irmãs existem para cobrar.
+
+No servidor o plano é uma tabela própria, `plano_acao`, com identidade
+`(cliente, onda, nº)` — é como o cliente numera, e é o que permite reimportar
+o arquivo corrigido sem duplicar a lista. **Nenhum derivado tem coluna**: nem
+farol, nem situação, nem "Qtd Dias".
+
+### A carga na web tem dois passos
+
+`POST /api/projetos/plano-acao/analisar` lê e devolve o que entraria — e não
+grava nada. `POST /api/projetos/plano-acao` grava, **substituindo o plano
+inteiro**.
+
+Dois passos porque o arquivo é a íntegra do plano: substituir sem mostrar
+antes tira de quem importa a chance de recusar um arquivo trocado. E
+substituição, e não mescla, porque uma ação removida do documento seguiria
+cobrando prazo na tela para sempre. Gravar zero ação é recusado: o gestor
+pediu uma importação, não uma exclusão — para apagar existe o `DELETE`, que
+pede confirmação na tela e diz quantas ações saem.
+
+### O mês em curso vale para a virada, não para o que acumula
+
+A primeira virada caiu num mês ainda aberto, e isso separou dois tipos de
+indicador.
+
+Custo e chamados **acumulam**: meio mês contra meta cheia reprovaria todo
+começo de mês, e eles seguem sendo medidos só em mês fechado. No mês corrente
+eles dizem **"Mês em curso — fecha no fim do mês"**, e não "Sem dados", que
+seria falso — há dados, só não há mês inteiro.
+
+A virada é um **fato datado**: aconteceu num dia. O mês corrente entra na
+faixa de resultados quando carrega uma virada realizada, e o módulo de
+Projetos mostra o resultado dela ali mesmo. Sem isso, a entrega de 01/10
+ficaria invisível até novembro.
+
 ## Projeto SpinCare: o Controle Único como cadastro próprio
 
 A planilha `Controle Único do Projeto SpinCare` é a fonte da verdade da
