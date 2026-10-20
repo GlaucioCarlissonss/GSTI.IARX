@@ -1,0 +1,177 @@
+/**
+ * Motor de conciliação.
+ *
+ * Os casos aqui são os do arquivo real de setembro: acento ausente, barra com
+ * espaço, e um erro de digitação na origem. Se algum deles deixar de ser
+ * reconhecido, a carga volta a criar cadastro duplicado — que é exatamente o
+ * problema que este motor existe para impedir.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  chaveComparacao,
+  classificar,
+  distancia,
+  pendencias,
+  mapaDeDestino,
+  similaridade,
+  type BlocoConciliacao,
+  type Candidato,
+} from '../src/domain/conciliacao.js';
+
+/** O cadastro do cliente, como está hoje no sistema. */
+const CADASTRO: Candidato[] = [
+  { id: 1, nome: 'Licenças de Softwares' },
+  { id: 2, nome: 'Telefonia/Internet' },
+  { id: 3, nome: 'Serviços Técnicos' },
+  { id: 4, nome: 'Equipamentos de TI' },
+  { id: 5, nome: 'Locação de Impressora' },
+  { id: 6, nome: 'Materiais de TI' },
+  { id: 7, nome: 'Sistemas Gerenciais' },
+  { id: 8, nome: 'Serviços de Desenvolvimento' },
+  { id: 9, nome: 'Pessoas' },
+];
+
+test('o que bate exato é IGUAL e não pede decisão', () => {
+  for (const nome of ['Equipamentos de TI', 'Materiais de TI', 'Sistemas Gerenciais']) {
+    const item = classificar(nome, CADASTRO);
+    assert.equal(item.situacao, 'IGUAL', nome);
+    assert.equal(item.sugestao, null);
+  }
+});
+
+test('acento, caixa e espaçamento são DIVERGENTE de grafia, com sugestão certa', () => {
+  const casos: Array<[string, string]> = [
+    ['Licencas de Softwares', 'Licenças de Softwares'],
+    ['Telefonia / Internet', 'Telefonia/Internet'],
+    ['Serviços Tecnicos', 'Serviços Técnicos'],
+    ['Locacao de Impressora', 'Locação de Impressora'],
+    ['LICENÇAS DE SOFTWARES', 'Licenças de Softwares'],
+  ];
+  for (const [doArquivo, esperado] of casos) {
+    const item = classificar(doArquivo, CADASTRO);
+    assert.equal(item.situacao, 'DIVERGENTE', doArquivo);
+    assert.equal(item.sugestao?.nome, esperado, doArquivo);
+    assert.equal(item.sugestao?.motivo, 'grafia', doArquivo);
+    assert.equal(item.sugestao?.confianca, 1);
+  }
+});
+
+test('erro de digitação na origem vira DIVERGENTE por semelhança', () => {
+  // O caso real: "Desencolvimento" por "Desenvolvimento", uma letra trocada.
+  const item = classificar('Serviços de Desencolvimento', CADASTRO);
+  assert.equal(item.situacao, 'DIVERGENTE');
+  assert.equal(item.sugestao?.nome, 'Serviços de Desenvolvimento');
+  assert.equal(item.sugestao?.motivo, 'semelhanca');
+  assert.ok(item.sugestao!.confianca > 0.9);
+});
+
+test('nome de verdade novo é NOVO, sem sugestão inventada', () => {
+  const item = classificar('Consultoria Jurídica', CADASTRO);
+  assert.equal(item.situacao, 'NOVO');
+  assert.equal(item.sugestao, null);
+});
+
+test('não sugere quando a semelhança é fraca — sugestão errada é pior que nenhuma', () => {
+  // "Pessoas" e "Processos" se parecem, mas não são a mesma coisa.
+  const item = classificar('Processos', CADASTRO);
+  assert.equal(item.situacao, 'NOVO');
+  assert.equal(item.sugestao, null);
+});
+
+test('valor em branco é INVALIDO', () => {
+  assert.equal(classificar('', CADASTRO).situacao, 'INVALIDO');
+  assert.equal(classificar('   ', CADASTRO).situacao, 'INVALIDO');
+});
+
+test('a chave de comparação neutraliza acento, caixa e pontuação', () => {
+  assert.equal(chaveComparacao('Telefonia / Internet'), chaveComparacao('Telefonia/Internet'));
+  assert.equal(chaveComparacao('Serviços Técnicos'), chaveComparacao('servicos tecnicos'));
+  assert.equal(chaveComparacao('Licenças  de   Softwares'), 'licencas de softwares');
+});
+
+test('distância e similaridade medem o que se espera', () => {
+  assert.equal(distancia('desenvolvimento', 'desencolvimento'), 1);
+  assert.equal(distancia('abc', 'abc'), 0);
+  assert.equal(similaridade('abc', 'abc'), 1);
+  assert.ok(similaridade('desenvolvimento', 'desencolvimento') > 0.9);
+});
+
+// ------------------------------------------------------------ trava do botão
+
+const bloco = (over: Partial<BlocoConciliacao> = {}): BlocoConciliacao => ({
+  dimensao: 'centro_custo',
+  rotulo: 'Centro de Custo',
+  obrigatoria: true,
+  itens: [],
+  pendentes: 0,
+  candidatos: CADASTRO,
+  ...over,
+});
+
+test('enquanto houver item sem decisão, a importação fica travada', () => {
+  const blocos = [
+    bloco({
+      itens: [
+        { ...classificar('Licencas de Softwares', CADASTRO), ocorrencias: 41, linhas: [2] },
+        { ...classificar('Equipamentos de TI', CADASTRO), ocorrencias: 13, linhas: [3] },
+      ],
+    }),
+  ];
+  // Nada decidido: o divergente trava; o IGUAL nunca pediu nada.
+  const semNada = pendencias(blocos, []);
+  assert.equal(semNada.length, 1);
+  assert.match(semNada[0]!.mensagem, /Licencas de Softwares/);
+
+  // Decidido: destrava.
+  const decidido = pendencias(blocos, [
+    { dimensao: 'centro_custo', valor: 'Licencas de Softwares', acao: 'vincular', alvo: 'Licenças de Softwares' },
+  ]);
+  assert.deepEqual(decidido, []);
+});
+
+test('vincular a um cadastro que não existe é recusado', () => {
+  const blocos = [bloco({ itens: [{ ...classificar('Licencas de Softwares', CADASTRO), ocorrencias: 1, linhas: [2] }] })];
+  const erro = pendencias(blocos, [
+    { dimensao: 'centro_custo', valor: 'Licencas de Softwares', acao: 'vincular', alvo: 'Não Existe' },
+  ]);
+  assert.equal(erro.length, 1);
+  assert.match(erro[0]!.mensagem, /não existe no cadastro/);
+});
+
+test('vincular sem escolher alvo é recusado', () => {
+  const blocos = [bloco({ itens: [{ ...classificar('Licencas de Softwares', CADASTRO), ocorrencias: 1, linhas: [2] }] })];
+  const erro = pendencias(blocos, [{ dimensao: 'centro_custo', valor: 'Licencas de Softwares', acao: 'vincular' }]);
+  assert.match(erro[0]!.mensagem, /nenhum cadastro foi escolhido/);
+});
+
+test('linha obrigatória inválida trava mesmo com tudo o mais decidido', () => {
+  const blocos = [bloco({ itens: [{ ...classificar('', CADASTRO), ocorrencias: 2, linhas: [7, 8] }] })];
+  const erro = pendencias(blocos, []);
+  assert.equal(erro.length, 1);
+  assert.match(erro[0]!.mensagem, /obrigatória/);
+});
+
+test('dimensão não obrigatória em branco não trava a carga', () => {
+  const blocos = [
+    bloco({ dimensao: 'fornecedor', rotulo: 'Fornecedor', obrigatoria: false, itens: [{ ...classificar('', []), ocorrencias: 1, linhas: [9] }] }),
+  ];
+  assert.deepEqual(pendencias(blocos, []), []);
+});
+
+test('o destino troca o nome quando se vincula, e mantém quando se cria', () => {
+  const blocos = [
+    bloco({
+      itens: [
+        { ...classificar('Licencas de Softwares', CADASTRO), ocorrencias: 41, linhas: [2] },
+        { ...classificar('Consultoria Jurídica', CADASTRO), ocorrencias: 1, linhas: [5] },
+      ],
+    }),
+  ];
+  const destino = mapaDeDestino(blocos, [
+    { dimensao: 'centro_custo', valor: 'Licencas de Softwares', acao: 'vincular', alvo: 'Licenças de Softwares' },
+    { dimensao: 'centro_custo', valor: 'Consultoria Jurídica', acao: 'criar' },
+  ]);
+  assert.equal(destino.get('centro_custo\u0000Licencas de Softwares'), 'Licenças de Softwares');
+  assert.equal(destino.get('centro_custo\u0000Consultoria Jurídica'), 'Consultoria Jurídica');
+});
