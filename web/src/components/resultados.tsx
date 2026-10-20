@@ -26,7 +26,7 @@ import {
   competenciaExib, competenciaOrdem, competenciaSoma, mesCurto, moeda, percentual,
 } from '../lib/formato';
 import {
-  Detalhamento, detalheDeLancamentos, detalheDeRegistrosSla, detalheDeTarefas,
+  Detalhamento, detalheDeLancamentos, detalheDeRegistrosSla, detalheDeViradas,
   type PedidoDetalhe,
 } from './detalhamento';
 import { atingimentoDaMeta, textoDaMeta, type Atingimento, type DirecaoMeta } from '../lib/resultados';
@@ -37,6 +37,13 @@ interface PontoResultado {
   meta: number | null;
   /** Quantos registros compõem o número, para a conferência do detalhamento. */
   registros: number;
+  /**
+   * O mês ainda não fechou, e este indicador ACUMULA — custo e conformidade
+   * pela metade contra a meta cheia reprovariam o começo de todo mês. Não é a
+   * mesma coisa que "sem dados": há dados, o mês é que não acabou, e trocar
+   * uma frase pela outra faria procurar um buraco que não existe.
+   */
+  emCurso?: boolean;
 }
 
 interface CartaoResultado {
@@ -62,6 +69,13 @@ interface PontoSerie {
 interface RespostaIndicadores {
   sla: { serie: Array<PontoSerie & { total: number; dentro: number }> };
   projetos: { serie: Array<PontoSerie & { entregues: number; no_prazo: number }> };
+}
+
+interface RespostaCronograma {
+  serie: Array<{
+    competencia: string; planejadas: number; viradas: number;
+    resultado: number | null; meta: number | null;
+  }>;
 }
 
 interface RespostaFinanceiro {
@@ -113,7 +127,7 @@ function BarraDeAtingimento({ a, c, p, fmt, mes }: {
         aria-valuenow={Number(a.pct.toFixed(1))}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={`${textoDaMeta(a, p.meta, fmt)} — atingimento de ${percentual(a.pct)}`}
+        aria-label={`${textoDaMeta(a, p.meta, fmt, p.emCurso)} — atingimento de ${percentual(a.pct)}`}
         title={dica}
       >
         <span className="res-trilha" aria-hidden>
@@ -158,7 +172,7 @@ function FaixaDeMeses({ c, meses, emFoco, aoEscolher, fmt }: {
           `Resultado: ${p.resultado === null ? '—' : fmt(p.resultado)}`,
           `Meta: ${p.meta === null ? '—' : fmt(p.meta)}`,
           `Atingimento: ${a.pct === undefined ? '—' : percentual(a.pct)}`,
-          `Situação: ${textoDaMeta(a, p.meta, fmt)}`,
+          `Situação: ${textoDaMeta(a, p.meta, fmt, p.emCurso)}`,
         ].join('\n');
         return (
           <button
@@ -167,7 +181,7 @@ function FaixaDeMeses({ c, meses, emFoco, aoEscolher, fmt }: {
             className={`res-mes faixa-${a.faixa.toLowerCase()}${sel ? ' sel' : ''}`}
             data-mes-faixa={m}
             aria-pressed={sel}
-            aria-label={`${competenciaExib(m)}: ${textoDaMeta(a, p.meta, fmt)}`}
+            aria-label={`${competenciaExib(m)}: ${textoDaMeta(a, p.meta, fmt, p.emCurso)}`}
             title={dica}
             onClick={() => aoEscolher(m)}
           >
@@ -246,7 +260,7 @@ function Cartao({ c, mes, meses, aoEscolher, aoDetalhar }: {
         <dd className="res-ating">{a.pct === undefined ? '—' : percentual(a.pct)}</dd>
       </dl>
       <BarraDeAtingimento a={a} c={c} p={p} fmt={fmt} mes={mes} />
-      <p className="res-texto">{textoDaMeta(a, p.meta, fmt)}</p>
+      <p className="res-texto">{textoDaMeta(a, p.meta, fmt, p.emCurso)}</p>
       <DeltaDoAtingimento c={c} mes={mes} />
       <FaixaDeMeses c={c} meses={meses} emFoco={mes} aoEscolher={aoEscolher} fmt={fmt} />
       <button type="button" className="botao discreto res-ver" onClick={aoDetalhar} disabled={!p.registros}>
@@ -305,10 +319,12 @@ export function BlocoResultados({
   // lê da esquerda para a direita, como o tempo. A janela é FIXA — escolher um
   // mês dentro dela não a desloca, senão a faixa fugiria sob o dedo de quem
   // clica.
-  const faixa = useMemo(() => meses.slice(0, 13).reverse(), [meses]);
-  const inicio = faixa[0] ?? '';
-  const fim = faixa[faixa.length - 1] ?? '';
-  const emFoco = faixa.includes(mes) ? mes : fim;
+  const fechados = useMemo(() => meses.slice(0, 13).reverse(), [meses]);
+  const inicio = fechados[0] ?? '';
+  // A janela das consultas vai até o MÊS CORRENTE, e não até o último
+  // fechado: é lá que mora a virada de 01/10, e pedir só até setembro
+  // esconderia por trinta dias a única entrega que o programa fez.
+  const ateConsulta = fechados.length ? mesCorrente() : '';
 
   const ind = useDados<RespostaIndicadores>(
     () =>
@@ -316,27 +332,50 @@ export function BlocoResultados({
       api.get('/api/indicadores', {
         ...params,
         sla_competencia_inicio: inicio,
-        sla_competencia_fim: fim,
+        sla_competencia_fim: ateConsulta,
         projetos_competencia_inicio: inicio,
-        projetos_competencia_fim: fim,
+        projetos_competencia_fim: ateConsulta,
       }),
-    [inicio, fim, JSON.stringify(params)],
+    [inicio, ateConsulta, JSON.stringify(params)],
+  );
+  // O cronograma não depende de recorte de empresa nem de filial — ele é do
+  // programa inteiro —, e por isso não leva `params`: mandá-los faria toda
+  // troca de filtro recarregar algo que filtro nenhum muda.
+  const cron = useDados<RespostaCronograma>(
+    () => (!ateConsulta ? Promise.resolve(null as unknown as RespostaCronograma)
+      : api.get('/api/indicadores/cronograma', { de: inicio, ate: ateConsulta })),
+    [inicio, ateConsulta],
   );
   const fin = useDados<RespostaFinanceiro>(
     () => (!fim ? Promise.resolve(null as unknown as RespostaFinanceiro)
       : api.get('/api/dashboards/financeiro', {
-        ...params, competencia_inicio: inicio, competencia_fim: fim,
+        ...params, competencia_inicio: inicio, competencia_fim: ateConsulta,
       })),
-    [inicio, fim, JSON.stringify(params)],
+    [inicio, ateConsulta, JSON.stringify(params)],
   );
 
-  const erro = lista.erro || ind.erro || fin.erro;
+  // O MÊS CORRENTE ENTRA NA FAIXA QUANDO JÁ CARREGA UM FATO FECHADO.
+  //
+  // Ele fica de fora porque custo e chamado ACUMULAM. Uma virada não acumula
+  // — aconteceu num dia, e o dia passou —, e esconder a entrega até o mês
+  // virar seria esconder a única coisa que o programa entregou.
+  const pontoCorrente = (cron.dados?.serie ?? [])
+    .find((p) => p.competencia === mesCorrente());
+  const faixa = useMemo(
+    () => (pontoCorrente && pontoCorrente.planejadas > 0
+      ? [...fechados, mesCorrente()] : fechados),
+    [fechados, pontoCorrente?.planejadas],
+  );
+  const fim = faixa[faixa.length - 1] ?? '';
+  const emFoco = faixa.includes(mes) ? mes : fim;
+
+  const erro = lista.erro || ind.erro || fin.erro || cron.erro;
   // Sem a lista ainda não se sabe nem quais meses existem: é carregamento, e
   // não vazio — dizer "nenhum mês" antes de perguntar seria mentir por pressa.
-  const carregando = !erro && (!lista.dados || (!!fim && (!ind.dados || !fin.dados)));
+  const carregando = !erro && (!lista.dados || (!!ateConsulta && (!ind.dados || !fin.dados || !cron.dados)));
 
   const cartoes: CartaoResultado[] = useMemo(() => {
-    if (!ind.dados || !fin.dados) return [];
+    if (!ind.dados || !fin.dados || !cron.dados) return [];
     const porMes = <T,>(linhas: T[], chave: (l: T) => string, ponto: (l: T) => PontoResultado) =>
       new Map(linhas.map((l) => [competenciaExib(chave(l)), ponto(l)]));
     return [
@@ -355,28 +394,38 @@ export function BlocoResultados({
         // ligado ou desligado: sem teto geral também não há teto de fixas.
         ressalva: 'O teto de gasto ainda não é cadastrável nesta instalação.',
         filtrado: soFixas,
-        pontos: porMes(fin.dados.evolucao_mensal, (l) => l.competencia, (l) => ({
+        pontos: porMes(fin.dados.evolucao_mensal, (l) => l.competencia, (l) => (
+          l.competencia === mesCorrente()
+            ? { resultado: null, meta: null, registros: 0, emCurso: true }
+            : {
           // Mês sem lançamento nenhum não custou R$ 0,00 — não há o que dizer
           // dele, e o zero da série é só o preenchimento do buraco do gráfico.
           // Vale igual para a parcela fixa: um mês só de pontuais não tem
           // custo fixo "de R$ 0,00", tem custo fixo nenhum a declarar.
-          resultado: soFixas
-            ? (l.lancamentos_fixa ? l.fixa : null)
-            : (l.lancamentos ? l.total : null),
-          meta: null,
-          registros: soFixas ? l.lancamentos_fixa : l.lancamentos,
-        })),
+              resultado: soFixas
+                ? (l.lancamentos_fixa ? l.fixa : null)
+                : (l.lancamentos ? l.total : null),
+              meta: null,
+              registros: soFixas ? l.lancamentos_fixa : l.lancamentos,
+            })),
       },
       {
         chave: 'projetos' as const,
         nome: 'Projetos',
-        oQue: 'tarefas entregues no prazo',
+        // O RESULTADO DE PROJETOS É A ENTREGA DO CRONOGRAMA, e não a contagem
+        // de tarefas. O que a diretoria pergunta deste módulo é se as unidades
+        // viraram no prazo combinado — é esse o compromisso do programa. A
+        // contagem de tarefas continua nos indicadores do módulo, onde
+        // responde "como anda a execução".
+        oQue: 'unidades viradas no cronograma',
         direcao: 'minimo' as const,
         emReais: false,
-        pontos: porMes(ind.dados.projetos.serie, (l) => l.competencia, (l) => ({
-          resultado: l.pct,
-          meta: l.alvo,
-          registros: l.entregues,
+        pontos: porMes(cron.dados.serie, (l) => l.competencia, (l) => ({
+          // Nenhuma onda vencida até o mês não é 0%: é uma meta que ainda não
+          // chegou, e zero reprovaria o programa por um prazo que não passou.
+          resultado: l.resultado,
+          meta: l.meta,
+          registros: l.planejadas,
         })),
       },
       {
@@ -388,17 +437,16 @@ export function BlocoResultados({
         oQue: 'chamados resolvidos dentro do prazo',
         direcao: 'minimo' as const,
         emReais: false,
-        pontos: porMes(ind.dados.sla.serie, (l) => l.competencia, (l) => ({
-          resultado: l.pct,
-          meta: l.alvo,
-          registros: l.total,
-        })),
+        pontos: porMes(ind.dados.sla.serie, (l) => l.competencia, (l) => (
+          l.competencia === mesCorrente()
+            ? { resultado: null, meta: null, registros: 0, emCurso: true }
+            : { resultado: l.pct, meta: l.alvo, registros: l.total })),
       },
     ];
     // `soFixas` entra na dependência, e não nas consultas: a série dos treze
     // meses já traz as duas somas, então ligar o filtro recalcula em memória
     // e não vai ao servidor — o mesmo trato do seletor de mês.
-  }, [ind.dados, fin.dados, soFixas]);
+  }, [ind.dados, fin.dados, cron.dados, soFixas]);
 
   /**
    * OS REGISTROS QUE COMPÕEM O RESULTADO DO MÊS.
@@ -425,9 +473,11 @@ export function BlocoResultados({
           : 'Os lançamentos que somam o resultado do mês, do maior para o menor valor.',
       ));
     } else if (c.chave === 'projetos') {
-      setDetalhe(detalheDeTarefas(
-        `Tarefas entregues em ${quando}`, { ...janela, entregues: 'true' }, p.registros,
-        'As entregas que formam o percentual no prazo deste mês.',
+      // O detalhamento acompanha o que o cartão mede: unidades e prazos de
+      // virada, e não tarefas. Abrir tarefas sob um número de cronograma
+      // faria o clique responder outra pergunta.
+      setDetalhe(detalheDeViradas(
+        `Unidades e prazos de virada até ${quando}`, { ate: emFoco }, p.registros,
       ));
     } else {
       setDetalhe(detalheDeRegistrosSla(
@@ -510,6 +560,12 @@ export function BlocoResultados({
     </section>
   );
 }
+
+/** A competência de hoje, em MM/AAAA. */
+export const mesCorrente = () => {
+  const hoje = new Date();
+  return `${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
+};
 
 /** O mês anterior ao corrente: o último FECHADO, que é o que se mede. */
 export const mesFechadoMaisRecente = () => {

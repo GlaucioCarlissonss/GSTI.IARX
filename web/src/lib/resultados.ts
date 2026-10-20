@@ -57,7 +57,11 @@ export function textoDaMeta(
   a: Atingimento,
   meta: number | null | undefined,
   formatar: (v: number) => string,
+  emCurso = false,
 ): string {
+  // "Sem dados" e "o mês não fechou" são coisas diferentes, e dizer a
+  // primeira no lugar da segunda faria procurar um buraco que não existe.
+  if (emCurso) return 'Mês em curso — fecha no fim do mês';
   if (a.faixa === 'SEM_DADOS') return 'Sem dados no período';
   if (a.faixa === 'SEM_META') return 'Sem meta cadastrada';
   const valor = formatar(meta as number);

@@ -1255,3 +1255,48 @@ export function detalheDeTarefas(
     ],
   };
 }
+
+/**
+ * AS UNIDADES E OS PRAZOS DE VIRADA — o detalhamento do cronograma.
+ *
+ * O que a Visão Macro pergunta é se a unidade virou, e o detalhamento dela
+ * responde a mesma coisa: unidade, onda, prazo, data realizada e situação.
+ * Nenhuma coluna de atividade, criticidade ou avanço — isso é da Micro, e
+ * trazê-lo aqui faria o clique responder a pergunta do bloco vizinho.
+ */
+export function detalheDeViradas(
+  titulo: string,
+  params: Record<string, unknown>,
+  total?: number | null,
+): PedidoDetalhe<Record<string, unknown>> {
+  return {
+    titulo,
+    subtitulo: 'As unidades cujo go-live já venceu até o mês em foco, com o prazo de cada uma. '
+      + 'A execução atividade a atividade fica nos indicadores do módulo.',
+    total,
+    caminho: '/api/indicadores/cronograma',
+    params,
+    // A rota devolve o cronograma inteiro; o que esta lista quer são as
+    // unidades da entrega acumulada.
+    extrair: (r) => ((r as { entrega?: { unidades?: Record<string, unknown>[] } })
+      .entrega?.unidades ?? []),
+    formatarTotal: inteiro,
+    somar: () => 1,
+    colunas: [
+      { rotulo: 'Unidade', valor: (u) => String(u.nome), texto: true },
+      { rotulo: 'Onda', valor: (u) => `${inteiro(Number(u.onda))}ª`, n: true },
+      { rotulo: 'Prazo de virada', valor: (u) => diaExib(String(u.prazo)) },
+      { rotulo: 'Virada realizada', valor: (u) => (u.realizada ? diaExib(String(u.realizada)) : '—') },
+      { rotulo: 'Situação', valor: (u) => (
+        <Etiqueta
+          texto={String(u.estado)}
+          tom={u.estado === 'CUMPRIDO' ? 'bom' : u.estado === 'NÃO CUMPRIDO' ? 'critico' : 'neutro'}
+        />
+      ) },
+    ],
+  };
+}
+
+/** DD/MM/AAAA a partir do ISO — o cronograma fala em dia, não em competência. */
+const diaExib = (iso: string) => (iso && iso.length === 10
+  ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—');

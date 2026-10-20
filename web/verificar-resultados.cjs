@@ -136,6 +136,8 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   // O SLA tem meta padrão de 80% mesmo sem cadastro e mesmo sem chamado no
   // mês: o campo Meta do cartão tem de trazer um percentual. Conferir só a
   // faixa não serviria — "sem dados" passaria sem provar meta nenhuma.
+  const mesFechado = await irParaMesFechado();
+  console.log(`  · medindo a meta do SLA em ${mesFechado || '—'}, que é mês fechado`);
   const metaSla = await pag.evaluate(() => {
     const c = document.querySelector('.cartao-resultado[data-modulo="sla"]');
     return c ? c.querySelectorAll('.res-linha dd')[0].textContent.trim() : null;
@@ -147,9 +149,13 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
     const sel = document.querySelector('[data-mes-resultados]');
     if (!sel || sel.options.length < 2) return null;
     const antes = sel.value;
+    // Escolher o índice 1 às cegas não serve: a seção anterior já pode ter
+    // deixado o seletor nele, e a conferência passaria a trocar nada por nada.
+    const outro = [...sel.options].map((o) => o.value).find((v) => v !== antes);
+    if (!outro) return null;
     const textoAntes = document.querySelector('.grade-resultados').textContent;
     const nativo = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
-    nativo.call(sel, sel.options[1].value);
+    nativo.call(sel, outro);
     sel.dispatchEvent(new Event('change', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 1800));
     return {
@@ -232,6 +238,26 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   console.log('\nFAIXA MÊS A MÊS — um marcador por mês, na cor do semáforo dele');
   // Volta ao mês mais recente: as seções acima varreram os meses à procura de
   // uma barra preenchida e podem ter parado em qualquer um.
+  // O mês mais novo da faixa passou a ser o CORRENTE, e nele custo e
+  // conformidade não são medidos — são "mês em curso". Toda conferência sobre
+  // esses dois precisa escolher um mês FECHADO de propósito; antes ela
+  // dependia, sem dizer, de o mais novo ser fechado.
+  async function irParaMesFechado() {
+    const hoje = new Date();
+    const corrente = `${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
+    const alvo = await pag.$$eval('[data-mes-resultados] option',
+      (os, c) => (os.map((o) => o.value).find((v) => v !== c) || ''), corrente);
+    if (!alvo) return '';
+    await pag.evaluate((valor) => {
+      const sel = document.querySelector('[data-mes-resultados]');
+      const nativo = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+      nativo.call(sel, valor);
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }, alvo);
+    await pag.waitForTimeout(900);
+    return alvo;
+  }
+
   const voltarAoUltimo = async () => {
     const ultimo = await pag.$eval('[data-mes-resultados]', (s) => s.options[0].value);
     await pag.evaluate((valor) => {
@@ -280,7 +306,9 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
     ok('todo mês tem rótulo escrito, e não só a cor',
       faixa.rotulos.every((r) => r.trim().length > 0), faixa.rotulos.join(' · '));
     ok('todo mês diz a situação por extenso no aria-label',
-      faixa.ariaLabels.every((r) => /atingida|Sem (meta|dados)/.test(r)), faixa.ariaLabels[0]);
+      faixa.ariaLabels.every((r) => /atingida|Sem (meta|dados)|em curso/.test(r)),
+      faixa.ariaLabels.find((r) => !/atingida|Sem (meta|dados)|em curso/.test(r))
+        || faixa.ariaLabels[0]);
     ok('a dica de cada mês traz resultado, meta, atingimento e situação',
       faixa.dicas.every((d) => ['Resultado', 'Meta', 'Atingimento', 'Situação'].every((x) => d.includes(x))),
       (faixa.dicas[0] || '').replace(/\n/g, ' · ').slice(0, 110));
@@ -546,6 +574,10 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   } else {
     ok('o bloco tem o filtro de despesas fixas', true);
     ok('ele nasce DESLIGADO — o padrão é o custo inteiro', !(await chaveFixas.isChecked()));
+    // Num mês em curso o Financeiro não é medido, e o filtro não teria o que
+    // encolher: a conferência escolhe um mês fechado de propósito.
+    const mesDoFiltro = await irParaMesFechado();
+    console.log(`  · exercendo o filtro em ${mesDoFiltro || '—'}, que é mês fechado`);
     const antes = await lerFin();
     // Treze meses de duas somas já vieram nas duas consultas do bloco: ligar
     // o filtro é recálculo em memória, e ir ao servidor aqui seria o N+1 que
@@ -607,6 +639,87 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
     ok('desligar o filtro devolve o custo inteiro',
       voltou.valor === antes.valor && !voltou.marca,
       `${voltou.valor} × ${antes.valor}`);
+  }
+
+  // ----------------------------------- Projetos mede o cronograma, não tarefas
+  //
+  // A irmã desta seção é `artifact/testar-cronograma-ondas.cjs`, e as duas
+  // medem a mesma promessa: o que a diretoria pergunta deste módulo é se as
+  // unidades viraram no prazo combinado, e não quantas tarefas saíram.
+  console.log('\nPROJETOS — o resultado é a entrega do cronograma');
+  await voltarAoUltimo();
+  const proj = await pag.evaluate(() => {
+    const c = document.querySelector('.cartao-resultado[data-modulo="projetos"]');
+    if (!c) return null;
+    const dd = c.querySelectorAll('.res-linha dd');
+    return {
+      oQue: ((c.querySelector('.res-oque') || {}).textContent || '').trim(),
+      valor: ((c.querySelector('.res-valor') || {}).textContent || '').trim(),
+      meta: dd[0] ? dd[0].textContent.trim() : null,
+      texto: ((c.querySelector('.res-texto') || {}).textContent || '').trim(),
+    };
+  });
+  if (!proj) {
+    ok('o cartão de Projetos existe', false);
+  } else {
+    ok('o cartão diz que mede a virada, e não tarefa',
+      /cronograma/i.test(proj.oQue) && !/tarefa/i.test(proj.oQue), proj.oQue);
+    ok('e traz o resultado da entrega, com a meta de 100%',
+      proj.valor === '100,0%' && proj.meta === '100,0%' && /atingida/i.test(proj.texto),
+      `${proj.valor} · meta ${proj.meta} · ${proj.texto}`);
+  }
+
+  console.log('\nMÊS EM CURSO — vale para virada, não para o que acumula');
+  const mesesDoBloco = await pag.$$eval('[data-mes-resultados] option', (o) => o.map((x) => x.value));
+  const hoje = new Date();
+  const corrente = `${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
+  ok('o mês corrente entra na faixa, porque carrega uma virada fechada',
+    mesesDoBloco.includes(corrente), `${corrente} em ${mesesDoBloco.slice(0, 3).join(' · ')}`);
+  const emCurso = await pag.evaluate(() => {
+    const ler = (mod) => {
+      const c = document.querySelector(`.cartao-resultado[data-modulo="${mod}"]`);
+      return c ? ((c.querySelector('.res-texto') || {}).textContent || '').trim() : null;
+    };
+    return { financeiro: ler('financeiro'), sla: ler('sla') };
+  });
+  // Custo e conformidade ACUMULAM: meio mês contra a meta cheia reprovaria o
+  // começo de todo mês. Mas "sem dados" seria falso — há dados, o mês é que
+  // não fechou, e o cartão diz isso com todas as letras.
+  ok('Financeiro no mês aberto diz que o mês está em curso, e não "sem dados"',
+    /em curso/i.test(emCurso.financeiro || ''), emCurso.financeiro);
+  ok('SLA idem', /em curso/i.test(emCurso.sla || ''), emCurso.sla);
+
+  console.log('\nVER REGISTROS de Projetos — unidades e prazos, não tarefas');
+  const btProj = await pag.$('.cartao-resultado[data-modulo="projetos"] .res-ver');
+  if (!btProj || await btProj.isDisabled()) {
+    ok('o cartão de Projetos abre o detalhamento', false, 'botão desabilitado');
+  } else {
+    await btProj.click();
+    await pag.waitForTimeout(1800);
+    const dv = await pag.evaluate(() => {
+      const m = document.querySelector('.modal, [role="dialog"]');
+      if (!m) return null;
+      return { titulo: ((m.querySelector('h2, h3') || {}).textContent || '').trim(),
+        colunas: [...m.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
+        linhas: [...m.querySelectorAll('tbody tr')].map((tr) =>
+          [...tr.cells].map((c) => c.textContent.trim())) };
+    });
+    if (!dv) {
+      ok('o detalhamento abre', false, 'nenhum modal');
+    } else {
+      ok('as colunas são só unidade, onda, prazo, realizada e situação',
+        dv.colunas.join('|') === 'Unidade|Onda|Prazo de virada|Virada realizada|Situação',
+        dv.colunas.join(' | '));
+      ok('nenhuma coluna de tarefa vazou para cá',
+        !/tarefa|projeto|responsável/i.test(dv.colunas.join(' ')), dv.colunas.join(' | '));
+      ok('lista as unidades da onda vencida, com o prazo de cada uma',
+        dv.linhas.length === 2 && dv.linhas.every((l) => /\d{2}\/\d{2}\/\d{4}/.test(l[2])),
+        dv.linhas.map((l) => `${l[0]}=${l[2]}`).join(' · '));
+      ok('e a virada realizada de quem já virou',
+        dv.linhas.every((l) => l[3] === '01/10/2026'), dv.linhas.map((l) => l[3]).join(' · '));
+    }
+    await pag.keyboard.press('Escape');
+    await pag.waitForTimeout(500);
   }
 
   console.log('\nCONTRASTE — o bloco passa na régua AA, nos dois temas');
