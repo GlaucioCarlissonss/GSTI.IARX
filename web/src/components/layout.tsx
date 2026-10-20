@@ -30,6 +30,7 @@ const NAVEGACAO = [
     itens: [
       { para: '/projetos', glifo: '◫', rotulo: 'Dashboard e Gantt', modulo: 'projetos' },
       { para: '/projetos/cadastro', glifo: '≡', rotulo: 'Projetos e tarefas', modulo: 'projetos' },
+      { para: '/projetos/plano-acao', glifo: '◱', rotulo: 'Plano de Ação', modulo: 'projetos' },
     ],
   },
   {

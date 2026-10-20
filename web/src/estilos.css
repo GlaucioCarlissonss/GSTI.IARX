@@ -984,6 +984,25 @@ tr.lancamento[data-compartilhada] > th:first-child { box-shadow: inset 3px 0 0 v
 .aviso.ok { border-color: color-mix(in srgb, var(--bom) 50%, transparent); color: var(--positivo-texto); }
 .vazio { color: var(--tinta-fraca); font-size: 13px; padding: 22px; text-align: center; }
 
+/* Texto de apoio abaixo de um bloco: diz POR QUE o número é aquele, e não o
+   repete. Fica abaixo do conteúdo, nunca no lugar dele. */
+.nota { color: var(--tinta-fraca); font-size: 12.5px; line-height: 1.5; margin: 10px 0 0; }
+.nota strong { color: var(--tinta-2); font-weight: 600; }
+
+/* Texto da planilha, com as quebras que quem escreveu pôs. `pre-wrap` porque
+   a evolução de uma ação costuma vir em linhas, e juntá-las num parágrafo só
+   embaralha a ordem dos fatos. */
+.texto-longo { white-space: pre-wrap; font-size: 13px; line-height: 1.55; color: var(--tinta-2); }
+
+.lista-problemas { margin: 8px 0 0; padding-left: 20px; font-size: 12.5px; line-height: 1.6; color: var(--tinta-2); }
+.lista-problemas li { margin-bottom: 5px; }
+
+/* A cor do número acompanha o tom, e nunca anda sozinha: o rótulo e o apoio
+   dizem em palavras o que ela mostra. */
+.indicador .numero.bom { color: var(--positivo-texto); }
+.indicador .numero.critico { color: var(--critico); }
+.indicador .numero.atencao { color: var(--tinta); }
+
 /* -------------------------------------------------------------------- modal */
 /* --------------------------------------------------------- telas flutuantes */
 /* Toda tela flutuante é a mesma peça: cabeçalho preso em cima, rodapé preso
