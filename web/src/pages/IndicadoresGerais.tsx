@@ -34,6 +34,7 @@ import {
 } from '../components/graficos';
 import { LegendaDeConsumo } from '../components/consumo';
 import { BlocoResultados } from '../components/resultados';
+import { VisaoMacro } from '../components/cronograma';
 import { coresDasMatrizes, fatiasPorMatriz } from '../lib/cores';
 import { inteiro, moeda, moedaCurta, percentual } from '../lib/formato';
 
@@ -658,9 +659,15 @@ export function PaginaIndicadoresGerais() {
             .filter(Boolean)
             .join(' · ')}
         >
+        {/* As DUAS VISÕES do módulo. Elas agrupam, e não se substituem: a
+            Macro pergunta se a unidade virou no dia combinado, e a Micro,
+            quanto do trabalho saiu no prazo. Soltas lado a lado, a tela não
+            diria qual pergunta cada número responde. */}
+        <VisaoMacro />
+
         <Cartao
-          titulo="Tarefas entregues no prazo"
-          descricao="por competência de entrega planejada"
+          titulo="Visão Micro — Execução do Projeto"
+          descricao="tarefas entregues no prazo, por competência de entrega planejada"
         >
           <Indicador
             rotulo="Entrega no prazo"
