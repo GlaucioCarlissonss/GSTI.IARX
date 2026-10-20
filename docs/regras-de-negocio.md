@@ -1381,6 +1381,44 @@ mesmas unidades —, mas o plano novo não publica a contagem de cada uma, e
 repartir o total entre as ondas novas seria um palpite indistinguível do dado
 real. A coluna mostra "—" e a tela diz por quê.
 
+### A entrega de cada onda é uma meta
+
+A pergunta da Visão Macro — "as unidades planejadas viraram?" — é uma meta como
+qualquer outra do sistema: tem **alvo** (todas as unidades da onda), tem
+**resultado** (quantas viraram) e tem **prazo** (o go-live). Ela passou a ser
+dita nessa linguagem, com resultado sobre alvo e atingimento, em vez de uma
+"aderência" solta: é o que permite lê-la ao lado dos demais indicadores sem
+traduzir de cabeça.
+
+**O denominador são todas as unidades planejadas**, e não só as que têm coluna
+na planilha. A meta é entregar a onda inteira; medir contra o que a planilha
+acompanha faria a meta encolher junto com a cobertura dela.
+
+**A onda que ainda não venceu não tem resultado, e não tem zero.** Zero
+afirmaria um fracasso que ninguém mediu, e pintaria de vermelho a onda de
+janeiro em outubro. Ela mostra o alvo à vista — "0 de 8 unidade(s)" — e, no
+lugar do percentual, "ainda não vence". Venceu quando o dia do go-live passou,
+ou quando a virada foi declarada, que é fato e não espera o calendário.
+
+**O go-live aparece em dia, e não em mês.** O plano publica a data exata, e
+"virada em 11/2026" esconderia que a 2ª onda vira no dia 3.
+
+### O detalhamento da Macro mostra só unidades e prazos
+
+Clicar na virada abria a lista de **atividades** da unidade — e isso fazia o
+clique responder a pergunta da Micro, justamente a que o bloco ao lado já
+responde. As duas leituras existem separadas de propósito, e misturá-las no
+clique desfazia a separação na única hora em que ela é usada.
+
+O detalhamento traz cinco colunas e nada além: **unidade, onda, prazo de
+virada, virada realizada e situação**. Pela mesma razão, a linha da unidade
+expandida deixou de exibir a contagem de atividades concluídas e pendentes —
+isso é da Visão Micro, logo abaixo.
+
+Clicar numa unidade abre a lista da **onda inteira**, e não só daquela linha:
+ver uma unidade sozinha não responde "e as outras da onda?", que é a pergunta
+seguinte.
+
 ### A virada declarada vence a virada deduzida
 
 A Visão Macro pergunta "a unidade **virou**?", e esta documentação sempre disse

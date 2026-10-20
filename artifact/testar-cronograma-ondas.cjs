@@ -144,6 +144,105 @@ const ESPERADO = [
   const o2 = macro.find((o) => o.n === 2) || {};
   ok('a 2ª onda NÃO é dada como virada', o2.estado !== 'CUMPRIDO', String(o2.estado));
 
+  // ------------------------------------------- a entrega da onda como meta
+  //
+  // A pergunta da Macro é uma meta como qualquer outra: alvo (as unidades da
+  // onda), resultado (quantas viraram) e prazo (o go-live). Dizê-la na mesma
+  // linguagem dos outros indicadores é o que permite lê-la ao lado deles.
+  console.log('\nA ENTREGA DA ONDA COMO META');
+  const { irPara, abrirBlocos } = require('./ajuda-testes.cjs');
+  await irPara(pag, 'Indicadores Gerais', 2500);
+  await abrirBlocos(pag);
+  await pag.waitForTimeout(1000);
+
+  const tabela = await pag.evaluate(() => ({
+    cabecalho: [...document.querySelectorAll('.cronograma thead th')]
+      .map((t) => t.textContent.trim()),
+    ondas: [...document.querySelectorAll('.cronograma tr.fase-linha')].map((tr) =>
+      [...tr.cells].map((c) => c.textContent.replace(/\s+/g, ' ').trim())),
+    // A unidade expandida não pode mais falar de atividade: isso é da Micro.
+    unidades: [...document.querySelectorAll('.cronograma tr.unidade-linha')].map((tr) =>
+      tr.textContent.replace(/\s+/g, ' ').trim()),
+  }));
+  ok('a coluna de aderência virou meta: Entregas + Atingimento',
+    tabela.cabecalho.includes('Entregas') && tabela.cabecalho.includes('Atingimento')
+      && !tabela.cabecalho.includes('Aderência'), tabela.cabecalho.join(' | '));
+  ok('o go-live aparece em DIA, e não em mês',
+    (tabela.ondas[1] || [])[1] && /03\/11\/2026/.test(tabela.ondas[1][1]),
+    (tabela.ondas[1] || [])[1]);
+  ok('a 1ª onda entrega 2 de 2, com 100% da meta',
+    /2 de 2/.test((tabela.ondas[0] || [])[4] || '')
+      && /100,0%/.test((tabela.ondas[0] || [])[5] || ''),
+    `${(tabela.ondas[0] || [])[4]} · ${(tabela.ondas[0] || [])[5]}`);
+  // A onda futura não é zero: zero afirmaria um fracasso que ninguém mediu.
+  ok('a onda que ainda não venceu não aparece como 0%',
+    tabela.ondas.slice(1).every((l) => /ainda não vence/.test(l[5] || '')),
+    tabela.ondas.slice(1).map((l) => l[5]).join(' · '));
+  ok('e ainda assim mostra o alvo dela',
+    tabela.ondas.slice(1).every((l) => /\d+ de \d+ unidade/.test(l[4] || '')),
+    tabela.ondas.slice(1).map((l) => l[4]).join(' · '));
+  ok('a linha da unidade não fala mais de atividade',
+    tabela.unidades.every((t) => !/atividade/i.test(t)),
+    tabela.unidades.find((t) => /atividade/i.test(t)) || 'nenhuma menciona');
+
+  // ------------------------------------------------- o detalhamento da Macro
+  console.log('\nDETALHAMENTO — só unidades e prazos de virada');
+  await pag.click('[data-viradas-onda="1"]');
+  await pag.waitForTimeout(800);
+  const modal = await pag.evaluate(() => {
+    const m = document.querySelector('.modal');
+    if (!m) return null;
+    return {
+      titulo: ((m.querySelector('h2, .tit') || {}).textContent || '').trim(),
+      colunas: [...m.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
+      linhas: [...m.querySelectorAll('tbody tr')].map((tr) =>
+        [...tr.cells].map((c) => c.textContent.trim())),
+      texto: m.textContent.replace(/\s+/g, ' '),
+    };
+  });
+  if (!modal) {
+    ok('o botão abre o detalhamento da virada', false, 'nenhum modal');
+  } else {
+    ok('o botão abre o detalhamento da virada', true);
+    ok('o título nomeia a onda', /1ª onda/.test(modal.titulo), modal.titulo);
+    // O PEDIDO: só unidades e prazos. Nenhuma coluna de atividade, status
+    // consolidado, avanço ponderado ou criticidade — isso é da Micro.
+    ok('as colunas são só unidade, onda, prazo, realizada e situação',
+      modal.colunas.join('|') === 'Unidade|Onda|Prazo de virada|Virada realizada|Situação',
+      modal.colunas.join(' | '));
+    ok('nenhuma coluna de atividade vazou para cá',
+      !/atividade|criticidade|avanço|executante/i.test(modal.colunas.join(' ')),
+      modal.colunas.join(' | '));
+    ok('lista as duas unidades da onda com o prazo de cada uma',
+      modal.linhas.length === 2
+        && modal.linhas.every((l) => /\d{2}\/\d{2}\/\d{4}/.test(l[2])),
+      modal.linhas.map((l) => `${l[0]}=${l[2]}`).join(' · '));
+    ok('e a virada realizada de quem já virou',
+      modal.linhas.every((l) => l[3] === '01/10/2026'),
+      modal.linhas.map((l) => l[3]).join(' · '));
+    ok('a nota diz quantas viraram e quanto é da meta',
+      /2 de 2 unidade\(s\) virada\(s\)/.test(modal.texto) && /100,0% da meta/.test(modal.texto),
+      modal.texto.slice(0, 120));
+  }
+  await pag.evaluate(() => { const b = document.querySelector('.modal [data-c]'); if (b) b.click(); });
+  await pag.waitForTimeout(300);
+
+  // A onda futura abre igual, e diz que ainda não venceu.
+  await pag.click('[data-viradas-onda="3"]');
+  await pag.waitForTimeout(800);
+  const futura = await pag.evaluate(() => {
+    const m = document.querySelector('.modal');
+    return m ? { linhas: m.querySelectorAll('tbody tr').length,
+      texto: m.textContent.replace(/\s+/g, ' ') } : null;
+  });
+  ok('a onda sem coluna na planilha também abre, com as 8 unidades',
+    !!futura && futura.linhas === 8, futura ? String(futura.linhas) : 'sem modal');
+  ok('e diz que ela ainda não venceu, em vez de reprová-la',
+    !!futura && /ainda não venceu/.test(futura.texto),
+    (futura || {}).texto ? futura.texto.slice(0, 110) : '');
+  await pag.evaluate(() => { const b = document.querySelector('.modal [data-c]'); if (b) b.click(); });
+  await pag.waitForTimeout(300);
+
   console.log(`\n=== erros de console: ${erros.length ? erros.join(' | ') : 'nenhum'} ===`);
   console.log(`=== ✗=${falhas.length} ===`);
   if (falhas.length) falhas.forEach((f) => console.log('  ✗ ' + f));

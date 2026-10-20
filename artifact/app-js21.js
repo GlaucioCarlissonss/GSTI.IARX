@@ -1132,6 +1132,8 @@ function calcularCronograma(hoje) {
     const viradas = base.filter((u) => u.virou);
     return {
       ...o, unidades, acompanhadas: base.length, viradas: viradas.length,
+      // A leitura de META da onda, na mesma linguagem dos demais indicadores.
+      meta: metaDaOnda({ ...o, unidades }),
       // A aderência do mês: realizadas ÷ planejadas. Sem unidade acompanhada
       // ela é nula, e não zero — zero afirmaria um fracasso não medido.
       aderencia: base.length ? pct(viradas.length, base.length) : null,
@@ -1154,6 +1156,67 @@ const SPIN_CORES_ESTADO = { CUMPRIDO: 'var(--bomtxt)', 'NÃO CUMPRIDO': 'var(--c
   PENDENTE: 'var(--tinta3)' };
 const SPIN_SIMBOLO_ESTADO = { CUMPRIDO: '✓', 'NÃO CUMPRIDO': '✗', PENDENTE: '·' };
 
+/**
+ * A ENTREGA DE UMA ONDA COMO META.
+ *
+ * A pergunta da Visão Macro — "as unidades planejadas viraram?" — é uma meta
+ * como qualquer outra do sistema: tem alvo (todas as unidades da onda), tem
+ * resultado (quantas viraram) e tem prazo (a data do go-live). Dizê-la na
+ * mesma linguagem dos demais indicadores — resultado sobre meta, barra e
+ * semáforo — é o que permite lê-la ao lado deles sem traduzir de cabeça.
+ *
+ * A onda que AINDA NÃO VENCEU não tem resultado, e não tem zero: zero
+ * afirmaria um fracasso que ninguém mediu, e pintaria de vermelho a onda de
+ * janeiro em outubro. Ela aparece como "ainda não vence", com a meta à vista
+ * e o resultado em branco — é a mesma regra da aderência sem unidade
+ * acompanhada.
+ *
+ * O denominador são TODAS as unidades planejadas da onda, e não só as que têm
+ * coluna na planilha: a meta é entregar a onda inteira, e medir contra o que
+ * a planilha acompanha faria a meta encolher junto com a cobertura dela.
+ */
+function metaDaOnda(onda, hojeISO) {
+  const hoje = hojeISO || new Date().toISOString().slice(0, 10);
+  const planejadas = onda.unidades.length;
+  const viradas = onda.unidades.filter((u) => u.virou).length;
+  // Venceu quando o dia do go-live já passou — ou quando a virada foi
+  // declarada, que é fato e não espera o calendário.
+  const venceu = !!onda.viradaRealizada || (onda.virada && onda.virada <= hoje);
+  return {
+    planejadas, viradas, venceu,
+    resultado: venceu ? pct(viradas, planejadas) : null,
+    meta: 100,
+    atingimento: atingimentoDaMeta('projetos',
+      { resultado: venceu ? pct(viradas, planejadas) : null, meta: 100 }),
+  };
+}
+
+/** As colunas do detalhamento da Macro: unidade e prazo, e nada mais. */
+const COLUNAS_VIRADA = [
+  { rotulo: 'Unidade', valor: (u) => esc(u.nome) },
+  { rotulo: 'Onda', valor: (u) => `${inteiro(u.onda)}ª` },
+  { rotulo: 'Prazo de virada', valor: (u) => esc(diaExib(u.dataPlanejada)) },
+  { rotulo: 'Virada realizada', valor: (u) => (u.dataRealizada
+    ? esc(diaExib(u.dataRealizada)) : '<span class="vazio2">—</span>') },
+  { rotulo: 'Situação', valor: (u) => `<span class="tag" style="color:${
+    SPIN_CORES_ESTADO[u.estado]};border-color:${SPIN_CORES_ESTADO[u.estado]}">${
+    SPIN_SIMBOLO_ESTADO[u.estado]} ${esc(u.estado)}</span>` },
+];
+
+/**
+ * O detalhamento da Macro: SÓ unidades e prazos de virada.
+ *
+ * Ele abria a lista de ATIVIDADES da unidade, e isso misturava as duas
+ * perguntas que a tela existe para separar. A Macro pergunta se a unidade
+ * virou; a atividade é assunto da Micro, e trazê-la aqui fazia o clique na
+ * virada responder outra coisa — justamente a que o bloco ao lado já responde.
+ */
+function abrirViradasDoCronograma(titulo, unidades, nota) {
+  abrirRegistros({
+    titulo, tipo: 'cronograma', colunas: COLUNAS_VIRADA, itens: unidades, contagem: null, nota,
+  });
+}
+
 /** O cronograma: fases, unidades e o estado de cada virada. */
 function cronogramaHtml(c) {
   const selo = (estado) => `<span class="tag" style="color:${SPIN_CORES_ESTADO[estado]};
@@ -1174,49 +1237,70 @@ function cronogramaHtml(c) {
     </div>
 
     <div class="rol" style="margin-top:var(--esp-7)"><table class="cronograma">
-      <thead><tr><th>Fase</th><th>Período</th><th>Unidades a migrar</th>
-        <th class="n">Pacientes</th><th class="n">Aderência</th><th>Prazo macro</th></tr></thead>
+      <thead><tr><th>Onda</th><th>Go-live</th><th>Unidades a migrar</th>
+        <th class="n">Pacientes</th><th class="n">Entregas</th>
+        <th class="n">Atingimento</th><th>Situação</th></tr></thead>
       <tbody>${c.ondas.map((o) => `
         <tr class="fase-linha" data-fase="${inteiro(o.n)}">
           <td><button type="button" class="arv-abrir" aria-expanded="false"
               aria-label="Abrir as unidades da ${inteiro(o.n)}ª onda">+</button>
-            <strong>${inteiro(o.n)}ª onda</strong><div class="arv-comp">${esc(nomeDaOnda(o))}</div></td>
-          <td>${esc(o.periodo)}<div class="arv-comp">virada em ${esc(mesExib(o.mes))}</div></td>
+            <strong>${inteiro(o.n)}ª onda</strong>
+            <div class="arv-comp">${inteiro(o.unidades.length)} unidade(s)</div></td>
+          <!-- O DIA, e não o mês: o plano publica a virada em data exata, e
+               "virada em 11/2026" esconderia que a 2ª onda vira no dia 3. O
+               nome do mês fica como apoio, para situar quem lê por período. -->
+          <td><strong>${esc(diaExib(o.virada))}</strong>
+            <div class="arv-comp">${esc(o.periodo)}</div></td>
           <td>${o.unidades.map((u) => `<span class="tag" style="color:${
             SPIN_CORES_ESTADO[u.estado]};border-color:${SPIN_CORES_ESTADO[u.estado]}">${
             esc(u.nome)}</span>`).join(' ')}</td>
           <td class="n">${o.pacientes === null
             ? '<span class="vazio2" title="As 17 unidades são as mesmas, só reagrupadas pelo plano novo: o total segue valendo, a divisão por onda ainda não foi informada.">—</span>'
             : inteiro(o.pacientes)}</td>
-          <td class="n">${o.aderencia === null ? '<span class="vazio2">sem medição</span>'
-            : `<strong style="color:${SPIN_CORES_ESTADO[o.estado]}">${pctTxt(o.aderencia)}</strong>
-               <div class="arv-comp">${inteiro(o.viradas)} de ${inteiro(o.acompanhadas)}</div>`}</td>
-          <td>${selo(o.estado)}</td>
+          <!-- A ENTREGA DA ONDA COMO META: resultado sobre alvo, e não uma
+               aderência solta. O alvo são TODAS as unidades planejadas — medir
+               contra as que a planilha acompanha faria a meta encolher junto
+               com a cobertura dela. -->
+          <td class="n"><strong>${inteiro(o.meta.viradas)}</strong> de ${
+            inteiro(o.meta.planejadas)}
+            <div class="arv-comp">unidade(s) virada(s)</div></td>
+          <td class="n">${!o.meta.venceu
+            ? '<span class="vazio2">ainda não vence</span>'
+            : `<strong style="color:${SPIN_CORES_ESTADO[o.estado]}">${
+              pctTxt(o.meta.resultado)}</strong>
+               <div class="arv-comp">meta 100%</div>`}</td>
+          <td>${selo(o.estado)}
+            <div><button type="button" class="bt peq" data-viradas-onda="${inteiro(o.n)}"
+              style="margin-top:var(--esp-3)">Ver unidades e prazos</button></div></td>
         </tr>
         ${o.unidades.map((u) => `
         <tr class="unidade-linha" data-da-fase="${inteiro(o.n)}" hidden${
             u.chave ? ` data-unidade-crono="${esc(u.chave)}"` : ''}>
+          <!-- A LINHA DA UNIDADE FALA SÓ DE VIRADA. A contagem de atividades
+               morava aqui e misturava as duas perguntas que esta tela existe
+               para separar: a Macro pergunta se a unidade virou, e a atividade
+               é assunto da Micro, logo abaixo. -->
           <td style="padding-left:34px">${esc(u.nome)}</td>
-          <td><div class="arv-comp">planejada ${esc(diaExib(u.dataPlanejada))}</div>
-            <div class="arv-comp">realizada ${u.dataRealizada ? esc(diaExib(u.dataRealizada))
-              : '<span class="vazio2">—</span>'}</div></td>
-          <td>${!u.acompanhada
-            ? '<span class="vazio2">sem coluna na planilha ainda</span>'
-            : `${inteiro(u.concluidas)} de ${inteiro(u.total)} atividade(s) concluída(s)
-               ${u.pendentes.length ? `<div class="arv-comp" style="color:var(--alerta)">${
-                 inteiro(u.pendentes.length)} pendente(s) — informativas, não mudam o prazo macro</div>`
-                 : ''}`}</td>
-          <td class="n">—</td>
-          <td class="n">${u.acompanhada ? pctTxt(u.pct) : '—'}</td>
+          <td>${esc(diaExib(u.dataPlanejada))}
+            <div class="arv-comp">${u.dataRealizada
+              ? `realizada ${esc(diaExib(u.dataRealizada))}`
+              : '<span class="vazio2">sem virada registrada</span>'}</div></td>
+          <td colspan="2"><span class="vazio2">—</span></td>
+          <td class="n">${u.virou ? '<strong>virou</strong>'
+            : (o.meta.venceu ? '<span style="color:var(--crit)">não virou</span>'
+              : '<span class="vazio2">aguarda</span>')}</td>
+          <td class="n"><span class="vazio2">—</span></td>
           <td>${selo(u.estado)}</td>
         </tr>`).join('')}`).join('')}
       </tbody></table></div>
 
-    <p class="nota" style="margin-top:var(--esp-5)"><strong>Tarefa pendente não muda o prazo macro.</strong>
-      O que ele mede é a unidade ter virado ou não no mês planejado; as pendências aparecem ao lado
-      porque dizem o que falta, não porque reprovam a virada. Unidade <strong>sem coluna na
-      planilha</strong> fica <em>pendente</em>, e não em atraso — a planilha não diz que ela não
-      começou, ela ainda não pergunta.</p>`;
+    <p class="nota" style="margin-top:var(--esp-5)"><strong>A entrega da onda é uma meta:</strong>
+      o alvo são <strong>todas</strong> as unidades planejadas dela, e o resultado é quantas
+      viraram. A onda que ainda não venceu aparece sem resultado, e não com zero — zero afirmaria
+      um fracasso que ninguém mediu. Unidade <strong>sem coluna na planilha</strong> fica
+      <em>pendente</em>, e não em atraso: a planilha não diz que ela não começou, ela ainda não
+      pergunta. <strong>Tarefa pendente não muda esta resposta</strong> — uma unidade pode entrar
+      em produção com pendências, e o que falta está na Visão Micro.</p>`;
 }
 
 /** DD/MM/AAAA a partir do ISO. */
@@ -1237,24 +1321,45 @@ function ligarCronograma(c) {
       for (const f of filhas) f.hidden = aberto;
     });
   });
+  // O DETALHAMENTO DA MACRO ABRE UNIDADES E PRAZOS — e nada além.
+  //
+  // Ele abria a lista de ATIVIDADES da unidade, o que fazia o clique na virada
+  // responder a pergunta da Micro. As duas leituras existem separadas de
+  // propósito; misturá-las no clique desfazia a separação na única hora em que
+  // ela é usada.
+  el('#pagina').querySelectorAll('[data-viradas-onda]').forEach((bt) => {
+    const n = Number(bt.dataset.viradasOnda);
+    const onda = c.ondas.find((o) => o.n === n);
+    if (!onda) return;
+    bt.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      abrirViradasDoCronograma(`${n}ª onda — unidades e prazos de virada`, onda.unidades,
+        `Go-live em ${diaExib(onda.virada)}. ${inteiro(onda.meta.viradas)} de `
+        + `${inteiro(onda.meta.planejadas)} unidade(s) virada(s)`
+        + `${onda.meta.venceu ? `, ${pctTxt(onda.meta.resultado)} da meta.`
+          : ' — a onda ainda não venceu.'}`);
+    });
+  });
+
+  // A unidade abre a mesma lista, com a onda dela inteira: ver uma linha
+  // sozinha não responde "e as outras da onda?", que é a pergunta seguinte.
   el('#pagina').querySelectorAll('[data-unidade-crono]').forEach((tr) => {
     const chave = tr.dataset.unidadeCrono;
-    const unidade = c.ondas.flatMap((o) => o.unidades).find((u) => u.chave === chave);
-    if (!unidade || !unidade.acompanhada) return;
+    const onda = c.ondas.find((o) => o.unidades.some((u) => u.chave === chave));
+    const unidade = (onda ? onda.unidades : []).find((u) => u.chave === chave);
+    if (!unidade) return;
     tr.style.cursor = 'pointer';
     tr.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      const itens = spinAtividades().filter((a) => (a.unidades || {})[chave]);
-      abrirAtividadesSpin(`${unidade.nome} — virada da ${unidade.onda}ª onda`, itens,
-        `${inteiro(unidade.concluidas)} de ${inteiro(unidade.total)} concluída(s). `
-        + `Prazo macro: ${unidade.estado}.`);
+      abrirViradasDoCronograma(`${onda.n}ª onda — unidades e prazos de virada`, onda.unidades,
+        `Go-live em ${diaExib(onda.virada)}. ${inteiro(onda.meta.viradas)} de `
+        + `${inteiro(onda.meta.planejadas)} unidade(s) virada(s).`);
     });
     ligarDica(tr, () => ({ titulo: unidade.nome, linhas: [
       { nome: 'Onda', valor: `${unidade.onda}ª — ${nomeDaOnda(SPIN_ONDAS[unidade.onda - 1])}` },
-      { nome: 'Data planejada', valor: diaExib(unidade.dataPlanejada) },
-      { nome: 'Data realizada', valor: unidade.dataRealizada ? diaExib(unidade.dataRealizada) : '—' },
-      { nome: 'Prazo macro', valor: unidade.estado, cor: SPIN_CORES_ESTADO[unidade.estado] },
-      { nome: 'Pendentes', valor: `${inteiro(unidade.pendentes.length)} atividade(s)` },
+      { nome: 'Prazo de virada', valor: diaExib(unidade.dataPlanejada) },
+      { nome: 'Virada realizada', valor: unidade.dataRealizada ? diaExib(unidade.dataRealizada) : '—' },
+      { nome: 'Situação', valor: unidade.estado, cor: SPIN_CORES_ESTADO[unidade.estado] },
     ] }));
   });
 }
