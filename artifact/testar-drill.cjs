@@ -51,8 +51,25 @@ const TELAS = ['Painel', 'Conferência', 'Projetos', 'Indicadores', 'Indicadores
     }
     // O Gantt não é SVG: as barras levam `title` nativo, que é tooltip do
     // mesmo jeito e ainda funciona com leitor de tela.
-    const comTitle = await pag.$$eval('.gantt .barra[title], .gantt td.nome[title]', (es) => es.length);
-    confere(`${tela}: os elementos do cronograma têm tooltip`, comTitle > 0, true);
+    //
+    // SEM PROJETO NA BASE NÃO HÁ GANTT, e a conferência passava anos
+    // reprovando por isso — duas falhas que apareciam em todo relatório sem
+    // dizer o que estava errado, porque nada estava: o desenho não existe
+    // quando não há o que desenhar. Pular dizendo o motivo é o que o resto do
+    // repositório faz; afirmar que passou seria pior, e reprovar por falta de
+    // dado trata ausência como defeito.
+    const gantt = await pag.evaluate(() => ({
+      caixas: document.querySelectorAll('.gantt').length,
+      alvos: document.querySelectorAll('.gantt .barra, .gantt td.nome').length,
+      comTitle: document.querySelectorAll('.gantt .barra[title], .gantt td.nome[title]').length,
+    }));
+    if (!gantt.alvos) {
+      console.log(`  · ${tela}: nenhum Gantt desenhado nesta base `
+        + `(${gantt.caixas} caixa(s), 0 barra) — sem projeto não há cronograma a conferir`);
+      continue;
+    }
+    confere(`${tela}: os elementos do cronograma têm tooltip`,
+      gantt.comTitle === gantt.alvos, true);
   }
 
   // ---------------------------------------------------------- drill-down
