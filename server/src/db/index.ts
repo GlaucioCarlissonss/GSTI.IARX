@@ -341,6 +341,46 @@ CREATE TABLE IF NOT EXISTS mapeamentos_importacao (
 );
 CREATE INDEX IF NOT EXISTS ix_mapeamento_cliente ON mapeamentos_importacao(cliente_id, aba);
 
+-- Plano de Ação da implantação: o que falta fazer, por quem, e até quando.
+--
+-- Separado das tarefas do módulo de Projetos porque a unidade de tempo é
+-- outra. A
+-- tarefa do módulo tem competência MENSAL, e o valor deste plano está no DIA:
+-- "vence em 2 dias" e "atrasado 5 dias" é a leitura que faz a sala de guerra
+-- agir, e arredondá-la para o mês deixaria um calendário que não cobra nada
+-- de ninguém.
+--
+-- NADA DE DERIVADO AQUI. A planilha de origem traz "Farol (Prazo)" e "Qtd
+-- Dias" já escritos, e os dois ficam de fora: o farol foi calculado contra o
+-- dia em que alguém abriu o arquivo, e gravá-lo faria o painel envelhecer em
+-- silêncio — mostrando "vence em 2 dias" uma semana depois. O que se guarda
+-- são as pontas; o resto é recalculado contra hoje, toda vez.
+--
+-- A identidade é (cliente, onda, nº): é como o cliente numera, e é o que
+-- permite reimportar o arquivo corrigido sem duplicar a lista inteira.
+CREATE TABLE IF NOT EXISTS plano_acao (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id    INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  onda          INTEGER NOT NULL,
+  numero        INTEGER NOT NULL,
+  tarefa        TEXT NOT NULL,
+  area          TEXT NOT NULL DEFAULT '',
+  lider         TEXT NOT NULL DEFAULT '',
+  inicio        TEXT,
+  fim           TEXT,
+  status        TEXT NOT NULL DEFAULT 'Não iniciado',
+  link          TEXT NOT NULL DEFAULT '',
+  observacoes   TEXT NOT NULL DEFAULT '',
+  evolucoes     TEXT NOT NULL DEFAULT '',
+  criado_em     TEXT NOT NULL DEFAULT (datetime('now')),
+  atualizado_em TEXT,
+  UNIQUE (cliente_id, onda, numero)
+);
+CREATE INDEX IF NOT EXISTS ix_plano_cliente ON plano_acao(cliente_id, onda, numero);
+-- O painel abre perguntando "o que está atrasado?", e a resposta varre por
+-- data de fim dentro do cliente.
+CREATE INDEX IF NOT EXISTS ix_plano_cliente_fim ON plano_acao(cliente_id, fim);
+
 -- ============================================================
 -- Carimbo do cliente: invariante do BANCO, não de cada consulta
 -- ============================================================

@@ -189,6 +189,51 @@ export interface OpcoesLeitura {
   preservarDatas?: boolean;
 }
 
+export interface AbaEmGrade {
+  nome: string;
+  /** Linhas e colunas na posição em que estão no arquivo, sem cabeçalho. */
+  grade: string[][];
+}
+
+/**
+ * A GRADE CRUA de cada aba: linhas e células, sem supor onde está o cabeçalho.
+ *
+ * `lerXlsx` toma a primeira linha como cabeçalho, o que serve para os modelos
+ * do sistema. A planilha do Plano de Ação não é um modelo nosso: cada aba
+ * abre com um título, a lista de unidades e a data do go-live, e o cabeçalho
+ * só aparece algumas linhas abaixo. Ler por `lerXlsx` devolveria colunas
+ * chamadas "Onda 1" e perderia as ações de verdade.
+ *
+ * As datas viram `AAAA-MM-DD`: aqui o DIA é o dado, e reduzi-lo a competência
+ * apagaria justamente o que o plano cobra.
+ */
+export async function lerGradeXlsx(buffer: Buffer): Promise<AbaEmGrade[]> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer as unknown as ArrayBuffer);
+  const abas: AbaEmGrade[] = [];
+  wb.eachSheet((ws) => {
+    const grade: string[][] = [];
+    ws.eachRow({ includeEmpty: true }, (row, numero) => {
+      const linha: string[] = [];
+      row.eachCell({ includeEmpty: true }, (cell, col) => {
+        let valor: unknown = cell.value;
+        if (valor && typeof valor === 'object' && 'result' in valor) {
+          valor = (valor as { result: unknown }).result;
+        }
+        if (valor && typeof valor === 'object' && 'text' in valor) {
+          valor = (valor as { text: string }).text;
+        }
+        if (valor instanceof Date) valor = valor.toISOString().slice(0, 10);
+        linha[col - 1] = restaurarFormula(valor === null || valor === undefined ? '' : String(valor).trim());
+      });
+      grade[numero - 1] = linha;
+    });
+    for (let i = 0; i < grade.length; i += 1) if (!grade[i]) grade[i] = [];
+    abas.push({ nome: ws.name, grade });
+  });
+  return abas;
+}
+
 export async function lerXlsx(buffer: Buffer, opcoes: OpcoesLeitura = {}): Promise<Aba[]> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer as unknown as ArrayBuffer);

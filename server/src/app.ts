@@ -12,6 +12,7 @@ import { rotasFinanceiro } from './routes/financeiro.js';
 import { rotasAcesso } from './routes/acesso.js';
 import { rotasIntegracoes } from './routes/integracoes.js';
 import { rotasProjetos } from './routes/projetos.js';
+import { rotasPlanoAcao } from './routes/plano-acao.js';
 import { rotasSla } from './routes/sla.js';
 import { rotasDashboards } from './routes/dashboards.js';
 import { rotasIndicadores } from './routes/indicadores.js';
@@ -65,6 +66,9 @@ export function criarApp() {
   protegido.use(autenticado, comEmpresa);
   protegido.use('/', rotasCadastros);
   protegido.use('/lancamentos', rotasFinanceiro);
+  // Antes de `/projetos`: aquele roteador tem `/:id`, que engoliria
+  // "plano-acao" como se fosse o id de um projeto.
+  protegido.use('/projetos/plano-acao', rotasPlanoAcao);
   protegido.use('/projetos', rotasProjetos);
   protegido.use('/sla', rotasSla);
   protegido.use('/suporte', rotasSuporte);
