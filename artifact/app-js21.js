@@ -1688,3 +1688,26 @@ function ligarListagemSpincare() {
     tr.addEventListener('click', () => abrirAtividadeSpin(tr.dataset.atividade));
   });
 }
+
+/**
+ * As ondas cujo go-live já venceu até o fim de uma competência, com quantas
+ * unidades delas tinham virado ATÉ ALI.
+ *
+ * O recorte é por data, e não pelo estado de hoje: olhar agosto não pode
+ * mostrar uma virada declarada em outubro como se já tivesse acontecido. É a
+ * mesma disciplina do farol do plano — o que se mede é a posição naquele
+ * momento, não a de agora carimbada para trás.
+ */
+function ondasVencidasAte(comp) {
+  if (!comp) return [];
+  const fim = `${comp}-31`;            // o último dia possível do mês
+  return SPIN_ONDAS
+    .filter((o) => o.virada && o.virada <= fim)
+    .map((o) => {
+      // Virou até ali quem teve a virada DECLARADA até ali. Sem declaração, a
+      // onda conta como não virada — o cronograma não afirma o que ninguém
+      // informou.
+      const declarou = !!o.viradaRealizada && o.viradaRealizada <= fim;
+      return { ...o, viradasAte: declarou ? o.unidades.length : 0, declarou };
+    });
+}

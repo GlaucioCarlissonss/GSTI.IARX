@@ -1403,6 +1403,47 @@ ou quando a virada foi declarada, que é fato e não espera o calendário.
 **O go-live aparece em dia, e não em mês.** O plano publica a data exata, e
 "virada em 11/2026" esconderia que a 2ª onda vira no dia 3.
 
+### O resultado de Projetos é a entrega do cronograma
+
+No bloco Resultados, o cartão de Projetos media **tarefas entregues no prazo**
+— e numa base sem tarefa cadastrada respondia "—" para sempre. O que a
+diretoria pergunta deste módulo é outra coisa: **as unidades viraram no prazo
+combinado?** É esse o compromisso do programa, e é ele que o cartão passa a
+medir.
+
+| | |
+| --- | --- |
+| Resultado | unidades viradas ÷ unidades planejadas |
+| Meta | 100% — o alvo é entregar a onda inteira |
+| Acumulado | todas as ondas com go-live **até o fim do mês em foco** |
+
+**Acumulado, e não só as ondas do próprio mês**: a pergunta é "estamos em dia
+com o cronograma até aqui?", e medir apenas o mês faria o resultado sumir em
+todo mês sem virada marcada. Em 10/2026 são 2 de 2 (100%); em 11/2026, com a 2ª
+onda vencida, 2 de 5 (40%).
+
+**O recorte é por data, não pelo estado de hoje.** Olhar agosto não pode
+mostrar uma virada declarada em outubro como se já tivesse acontecido.
+
+A contagem de tarefas continua existindo, dentro da **Visão Micro**, onde
+responde "como anda a execução". E o detalhamento do cartão abre **unidades e
+prazos**, pela mesma razão que o da Macro: abrir tarefas sob um número de
+cronograma faria o clique responder outra pergunta.
+
+### O mês em curso vale para virada, não para o que acumula
+
+O bloco Resultados só oferecia meses **fechados**, porque custo e conformidade
+se **acumulam**: meio mês medido contra a meta cheia reprovaria o começo de
+todo mês. Uma **virada não acumula** — ela aconteceu num dia, e o dia passou.
+Deixar outubro de fora por causa do custo esconderia por trinta dias a única
+coisa que o programa entregou.
+
+O mês corrente passa a entrar na faixa **quando já carrega um go-live
+realizado**, e cada indicador diz de si se pode ser medido num mês aberto:
+Financeiro e SLA mostram **"Mês em curso — fecha no fim do mês"**, que não é a
+mesma coisa que "sem dados" — há dados, o mês é que não fechou, e trocar uma
+frase pela outra faria procurar um buraco que não existe.
+
 ### O detalhamento da Macro mostra só unidades e prazos
 
 Clicar na virada abria a lista de **atividades** da unidade — e isso fazia o

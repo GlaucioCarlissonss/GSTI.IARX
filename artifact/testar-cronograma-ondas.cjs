@@ -243,6 +243,84 @@ const ESPERADO = [
   await pag.evaluate(() => { const b = document.querySelector('.modal [data-c]'); if (b) b.click(); });
   await pag.waitForTimeout(300);
 
+  // ------------------- o resultado de Projetos vem do cronograma
+  //
+  // O cartão media TAREFAS entregues no prazo, e numa base sem tarefa
+  // cadastrada respondia "—" para sempre. O que a diretoria pergunta deste
+  // módulo é se as unidades viraram no prazo combinado, e é isso que o
+  // resultado passa a ser.
+  console.log('\nRESULTADO DE PROJETOS — vem da entrega do cronograma');
+  const porMes = await pag.evaluate(() => {
+    const saida = {};
+    for (const m of ['2026-08', '2026-09', '2026-10', '2026-11']) {
+      const d = resultadoDoMes('projetos', m);
+      saida[m] = { r: d.resultado, meta: d.meta, viradas: d.viradas, planejadas: d.planejadas };
+    }
+    return saida;
+  });
+  ok('antes da 1ª virada não há resultado — e não há zero',
+    porMes['2026-09'].r === null && porMes['2026-09'].planejadas === 0,
+    JSON.stringify(porMes['2026-09']));
+  ok('em 10/2026 o resultado é 100%: as duas unidades viraram',
+    porMes['2026-10'].r === 100 && porMes['2026-10'].viradas === 2
+      && porMes['2026-10'].planejadas === 2, JSON.stringify(porMes['2026-10']));
+  ok('a meta é 100% — o alvo é entregar a onda inteira',
+    porMes['2026-10'].meta === 100, String(porMes['2026-10'].meta));
+  // Acumulado: em novembro a 2ª onda já venceu e não virou, então o
+  // resultado cai. Medir só as ondas do próprio mês faria o número sumir em
+  // todo mês sem virada marcada.
+  ok('em 11/2026 acumula a 2ª onda vencida: 2 de 5',
+    porMes['2026-11'].viradas === 2 && porMes['2026-11'].planejadas === 5,
+    JSON.stringify(porMes['2026-11']));
+
+  console.log('\nMÊS EM CURSO — vale para virada, não para o que acumula');
+  const meses = await pag.$$eval('[data-mes-resultados] option', (o) => o.map((x) => x.value));
+  ok('o mês corrente entra na faixa, porque carrega uma virada fechada',
+    meses.includes('2026-10'), meses.slice(0, 3).join(' · '));
+  const cartoes = await pag.evaluate(() => {
+    const ler = (mod) => {
+      const c = document.querySelector(`.cartao-resultado[data-modulo="${mod}"]`);
+      if (!c) return null;
+      return { valor: (c.querySelector('.res-valor') || {}).textContent.trim(),
+        texto: (c.querySelector('.res-texto') || {}).textContent.trim() };
+    };
+    return { financeiro: ler('financeiro'), projetos: ler('projetos'), sla: ler('sla') };
+  });
+  // Custo e conformidade ACUMULAM: meio mês contra a meta cheia reprovaria o
+  // começo de todo mês. Mas "sem dados" seria falso — há dados, o mês é que
+  // não fechou, e o cartão diz isso com todas as letras.
+  ok('Financeiro no mês aberto diz que o mês está em curso, e não "sem dados"',
+    /em curso/i.test((cartoes.financeiro || {}).texto || ''), (cartoes.financeiro || {}).texto);
+  ok('SLA idem', /em curso/i.test((cartoes.sla || {}).texto || ''), (cartoes.sla || {}).texto);
+  ok('Projetos é medido mesmo com o mês aberto: a virada é um fato datado',
+    (cartoes.projetos || {}).valor === '100,0%'
+      && /atingida/i.test((cartoes.projetos || {}).texto || ''),
+    `${(cartoes.projetos || {}).valor} · ${(cartoes.projetos || {}).texto}`);
+
+  console.log('\nVER REGISTROS de Projetos — unidades e prazos, não tarefas');
+  await pag.click('.cartao-resultado[data-modulo="projetos"] .res-ver');
+  await pag.waitForTimeout(900);
+  const drill = await pag.evaluate(() => {
+    const m = document.querySelector('.modal');
+    if (!m) return null;
+    return { titulo: ((m.querySelector('h2, .tit') || {}).textContent || '').trim(),
+      colunas: [...m.querySelectorAll('thead th')].map((t) => t.textContent.trim()),
+      linhas: m.querySelectorAll('tbody tr').length,
+      texto: m.textContent.replace(/\s+/g, ' ') };
+  });
+  if (!drill) {
+    ok('o cartão abre o detalhamento', false, 'nenhum modal');
+  } else {
+    ok('o cartão abre unidades e prazos, e não tarefas',
+      drill.colunas.join('|') === 'Unidade|Onda|Prazo de virada|Virada realizada|Situação',
+      drill.colunas.join(' | '));
+    ok('com as duas unidades da onda vencida', drill.linhas === 2, String(drill.linhas));
+    ok('e manda a execução atividade a atividade para a Visão Micro',
+      /Visão Micro/.test(drill.texto));
+  }
+  await pag.evaluate(() => { const b = document.querySelector('.modal [data-c]'); if (b) b.click(); });
+  await pag.waitForTimeout(300);
+
   console.log(`\n=== erros de console: ${erros.length ? erros.join(' | ') : 'nenhum'} ===`);
   console.log(`=== ✗=${falhas.length} ===`);
   if (falhas.length) falhas.forEach((f) => console.log('  ✗ ' + f));

@@ -3326,6 +3326,21 @@ function mesesComResultado() {
   for (const l of Loja.todosDoEscopo()) {
     if (l.competencia && l.competencia <= fechado) vistos.add(l.competencia);
   }
+  // O MÊS EM CURSO ENTRA QUANDO JÁ CARREGA UM FATO FECHADO.
+  //
+  // Ele fica de fora porque custo e chamado se ACUMULAM: meio mês medido
+  // contra a meta cheia reprovaria todo começo de mês por incompletude. Uma
+  // VIRADA não acumula — ela aconteceu num dia, e o dia passou. Deixar o mês
+  // de fora por causa do custo esconderia a entrega do cronograma até o mês
+  // virar, que no caso da 1ª onda seria esconder por trinta dias a única
+  // coisa que o programa entregou.
+  //
+  // Quem não pode ser medido num mês aberto é cada indicador que diz isso de
+  // si — ver `emCurso` em `resultadoDoMes`.
+  const corrente = mesHoje();
+  if (ondasVencidasAte(corrente).length > ondasVencidasAte(fechado).length) {
+    vistos.add(corrente);
+  }
   return ordenado([...vistos]).reverse();
 }
 
@@ -3339,6 +3354,16 @@ function mesesComResultado() {
  */
 function resultadoDoMes(modulo, comp) {
   const r = recorteDoMes(comp);
+  // MÊS EM CURSO: só o que NÃO acumula pode ser medido nele.
+  //
+  // O custo e a conformidade do mês aberto estão pela metade, e compará-los
+  // com a meta cheia reprovaria o começo de todo mês. Dizer "sem dados"
+  // também seria falso — há dados, o mês é que não fechou. O cartão diz isso
+  // com todas as letras em vez de escolher entre dois erros.
+  const emCurso = comp === mesHoje();
+  if (emCurso && modulo !== 'projetos') {
+    return { resultado: null, meta: null, moeda: modulo === 'financeiro', emCurso: true };
+  }
   if (modulo === 'financeiro') {
     // Despesa RECONHECIDA do mês contra o teto de gasto — é o Objetivo 03.
     const p = calcularObjetivo03(r).serie.find((x) => x.comp === comp);
@@ -3360,10 +3385,27 @@ function resultadoDoMes(modulo, comp) {
     return { resultado: p ? p.total : null, meta: p ? p.teto : tetos.geral, moeda: true };
   }
   if (modulo === 'projetos') {
-    const p = calcularProjetos(r);
-    // Sem tarefa entregue no mês não há percentual: 0% diria "nenhuma saiu no
-    // prazo", quando o que houve foi nenhuma entrega.
-    return { resultado: p.entregues ? p.pct : null, meta: p.meta, moeda: false };
+    // O RESULTADO DE PROJETOS É A ENTREGA DO CRONOGRAMA, e não a contagem de
+    // tarefas.
+    //
+    // O que a diretoria pergunta deste módulo é se as unidades viraram no
+    // prazo combinado — é esse o compromisso do programa. A contagem de
+    // tarefas entregues no prazo continua existindo, dentro da Visão Micro,
+    // onde ela responde "como anda a execução"; aqui ela respondia outra
+    // pergunta e, numa base sem tarefa cadastrada, respondia "—" para sempre.
+    //
+    // ACUMULADO ATÉ O FIM DO MÊS EM FOCO: a pergunta é "estamos em dia com o
+    // cronograma até aqui?", e medir só as ondas do próprio mês faria o
+    // resultado sumir em todo mês sem virada marcada.
+    const ondasAte = ondasVencidasAte(comp);
+    const planejadas = ondasAte.reduce((s, o) => s + o.unidades.length, 0);
+    const viradas = ondasAte.reduce((s, o) => s + o.viradasAte, 0);
+    return {
+      // Nenhuma onda vencida até o mês não é 0%: é uma meta que ainda não
+      // chegou, e zero reprovaria o programa por um prazo que não passou.
+      resultado: planejadas ? pct(viradas, planejadas) : null,
+      meta: planejadas ? 100 : null, moeda: false, planejadas, viradas,
+    };
   }
   const s = calcularSla(r);
   return { resultado: s.total ? s.pct : null, meta: s.meta, moeda: false };
@@ -3393,7 +3435,10 @@ function atingimentoDaMeta(modulo, { resultado, meta }) {
 }
 
 /** O texto que acompanha a faixa, com o valor da meta por extenso. */
-function textoDaMeta(a, moeda) {
+function textoDaMeta(a, moeda, dados) {
+  // "Sem dados" e "o mês não fechou" são coisas diferentes, e dizer a
+  // primeira no lugar da segunda faria procurar um buraco que não existe.
+  if (dados && dados.emCurso) return 'Mês em curso — fecha no fim do mês';
   if (a.faixa === 'SEM_DADOS') return 'Sem dados no período';
   if (a.faixa === 'SEM_META') return 'Sem meta cadastrada';
   const valor = moeda ? brl(a.meta) : `${pctTxt(a.meta)}`;
@@ -3476,13 +3521,13 @@ function faixaDeMesesHtml(modulo, meses, selecionado) {
         { nome: 'Resultado', valor: dados.resultado === null ? '—' : fmt(dados.resultado) },
         { nome: 'Meta', valor: dados.meta === null || dados.meta === undefined ? '—' : fmt(dados.meta) },
         { nome: 'Atingimento', valor: a.pct === undefined ? '—' : pctTxt(a.pct) },
-        { nome: 'Situação', valor: textoDaMeta(a, dados.moeda) },
+        { nome: 'Situação', valor: textoDaMeta(a, dados.moeda, dados) },
       ],
     } : null;
     const sel = m === selecionado;
     return `<button type="button" class="res-mes faixa-${a.faixa.toLowerCase()}${sel ? ' sel' : ''}"
       data-mes-faixa="${m}" aria-pressed="${sel}"
-      aria-label="${esc(mesExib(m))}: ${esc(textoDaMeta(a, dados && dados.moeda))}"
+      aria-label="${esc(mesExib(m))}: ${esc(textoDaMeta(a, dados && dados.moeda, dados))}"
       ${detalhe ? `data-dica="${esc(JSON.stringify(detalhe))}"` : ''}>
       <span class="res-mes-rot">${esc(mesCurto(m))}</span>
       <span class="res-mes-pt" aria-hidden="true"></span></button>`;
@@ -3518,7 +3563,7 @@ function deltaDoAtingimentoHtml(modulo, comp) {
 
 const MODULOS_RESULTADO = [
   { chave: 'financeiro', nome: 'Financeiro', oQue: 'despesa reconhecida contra o teto de gasto' },
-  { chave: 'projetos', nome: 'Projetos', oQue: 'tarefas entregues no prazo' },
+  { chave: 'projetos', nome: 'Projetos', oQue: 'unidades viradas no cronograma' },
   { chave: 'sla', nome: 'SLA', oQue: 'chamados resolvidos dentro do prazo' },
 ];
 
@@ -3565,7 +3610,7 @@ function cartoesDeResultadoHtml(comp) {
         <dt>Atingimento</dt><dd class="res-ating">${a.pct === undefined ? '—' : pctTxt(a.pct)}</dd>
       </dl>
       ${barraDeAtingimentoHtml(a, dados, m, comp)}
-      <p class="res-texto">${esc(textoDaMeta(a, dados.moeda))}</p>
+      <p class="res-texto">${esc(textoDaMeta(a, dados.moeda, dados))}</p>
       ${deltaDoAtingimentoHtml(m, comp)}
       ${faixaDeMesesHtml(m, meses, comp)}
       <button type="button" class="bt peq res-ver" data-ver-mes="${m.chave}">Ver registros de ${esc(mesExib(comp))}</button>
@@ -3728,12 +3773,24 @@ function abrirRegistrosDoResultado(modulo, comp) {
     return;
   }
   if (modulo === 'projetos') {
-    const itens = tarefasDoRecorte(r, 'entregues');
+    // O detalhamento acompanha o que o cartão mede: unidades e prazos de
+    // virada, e não tarefas. Abrir tarefas sob um número de cronograma faria
+    // o clique responder outra pergunta — a mesma confusão que a Visão Macro
+    // deixou de cometer.
+    const ondasAte = ondasVencidasAte(comp);
+    const crono = calcularCronograma(comp);
+    const itens = ondasAte.flatMap((o) =>
+      (crono.ondas.find((x) => x.n === o.n) || { unidades: [] }).unidades);
+    const viradas = ondasAte.reduce((s, o) => s + o.viradasAte, 0);
     abrirRegistros({
-      titulo: `${nome} — tarefas entregues em ${mesExib(comp)}`,
-      tipo: 'indicadores', colunas: COLUNAS_TAREFA, itens, contagem: null,
-      nota: `${inteiro(itens.length)} tarefa(s) entregue(s) com competência planejada em `
-        + `${mesExib(comp)}. O resultado é quantas delas saíram no prazo.`,
+      titulo: `${nome} — unidades e prazos de virada até ${mesExib(comp)}`,
+      tipo: 'cronograma', colunas: COLUNAS_VIRADA, itens, contagem: null,
+      nota: itens.length
+        ? `${inteiro(viradas)} de ${inteiro(itens.length)} unidade(s) virada(s) nas ondas com `
+          + `go-live até ${mesExib(comp)}. A execução atividade a atividade está em `
+          + 'Indicadores Gerais › Projetos › Visão Micro.'
+        : `Nenhuma onda tinha go-live até ${mesExib(comp)} — a primeira vira em `
+          + `${diaExib((SPIN_ONDAS[0] || {}).virada)}.`,
     });
     return;
   }
