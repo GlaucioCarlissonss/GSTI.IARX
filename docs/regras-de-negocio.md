@@ -1574,6 +1574,38 @@ a quem morria antes da primeira asserção — foi assim que a conferência de
 perfis passou meses sem rodar. O runner decide "morreu" pelo rodapé que o Node
 imprime ao estourar sem captura, e não por procurar a palavra "Error".
 
+### Como se confere o artifact
+
+As suítes do artifact leem `teste-local.html`, montado a partir dos fontes por
+`montar.sh` + `montar-teste.cjs`. Rodá-las enquanto alguém remonta troca o
+arquivo **debaixo** da varredura: as primeiras medem o build antigo e as
+últimas o novo, e o resultado não descreve nenhum dos dois.
+
+`node artifact/testar-tudo.cjs` monta antes da primeira suíte. Quem roda não
+precisa lembrar de montar e, mais importante, não consegue remontar no meio
+sem perceber.
+
+**A base local não tem tudo.** `artifact/dados/` é um `read_db` do artifact
+publicado, e o que o cliente não carregou lá não existe aqui. Foi assim que
+quatro conferências de SLA ficaram meses morrendo na primeira leitura. Para
+isso existem os semeadores, que geram dados **inventados** — a base real tem
+nomes de pessoas e nunca entra no git:
+
+| semeador | para quê |
+| --- | --- |
+| `semear-sla.cjs` | chamados dentro e fora do prazo, os três status, filas e criticidades diferentes |
+| `semear-projecao.cjs` | o mínimo para a regra de projeção ser exercida |
+| `semear-volume.cjs` | ordem de grandeza da base real, para medir desempenho |
+
+Todos recusam sobrescrever uma base que não criaram.
+
+**Uma semente colide com uma suíte quando usa as marcas dela.** Várias
+conferências criam registros pela tela e os reconhecem depois por um campo —
+o tópico, por exemplo. Semear com o mesmo valor faz os sintéticos entrarem na
+contagem, e a suíte acusa o produto de ter criado o que ela não criou. Os
+tópicos semeados levam a marca `(base)`, e quem precisa distinguir olha a
+**origem**: o que nasce pela tela não veio de integração.
+
 ### Onde as regras moram, nas duas superfícies
 
 O cronograma e o plano existem **duas vezes**, e isso é deliberado: o artifact
