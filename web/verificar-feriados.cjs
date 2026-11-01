@@ -98,6 +98,27 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   ok('nascendo como "conta como feriado"', !!natal && /Conta como feriado/.test(natal.celulas[3]),
     natal && natal.celulas[3]);
 
+  // ------------------------------------------------ o que a tela recusa
+  console.log('\nRECUSAS — o calendário e a descrição');
+  await pag.click('button:has-text("Novo feriado")');
+  await pag.waitForSelector('.modal', { timeout: 10000 });
+  await pag.fill('#feriado-data', '2027-01-02');
+  await pag.waitForTimeout(300);
+  const semDescricao = await pag.$eval('.modal button:has-text("Gravar")', (b) => b.disabled);
+  ok('sem descrição, gravar fica indisponível', semDescricao === true, `disabled=${semDescricao}`);
+  // Sábado: o feriado não tira hora útil nenhuma, e a tela tem de dizer isso
+  // ANTES de gravar — depois seria tarde.
+  await pag.fill('#feriado-data', '2026-12-26');
+  await pag.waitForTimeout(300);
+  const avisoFds = await pag.evaluate(() => {
+    const c = document.querySelector('#feriado-data').closest('.campo');
+    return (c.querySelector('.dica-filtro') || {}).textContent || '';
+  });
+  ok('a tela avisa quando o feriado cai em fim de semana',
+    /não tira hora útil/i.test(avisoFds), avisoFds);
+  await pag.keyboard.press('Escape');
+  await pag.waitForTimeout(400);
+
   // -------------------------------------------------------------- repetido
   console.log('\nREPETIDO — o mesmo dia duas vezes é engano, e a recusa diz qual já está lá');
   await pag.click('button:has-text("Novo feriado")');

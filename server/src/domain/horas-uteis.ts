@@ -151,6 +151,20 @@ export interface Feriado {
   data: string;
   descricao: string;
   ativo: boolean;
+  /**
+   * O dia da semana, 0 = domingo.
+   *
+   * Vai junto para a tela não ter de refazer a conta de data — e refazê-la
+   * com `new Date('2026-12-25')` cairia um dia antes no Brasil, porque aquela
+   * forma é lida como UTC.
+   */
+  dia_da_semana: number;
+  /**
+   * Feriado em sábado ou domingo não tira hora útil NENHUMA: aqueles dias já
+   * valem zero. Sem o aviso alguém o cadastraria esperando um efeito que não
+   * vem, e culparia o cálculo.
+   */
+  sem_efeito: boolean;
 }
 
 interface LinhaFeriado {
@@ -160,9 +174,18 @@ interface LinhaFeriado {
   ativo: number;
 }
 
-const apresentar = (l: LinhaFeriado): Feriado => ({
-  id: l.id, data: l.data, descricao: l.descricao, ativo: l.ativo === 1,
-});
+const apresentar = (l: LinhaFeriado): Feriado => {
+  const [ano, mes, dia] = l.data.split('-').map(Number);
+  const semana = new Date(ano!, (mes ?? 1) - 1, dia ?? 1).getDay();
+  return {
+    id: l.id,
+    data: l.data,
+    descricao: l.descricao,
+    ativo: l.ativo === 1,
+    dia_da_semana: semana,
+    sem_efeito: semana === 0 || semana === 6,
+  };
+};
 
 /** Todos os feriados do cliente, do mais antigo para o mais novo. */
 export function listarFeriados(ctx: Contexto): Feriado[] {
@@ -185,7 +208,46 @@ export function feriadosVigentes(ctx: Contexto): Set<string> {
   return new Set(linhas.map((l) => l.data));
 }
 
-const DATA_VALIDA = /^\d{4}-\d{2}-\d{2}$/;
+const FORMATO_DE_DATA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A data existe no calendário?
+ *
+ * A máscara não basta: 2026-02-31 casa com `\d{4}-\d{2}-\d{2}` e não existe.
+ * Sem esta conferência o JavaScript a normalizaria para 03/03 em silêncio, e o
+ * cadastro tiraria do expediente um dia útil de verdade — um que ninguém pediu
+ * e que ninguém encontraria depois, porque a lista mostraria a data certa.
+ */
+function dataExiste(iso: string): boolean {
+  const [ano, mes, dia] = iso.split('-').map(Number);
+  if (!ano || !mes || !dia) return false;
+  const d = new Date(ano, mes - 1, dia);
+  return d.getFullYear() === ano && d.getMonth() === mes - 1 && d.getDate() === dia;
+}
+
+/** Recusa a data malformada, e a que a máscara aceita mas o calendário não tem. */
+function validarData(bruto: unknown): string {
+  const data = String(bruto ?? '').trim();
+  if (!FORMATO_DE_DATA.test(data)) {
+    throw erroValidacao('Informe a data do feriado no formato AAAA-MM-DD.');
+  }
+  if (!dataExiste(data)) {
+    throw erroValidacao(`${data} não existe no calendário.`);
+  }
+  return data;
+}
+
+/**
+ * A descrição é obrigatória.
+ *
+ * Sem ela ninguém sabe, meses depois, por que aquele dia saiu do cálculo — e
+ * um feriado sem nome é indistinguível de um engano de digitação.
+ */
+function validarDescricao(bruto: unknown): string {
+  const d = String(bruto ?? '').trim();
+  if (!d) throw erroValidacao('Diga que feriado é este: sem a descrição, ninguém sabe depois por que o dia saiu do cálculo.');
+  return d;
+}
 
 export interface EntradaFeriado {
   data: string;
@@ -194,10 +256,8 @@ export interface EntradaFeriado {
 }
 
 export function criarFeriado(ctx: Contexto, entrada: EntradaFeriado): Feriado {
-  const data = String(entrada.data ?? '').trim();
-  if (!DATA_VALIDA.test(data)) {
-    throw erroValidacao('Informe a data do feriado no formato AAAA-MM-DD.');
-  }
+  const data = validarData(entrada.data);
+  const descricao = validarDescricao(entrada.descricao);
   // O mesmo dia duas vezes não é cadastro, é engano — e a recusa diz qual é o
   // feriado que já está lá, para não mandar ninguém procurar.
   const existente = db().prepare(
@@ -211,10 +271,10 @@ export function criarFeriado(ctx: Contexto, entrada: EntradaFeriado): Feriado {
   }
   const r = db().prepare(
     'INSERT INTO feriados (cliente_id, data, descricao, ativo) VALUES (?, ?, ?, ?)',
-  ).run(ctx.clienteId, data, String(entrada.descricao ?? '').trim(), entrada.ativo === false ? 0 : 1);
+  ).run(ctx.clienteId, data, descricao, entrada.ativo === false ? 0 : 1);
   auditar(ctx, {
     entidade: 'feriado', entidadeId: Number(r.lastInsertRowid), acao: 'criar',
-    comEmpresa: false, depois: { data, descricao: entrada.descricao ?? '' },
+    comEmpresa: false, depois: { data, descricao },
   });
   return buscarFeriado(ctx, Number(r.lastInsertRowid));
 }
@@ -233,17 +293,16 @@ export function atualizarFeriado(
   entrada: Partial<EntradaFeriado>,
 ): Feriado {
   const antes = buscarFeriado(ctx, id);
-  const data = entrada.data === undefined ? antes.data : String(entrada.data).trim();
-  if (!DATA_VALIDA.test(data)) {
-    throw erroValidacao('Informe a data do feriado no formato AAAA-MM-DD.');
-  }
+  const data = entrada.data === undefined ? antes.data : validarData(entrada.data);
   if (data !== antes.data) {
     const choque = db().prepare(
       'SELECT id FROM feriados WHERE cliente_id IS ? AND data = ? AND id <> ?',
     ).get(ctx.clienteId, data, id);
     if (choque) throw erroValidacao(`${data} já está cadastrado como feriado.`);
   }
-  const descricao = entrada.descricao === undefined ? antes.descricao : String(entrada.descricao).trim();
+  const descricao = entrada.descricao === undefined
+    ? antes.descricao
+    : validarDescricao(entrada.descricao);
   const ativo = entrada.ativo === undefined ? antes.ativo : entrada.ativo !== false;
   db().prepare(
     'UPDATE feriados SET data = ?, descricao = ?, ativo = ? WHERE cliente_id IS ? AND id = ?',

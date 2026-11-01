@@ -22,6 +22,9 @@ interface Feriado {
   data: string;
   descricao: string;
   ativo: boolean;
+  dia_da_semana: number;
+  /** Sábado ou domingo: o feriado não tira hora útil nenhuma. */
+  sem_efeito: boolean;
 }
 
 /** `AAAA-MM-DD` → `DD/MM/AAAA`. */
@@ -39,11 +42,11 @@ const DIAS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quint
  * a segunda forma é lida como UTC, e no Brasil cairia no dia anterior — um
  * feriado de quinta apareceria como quarta.
  */
-const nomeDoDia = (iso: string) => {
-  if (!iso || iso.length < 10) return '—';
-  const d = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
-  return DIAS[d.getDay()] ?? '—';
-};
+const diaDaSemana = (iso: string) => (iso && iso.length >= 10
+  ? new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))).getDay()
+  : -1);
+
+const nomeDoDia = (iso: string) => DIAS[diaDaSemana(iso)] ?? '—';
 
 const hojeISO = () => {
   const d = new Date();
@@ -144,7 +147,14 @@ export function PaginaFeriados() {
                 {lista.map((f) => (
                   <tr key={f.id} className={f.data < hoje ? 'passado' : undefined}>
                     <td><strong>{diaExib(f.data)}</strong></td>
-                    <td>{nomeDoDia(f.data)}</td>
+                    <td>
+                      {nomeDoDia(f.data)}
+                      {f.sem_efeito && (
+                        <span className="arv-comp" style={{ display: 'block' }}>
+                          não tira hora útil
+                        </span>
+                      )}
+                    </td>
                     <td>{f.descricao || '—'}</td>
                     <td>
                       <Etiqueta
@@ -189,7 +199,7 @@ export function PaginaFeriados() {
             <button
               type="button"
               className="botao primario"
-              disabled={salvando || !data}
+              disabled={salvando || !data || !descricao.trim()}
               onClick={() => void salvar()}
             >
               {salvando ? 'Gravando…' : 'Gravar'}
@@ -205,7 +215,16 @@ export function PaginaFeriados() {
             value={data}
             onChange={(e) => setData(e.target.value)}
           />
-          {data && <span className="dica-filtro">{nomeDoDia(data)}</span>}
+          {data && (
+            <span className="dica-filtro">
+              {nomeDoDia(data)}
+              {/* Sábado e domingo já valem zero hora útil. Sem o aviso alguém
+                  cadastraria o feriado esperando um efeito que não vem, e
+                  depois culparia o cálculo. */}
+              {[0, 6].includes(diaDaSemana(data))
+                && ' — cai em fim de semana, e não tira hora útil nenhuma'}
+            </span>
+          )}
         </div>
         <div className="campo">
           <label htmlFor="feriado-descricao">Descrição</label>
@@ -217,7 +236,8 @@ export function PaginaFeriados() {
             onChange={(e) => setDescricao(e.target.value)}
           />
           <span className="dica-filtro">
-            Feriado local: diga de onde é, porque a lista vale para o contratante inteiro.
+            Obrigatória: sem ela ninguém sabe, meses depois, por que o dia saiu do cálculo.
+            Feriado local, diga de onde é — a lista vale para o contratante inteiro.
           </span>
         </div>
       </Modal>

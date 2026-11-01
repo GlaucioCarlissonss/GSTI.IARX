@@ -144,8 +144,41 @@ test('o mesmo dia duas vezes é recusado, dizendo qual já está lá', () => {
 
 test('data fora do formato é recusada, e não vira dia nenhum', () => {
   const { ctx } = ambienteLimpo();
-  assert.throws(() => criarFeriado(ctx, { data: '25/12/2026' }), /AAAA-MM-DD/);
-  assert.throws(() => criarFeriado(ctx, { data: '' }), /AAAA-MM-DD/);
+  assert.throws(() => criarFeriado(ctx, { data: '25/12/2026', descricao: 'x' }), /AAAA-MM-DD/);
+  assert.throws(() => criarFeriado(ctx, { data: '', descricao: 'x' }), /AAAA-MM-DD/);
+});
+
+test('a data que a máscara aceita mas o calendário não tem é recusada', () => {
+  // 31/02 casa com AAAA-MM-DD e não existe. Sem a conferência, o JavaScript a
+  // normalizaria para 03/03 em silêncio — e o cadastro tiraria do expediente
+  // um dia útil de verdade, que ninguém encontraria depois.
+  const { ctx } = ambienteLimpo();
+  assert.throws(() => criarFeriado(ctx, { data: '2026-02-31', descricao: 'Inexistente' }),
+    /não existe no calendário/);
+  assert.throws(() => criarFeriado(ctx, { data: '2026-13-01', descricao: 'Mês 13' }),
+    /não existe no calendário/);
+  // E o ano bissexto continua valendo: 29/02/2028 existe.
+  assert.ok(criarFeriado(ctx, { data: '2028-02-29', descricao: 'Bissexto' }));
+});
+
+test('feriado sem descrição é recusado', () => {
+  // Sem ela ninguém sabe, meses depois, por que aquele dia saiu do cálculo.
+  const { ctx } = ambienteLimpo();
+  assert.throws(() => criarFeriado(ctx, { data: '2026-12-25' }), /descrição/i);
+  assert.throws(() => criarFeriado(ctx, { data: '2026-12-25', descricao: '   ' }), /descrição/i);
+});
+
+test('o feriado diz o dia da semana, e avisa quando cai em fim de semana', () => {
+  // Sábado e domingo já valem zero hora útil: um feriado ali não tira nada, e
+  // sem o aviso alguém o cadastraria esperando um efeito que não vem.
+  const { ctx } = ambienteLimpo();
+  const sabado = criarFeriado(ctx, { data: '2026-12-26', descricao: 'Num sábado' });
+  assert.equal(sabado.dia_da_semana, 6);
+  assert.equal(sabado.sem_efeito, true);
+
+  const sexta = criarFeriado(ctx, { data: '2026-12-25', descricao: 'Natal' });
+  assert.equal(sexta.dia_da_semana, 5);
+  assert.equal(sexta.sem_efeito, false);
 });
 
 test('desconsiderar tira do cálculo sem apagar o registro', () => {
