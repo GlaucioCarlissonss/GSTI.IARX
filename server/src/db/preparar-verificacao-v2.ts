@@ -66,30 +66,56 @@ const tipo = (
 
 const mes = paraExibicao(competenciaAtual());
 
-// A licença que a holding paga e a unidade do hospital usa: é o caso que o
-// campo de consumo existe para descrever.
-criarLancamento(ctx, {
-  filialId: sede.id,
-  tipoDespesaId: tipo,
-  competencia: mes,
-  valor: 12000,
-  natureza: 'fixa',
-  classificacao: 'despesa',
-  descricao: 'Licença corporativa de antivírus',
-  tipoConsumo: 'compartilhado',
-  beneficiadas: [unidadeNorte.id],
-});
+/**
+ * O MÊS FECHADO mais recente.
+ *
+ * O par de despesas abaixo nascia só no mês CORRENTE, e com isso o Painel
+ * Executivo — que lê o último mês fechado, porque meio mês contra meta cheia
+ * reprovaria todo começo de mês — nunca tinha despesa centralizada para
+ * mostrar. A conferência cobrava da tela um bloco que a base não alimentava,
+ * e a falha parecia do produto.
+ *
+ * As duas despesas passam a existir nos DOIS meses: no fechado, para o painel
+ * e os indicadores terem o que ler; no corrente, para a tela de Lançamentos
+ * continuar exercendo o caso recém-digitado.
+ */
+const mesFechado = paraExibicao(somarMeses(competenciaAtual(), -1));
 
-// E uma despesa que é só da própria unidade, para a tela ter os dois casos.
-criarLancamento(ctx, {
-  filialId: sede.id,
-  tipoDespesaId: tipo,
-  competencia: mes,
-  valor: 3000,
-  natureza: 'fixa',
-  classificacao: 'despesa',
-  descricao: 'Telefonia da sede',
-});
+for (const competencia of [mesFechado, mes]) {
+  // Escrever em competência PASSADA exige justificativa — e um preparador de
+  // base é o caso legítimo dela: ele está montando histórico de propósito.
+  // Sem isto a semente quebra na virada do mês, que foi como o defeito
+  // apareceu: no dia 1º, o "último mês fechado" passa a ser passado.
+  const porQue = competencia === mes
+    ? undefined
+    : 'Base de verificação: histórico montado para a conferência das telas.';
+  // A licença que a holding paga e a unidade do hospital usa: é o caso que o
+  // campo de consumo existe para descrever.
+  criarLancamento(ctx, {
+    filialId: sede.id,
+    tipoDespesaId: tipo,
+    competencia,
+    valor: 12000,
+    natureza: 'fixa',
+    classificacao: 'despesa',
+    descricao: 'Licença corporativa de antivírus',
+    tipoConsumo: 'compartilhado',
+    beneficiadas: [unidadeNorte.id],
+    justificativa: porQue,
+  });
+
+  // E uma despesa que é só da própria unidade, para a tela ter os dois casos.
+  criarLancamento(ctx, {
+    filialId: sede.id,
+    tipoDespesaId: tipo,
+    competencia,
+    valor: 3000,
+    natureza: 'fixa',
+    classificacao: 'despesa',
+    descricao: 'Telefonia da sede',
+    justificativa: porQue,
+  });
+}
 
 // Uma despesa que ENTROU POR CARGA, com o criador da origem gravado, e a pessoa
 // correspondente no cadastro de quem reconhece. É o par que a verificação
@@ -172,6 +198,7 @@ criarSla(ctx, { prioridade: 'low', horas: 1 });
 
 console.log(
   `base v2 pronta: usuário gestora · cliente com 2 matrizes (Holding TI, Hospital Norte) · ` +
-    `2 filiais · 3 lançamentos (1 compartilhado, 1 com criador na origem) · 1 projeto com 2 tarefas · 1 chamado · ` +
+    `2 filiais · 5 lançamentos (o par compartilhado/próprio em dois meses, 1 com criador na origem) · ` +
+    `1 projeto com 2 tarefas · 1 chamado · ` +
     `1 item no plano de redução · 1 acordo de SLA que vira o chamado de dentro para fora`,
 );

@@ -3690,8 +3690,32 @@ function ligarBlocoResultados(raiz) {
     }
   };
 
+  /**
+   * A faixa rola quando os treze meses não cabem na largura do cartão, e o mês
+   * em foco pode estar fora da parte visível. Sem isto a pessoa escolheria
+   * "fev/26" no seletor e a faixa não mexeria — parecendo que o clique não fez
+   * nada.
+   *
+   * A rolagem é calculada à mão, e não por `scrollIntoView`: aquele sobe pelos
+   * ancestrais e arrastaria a PÁGINA junto, tirando do lugar o que a pessoa
+   * está lendo só porque um cartão lá embaixo acertou o próprio foco.
+   */
+  function mostrarMesEmFoco(area) {
+    for (const faixa of area.querySelectorAll('.res-meses')) {
+      const alvo = faixa.querySelector('.res-mes.sel');
+      if (!alvo) continue;
+      const esquerda = alvo.offsetLeft;
+      const direita = esquerda + alvo.offsetWidth;
+      if (esquerda < faixa.scrollLeft) faixa.scrollLeft = esquerda;
+      else if (direita > faixa.scrollLeft + faixa.clientWidth) {
+        faixa.scrollLeft = direita - faixa.clientWidth;
+      }
+    }
+  }
+
   /** A faixa de meses e o "ver registros" de cada cartão. */
   function ligarAcoesDosCartoes(area) {
+    mostrarMesEmFoco(area);
     for (const bt of area.querySelectorAll('[data-mes-faixa]')) {
       bt.onclick = () => {
         // Move o BLOCO inteiro: três cartões em três meses diferentes seriam

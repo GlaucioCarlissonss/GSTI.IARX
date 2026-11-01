@@ -869,8 +869,17 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{border-color:var
 /* A faixa mês a mês. Cada mês é um botão com o rótulo do mês e um ponto na
    cor do semáforo — a cor nunca sozinha: o número do mês está escrito, o
    `aria-label` diz a situação por extenso e o balão traz os quatro valores. */
-.res-meses{display:flex;gap:3px;margin-top:var(--esp-5);flex-wrap:wrap}
+/* UMA LINHA, SEMPRE: a faixa é linha do tempo, e quebrada em duas vira
+   grade. Com 13 meses não cabe na largura do cartão, então ROLA. */
+.res-meses{display:flex;gap:3px;margin-top:var(--esp-5);flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding-bottom:2px;scrollbar-width:thin;scrollbar-color:var(--eixo) transparent}
+.res-meses::-webkit-scrollbar{height:8px}
+.res-meses::-webkit-scrollbar-track{background:transparent}
+.res-meses::-webkit-scrollbar-thumb{background:var(--eixo);border-radius:5px;border:2px solid transparent;background-clip:content-box}
+.res-meses::-webkit-scrollbar-thumb:hover{background:var(--tinta3);background-clip:content-box}
 .res-mes{display:flex;flex-direction:column;align-items:center;gap:3px;
+  /* Não encolhe: um mês espremido some antes do vizinho, e a faixa mentiria
+     sobre quantos meses tem. Quem não cabe fica atrás da rolagem. */
+  flex:0 0 auto;scroll-snap-align:end;
   padding:var(--esp-2) var(--esp-3);border:1px solid transparent;border-radius:var(--raio-p);
   background:none;font:inherit;cursor:pointer}
 .res-mes-rot{font-family:var(--mono);font-size:var(--txt-0);color:var(--tinta3)}

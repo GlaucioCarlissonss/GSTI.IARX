@@ -19,7 +19,7 @@
  * marcadores da faixa quanto os números do cartão em foco. Por isso trocar o
  * mês selecionado não vai ao servidor — o dado dos treze meses já está aqui.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { useDados } from '../lib/sessao';
 import {
@@ -160,9 +160,35 @@ function FaixaDeMeses({ c, meses, emFoco, aoEscolher, fmt }: {
   aoEscolher: (m: string) => void;
   fmt: (v: number) => string;
 }) {
+  const caixa = useRef<HTMLDivElement>(null);
+
+  // A faixa rola quando os meses não cabem, e o mês em foco pode estar fora da
+  // parte visível — ao abrir, ou depois de escolher pelo seletor ao lado. Sem
+  // isto a pessoa escolheria "fev/26" e não veria nada se mexer.
+  //
+  // A rolagem é calculada à mão, e não por `scrollIntoView`: aquele sobe pelos
+  // ancestrais e arrastaria a PÁGINA junto, tirando do lugar o que a pessoa
+  // estava lendo só porque um cartão lá embaixo acertou o próprio foco.
+  useEffect(() => {
+    const faixa = caixa.current;
+    const alvo = faixa?.querySelector<HTMLElement>('.res-mes.sel');
+    if (!faixa || !alvo) return;
+    const esquerda = alvo.offsetLeft;
+    const direita = esquerda + alvo.offsetWidth;
+    if (esquerda < faixa.scrollLeft) faixa.scrollLeft = esquerda;
+    else if (direita > faixa.scrollLeft + faixa.clientWidth) {
+      faixa.scrollLeft = direita - faixa.clientWidth;
+    }
+  }, [emFoco, meses.length]);
+
   if (meses.length < 2) return null;
   return (
-    <div className="res-meses" role="group" aria-label={`Atingimento mês a mês de ${c.nome}`}>
+    <div
+      className="res-meses"
+      role="group"
+      aria-label={`Atingimento mês a mês de ${c.nome}`}
+      ref={caixa}
+    >
       {meses.map((m) => {
         const p = c.pontos.get(m) ?? VAZIO;
         const a = atingimentoDaMeta(c.direcao, p.resultado, p.meta);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '../lib/api';
+import { api, ErroApi } from '../lib/api';
 import { useDados, useSessao } from '../lib/sessao';
 import {
   EtapaOperacao,
@@ -414,7 +414,18 @@ export function PaginaPlanilhas() {
       setErro(mensagem);
       // A recusa da carga inicial não é um beco: ela existe para a confirmação
       // ser informada, e o botão de confirmar vem junto do motivo.
-      setPrecisaConfirmar(/carga foi marcada como INICIAL/i.test(mensagem));
+      //
+      // A decisão é pelo CÓDIGO que o servidor manda, e não por um pedaço da
+      // frase: a frase já mudou uma vez, e a tela passou meses tratando como
+      // beco a única recusa que existe para não ser beco. O texto fica como
+      // rede de segurança para base antiga, com as duas formas que ele teve.
+      const codigo = e instanceof ErroApi
+        ? (e.detalhes as { codigo?: string } | undefined)?.codigo
+        : undefined;
+      setPrecisaConfirmar(
+        codigo === 'carga_inicial_sobre_base_povoada'
+        || /(carga|ela) foi marcada como INICIAL/i.test(mensagem),
+      );
       if (!simular) historico.recarregar();
     } finally {
       setEnviando(false);
@@ -795,6 +806,12 @@ export function PaginaPlanilhas() {
         <Cartao
           titulo="Relatório da importação"
           descricao={`${resultado.arquivo ?? 'arquivo'} · template ${resultado.template_versao}`}
+          /* ABERTO. Este cartão só existe porque alguém acabou de mandar um
+             arquivo, e é a resposta a essa ação. Fechado, uma carga que
+             rejeitou todas as linhas parece não ter feito nada: o motivo da
+             rejeição — a única coisa que permite corrigir o arquivo — fica
+             atrás de uma dobra que ninguém sabe que precisa abrir. */
+          padraoAberto
         >
           <div className="grade c4" style={{ marginBottom: 'var(--esp-7)' }}>
             <div className="indicador">

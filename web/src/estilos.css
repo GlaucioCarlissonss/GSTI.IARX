@@ -733,9 +733,28 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
 /* A FAIXA MÊS A MÊS: treze semáforos lado a lado, do mais antigo ao mais
    novo. O rótulo escrito fica visível porque cor sozinha não informa quem
    não a distingue; o ponto colorido é o reforço, nunca o único sinal. */
-.res-meses { display: flex; gap: 3px; margin-top: var(--esp-5); flex-wrap: wrap; }
+.res-meses {
+  display: flex; gap: 3px; margin-top: var(--esp-5);
+  /* UMA LINHA, SEMPRE. A faixa é uma linha do tempo, e quebrá-la em duas a
+     transforma numa grade: o olho passa a ler colunas, e "mês a mês da
+     esquerda para a direita" deixa de valer. Com 13 meses ela não cabe na
+     largura de um cartão de módulo — então ela ROLA, que preserva a leitura,
+     em vez de embrulhar, que a destrói. */
+  flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity; padding-bottom: 2px;
+  scrollbar-width: thin; scrollbar-color: var(--eixo) transparent;
+}
+.res-meses::-webkit-scrollbar { height: 8px; }
+.res-meses::-webkit-scrollbar-track { background: transparent; }
+.res-meses::-webkit-scrollbar-thumb {
+  background: var(--eixo); border-radius: 5px; border: 2px solid transparent; background-clip: content-box;
+}
+.res-meses::-webkit-scrollbar-thumb:hover { background: var(--tinta-fraca); background-clip: content-box; }
 .res-mes {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
+  /* Não encolhe: um mês espremido some antes do vizinho, e a faixa passaria a
+     mentir sobre quantos meses tem. Quem não cabe fica atrás da rolagem. */
+  flex: 0 0 auto; scroll-snap-align: end;
   padding: var(--esp-2) var(--esp-3); border: 1px solid transparent;
   border-radius: var(--raio-p); background: none; font: inherit; cursor: pointer;
 }

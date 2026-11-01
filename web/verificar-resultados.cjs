@@ -293,6 +293,11 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
         < `${b.dataset.mesFaixa.slice(3)}-${b.dataset.mesFaixa.slice(0, 2)}`),
       emLinha: bs.every((b, i, a) => i === 0
         || Math.abs(b.getBoundingClientRect().top - a[i - 1].getBoundingClientRect().top) < 2),
+      // Uma linha só não basta: se o que não cabe ficasse CORTADO, a faixa
+      // mentiria sobre quantos meses tem. Ou cabe, ou alcança por rolagem.
+      transborda: g.scrollWidth > g.clientWidth + 1,
+      rolavel: ['auto', 'scroll'].includes(getComputedStyle(g).overflowX),
+      naoQuebra: getComputedStyle(g).flexWrap === 'nowrap',
     };
   });
   if (!faixa) {
@@ -302,7 +307,11 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
     ok('a faixa é um grupo rotulado para leitor de tela',
       faixa.papel === 'group' && /SLA/.test(faixa.rotuloGrupo), faixa.rotuloGrupo);
     ok('os meses vêm do mais antigo para o mais novo', faixa.cronologico, faixa.meses.join(' → '));
-    ok('a faixa cabe numa linha só', faixa.emLinha);
+    ok('a faixa fica numa linha só — linha do tempo não vira grade',
+      faixa.emLinha && faixa.naoQuebra, `emLinha=${faixa.emLinha} nowrap=${faixa.naoQuebra}`);
+    ok('e o que não cabe se alcança por rolagem, em vez de ficar cortado',
+      !faixa.transborda || faixa.rolavel,
+      faixa.transborda ? `transborda e rola=${faixa.rolavel}` : 'coube inteira');
     ok('todo mês tem rótulo escrito, e não só a cor',
       faixa.rotulos.every((r) => r.trim().length > 0), faixa.rotulos.join(' · '));
     ok('todo mês diz a situação por extenso no aria-label',
@@ -434,7 +443,14 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
     const r = g.getBoundingClientRect();
     return {
       rolaLado: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
-      transborda: bs.some((b) => b.getBoundingClientRect().right > r.right + 1),
+      // A faixa é uma caixa que ROLA: mês fora da parte visível é normal, e
+      // medi-lo pela borda direita acusaria a rolagem de vazamento. O que não
+      // pode é a CAIXA passar do cartão — aí sim ela empurraria a tela.
+      caixaVaza: r.right > (g.parentElement.getBoundingClientRect().right + 1),
+      // E o que não cabe tem de ser alcançável: cortado sem rolagem seria mês
+      // escondido, e a faixa mentiria sobre quantos meses tem.
+      alcancavel: g.scrollWidth <= g.clientWidth + 1
+        || ['auto', 'scroll'].includes(getComputedStyle(g).overflowX),
       // WCAG 2.2 AA pede 24×24 CSS px de alvo; abaixo disso o dedo erra.
       menorAlvo: Math.round(Math.min(...bs.map((b) => {
         const x = b.getBoundingClientRect();
@@ -447,7 +463,8 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
     ok('a faixa existe no celular', false, 'sem .res-meses a 390px');
   } else {
     ok('a página não rola para o lado', !noCelular.rolaLado);
-    ok('nenhum mês vaza do grupo', !noCelular.transborda);
+    ok('a faixa não passa da borda do cartão', !noCelular.caixaVaza);
+    ok('e todo mês se alcança, por rolagem quando não cabe', noCelular.alcancavel);
     ok('o alvo de cada mês tem ao menos 24px', noCelular.menorAlvo >= 24,
       `${noCelular.menorAlvo}px`);
     // O MESMO rótulo do artifact: mês abreviado e ano de dois dígitos. Duas

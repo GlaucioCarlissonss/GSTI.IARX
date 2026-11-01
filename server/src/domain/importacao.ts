@@ -458,7 +458,12 @@ export async function importarPlanilha(
         relatorio: { erros: [], avisos: [] },
         escopo: escopo,
       });
-      throw erroValidacao(mensagem);
+      // O CÓDIGO viaja junto, e é por ele que a tela decide oferecer a
+      // confirmação. Antes ela reconhecia a recusa casando um pedaço da
+      // frase, e a frase mudou: a tela passou a tratar como beco a única
+      // recusa que existe justamente para NÃO ser beco. Prosa é para quem
+      // lê; decisão de programa pede marca estável.
+      throw erroValidacao(mensagem, { codigo: 'carga_inicial_sobre_base_povoada', existentes });
     }
   }
 
