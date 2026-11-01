@@ -163,6 +163,22 @@ criarPlano(ctx, {
   valor_alvo: 8000,
 });
 
+/**
+ * As pontas do chamado, SEM atravessar a virada do mês.
+ *
+ * "seis horas atrás" parece inofensivo e não é: rodando à meia-noite e cinco,
+ * a abertura cai no mês anterior, o chamado passa a pertencer a outra
+ * competência, e a reaplicação do acordo — que olha o mês corrente — não acha
+ * ninguém. A conferência então acusa a tela de não aplicar um acordo que
+ * nunca teve a quem ser aplicado.
+ *
+ * A abertura é presa ao começo do mês, e o fechamento vem sempre depois dela.
+ */
+const agora = Date.now();
+const inicioDoMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+const abertoEm = Math.max(agora - 6 * 3600_000, inicioDoMes);
+const fechadoEm = Math.max(abertoEm + 60_000, agora - 1 * 3600_000);
+
 // 'Infraestrutura' já vem como fila padrão de toda empresa nova.
 gravarChamado(
   holding.id,
@@ -182,8 +198,8 @@ gravarChamado(
     requester_email: null,
     attendant_id: null,
     attendant_name: 'Suporte',
-    opened_at: new Date(Date.now() - 6 * 3600_000).toISOString(),
-    closed_at: new Date(Date.now() - 1 * 3600_000).toISOString(),
+    opened_at: new Date(abertoEm).toISOString(),
+    closed_at: new Date(fechadoEm).toISOString(),
     due_at: null,
     hours: 5,
   },
@@ -191,10 +207,18 @@ gravarChamado(
 );
 
 // O acordo entra DEPOIS do chamado, de propósito: o chamado nasce medido pela
-// regra antiga (fechado, sem prazo, conta dentro) e o acordo de 1h o deixa
-// fora. É esse PAR que dá o que verificar — sem ele, aplicar o acordo a uma
+// regra antiga (fechado, sem prazo, conta dentro) e o acordo o deixa FORA. É
+// esse PAR que dá o que verificar — sem ele, aplicar o acordo a uma
 // competência passaria com zero alterações e não provaria nada.
-criarSla(ctx, { prioridade: 'low', horas: 1 });
+//
+// As horas do acordo saem do PRÓPRIO chamado, e não de um "1" fixo. Fixar uma
+// hora fazia o caso depender da hora do dia em que a base era montada: rodando
+// logo depois da meia-noite do dia 1º, a janela presa ao começo do mês fica
+// com poucos minutos, o chamado fecha dentro de uma hora, e a reaplicação não
+// tem o que virar. Metade do tempo que o chamado levou vale em qualquer
+// relógio.
+const horasDoChamado = (fechadoEm - abertoEm) / 3600_000;
+criarSla(ctx, { prioridade: 'low', horas: Math.max(0.01, horasDoChamado / 2) });
 
 console.log(
   `base v2 pronta: usuário gestora · cliente com 2 matrizes (Holding TI, Hospital Norte) · ` +

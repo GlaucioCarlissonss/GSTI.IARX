@@ -66,6 +66,12 @@
   --grave:    #ec835a;
   --critico:  #d03b3b;
   --positivo-texto: #006300;
+  /* O AMARELO DE ATENÇÃO COMO TEXTO.
+     `--atencao` (#fab219) é cor de PREENCHIMENTO: como texto ela dá 1,83:1
+     sobre branco, e nem a 12px com peso 600 chega aos 4,5:1 da régua AA. É o
+     mesmo achado que já obrigou `--positivo-texto` a existir — a rampa que
+     pinta uma barra não serve para escrever uma frase. */
+  --atencao-texto: #9a6b00;
 
   --sombra: 0 1px 2px rgba(11, 11, 11, 0.04), 0 4px 16px rgba(11, 11, 11, 0.05);
   /* A profundidade do que está LEVANTADO — o cartão apontado pelo cursor —,
@@ -149,6 +155,9 @@
     --matriz-7: #d9a13c;
     --matriz-8: #8a97a8;
     --positivo-texto: #0ca30c;
+    /* No escuro o amarelo cheio já passa folgado (9,87:1): o tom escurecido
+       do tema claro é que ficaria ilegível. */
+    --atencao-texto: #fab219;
     /* O vermelho de CRÍTICO tinha versão clara e nenhuma escura: o tom do tema
        claro (#d03b3b) seguia valendo sobre fundo escuro, dando 3,62:1 na
        superfície do cartão e 3,27:1 na recuada — reprovado em AA, e logo no
@@ -192,7 +201,8 @@
   --matriz-7: #d9a13c;
   --matriz-8: #8a97a8;
   --positivo-texto: #0ca30c;
-  /* Ver a nota no bloco de @media acima. */
+  /* Ver as notas no bloco de @media acima. */
+  --atencao-texto: #fab219;
   --critico: #e2685c;
   --sombra: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
   --sombra-alta: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 28px rgba(0, 0, 0, 0.45);
@@ -388,7 +398,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
 .seletor-multi .busca { font-size: 13px; padding: 6px 9px; }
 .seletor-multi .acoes { display: flex; gap: 6px; }
 .seletor-multi .acoes .botao { flex: 1; }
-.seletor-multi .aviso-seletor { margin: 0; padding: 0 4px; font-size: 11.5px; color: var(--atencao); }
+.seletor-multi .aviso-seletor { margin: 0; padding: 0 4px; font-size: 11.5px; color: var(--atencao-texto); }
 .seletor-multi .lista { max-height: 250px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
 .seletor-multi .lista label {
   display: flex; align-items: center; gap: 8px; padding: 6px 8px;
@@ -718,7 +728,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
 .res-excesso { margin: var(--esp-2) 0 0; font-size: var(--txt-1); color: var(--positivo-texto); }
 .res-texto { margin: var(--esp-3) 0 0; font-size: var(--txt-2); font-weight: 600; }
 .faixa-verde .res-texto { color: var(--positivo-texto); }
-.faixa-laranja .res-texto { color: var(--atencao); }
+.faixa-laranja .res-texto { color: var(--atencao-texto); }
 .faixa-vermelho .res-texto { color: var(--critico); }
 .faixa-sem_meta .res-texto, .faixa-sem_dados .res-texto { color: var(--tinta-fraca); font-weight: 400; font-style: italic; }
 .res-ressalva { margin: 2px 0 0; font-size: var(--txt-1); color: var(--tinta-fraca); }
@@ -861,7 +871,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
   border-radius: var(--raio-redondo); font-family: var(--mono); font-size: var(--txt-0);
   letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid currentColor;
 }
-.marca-novo { color: var(--atencao); }
+.marca-novo { color: var(--atencao-texto); }
 .marca-cessou { color: var(--positivo-texto); }
 .barra-variacao { display: inline-flex; align-items: center; gap: var(--esp-4); min-width: 120px; }
 .barra-variacao > span {

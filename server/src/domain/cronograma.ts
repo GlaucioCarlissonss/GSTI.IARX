@@ -125,9 +125,20 @@ export interface EntregaDoCronograma {
  * Nenhuma onda vencida não é 0%: é uma meta que ainda não chegou, e zero
  * reprovaria o programa por um prazo que não passou.
  */
-export function entregaAte(comp: string): EntregaDoCronograma {
+export function entregaAte(comp: string, hoje?: string): EntregaDoCronograma {
   if (!comp) return { planejadas: 0, viradas: 0, resultado: null, meta: null, unidades: [], ondas: [] };
-  const ate = fimDoMes(comp);
+  // NO MÊS EM CURSO O CORTE É HOJE, e não o fim do mês.
+  //
+  // Cortar sempre no fim do mês faz a conta julgar um prazo que ainda não
+  // chegou: no dia 1º de novembro, a onda que vira no dia 3 já apareceria
+  // como não cumprida, e o programa seria reprovado por dois dias que não
+  // passaram. É a mesma regra que a onda sem prazo vencido já segue — ela só
+  // não valia para o mês corrente, que é justamente onde ela importa.
+  //
+  // Em mês fechado `hoje` é posterior ao fim do mês, e o corte continua sendo
+  // o fim do mês: o passado se lê inteiro.
+  const fim = fimDoMes(comp);
+  const ate = hoje && hoje < fim ? hoje : fim;
   const vencidas = ONDAS.filter((o) => o.virada <= ate);
   const unidades = vencidas.flatMap((o) => unidadesDaOnda(o, ate));
   const planejadas = unidades.length;

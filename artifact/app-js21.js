@@ -1698,9 +1698,18 @@ function ligarListagemSpincare() {
  * mesma disciplina do farol do plano — o que se mede é a posição naquele
  * momento, não a de agora carimbada para trás.
  */
-function ondasVencidasAte(comp) {
+function ondasVencidasAte(comp, hoje) {
   if (!comp) return [];
-  const fim = `${comp}-31`;            // o último dia possível do mês
+  // NO MÊS EM CURSO O CORTE É HOJE, e não o fim do mês.
+  //
+  // Cortar sempre no fim do mês faz a conta julgar um prazo que ainda não
+  // chegou: no dia 1º de novembro, a onda que vira no dia 3 já apareceria
+  // como não cumprida, e o programa seria reprovado por dois dias que não
+  // passaram. Em mês fechado `hoje` é posterior ao fim do mês, e o corte
+  // volta a ser o mês inteiro — o passado se lê inteiro.
+  const fimDoMes = `${comp}-31`;
+  const dia = hoje || new Date().toISOString().slice(0, 10);
+  const fim = dia < fimDoMes ? dia : fimDoMes;
   return SPIN_ONDAS
     .filter((o) => o.virada && o.virada <= fim)
     .map((o) => {

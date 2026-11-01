@@ -111,6 +111,32 @@ test('o cronograma medido não dá zero para onda que não venceu', () => {
   assert.equal(c.unidades, 17);
 });
 
+test('no mês em curso o corte é HOJE, e não o fim do mês', () => {
+  // O defeito que este caso trava: no dia 1º de novembro, a 2ª onda — que
+  // vira no dia 3 — já aparecia como não cumprida, e o programa era reprovado
+  // por dois dias que ainda não tinham passado.
+  const noDiaPrimeiro = entregaAte('2026-11', '2026-11-01');
+  assert.equal(noDiaPrimeiro.planejadas, 2, 'só a 1ª onda venceu até aqui');
+  assert.equal(noDiaPrimeiro.resultado, 100);
+  assert.deepEqual(noDiaPrimeiro.ondas, [1]);
+
+  // No dia 4, o prazo da 2ª passou e ela entra na conta — sem virada.
+  const noDiaQuatro = entregaAte('2026-11', '2026-11-04');
+  assert.equal(noDiaQuatro.planejadas, 5);
+  assert.equal(noDiaQuatro.viradas, 2);
+  assert.equal(noDiaQuatro.resultado, 40);
+  assert.deepEqual(noDiaQuatro.ondas, [1, 2]);
+
+  // E o mês FECHADO se lê inteiro: olhar novembro em dezembro usa o fim de
+  // novembro, não o dia de hoje.
+  const emDezembro = entregaAte('2026-11', '2026-12-15');
+  assert.equal(emDezembro.planejadas, 5);
+  assert.equal(emDezembro.resultado, 40);
+
+  // Sem data de corte, o comportamento é o de sempre: o mês inteiro.
+  assert.equal(entregaAte('2026-11').planejadas, 5);
+});
+
 test('nenhuma unidade aparece em duas ondas', () => {
   const todas = ONDAS.flatMap((o) => o.unidades);
   assert.equal(new Set(todas).size, todas.length);

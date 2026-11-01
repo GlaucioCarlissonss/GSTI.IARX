@@ -64,27 +64,61 @@ const SENHA = process.env.SENHA || 'varredura2026';
   await pag.goto(BASE + '/indicadores');
   await pag.waitForTimeout(1800);
 
-  const antesDeAbrir = await pag.evaluate(() => ({
-    cartoes: document.querySelectorAll('.grade.empilhada > .cartao').length,
-    dobrados: document.querySelectorAll('.grade.empilhada > .cartao.dobrado').length,
-    titulos: [...document.querySelectorAll('.grade.empilhada > .cartao > header h2')].map((h) =>
-      h.textContent.replace(/^\s*[−+]\s*/, '').trim()),
-  }));
-  ok('a tela traz os indicadores empilhados', antesDeAbrir.cartoes >= 6, `${antesDeAbrir.cartoes} bloco(s)`);
-  ok('todos abrem COMPRIMIDOS, só com o cabeçalho',
-    antesDeAbrir.dobrados === antesDeAbrir.cartoes,
-    `${antesDeAbrir.dobrados} de ${antesDeAbrir.cartoes}`);
-  ok('o plano de redução vem no topo',
-    /Plano de redução/i.test(antesDeAbrir.titulos[0] || ''), antesDeAbrir.titulos[0]);
+  // A TELA AGRUPA POR MÓDULO, e o roteiro media uma lista plana de seis
+  // cartões irmãos — o desenho de antes de Financeiro, SLA e Projetos virarem
+  // caixas. A promessa que continua valendo é outra: cada indicador ocupa a
+  // linha inteira, e a ordem dentro do financeiro é a pedida.
+  const antesDeAbrir = await pag.evaluate(() => {
+    const grade = document.querySelector('.grade.empilhada');
+    const modulos = grade ? [...grade.children] : [];
+    const tituloDe = (c) =>
+      ((c.querySelector(':scope > header h2') || {}).textContent || '').replace(/^\s*[−+]\s*/, '').trim();
+    const dentroDe = (c) => [...c.querySelectorAll(
+      ':scope > .cartao-corpo > .cartao, :scope > .cartao-corpo > .grade > .cartao',
+    )];
+    return {
+      modulos: modulos.map(tituloDe),
+      indicadores: modulos.flatMap((m) => dentroDe(m).map(tituloDe)),
+      // A dobra se confere nos INDICADORES: a caixa do módulo abre por
+      // decisão de desenho — fechada, ela esconderia a própria razão de
+      // existir, que é agrupar.
+      indicadoresDobrados: modulos
+        .flatMap((m) => dentroDe(m))
+        .filter((c) => c.classList.contains('dobrado')).length,
+      quantosIndicadores: modulos.flatMap((m) => dentroDe(m)).length,
+      financeiro: (() => {
+        const f = modulos.find((m) => /^Financeiro$/i.test(tituloDe(m)));
+        return f ? dentroDe(f).map(tituloDe) : [];
+      })(),
+    };
+  });
+  ok('a tela agrupa os indicadores em módulos',
+    antesDeAbrir.modulos.length === 3, antesDeAbrir.modulos.join(' | '));
+  ok('e os três módulos são Financeiro, SLA e Projetos',
+    ['Financeiro', 'SLA', 'Projetos'].every((m, i) => antesDeAbrir.modulos[i] === m),
+    antesDeAbrir.modulos.join(' → '));
+  ok('há pelo menos seis indicadores, somando os módulos',
+    antesDeAbrir.quantosIndicadores >= 6, `${antesDeAbrir.quantosIndicadores} indicador(es)`);
+  ok('o plano de redução vem no topo do financeiro',
+    /Plano de redução/i.test(antesDeAbrir.financeiro[0] || ''), antesDeAbrir.financeiro[0]);
   ok('e o rateio logo abaixo dele',
-    /compartilhadas regularizadas/i.test(antesDeAbrir.titulos[1] || ''), antesDeAbrir.titulos[1]);
+    /compartilhadas regularizadas/i.test(antesDeAbrir.financeiro[1] || ''), antesDeAbrir.financeiro[1]);
 
   const geometria = await pag.evaluate(() => {
-    const caixas = [...document.querySelectorAll('.grade.empilhada > .cartao')].map((c) => c.getBoundingClientRect());
+    // Os INDICADORES, e não as caixas de módulo: é deles a promessa de ocupar
+    // a linha inteira.
+    const caixas = [...document.querySelectorAll('.grade.empilhada > .cartao')]
+      .flatMap((m) => [...m.querySelectorAll(
+        ':scope > .cartao-corpo > .cartao, :scope > .cartao-corpo > .grade > .cartao',
+      )])
+      .map((c) => c.getBoundingClientRect());
     const ladoALado = caixas.some((a, i) =>
       caixas.slice(i + 1).some((b) => a.top < b.bottom - 1 && b.top < a.bottom - 1));
-    const grade = document.querySelector('.grade.empilhada').getBoundingClientRect();
-    return { ladoALado, cheios: caixas.every((c) => c.width >= grade.width - 2) };
+    // A largura de referência é a do MÓDULO que os abriga, descontado o
+    // recuo do corpo — a grade inteira incluiria a moldura da caixa.
+    const corpo = document.querySelector('.grade.empilhada > .cartao .cartao-corpo');
+    const largura = corpo ? corpo.getBoundingClientRect().width : 0;
+    return { ladoALado, cheios: caixas.every((c) => c.width >= largura - 2) };
   });
   ok('nenhum indicador divide a linha com outro', !geometria.ladoALado);
   ok('cada um ocupa 100% da largura disponível', geometria.cheios);
@@ -119,10 +153,24 @@ const SENHA = process.env.SENHA || 'varredura2026';
       rateio.linhas.filter((l) => l.pagadora).map((l) => l.empresa).join(', '));
     ok('cada empresa mostra o comparativo antes → depois',
       rateio.linhas.every((l) => l.comparativo), `${rateio.barras} barra(s)`);
-    // O lançamento compartilhado da base é de R$ 12.000; a soma das parcelas
-    // tem de ser exatamente isso, ou o comparativo mente.
+    // A soma das parcelas tem de ser exatamente o total compartilhado, ou o
+    // comparativo mente.
+    //
+    // O total sai da PRÓPRIA TELA, e não de um número escrito aqui: fixar
+    // "R$ 12.000" amarrava a conferência a uma base específica, e ela passou a
+    // falhar quando a base ganhou o mesmo lançamento em dois meses — sem que
+    // nada no produto tivesse mudado.
     const soma = Math.round(rateio.linhas.reduce((s, l) => s + l.recebido, 0) * 100) / 100;
-    ok('a soma das parcelas é exatamente o valor compartilhado', soma === 12000, `R$ ${soma}`);
+    const declarado = await pag.evaluate(() => {
+      const bloco = [...document.querySelectorAll('.cartao')].find((c) =>
+        /compartilhadas regularizadas/i.test((c.querySelector('header h2') || {}).textContent || ''));
+      if (!bloco) return null;
+      const m = (bloco.textContent || '').match(/R\$\s*([\d.]+,\d{2})/);
+      return m ? Number(m[1].replace(/\./g, '').replace(',', '.')) : null;
+    });
+    ok('a soma das parcelas é exatamente o valor compartilhado',
+      declarado !== null && Math.abs(soma - declarado) < 0.01,
+      `parcelas R$ ${soma} · declarado R$ ${declarado}`);
     ok('o critério do rateio está escrito na tela', rateio.criterio);
     ok('e a legenda dos dois tons está no bloco', rateio.legenda);
   }
@@ -215,7 +263,11 @@ const SENHA = process.env.SENHA || 'varredura2026';
   await pag.hover('.arvore-unidades tr.nivel-1 .barra-rep');
   const logoApos = await pag.evaluate(() => !document.querySelector('.dica'));
   ok('o balão NÃO aparece instantaneamente (o atraso existe)', logoApos);
-  await pag.waitForTimeout(400);
+  // A espera tem de passar de `ESPERA_DICA` (5 s em `components/graficos.tsx`).
+  // O roteiro esperava 400 ms, de quando o atraso era curto; com o atraso
+  // longo — que existe para o balão não abrir "de raspão" — ele cobrava da
+  // tela um balão que ainda não era hora de abrir.
+  await pag.waitForTimeout(5600);
   const comDica = await pag.evaluate(() => {
     const d = document.querySelector('.dica');
     if (!d) return null;

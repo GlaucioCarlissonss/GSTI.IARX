@@ -115,8 +115,13 @@ rotasIndicadores.get('/projetos', exigir('projetos', 'view'), (req, res) => {
 rotasIndicadores.get('/cronograma', exigir('relatorios', 'view'), (req, res) => {
   const bruto = req.query.ate ? String(req.query.ate) : '';
   const comp = bruto ? paraInterno(bruto) : competenciaAtual();
-  const c = cronograma(`${comp}-31`);
-  const entrega = entregaAte(comp);
+  // O DIA DE HOJE entra como corte. Sem ele, a leitura do mês em curso julga
+  // o fim do mês: no dia 1º, a onda que vira no dia 3 já contaria como não
+  // cumprida — reprovando o programa por dois dias que não passaram.
+  const hojeISO = new Date().toISOString().slice(0, 10);
+  const corte = `${comp}-31` < hojeISO ? `${comp}-31` : hojeISO;
+  const c = cronograma(corte);
+  const entrega = entregaAte(comp, hojeISO);
   res.json({
     competencia: paraExibicao(comp),
     pacientes: c.pacientes,
@@ -148,7 +153,7 @@ rotasIndicadores.get('/cronograma', exigir('relatorios', 'view'), (req, res) => 
     // de `entrega`, rodada para cada mês: uma segunda fórmula aqui divergiria
     // da primeira na correção seguinte.
     serie: mesesDaJanela(req.query.de, req.query.ate).map((m) => {
-      const e = entregaAte(m);
+      const e = entregaAte(m, hojeISO);
       return {
         competencia: paraExibicao(m),
         competencia_interna: m,
