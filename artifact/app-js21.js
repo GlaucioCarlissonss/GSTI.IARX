@@ -21,19 +21,31 @@
 // ===========================================================================
 
 /** As dez vagas de unidade da planilha, na ordem das colunas AE..AN. */
-const SPIN_UNIDADES = [
-  { k: 'hr_pb', rotulo: 'HR PB', onda: 1 },
-  { k: 'hm_pb', rotulo: 'HM PB', onda: 1 },
-  { k: 'hr_cg', rotulo: 'HR CG', onda: 1 },
-  { k: 'uc_rj', rotulo: 'UC RJ', onda: 2 },
-  { k: 'uc_sp', rotulo: 'UC SP', onda: 2 },
-  { k: 'hm_ro', rotulo: 'HM RO', onda: 2 },
-  { k: 'unidade_7', rotulo: '(unidade 7)', onda: null },
-  { k: 'unidade_8', rotulo: '(unidade 8)', onda: null },
-  { k: 'unidade_9', rotulo: '(unidade 9)', onda: null },
-  { k: 'unidade_10', rotulo: '(unidade 10)', onda: null },
+/**
+ * As colunas de unidade do Controle Único, na ordem em que a planilha as traz.
+ *
+ * A ONDA NÃO É ESCRITA AQUI: ela é derivada de `SPIN_ONDAS`, logo abaixo.
+ * Antes era, e ficou para trás quando o plano novo inverteu as ondas: esta
+ * lista seguia dizendo que UC RJ virava na 2ª enquanto a Visão Macro já dizia
+ * 1ª. Duas telas do mesmo sistema se contradiziam, e nenhuma das duas estava
+ * obviamente errada para quem olhasse só uma.
+ *
+ * `nome` é como a unidade aparece no cronograma; `rotulo` é o apelido curto
+ * que cabe no cabeçalho de uma coluna.
+ */
+const SPIN_UNIDADES_BASE = [
+  { k: 'hr_pb', rotulo: 'HR PB', nome: 'HR João Pessoa/PB' },
+  { k: 'hm_pb', rotulo: 'HM PB', nome: 'MHC João Pessoa/PB' },
+  { k: 'hr_cg', rotulo: 'HR CG', nome: 'HR Campina Grande/PB' },
+  { k: 'uc_rj', rotulo: 'UC RJ', nome: 'UC Rio de Janeiro/RJ' },
+  { k: 'uc_sp', rotulo: 'UC SP', nome: 'UC São Paulo/SP' },
+  { k: 'hm_ro', rotulo: 'HM RO', nome: 'MHC Porto Velho/RO' },
+  { k: 'unidade_7', rotulo: '(unidade 7)', nome: '' },
+  { k: 'unidade_8', rotulo: '(unidade 8)', nome: '' },
+  { k: 'unidade_9', rotulo: '(unidade 9)', nome: '' },
+  { k: 'unidade_10', rotulo: '(unidade 10)', nome: '' },
 ];
-const SPIN_UNIDADE_POR_CHAVE = Object.fromEntries(SPIN_UNIDADES.map((u) => [u.k, u]));
+
 
 /**
  * As situações, com a cor de cada uma.
@@ -129,6 +141,16 @@ const SPIN_ONDAS = [
  * novas exigiria um palpite indistinguível do dado real — e a tela prefere
  * dizer "—" e explicar por quê.
  */
+/** A onda de uma unidade, pelo cronograma — a única fonte dela. */
+function spinOndaDaUnidade(nome) {
+  if (!nome) return null;
+  const onda = SPIN_ONDAS.find((o) => o.unidades.includes(nome));
+  return onda ? onda.n : null;
+}
+
+const SPIN_UNIDADES = SPIN_UNIDADES_BASE.map((u) => ({ ...u, onda: spinOndaDaUnidade(u.nome) }));
+const SPIN_UNIDADE_POR_CHAVE = Object.fromEntries(SPIN_UNIDADES.map((u) => [u.k, u]));
+
 const SPIN_PACIENTES_TOTAL = 1922;
 
 /**

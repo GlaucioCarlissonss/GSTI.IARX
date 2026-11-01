@@ -29,7 +29,13 @@ const ARQ = process.env.SPINCARE_XLSX || '';
   await pag.waitForSelector('#modulos button', { timeout: 20000 });
 
   console.log('\nSEM BASE — o painel diz o que fazer, não finge número');
-  await irPara(pag, 'Indicadores Gerais', 2500);
+  // O estado "sem base" é MONTADO aqui, e não esperado do mock. A base de
+  // teste passou a trazer o Controle Único carregado, e a conferência ficou
+  // cobrando da tela um aviso que ela não tinha por que dar — medindo um caso
+  // que já não acontecia por acaso.
+  await irPara(pag, 'Indicadores Gerais', 1500);
+  await pag.evaluate(() => { window.__spinGuardado = E.spincare; E.spincare = []; render(); });
+  await pag.waitForTimeout(2000);
   const vazio = await pag.evaluate(() => {
     const micro = [...document.querySelectorAll('section.bloco-grupo')]
       .find((g) => /Visão Micro/.test(g.querySelector('h2').textContent));
@@ -40,6 +46,10 @@ const ARQ = process.env.SPINCARE_XLSX || '';
   // o que há é ausência de base.
   ok('sem base, avisa em vez de mostrar zeros', vazio.aviso);
   ok('e nenhum indicador é desenhado', vazio.indicadores === 0, String(vazio.indicadores));
+
+  // Devolve a base: o resto da suíte mede o painel COM dados.
+  await pag.evaluate(() => { E.spincare = window.__spinGuardado || []; render(); });
+  await pag.waitForTimeout(1500);
 
   if (!ARQ || !fs.existsSync(ARQ)) {
     console.log('\n[pulado] O painel com dados exige SPINCARE_XLSX apontando para a planilha do '
