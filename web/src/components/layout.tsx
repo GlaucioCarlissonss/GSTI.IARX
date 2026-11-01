@@ -61,6 +61,9 @@ const NAVEGACAO = [
       { subtitulo: 'Cadastro' },
       { para: '/metas', glifo: '·', rotulo: 'Metas', sub: true, modulo: 'configuracoes', escopo: 'cliente' as const },
       { para: '/slas', glifo: '·', rotulo: 'SLAs', sub: true, modulo: 'configuracoes', escopo: 'unidade' as const },
+      // Os feriados ficam junto dos SLAs: são a outra metade da mesma
+      // promessa — o acordo diz o prazo, e o calendário diz quando ele corre.
+      { para: '/feriados', glifo: '·', rotulo: 'Feriados', sub: true, modulo: 'configuracoes', escopo: 'cliente' as const },
       { para: '/reducao', glifo: '·', rotulo: 'Plano de redução', sub: true, modulo: 'configuracoes', escopo: 'cliente' as const },
       { para: '/reconhecedores', glifo: '·', rotulo: 'Quem reconhece despesa', sub: true, modulo: 'configuracoes', escopo: 'cliente' as const },
       { para: '/acessos', glifo: '◈', rotulo: 'Usuários e acessos', modulo: 'usuarios', escopo: 'cliente' as const },

@@ -13,6 +13,7 @@ import { rotasAcesso } from './routes/acesso.js';
 import { rotasIntegracoes } from './routes/integracoes.js';
 import { rotasProjetos } from './routes/projetos.js';
 import { rotasPlanoAcao } from './routes/plano-acao.js';
+import { rotasFeriados } from './routes/feriados.js';
 import { rotasSla } from './routes/sla.js';
 import { rotasDashboards } from './routes/dashboards.js';
 import { rotasIndicadores } from './routes/indicadores.js';
@@ -76,6 +77,9 @@ export function criarApp() {
   protegido.use('/acesso', rotasAcesso);
   protegido.use('/clientes', rotasClientes);
   protegido.use('/dashboards', rotasDashboards);
+  // Antes de `/:id`-nenhum, mas junto dos cadastros do cliente: o feriado é
+  // do contratante, como as metas e o plano de redução.
+  protegido.use('/feriados', rotasFeriados);
   protegido.use('/indicadores', rotasIndicadores);
   protegido.use('/planilhas', rotasPlanilhas);
   app.use('/api', protegido);

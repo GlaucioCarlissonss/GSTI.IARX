@@ -67,6 +67,7 @@ const TELAS = {
   metas: { rota: '/metas', de: () => import('./pages/Administracao'), nome: 'PaginaMetas' },
   slas: { rota: '/slas', de: () => import('./pages/Administracao'), nome: 'PaginaSlas' },
   reducao: { rota: '/reducao', de: () => import('./pages/Administracao'), nome: 'PaginaReducao' },
+  feriados: { rota: '/feriados', de: () => import('./pages/Feriados'), nome: 'PaginaFeriados' },
   reconhecedores: { rota: '/reconhecedores', de: () => import('./pages/Administracao'), nome: 'PaginaReconhecedores' },
   auditoria: { rota: '/auditoria', de: () => import('./pages/Administracao'), nome: 'PaginaAuditoria' },
 } satisfies Record<string, { rota: string; de: Modulo; nome: string }>;

@@ -50,6 +50,7 @@ function Rotas() {
         <Route path="metas" element={<Telas.metas />} />
         <Route path="slas" element={<Telas.slas />} />
         <Route path="reducao" element={<Telas.reducao />} />
+        <Route path="feriados" element={<Telas.feriados />} />
         <Route path="reconhecedores" element={<Telas.reconhecedores />} />
         <Route path="clientes" element={<Telas.clientes />} />
         <Route path="acessos" element={<Telas.acessos />} />

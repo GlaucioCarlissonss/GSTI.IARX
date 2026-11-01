@@ -381,6 +381,28 @@ CREATE INDEX IF NOT EXISTS ix_plano_cliente ON plano_acao(cliente_id, onda, nume
 -- data de fim dentro do cliente.
 CREATE INDEX IF NOT EXISTS ix_plano_cliente_fim ON plano_acao(cliente_id, fim);
 
+-- Feriados do CLIENTE: os dias em que o relógio do SLA não corre.
+--
+-- Do cliente, e não da unidade. Feriado municipal de uma filial não tira o
+-- expediente da matriz em outro estado — mas o cadastro por unidade
+-- multiplicaria por dezessete uma lista que é quase sempre a mesma. Quem
+-- precisa de um feriado local o inclui com a descrição dizendo de onde é.
+--
+-- A coluna "ativo" em vez de exclusão: um feriado cadastrado por engano volta
+-- a contar como dia útil sem apagar o registro de que ele esteve lá. O prazo
+-- de um chamado medido ontem saiu da lista de ontem, e apagar a linha
+-- tornaria aquele cálculo inexplicável.
+CREATE TABLE IF NOT EXISTS feriados (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  data       TEXT NOT NULL,
+  descricao  TEXT NOT NULL DEFAULT '',
+  ativo      INTEGER NOT NULL DEFAULT 1,
+  criado_em  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (cliente_id, data)
+);
+CREATE INDEX IF NOT EXISTS ix_feriados_cliente ON feriados(cliente_id, data);
+
 -- ============================================================
 -- Carimbo do cliente: invariante do BANCO, não de cada consulta
 -- ============================================================
