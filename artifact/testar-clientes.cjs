@@ -76,13 +76,35 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
   conferir('o topo mostra de quem são os números', depois.noTopo === 'Grupo Brasil Home Care', String(depois.noTopo));
   conferir('a escolha fica guardada', depois.guardado === 'grupo-brasil-home-care', String(depois.guardado));
 
-  // O seletor de empresa é o teste do isolamento: só as matrizes deste cliente.
+  // O ESCOPO DE LEITURA é o teste do isolamento: só as matrizes deste cliente.
+  //
+  // A conferência comparava "as matrizes do cliente" com "todas as matrizes do
+  // sistema" e exigia que fossem iguais — um atalho que só valia numa base de
+  // um cliente só. Ela passou a falhar quando a base ganhou um segundo
+  // contratante, que é exatamente a situação que o isolamento existe para
+  // resolver: o atalho acusava de defeito o caso que prova a regra.
+  //
+  // O que se mede agora é a promessa: o escopo oferece as matrizes DESTE
+  // cliente, nenhuma a mais, e existe matriz de fora para ele deixar de fora.
   const doSeletor = await pag.evaluate(() => {
-    const doCliente = new Set(empresasDoCliente(E.clienteSel).map((e) => e.id));
-    return { doCliente: [...doCliente], todas: E.empresas.map((e) => e.id) };
+    const dentro = new Set(escopoEmpresas());
+    return {
+      escopo: [...dentro],
+      deFora: E.empresas.filter((e) => !dentro.has(e.id)).map((e) => e.id),
+      doCliente: empresasDoCliente(E.clienteSel).map((e) => e.id),
+      // O que o sistema LÊ, e não o que ele diz que leria.
+      lidosForaDoEscopo: Loja.todosDoEscopo().filter((l) => !dentro.has(l.empresa)).length,
+      lidos: Loja.todosDoEscopo().length,
+    };
   });
-  conferir('o seletor de empresa fica restrito às matrizes do cliente',
-    doSeletor.doCliente.length === doSeletor.todas.length, doSeletor.doCliente.join(', '));
+  conferir('o escopo traz exatamente as matrizes deste cliente',
+    doSeletor.escopo.length === doSeletor.doCliente.length
+      && doSeletor.doCliente.every((e) => doSeletor.escopo.includes(e)),
+    `escopo ${doSeletor.escopo.join(', ')} · cliente ${doSeletor.doCliente.join(', ')}`);
+  conferir('e nenhum registro de fora dele é lido',
+    doSeletor.lidos > 0 && doSeletor.lidosForaDoEscopo === 0,
+    `${doSeletor.lidos} lido(s), ${doSeletor.lidosForaDoEscopo} de fora · `
+      + `matrizes de outro contratante: ${doSeletor.deFora.join(', ') || '(nenhuma)'}`);
 
   // ------------------------------------------------------------ persistência
   console.log('\nVOLTAR — a pergunta vem sempre, mesmo com escolha guardada');
@@ -240,7 +262,25 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
   conferir('dados e cadastros não carregam o escopo de cliente',
     !escopos.dados && !escopos.cadastros, JSON.stringify(escopos));
 
-  // Os dois clientes do enunciado entram por um botão, não sozinhos ao abrir.
+  // Os dois clientes do enunciado entram por um BOTÃO, não sozinhos ao abrir.
+  //
+  // O estado que esta promessa mede é "eles ainda não existem", e ele é
+  // MONTADO aqui. A base de teste passou a trazer os dois já cadastrados, o
+  // botão deixou de ser desenhado — corretamente, porque não há o que
+  // cadastrar — e a conferência morria esperando por ele. Ela ficou meses
+  // sem medir nada por causa disso.
+  await pag.evaluate(() => {
+    E.clientes = (E.clientes || []).filter((c) => !['Limas IT', 'SoulCoop'].includes(c.nome));
+    render();
+  });
+  await pag.waitForTimeout(600);
+  await abrirBlocos(pag);
+  const ofereceIniciais = await pag.$('#cl-iniciais');
+  conferir('sem os dois cadastrados, a tela oferece cadastrá-los',
+    !!ofereceIniciais, String(!!ofereceIniciais));
+  if (!ofereceIniciais) {
+    console.log('  [pulado] sem o botão não há como exercer a entrada dos dois.');
+  } else {
   await pag.click('#cl-iniciais');
   await pag.waitForTimeout(800);
   const depoisIniciais = await pag.evaluate(() => ({
@@ -255,6 +295,7 @@ const URL_LIMPA = URL_BASE + '?boasVindas=1';
   // Com três clientes, a pergunta de boas-vindas passa a ter sentido.
   const podeTrocarAgora = await pag.evaluate(() => !!document.querySelector('#bt-trocar-cliente'));
   conferir('havendo mais de um cliente, trocar aparece', podeTrocarAgora === true, String(podeTrocarAgora));
+  }
 
   // ------------------------------------------ cadastrar cliente na porta de entrada
   // Cadastrar morava só DENTRO de um cliente: para criar o segundo era preciso

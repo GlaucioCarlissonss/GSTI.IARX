@@ -108,12 +108,18 @@ const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-te
   await registrar({ comp: '08/2026', fila: 'Sistema', topico: 'ERP', total: '50', dentro: '20' });
 
   // A base traz chamados importados do osTicket; o teste só olha os registros
-  // que ele mesmo criou, reconhecíveis pelos tópicos que usou.
+  // que ele mesmo criou.
+  //
+  // O tópico sozinho NÃO basta como marca: a base sintética também tem
+  // tópicos, e um nome igual faz os registros dela entrarem nesta contagem —
+  // a suíte então acusa o produto de ter criado o que ela não criou. O que
+  // distingue é a ORIGEM: o que nasce pela tela não veio de integração.
   const MEUS = ['Rede', 'ERP'];
   const sla = await pag.evaluate(async (meus) => {
     E.sla.delete(empresaAtiva());
     const its = await Loja.slaDa(empresaAtiva());
-    return its.filter((s) => meus.includes(s.topico)).map((s) => ({ comp: s.competencia, fila: s.fila,
+    return its.filter((s) => meus.includes(s.topico) && s.origem !== 'integracao')
+      .map((s) => ({ comp: s.competencia, fila: s.fila,
       total: s.total, dentro: s.dentro, guardaFora: Object.prototype.hasOwnProperty.call(s, 'fora') }));
   }, MEUS);
   console.log('    registros criados pelo teste:', JSON.stringify(sla));
