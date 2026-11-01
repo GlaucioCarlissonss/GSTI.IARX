@@ -3337,10 +3337,30 @@ function mesesComResultado() {
   //
   // Quem não pode ser medido num mês aberto é cada indicador que diz isso de
   // si — ver `emCurso` em `resultadoDoMes`.
+  // Ele entra quando CONTÉM um fato do cronograma: o go-live de uma onda, ou
+  // uma virada declarada. Não é "já venceu" — no dia 1º, a onda que vira no
+  // dia 3 ainda não venceu, e mesmo assim o mês é o mês dela: a leitura ali é
+  // viva, e vale 100% hoje e 40% no dia 4. Esconder o mês até o prazo passar
+  // seria esconder a entrega justamente enquanto ela está sendo feita.
   const corrente = mesHoje();
-  if (ondasVencidasAte(corrente).length > ondasVencidasAte(fechado).length) {
+  const noMes = (dia) => String(dia || '').slice(0, 7) === corrente;
+  if (SPIN_ONDAS.some((o) => noMes(o.virada) || noMes(o.viradaRealizada))) {
     vistos.add(corrente);
   }
+
+  // O MÊS FECHADO CUJO ÚNICO RESULTADO É UMA VIRADA também entra.
+  //
+  // A faixa nascia só dos meses com LANÇAMENTO, e com isso um mês em que a
+  // única coisa que aconteceu foi a entrega do cronograma não aparecia —
+  // outubro de 2026, o mês da 1ª onda, sumia do bloco inteiro. A entrega que
+  // a diretoria acompanha ficava invisível por não ter despesa junto.
+  for (const o of SPIN_ONDAS) {
+    for (const dia of [o.virada, o.viradaRealizada]) {
+      const mes = String(dia || '').slice(0, 7);
+      if (mes && mes <= fechado) vistos.add(mes);
+    }
+  }
+
   return ordenado([...vistos]).reverse();
 }
 

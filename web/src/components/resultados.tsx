@@ -76,6 +76,8 @@ interface RespostaCronograma {
     competencia: string; planejadas: number; viradas: number;
     resultado: number | null; meta: number | null;
   }>;
+  /** As ondas, para a faixa saber em que meses houve entrega de cronograma. */
+  ondas: Array<{ go_live: string; virada_realizada: string | null }>;
 }
 
 interface RespostaFinanceiro {
@@ -387,11 +389,52 @@ export function BlocoResultados({
   // virar seria esconder a única coisa que o programa entregou.
   const pontoCorrente = (cron.dados?.serie ?? [])
     .find((p) => p.competencia === mesCorrente());
-  const faixa = useMemo(
-    () => (pontoCorrente && pontoCorrente.planejadas > 0
-      ? [...fechados, mesCorrente()] : fechados),
-    [fechados, pontoCorrente?.planejadas],
-  );
+
+  /**
+   * Os meses das ONDAS, que podem não ter lançamento nenhum.
+   *
+   * A faixa nascia só dos meses com despesa cadastrada, e com isso um mês cujo
+   * único resultado foi a entrega do cronograma não aparecia: outubro de 2026,
+   * o mês da 1ª onda, sumia do bloco por não ter custo junto. A entrega que a
+   * diretoria acompanha ficava invisível.
+   */
+  const mesesDeOnda = useMemo(() => {
+    const fechado = mesFechadoMaisRecente();
+    const meses = new Set<string>();
+    for (const o of cron.dados?.ondas ?? []) {
+      for (const dia of [o.go_live, o.virada_realizada]) {
+        if (!dia) continue;
+        const m = `${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
+        if (competenciaOrdem(m) <= competenciaOrdem(fechado)) meses.add(m);
+      }
+    }
+    return [...meses];
+  }, [cron.dados?.ondas]);
+
+  /**
+   * O mês corrente entra quando CONTÉM um fato do cronograma: o go-live de uma
+   * onda, ou uma virada declarada.
+   *
+   * Não é "já venceu": no dia 1º, a onda que vira no dia 3 ainda não venceu, e
+   * mesmo assim o mês é o mês dela — a leitura ali é viva, e vale 100% hoje e
+   * 40% no dia 4. Esconder o mês até o prazo passar seria esconder a entrega
+   * justamente enquanto ela está sendo feita.
+   *
+   * E não é `planejadas > 0`, que seria verdade para sempre depois da primeira
+   * onda: a faixa ganharia todo mês uma coluna que só diz "mês em curso".
+   */
+  const correnteTemNovidade = (cron.dados?.ondas ?? []).some((o) => {
+    const emMes = (iso: string | null) => (iso ? `${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
+    return emMes(o.go_live) === mesCorrente() || emMes(o.virada_realizada) === mesCorrente();
+  });
+
+  const faixa = useMemo(() => {
+    const juntos = new Set([...fechados, ...mesesDeOnda]);
+    if (correnteTemNovidade) juntos.add(mesCorrente());
+    return [...juntos]
+      .sort((a, b) => competenciaOrdem(a).localeCompare(competenciaOrdem(b)))
+      .slice(-13);
+  }, [fechados, mesesDeOnda, correnteTemNovidade]);
   const fim = faixa[faixa.length - 1] ?? '';
   const emFoco = faixa.includes(mes) ? mes : fim;
 

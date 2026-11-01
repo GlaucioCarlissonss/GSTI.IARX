@@ -690,21 +690,81 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   const mesesDoBloco = await pag.$$eval('[data-mes-resultados] option', (o) => o.map((x) => x.value));
   const hoje = new Date();
   const corrente = `${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
-  ok('o mês corrente entra na faixa, porque carrega uma virada fechada',
-    mesesDoBloco.includes(corrente), `${corrente} em ${mesesDoBloco.slice(0, 3).join(' · ')}`);
-  const emCurso = await pag.evaluate(() => {
-    const ler = (mod) => {
-      const c = document.querySelector(`.cartao-resultado[data-modulo="${mod}"]`);
-      return c ? ((c.querySelector('.res-texto') || {}).textContent || '').trim() : null;
+
+  // A REGRA, e não o mês. O mês corrente entra na faixa quando carrega algo
+  // que o último fechado não tinha — uma onda que venceu ou virou dentro dele.
+  // Escrever "o corrente está lá" era verdade em outubro de 2026, quando a 1ª
+  // onda virou, e passou a ser falso em novembro sem que nada no produto
+  // tivesse mudado. A conferência pergunta ao cronograma qual é o caso de
+  // hoje, e cobra a metade certa da promessa.
+  const doCronograma = await pag.evaluate(async (mesCorrente) => {
+    const h = {
+      Authorization: `Bearer ${localStorage.getItem('gsti.token')}`,
+      'X-Cliente-Id': String(localStorage.getItem('gsti.cliente')),
+      'X-Empresa-Id': String(localStorage.getItem('gsti.empresa')),
     };
-    return { financeiro: ler('financeiro'), sla: ler('sla') };
+    const r = await fetch('/api/indicadores/cronograma', { headers: h });
+    if (!r.ok) return null;
+    const corpo = await r.json();
+    const mes = (iso) => `${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+    const novidade = (corpo.ondas || []).some((o) => mes(o.go_live) === mesCorrente
+      || (o.virada_realizada && mes(o.virada_realizada) === mesCorrente));
+    return { novidade };
+  }, corrente);
+  ok('o cronograma respondeu', !!doCronograma);
+
+  if (doCronograma && doCronograma.novidade) {
+    ok('o mês corrente entra na faixa, porque carrega uma virada ou um prazo',
+      mesesDoBloco.includes(corrente), `${corrente} em ${mesesDoBloco.slice(0, 3).join(' · ')}`);
+
+    const emCurso = await pag.evaluate(() => {
+      const ler = (mod) => {
+        const c = document.querySelector(`.cartao-resultado[data-modulo="${mod}"]`);
+        return c ? ((c.querySelector('.res-texto') || {}).textContent || '').trim() : null;
+      };
+      return { financeiro: ler('financeiro'), sla: ler('sla') };
+    });
+    // Custo e conformidade ACUMULAM: meio mês contra a meta cheia reprovaria o
+    // começo de todo mês. Mas "sem dados" seria falso — há dados, o mês é que
+    // não fechou, e o cartão diz isso com todas as letras.
+    ok('Financeiro no mês aberto diz que o mês está em curso, e não "sem dados"',
+      /em curso/i.test(emCurso.financeiro || ''), emCurso.financeiro);
+    ok('SLA idem', /em curso/i.test(emCurso.sla || ''), emCurso.sla);
+  } else {
+    // A outra metade da mesma regra, e ela também precisa valer: um mês em
+    // curso sem nada de cronograma dentro NÃO pode entrar, ou a faixa ganharia
+    // todo mês uma coluna que só diz "mês em curso".
+    ok('sem virada nem prazo no mês, o corrente fica FORA da faixa',
+      !mesesDoBloco.includes(corrente), `${corrente} em ${mesesDoBloco.slice(0, 3).join(' · ')}`);
+    console.log('  · (o mês corrente não carrega onda; a metade "em curso" da regra '
+      + 'é medida nos meses em que carrega)');
+  }
+
+  // E o MÊS DA ONDA, fechado, tem de estar na faixa mesmo sem despesa nenhuma
+  // nele: a entrega do cronograma é resultado, e um mês sem custo junto não
+  // pode sumir do bloco.
+  const mesesDaOnda = await pag.evaluate(async () => {
+    const h = {
+      Authorization: `Bearer ${localStorage.getItem('gsti.token')}`,
+      'X-Cliente-Id': String(localStorage.getItem('gsti.cliente')),
+      'X-Empresa-Id': String(localStorage.getItem('gsti.empresa')),
+    };
+    const r = await fetch('/api/indicadores/cronograma', { headers: h });
+    if (!r.ok) return [];
+    const corpo = await r.json();
+    const agora = new Date();
+    const fechado = new Date(agora.getFullYear(), agora.getMonth(), 0);
+    const chave = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return (corpo.ondas || [])
+      .map((o) => o.virada_realizada || o.go_live)
+      .filter((iso) => iso && iso.slice(0, 7) <= chave(fechado))
+      .map((iso) => `${iso.slice(5, 7)}/${iso.slice(0, 4)}`);
   });
-  // Custo e conformidade ACUMULAM: meio mês contra a meta cheia reprovaria o
-  // começo de todo mês. Mas "sem dados" seria falso — há dados, o mês é que
-  // não fechou, e o cartão diz isso com todas as letras.
-  ok('Financeiro no mês aberto diz que o mês está em curso, e não "sem dados"',
-    /em curso/i.test(emCurso.financeiro || ''), emCurso.financeiro);
-  ok('SLA idem', /em curso/i.test(emCurso.sla || ''), emCurso.sla);
+  if (mesesDaOnda.length) {
+    ok('o mês fechado de uma onda está na faixa, mesmo sem despesa nele',
+      mesesDaOnda.every((m) => mesesDoBloco.includes(m)),
+      `ondas em ${[...new Set(mesesDaOnda)].join(' · ')} · faixa ${mesesDoBloco.join(' · ')}`);
+  }
 
   console.log('\nVER REGISTROS de Projetos — unidades e prazos, não tarefas');
   const btProj = await pag.$('.cartao-resultado[data-modulo="projetos"] .res-ver');

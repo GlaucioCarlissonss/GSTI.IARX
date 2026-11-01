@@ -250,14 +250,37 @@ const ESPERADO = [
   // módulo é se as unidades viraram no prazo combinado, e é isso que o
   // resultado passa a ser.
   console.log('\nRESULTADO DE PROJETOS — vem da entrega do cronograma');
+  // O DIA IMPORTA, e por isso é fixado aqui.
+  //
+  // O corte do mês em curso passou a ser HOJE, e não o fim do mês: no dia 1º
+  // de novembro, a onda que vira no dia 3 ainda não venceu, e novembro vale
+  // 2 de 2. No dia 4 ela venceu sem virar, e vale 2 de 5. As duas leituras
+  // estão certas — o que não pode é a conferência medir novembro sem dizer de
+  // que dia está falando, que foi como ela passou a falhar sozinha na virada
+  // do mês.
+  //
+  // O relógio é fixado DEPOIS da carga, e devolvido logo abaixo: congelá-lo
+  // na abertura mudaria o cronograma inteiro que as asserções acima mediram.
   const porMes = await pag.evaluate(() => {
-    const saida = {};
-    for (const m of ['2026-08', '2026-09', '2026-10', '2026-11']) {
-      const d = resultadoDoMes('projetos', m);
-      saida[m] = { r: d.resultado, meta: d.meta, viradas: d.viradas, planejadas: d.planejadas };
+    const Real = Date;
+    const desvio = new Real('2026-11-10T12:00:00Z').getTime() - Real.now();
+    class Fingido extends Real {
+      constructor(...a) { if (a.length === 0) super(Real.now() + desvio); else super(...a); }
+      static now() { return Real.now() + desvio; }
     }
-    return saida;
+    window.Date = Fingido;
+    try {
+      const saida = {};
+      for (const m of ['2026-08', '2026-09', '2026-10', '2026-11']) {
+        const d = resultadoDoMes('projetos', m);
+        saida[m] = { r: d.resultado, meta: d.meta, viradas: d.viradas, planejadas: d.planejadas };
+      }
+      return saida;
+    } finally {
+      window.Date = Real;
+    }
   });
+  console.log('  · medido com o relógio em 10/11/2026, depois do prazo da 2ª onda');
   ok('antes da 1ª virada não há resultado — e não há zero',
     porMes['2026-09'].r === null && porMes['2026-09'].planejadas === 0,
     JSON.stringify(porMes['2026-09']));
