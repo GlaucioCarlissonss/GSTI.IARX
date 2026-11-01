@@ -22,9 +22,16 @@ const entrar = async (pag, usuario, senha) => {
   // A escolha de cliente vem antes de qualquer tela. Com a escolha já guardada
   // ela não aparece; quando aparece, entrar pelo primeiro cliente é o caminho
   // de quem só quer chegar ao menu — o que esta suíte vai conferir.
-  await pag.waitForSelector('.menu a, .cartao button', { timeout: 15000 });
-  const cartao = await pag.$('.cartao button:not(.discreto)');
-  if (cartao && !(await pag.$('.menu a'))) await cartao.click();
+  // O menu PRIMEIRO. Com um cliente só a pergunta de escolha nem aparece, e
+  // procurar por `.cartao button` antes dele pegava o cabeçalho de um acordeão
+  // do próprio painel — um botão que existe, está desabilitado enquanto a tela
+  // monta, e fazia o roteiro morrer tentando clicar nele.
+  await pag.waitForSelector('.menu a, h1', { timeout: 15000 });
+  await pag.waitForTimeout(600);
+  if (!(await pag.$('.menu a'))) {
+    const escolha = pag.locator('.cartao button').filter({ hasNotText: 'Sair de' }).first();
+    if (await escolha.count()) await escolha.click();
+  }
   await pag.waitForSelector('.menu a', { timeout: 15000 });
   await pag.waitForTimeout(1200);
 };

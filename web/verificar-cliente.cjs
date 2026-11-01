@@ -27,6 +27,22 @@ const SENHA = process.env.SENHA || 'varredura2026';
   });
   const ok = (r, b, d = '') => { console.log(`  ${b ? '✓' : '✗'} ${r}${d ? ': ' + d : ''}`); if (!b) falhas.push(r); };
 
+  /**
+   * Abre os cartões em acordeão da tela.
+   *
+   * Eles nascem FECHADOS, e o que está dentro de um cartão fechado não existe
+   * no DOM: esperar por `table` numa tela recém-aberta espera para sempre. É a
+   * mesma armadilha que já derrubou `verificar-drill` e `verificar-carga`.
+   */
+  const abrirBlocos = async () => {
+    for (let i = 0; i < 10; i += 1) {
+      const fechado = await pag.$('.cartao.dobrado .cartao-dobra');
+      if (!fechado) break;
+      await fechado.click();
+      await pag.waitForTimeout(150);
+    }
+  };
+
   await pag.goto(BASE + '/');
   await pag.waitForLoadState('networkidle');
   await pag.fill('input[autocomplete="username"], input[name="usuario"]', 'gestora');
@@ -65,12 +81,37 @@ const SENHA = process.env.SENHA || 'varredura2026';
   await pag.reload();
   await pag.waitForSelector('.menu a', { timeout: 15000 });
   await pag.waitForTimeout(600);
-  ok('recarregar não pergunta de novo', (await pag.$$('.cartao button:has-text("Limas IT")')).length === 0);
+  // A pergunta de cliente é a tela que TEM o h1 "Qual cliente...". Procurar um
+  // botão com o nome do cliente não distingue nada: o painel do contratante
+  // tem um cartão chamado "Limas IT — Matriz está pronta para receber dados",
+  // e o cabeçalho dele é um botão de dobra. A conferência passou a perguntar
+  // pela tela, e não por um texto que aparece nas duas.
+  const aposRecarregar = await pag.evaluate(() => ({
+    h1: [...document.querySelectorAll('h1')].map((h) => h.textContent.trim()),
+    temMenu: !!document.querySelector('.menu a'),
+  }));
+  ok('recarregar não pergunta de novo',
+    aposRecarregar.temMenu && !aposRecarregar.h1.some((h) => /Qual cliente/.test(h)),
+    aposRecarregar.h1.join(' | '));
 
+  // Trocar de cliente passa por uma CONFIRMAÇÃO, de propósito: sair é perder o
+  // contexto inteiro da tela, e um clique sem volta ao lado do menu seria fácil
+  // demais de dar sem querer.
   await pag.click('button:has-text("Trocar cliente")');
-  await pag.waitForTimeout(800);
-  const voltou = await pag.$eval('h1', (h) => h.textContent.trim());
-  ok('trocar cliente volta à pergunta', /Qual cliente/.test(voltou), voltou);
+  await pag.waitForSelector('.modal', { timeout: 10000 });
+  await pag.waitForTimeout(400);
+  const confirmacao = await pag.$eval('.modal', (m) => m.textContent.replace(/\s+/g, ' '));
+  ok('trocar cliente pede confirmação antes de sair', /Sair deste cliente\?/.test(confirmacao),
+    confirmacao.slice(0, 80));
+  ok('e a confirmação diz que nada se perde', /nada é apagado/i.test(confirmacao));
+
+  await pag.click('.modal button:has-text("Sair")');
+  await pag.waitForTimeout(900);
+  const voltou = await pag.evaluate(() => {
+    const h = [...document.querySelectorAll('h1')].map((x) => x.textContent.trim());
+    return { h1: h, pergunta: h.some((x) => /Qual cliente/.test(x)) };
+  });
+  ok('confirmar volta à pergunta', voltou.pergunta, voltou.h1.join(' | '));
 
   await pag.click('.cartao button:has-text("ALIANÇA")');
   await pag.waitForSelector('.menu a', { timeout: 15000 });
@@ -114,6 +155,8 @@ const SENHA = process.env.SENHA || 'varredura2026';
   // ------------------------------------------------- cadastro de estrutura
   console.log('\nCADASTRO — a regra do CNPJ decide onde a unidade entra');
   await pag.click('.menu a:has-text("Clientes e unidades")');
+  await pag.waitForSelector('.cartao', { timeout: 15000 });
+  await abrirBlocos();
   await pag.waitForSelector('table', { timeout: 15000 });
   await pag.waitForTimeout(800);
 
