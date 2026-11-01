@@ -1544,6 +1544,36 @@ cancelado**, e dentro de cada grupo o prazo mais próximo na frente. A linha por
 onda mostra a virada ao lado do que falta, com a marca "em produção" onde a
 virada foi declarada — as duas colunas não dizem a mesma coisa, de propósito.
 
+### Como se confere a web, e por que isso importa
+
+As conferências de navegador rodavam todas contra **um** servidor, com **uma**
+base, aberta uma vez e reaproveitada. Duas coisas davam errado em silêncio.
+
+**A base é mutável.** `verificar-cliente` cadastra matrizes; `verificar-carga`
+importa lançamentos. Quem rodasse depois encontrava uma base diferente da que o
+roteiro dele descreve, e a falha aparecia como defeito do produto. Uma
+conferência cujo resultado depende da ordem não mede nada.
+
+**Nem toda conferência quer a mesma base.** A da escolha de cliente precisa de
+dois contratantes; a de indicadores, de um com duas matrizes; a de perfis, de um
+gestor e uma leitora. Rodar a de dois clientes contra a base de um devolve "só
+um cliente aparece" — e não há defeito nenhum ali.
+
+`node web/verificar-tudo.cjs` dá a cada suíte **banco próprio, servidor próprio
+e porta própria**, preparando a base que ela declara. Mais lento, e a lentidão
+é o preço de um resultado que quer dizer alguma coisa.
+
+| base | preparadores | para quem |
+| --- | --- | --- |
+| `completa` | `preparar-verificacao-v2` + `comparativo` + `resultados` | o padrão: leitura estratégica, faixa e série |
+| `dois-clientes` | `preparar-verificacao` | escolha de cliente, carga |
+| `perfis` | `preparar-perfis` | o que o perfil governa |
+
+**Uma suíte que morre não é uma suíte limpa.** Contar linhas de `✗` dava verde
+a quem morria antes da primeira asserção — foi assim que a conferência de
+perfis passou meses sem rodar. O runner decide "morreu" pelo rodapé que o Node
+imprime ao estourar sem captura, e não por procurar a palavra "Error".
+
 ### Onde as regras moram, nas duas superfícies
 
 O cronograma e o plano existem **duas vezes**, e isso é deliberado: o artifact
@@ -1559,6 +1589,8 @@ na frente do outro.
 | regras do plano | `app-js23.js` | `domain/plano-acao.ts` | `test/plano-acao.test.ts`, `testar-plano-acao.cjs` |
 | leitura da planilha | `app-js23.js` (`planoLerOndas`) | `domain/carga-plano-acao.ts` | `test/carga-plano-acao.test.ts` |
 | tela | `viewPlanoAcao` | `pages/PlanoAcao.tsx` | `verificar-plano-acao.cjs` |
+| relógio do SLA | `app-js22.js` | `domain/horas-uteis.ts` | `test/horas-uteis.test.ts`, `verificar-feriados.cjs` |
+| feriados | `app-js22.js` (`viewFeriados`) | `pages/Feriados.tsx` | `verificar-feriados.cjs` |
 
 **Quem corrigir uma regra corrige as duas cópias, e as duas conferências.** É
 o que as suítes irmãs existem para cobrar.
