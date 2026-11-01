@@ -1591,6 +1591,8 @@ na frente do outro.
 | tela | `viewPlanoAcao` | `pages/PlanoAcao.tsx` | `verificar-plano-acao.cjs` |
 | relógio do SLA | `app-js22.js` | `domain/horas-uteis.ts` | `test/horas-uteis.test.ts`, `verificar-feriados.cjs` |
 | feriados | `app-js22.js` (`viewFeriados`) | `pages/Feriados.tsx` | `verificar-feriados.cjs` |
+| Controle Único | `app-js21.js` | `domain/spincare.ts` | `test/spincare.test.ts`, `verificar-controle-unico.cjs` |
+| leitura da planilha do Controle | `app-js21.js` (`spinLerControleMestre`) | `domain/carga-spincare.ts` | `test/carga-spincare.test.ts` |
 
 **Quem corrigir uma regra corrige as duas cópias, e as duas conferências.** É
 o que as suítes irmãs existem para cobrar.

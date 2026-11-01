@@ -403,6 +403,64 @@ CREATE TABLE IF NOT EXISTS feriados (
 );
 CREATE INDEX IF NOT EXISTS ix_feriados_cliente ON feriados(cliente_id, data);
 
+-- CONTROLE ÚNICO do projeto de implantação.
+--
+-- A linha é uma ATIVIDADE, e cada unidade acompanhada tem uma SITUAÇÃO dentro
+-- dela. Uma atividade concluída em três unidades e não iniciada em outras três
+-- é UMA linha, não seis — forçá-la no modelo projeto → tarefa → filial criaria
+-- centenas de tarefas e faria a contagem de atividades, que é o número que vai
+-- à diretoria, deixar de bater com a planilha.
+--
+-- NADA DE DERIVADO. Status consolidado, avanço, peso e farol são calculados
+-- contra hoje a cada leitura: a planilha traz oito colunas calculadas, e
+-- gravá-las faria o painel envelhecer em silêncio.
+CREATE TABLE IF NOT EXISTS spin_atividades (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id         INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  -- O id da planilha, e a chave que o desempata quando ele se repete.
+  id_origem          TEXT NOT NULL,
+  chave              TEXT NOT NULL,
+  fonte              TEXT NOT NULL DEFAULT '',
+  grupo_time         TEXT NOT NULL DEFAULT '',
+  frente             TEXT NOT NULL DEFAULT '',
+  replicavel         TEXT NOT NULL DEFAULT '',
+  atividade          TEXT NOT NULL,
+  tipo_entrega       TEXT NOT NULL DEFAULT '',
+  caminho            TEXT NOT NULL DEFAULT '',
+  criticidade        TEXT NOT NULL DEFAULT '',
+  lider              TEXT NOT NULL DEFAULT '',
+  executante         TEXT NOT NULL DEFAULT '',
+  data_base_onda     TEXT,
+  prazo_repactuado   TEXT,
+  pendencia          TEXT NOT NULL DEFAULT '',
+  proxima_acao       TEXT NOT NULL DEFAULT '',
+  evidencia          TEXT NOT NULL DEFAULT '',
+  criterio_especifico TEXT NOT NULL DEFAULT '',
+  observacoes        TEXT NOT NULL DEFAULT '',
+  criado_em          TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (cliente_id, chave)
+);
+CREATE INDEX IF NOT EXISTS ix_spin_cliente ON spin_atividades(cliente_id, id_origem);
+
+-- A situação da atividade EM CADA UNIDADE. Tabela própria, e não uma coluna
+-- por unidade: o plano já ganhou unidades novas uma vez, e cada uma custaria
+-- uma migração de esquema.
+CREATE TABLE IF NOT EXISTS spin_situacoes (
+  atividade_id INTEGER NOT NULL REFERENCES spin_atividades(id) ON DELETE CASCADE,
+  unidade      TEXT NOT NULL,
+  situacao     TEXT NOT NULL,
+  PRIMARY KEY (atividade_id, unidade)
+);
+
+-- O prazo e a situação por ONDA, quando a planilha os traz.
+CREATE TABLE IF NOT EXISTS spin_ondas (
+  atividade_id INTEGER NOT NULL REFERENCES spin_atividades(id) ON DELETE CASCADE,
+  onda         INTEGER NOT NULL,
+  prazo        TEXT,
+  situacao     TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (atividade_id, onda)
+);
+
 -- ============================================================
 -- Carimbo do cliente: invariante do BANCO, não de cada consulta
 -- ============================================================

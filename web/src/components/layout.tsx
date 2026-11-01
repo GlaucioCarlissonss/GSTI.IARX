@@ -31,6 +31,9 @@ const NAVEGACAO = [
       { para: '/projetos', glifo: '◫', rotulo: 'Dashboard e Gantt', modulo: 'projetos' },
       { para: '/projetos/cadastro', glifo: '≡', rotulo: 'Projetos e tarefas', modulo: 'projetos' },
       { para: '/projetos/plano-acao', glifo: '◱', rotulo: 'Plano de Ação', modulo: 'projetos' },
+      // O Controle Único é a Visão Micro do programa: atividade a atividade,
+      // por unidade. Fica ao lado do plano, que é o "o que falta fazer".
+      { para: '/projetos/controle-unico', glifo: '▦', rotulo: 'Controle Único', modulo: 'projetos', escopo: 'cliente' as const },
     ],
   },
   {

@@ -54,6 +54,7 @@ const TELAS = {
   projetos: { rota: '/projetos', de: () => import('./pages/Projetos'), nome: 'PaginaProjetos' },
   cadastroProjetos: { rota: '/projetos/cadastro', de: () => import('./pages/CadastroProjetos'), nome: 'PaginaCadastroProjetos' },
   planoAcao: { rota: '/projetos/plano-acao', de: () => import('./pages/PlanoAcao'), nome: 'PaginaPlanoAcao' },
+  controleUnico: { rota: '/projetos/controle-unico', de: () => import('./pages/ControleUnico'), nome: 'PaginaControleUnico' },
   sla: { rota: '/sla', de: () => import('./pages/Sla'), nome: 'PaginaSla' },
   registrosSla: { rota: '/sla/registros', de: () => import('./pages/Sla'), nome: 'PaginaRegistrosSla' },
   ostick: { rota: '/suporte/ostick', de: () => import('./pages/Suporte'), nome: 'PaginaOstick' },

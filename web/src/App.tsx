@@ -40,6 +40,7 @@ function Rotas() {
         <Route path="projetos" element={<Telas.projetos />} />
         <Route path="projetos/cadastro" element={<Telas.cadastroProjetos />} />
         <Route path="projetos/plano-acao" element={<Telas.planoAcao />} />
+        <Route path="projetos/controle-unico" element={<Telas.controleUnico />} />
         <Route path="sla" element={<Telas.sla />} />
         <Route path="sla/registros" element={<Telas.registrosSla />} />
         <Route path="suporte/ostick" element={<Telas.ostick />} />
