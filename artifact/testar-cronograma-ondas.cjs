@@ -17,6 +17,21 @@
 // Uso: CHROMIUM_BIN=/opt/pw-browsers/chromium node artifact/testar-cronograma-ondas.cjs
 const { chromium } = require('playwright');
 
+/**
+ * HOJE, em ISO, e as ondas que já venceram por ele.
+ *
+ * Esta conferência roda contra o relógio de verdade, e ela PRECISA disso: a
+ * Visão Macro muda de leitura conforme o go-live passa, e congelar tudo num
+ * dia deixaria justamente essa travessia sem prova. O que ela não pode é
+ * escrever o calendário nas asserções. Ela escrevia: exigia que toda onda
+ * depois da primeira dissesse "ainda não vence" e que o cartão de Projetos
+ * valesse 100,0%. Em 03/11/2026 a 2ª onda venceu sem virar, as duas leituras
+ * mudaram — corretamente — e a conferência passou a acusar o produto de
+ * errar por dizer a verdade.
+ */
+const HOJE = new Date().toISOString().slice(0, 10);
+const jaVenceu = (o) => o.virada <= HOJE;
+
 /** O cronograma que o PLANO DE AÇÃO publica — a régua desta conferência. */
 const ESPERADO = [
   { n: 1, virada: '2026-10-01', unidades: ['MHC Porto Velho/RO', 'UC Rio de Janeiro/RJ'],
@@ -175,12 +190,20 @@ const ESPERADO = [
       && /100,0%/.test((tabela.ondas[0] || [])[5] || ''),
     `${(tabela.ondas[0] || [])[4]} · ${(tabela.ondas[0] || [])[5]}`);
   // A onda futura não é zero: zero afirmaria um fracasso que ninguém mediu.
+  // A onda VENCIDA, ao contrário, tem de trazer número: ela foi medida.
+  const porVencimento = ESPERADO.map((o, i) => ({ o, linha: tabela.ondas[i] || [] }));
+  const futuras = porVencimento.filter((x) => !jaVenceu(x.o));
+  const vencidas = porVencimento.filter((x) => jaVenceu(x.o));
+  console.log(`  · em ${HOJE}: ${vencidas.length} onda(s) vencida(s), ${futuras.length} por vencer`);
   ok('a onda que ainda não venceu não aparece como 0%',
-    tabela.ondas.slice(1).every((l) => /ainda não vence/.test(l[5] || '')),
-    tabela.ondas.slice(1).map((l) => l[5]).join(' · '));
-  ok('e ainda assim mostra o alvo dela',
-    tabela.ondas.slice(1).every((l) => /\d+ de \d+ unidade/.test(l[4] || '')),
-    tabela.ondas.slice(1).map((l) => l[4]).join(' · '));
+    futuras.every((x) => /ainda não vence/.test(x.linha[5] || '')),
+    futuras.map((x) => `${x.o.n}ª: ${x.linha[5]}`).join(' · ') || '(nenhuma por vencer)');
+  ok('e a onda que já venceu traz o número, e não "ainda não vence"',
+    vencidas.every((x) => /%/.test(x.linha[5] || '') && !/ainda não vence/.test(x.linha[5] || '')),
+    vencidas.map((x) => `${x.o.n}ª: ${x.linha[5]}`).join(' · ') || '(nenhuma vencida)');
+  ok('e toda onda mostra o alvo dela, vencida ou não',
+    porVencimento.slice(1).every((x) => /\d+ de \d+ unidade/.test(x.linha[4] || '')),
+    porVencimento.slice(1).map((x) => x.linha[4]).join(' · '));
   ok('a linha da unidade não fala mais de atividade',
     tabela.unidades.every((t) => !/atividade/i.test(t)),
     tabela.unidades.find((t) => /atividade/i.test(t)) || 'nenhuma menciona');
@@ -315,9 +338,15 @@ const ESPERADO = [
   ok('Financeiro no mês aberto diz que o mês está em curso, e não "sem dados"',
     /em curso/i.test((cartoes.financeiro || {}).texto || ''), (cartoes.financeiro || {}).texto);
   ok('SLA idem', /em curso/i.test((cartoes.sla || {}).texto || ''), (cartoes.sla || {}).texto);
+  // O que se prova aqui é o CONTRASTE com os dois de cima: Projetos não se
+  // escusa pelo mês aberto, porque a virada é um fato com data. Qual é o
+  // percentual depende de quantas ondas já venceram — e isso é calendário,
+  // não regra. Ele valia 100% enquanto só a 1ª onda tinha vencido e caiu para
+  // 40% quando a 2ª venceu sem virar; as duas leituras estão certas.
   ok('Projetos é medido mesmo com o mês aberto: a virada é um fato datado',
-    (cartoes.projetos || {}).valor === '100,0%'
-      && /atingida/i.test((cartoes.projetos || {}).texto || ''),
+    /^\d+,\d%$/.test((cartoes.projetos || {}).valor || '')
+      && /atingida/i.test((cartoes.projetos || {}).texto || '')
+      && !/em curso|sem dados/i.test((cartoes.projetos || {}).texto || ''),
     `${(cartoes.projetos || {}).valor} · ${(cartoes.projetos || {}).texto}`);
 
   console.log('\nVER REGISTROS de Projetos — unidades e prazos, não tarefas');
@@ -337,7 +366,12 @@ const ESPERADO = [
     ok('o cartão abre unidades e prazos, e não tarefas',
       drill.colunas.join('|') === 'Unidade|Onda|Prazo de virada|Virada realizada|Situação',
       drill.colunas.join(' | '));
-    ok('com as duas unidades da onda vencida', drill.linhas === 2, String(drill.linhas));
+    // Todas as unidades das ondas JÁ VENCIDAS, e nenhuma das que não venceram:
+    // o detalhamento é a composição do número do cartão.
+    const esperadas = ESPERADO.filter(jaVenceu).reduce((t, o) => t + o.unidades.length, 0);
+    ok('com as unidades de toda onda já vencida',
+      drill.linhas === esperadas,
+      `${drill.linhas} linha(s) para ${esperadas} unidade(s) de onda vencida em ${HOJE}`);
     ok('e manda a execução atividade a atividade para a Visão Micro',
       /Visão Micro/.test(drill.texto));
   }
