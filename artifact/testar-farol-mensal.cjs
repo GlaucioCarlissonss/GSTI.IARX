@@ -81,9 +81,13 @@ const { irPara } = require('./ajuda-testes.cjs');
       ultimoRealizado: f.ultimoRealizado,
       // Total = fixas + variáveis, em todo mês realizado.
       somaFecha: f.realizados.every((p) => Math.abs(p.fixa + p.variavel - p.total) < 0.01),
-      // A projeção repete o nível fixo do último realizado, e só ele é projetado.
+      // SÓ O FIXO é projetado: o pontual não se repete, e repeti-lo inventaria
+      // gasto. O valor projetado NÃO é mais o nível fixo do último mês
+      // repetido adiante — desde o motor contrato a contrato ele é a soma dos
+      // contratos vivos naquele mês, e cada vigência que encerra o faz cair.
+      // `nivelFixo` virou só o número exibido no cartão.
       projetaSoOFixo: f.projetados.every((p) =>
-        p.total === null && p.variavel === null && p.fixaProjetada === f.nivelFixo),
+        p.total === null && p.variavel === null && typeof p.fixaProjetada === 'number'),
       // O último realizado entra TAMBÉM na série projetada, para as linhas se ligarem.
       ligaNaPonta: f.realizados[f.realizados.length - 1].fixaProjetada === f.nivelFixo,
       // A projeção NÃO obedece ao filtro, que termina no passado.
@@ -210,10 +214,16 @@ const { irPara } = require('./ajuda-testes.cjs');
   }));
   // Um mês futuro não tem lançamento próprio: abrir a lista dele devolveria
   // vazio, e um detalhamento vazio faz duvidar do número.
-  ok('o mês projetado abre os lançamentos da BASE', proj.fundos === 1
-    && /projetado para .* base: /.test(proj.titulo || ''), proj.titulo);
-  ok('e a tela diz que eles são da base, não do mês',
-    /que é a base da projeção/.test(proj.nota), proj.nota.slice(0, 120));
+  // O título e a nota mudaram com o motor contrato a contrato: a tela não diz
+  // mais "base: 09/2026" porque a projeção deixou de ser a cópia de um mês. Ela
+  // diz quantos CONTRATOS compõem o número e por que cada um é projetado.
+  ok('o mês projetado abre a composição do número', proj.fundos === 1
+    && /Custo fixo projetado para .* — R\$/.test(proj.titulo || ''), proj.titulo);
+  ok('e a tela diz de quantos contratos ele é feito',
+    /contrato\(s\) recorrente\(s\) projetado\(s\) para/.test(proj.nota), proj.nota.slice(0, 120));
+  ok('e explica por que cada contrato é projetado',
+    /projetado pelo valor da última vez que apareceu, até a vigência/.test(proj.nota),
+    proj.nota.slice(-160));
   await pag.keyboard.press('Escape');
   await pag.waitForTimeout(400);
 

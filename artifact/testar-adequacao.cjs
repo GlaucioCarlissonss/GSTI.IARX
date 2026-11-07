@@ -33,7 +33,32 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
   await irPara(pag, 'Indicadores Gerais', 1800);
 
   // ------------------------------------------------- o estado de partida
+  //
+  // O ESTADO VAZIO É CRIADO, e não suposto. A conferência exigia que a base
+  // não tivesse despesa compartilhada nenhuma — o que era verdade no retrato
+  // de `dados/` de meses atrás e deixou de ser quando o cliente classificou
+  // dez contratos. A regra que importa aqui é de TELA: sem nada classificado,
+  // o indicador diz que falta classificar em vez de mostrar zero. Então a
+  // conferência desclassifica o que achar, prova a regra, e segue.
+  //
+  // Desclassificar aqui não toca `dados/`: o `window.claude` de
+  // `montar-teste.cjs` guarda as escritas em memória, e elas morrem com a
+  // página. Nenhuma conferência pode escrever na base do cliente.
   console.log('\nPARTIDA — sem nada classificado, o indicador diz isso e oferece a saída');
+  const desclassificou = await pag.evaluate(async () => {
+    const alvos = Loja.todosDoEscopo().filter((l) => consumoDe(l) === 'compartilhado');
+    const meses = new Map();
+    for (const l of alvos) meses.set(`${l.empresa}|${l.competencia}`, true);
+    for (const chave of meses.keys()) {
+      const [empresa, comp] = chave.split('|');
+      await Loja.gravarMes(empresa, comp, Loja.itens(empresa, comp).map((it) =>
+        (consumoDe(it) === 'compartilhado'
+          ? { ...it, tipoConsumo: 'integral', beneficiadas: [] } : it)));
+    }
+    return alvos.length;
+  });
+  if (desclassificou) console.log(`  [preparo] ${desclassificou} lançamento(s) desclassificado(s) em memória`);
+  await irPara(pag, 'Indicadores Gerais', 1800);
   const partida = await pag.evaluate(() => {
     const kpi = document.querySelector('[data-kpi="rateio"]');
     const sec = kpi && kpi.closest('section.bloco-indicador');
@@ -53,7 +78,7 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
     partida && partida.titulo === 'Objetivo 02: Adequação dos Custos Compartilhados', partida && partida.titulo);
   ok('e a descrição recuada abaixo dele',
     partida && /Normalização dos Custos com Despesas FIXAS\(MENSAIS\)/.test(partida.descricao));
-  ok('a base real não tem despesa compartilhada nenhuma',
+  ok('o recorte parte sem despesa compartilhada nenhuma',
     partida && partida.compartilhadas === 0, partida && String(partida.compartilhadas));
   // Um zero solto se leria como "não há problema". O indicador tem de dizer que
   // FALTA CLASSIFICAR, que é outra coisa.
@@ -84,13 +109,26 @@ const { irPara, congelarRelogio } = require('./ajuda-testes.cjs');
     [...document.querySelectorAll('[data-cc-linha]')].filter((t) => !t.hidden).length);
   ok('a busca recorta a lista', filtrados > 0 && filtrados < lote.contratos,
     `${filtrados} de ${lote.contratos}`);
+  // O estado de ANTES do clique, linha a linha: a regra tem dois lados, e
+  // contar só o total de marcados mede um deles. Um contrato já classificado
+  // chega marcado, e a contagem absoluta o somava ao que a busca mostrou.
+  const antesDoClique = await pag.evaluate(() =>
+    [...document.querySelectorAll('input[data-cc]')].map((c) => ({
+      visivel: !c.closest('[data-cc-linha]').hidden, marcado: c.checked })));
   await clicar('[data-todos]');
-  const marcados = await pag.evaluate(() =>
-    document.querySelectorAll('input[data-cc]:checked').length);
+  const depoisDoClique = await pag.evaluate(() =>
+    [...document.querySelectorAll('input[data-cc]')].map((c) => ({
+      visivel: !c.closest('[data-cc-linha]').hidden, marcado: c.checked })));
   // "Marcar todos" sobre a lista inteira seria um clique capaz de reclassificar
   // a base sem ninguém ver o que entrou.
-  ok('e "marcar os visíveis" não alcança o que a busca escondeu',
-    marcados === filtrados, `${marcados} marcado(s) para ${filtrados} visível(eis)`);
+  const visiveisMarcados = depoisDoClique.filter((c) => c.visivel).every((c) => c.marcado);
+  const escondidosIntactos = depoisDoClique
+    .every((c, i) => c.visivel || c.marcado === antesDoClique[i].marcado);
+  ok('"marcar os visíveis" marca TODOS os que a busca mostrou',
+    visiveisMarcados && depoisDoClique.filter((c) => c.visivel).length === filtrados,
+    `${depoisDoClique.filter((c) => c.visivel && c.marcado).length} de ${filtrados}`);
+  ok('e não alcança o que a busca escondeu', escondidosIntactos,
+    `${depoisDoClique.filter((c, i) => !c.visivel && c.marcado !== antesDoClique[i].marcado).length} escondido(s) mexido(s)`);
 
   await preencher('#cc-just', 'classificação do contrato compartilhado');
   await clicar('[data-aplicar]');

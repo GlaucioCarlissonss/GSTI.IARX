@@ -149,7 +149,7 @@ function formLancamento(existente) {
   // Editar segue a empresa do próprio registro. Criar escolhe aqui dentro, e
   // não pelo filtro do topo: o filtro é o recorte que o gestor está olhando, e
   // não deveria decidir se ele consegue ou não lançar.
-  let emp = existente ? existente.empresa : (empresaAtiva() || escopoEmpresas()[0] || E.empresas[0]?.id);
+  let emp = existente ? existente.empresa : (empresaAtiva() || escopoEmpresas()[0] || matrizesVisiveis()[0]?.id);
   if (!emp) throw new Error('Cadastre uma empresa antes de lançar.');
   const tipos = tiposDa(emp), fils = filiaisDa(emp), cens = cenariosDa(emp);
   const v = existente || { filial:null, tipo: tipos[0]?.nome || '', competencia: ordenado(E.competencias).pop() || mesHoje(),
@@ -161,7 +161,7 @@ function formLancamento(existente) {
     corpo: `
       ${ed ? '' : `
       <div class="campo"><label for="c-empresa">Empresa</label><select id="c-empresa" name="empresa">
-        ${E.empresas.map((e)=>`<option value="${esc(e.id)}"${e.id===emp?' selected':''}>${esc(e.nome)}</option>`).join('')}
+        ${matrizesVisiveis().map((e)=>`<option value="${esc(e.id)}"${e.id===emp?' selected':''}>${esc(e.nome)}</option>`).join('')}
       </select></div>`}
       <div class="grade g3">
         <div class="campo"><label for="c-filial">Filial</label><div id="c-filiais"></div></div>

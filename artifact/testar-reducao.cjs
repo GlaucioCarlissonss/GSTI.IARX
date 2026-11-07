@@ -28,12 +28,19 @@ const { irPara, abrirBlocos, congelarRelogio } = require('./ajuda-testes.cjs');
   // anterior faria o "vazio" nunca acontecer. A meta de Financeiro é semeada
   // porque o objetivo mede a janela DELA — sem meta cadastrada o farol fica
   // cinza e a independência do filtro de período não teria o que provar.
-  await pag.evaluate(() => {
-    Loja.gravarCatalogo('reducao', []);
+  //
+  // As duas escritas são AGUARDADAS, uma a uma. Elas não eram: o roteiro
+  // disparava as promessas e seguia, e a leitura de catálogos da própria
+  // abertura chegava depois, repondo em `E.reducao` os três itens que o
+  // cliente cadastrou de verdade. O "vazio" então nunca acontecia, e o
+  // roteiro acusava o produto de mostrar 8.500 — que é o plano do cliente.
+  await pag.evaluate(async () => {
+    await Loja.catalogos();            // deixa a abertura terminar de ler
+    await Loja.gravarCatalogo('reducao', []);
     // Duas metas, e a segunda SEM fim de vigência — é a forma da base real, e é
     // o que estica a janela até as competências futuras. Sem ela a suíte não
     // teria projeção nenhuma para conferir.
-    Loja.gravarCatalogo('metas', [
+    await Loja.gravarCatalogo('metas', [
       { nome: 'Teto de custo fixo', modulo: 'financeiro', alvoPct: 5,
         vigenciaInicio: '2026-02', vigenciaFim: '2026-06', ativo: true },
       { nome: 'Teto em diante', modulo: 'financeiro', alvoPct: 2,
@@ -41,6 +48,12 @@ const { irPara, abrirBlocos, congelarRelogio } = require('./ajuda-testes.cjs');
     ]);
   });
   await pag.waitForTimeout(300);
+  // E o preparo é CONFERIDO antes de medir: um vazio que não ficou vazio faria
+  // as três asserções seguintes medirem o plano do cliente achando que medem a
+  // tela vazia.
+  ok('o preparo zerou o plano cadastrado',
+    (await pag.evaluate(() => (E.reducao || []).length)) === 0,
+    String(await pag.evaluate(() => (E.reducao || []).length)));
 
   // ------------------------------------------------- o estado de partida
   console.log('\nPARTIDA — sem plano cadastrado, o indicador diz isso');
@@ -349,7 +362,12 @@ const { irPara, abrirBlocos, congelarRelogio } = require('./ajuda-testes.cjs');
   ok('as barras são gatilhos de teclado e ponteiro', col.length > 0, `${col.length} barra(s)`);
   if (col.length) {
     await col[2].hover();
-    await pag.waitForTimeout(400);
+    // O balão abre depois de `ESPERA_DICA`, que é longo de propósito — ele não
+    // pode abrir de raspão quando o ponteiro só atravessa o gráfico. Os 400 ms
+    // daqui eram de antes dessa espera existir, e o roteiro vinha lendo um
+    // balão que ainda não tinha aberto. A espera sai da PÁGINA, para o roteiro
+    // acompanhar o produto em vez de repetir o número.
+    await pag.waitForTimeout(await pag.evaluate(() => ESPERA_DICA) + 500);
     const balao = await pag.$eval('#dica', (d) => ({ on: d.classList.contains('on'), txt: d.textContent }));
     // O `.kpi` que embrulha o gráfico tem a própria dica: sem parar a
     // propagação, ela sobrescreveria a do mês.
@@ -361,18 +379,35 @@ const { irPara, abrirBlocos, congelarRelogio } = require('./ajuda-testes.cjs');
 
     await col[2].click();
     await pag.waitForTimeout(900);
+    // A ÁRVORE ficou UMA CAMADA MAIS FUNDO desde que o detalhamento passou a
+    // abrir comparando com o mês anterior. A tela agora abre em três camadas
+    // dobradas — a diferença, o que veio no mês e o mês anterior — e a árvore
+    // de tipo → empresa → filial → lançamento é o corpo da do meio, montado
+    // só quando ela abre. O roteiro procurava a árvore na raiz da tela e
+    // achava zero linhas, acusando o produto de não detalhar nada.
+    const camada = await pag.locator('.modal [data-abrir-camada="veio"]').last();
+    ok('a tela abre comparando com o mês anterior',
+      await camada.count() > 0 && /vs/.test(
+        await pag.locator('.modal .det-comp-cab').last().textContent()),
+      (await pag.locator('.modal .det-comp-cab').last().textContent()).replace(/\s+/g, ' '));
+    await camada.click();
+    await pag.waitForTimeout(700);
     const det = await pag.evaluate(() => {
       const ms = [...document.querySelectorAll('.modal')];
       const md = ms[ms.length - 1];
       if (!md) return null;
+      // A árvore medida é a da camada "o que veio no mês filtrado": as outras
+      // duas camadas têm árvores próprias, e somá-las contaria o mesmo
+      // lançamento mais de uma vez.
+      const corpo = md.querySelector('[data-camada="veio"] .camada-corpo') || md;
       // O nível 1 é o tipo de despesa: é nele que a ordem decrescente se vê.
-      const vals = [...md.querySelectorAll('tr.nivel-1 td.num')]
+      const vals = [...corpo.querySelectorAll('tr.nivel-1 td.num')]
         .map((td) => Number((td.textContent || '').replace(/[^\d,]/g, '').replace(',', '.')));
       return {
         modais: ms.length,
         titulo: (md.querySelector('h2') || {}).textContent.trim(),
-        niveis: [1, 2, 3, 4].map((n) => md.querySelectorAll(`tr.nivel-${n}`).length),
-        visiveis: [...md.querySelectorAll('tbody tr')].filter((t) => !t.hidden).length,
+        niveis: [1, 2, 3, 4].map((n) => corpo.querySelectorAll(`tr.nivel-${n}`).length),
+        visiveis: [...corpo.querySelectorAll('tbody tr')].filter((t) => !t.hidden).length,
         decrescente: vals.every((v, i) => i === 0 || vals[i - 1] >= v),
         linhas: vals.length,
       };

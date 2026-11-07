@@ -145,9 +145,18 @@ const { irPara } = require('./ajuda-testes.cjs');
     ok('aplicar classifica os chamados', aplicou.aplicado, aplicou.texto.slice(0, 70));
     // A conferência que pegou o defeito: gravar mês a mês lendo do cache já
     // invalidado apagava os chamados dos meses seguintes, e sobravam 8 de 624.
-    ok('todos os avaliados ficam com a criticidade padrão',
-      aplicou.marcados === aplicou.avaliados && aplicou.todosMedium,
-      `${aplicou.marcados} de ${aplicou.avaliados}`);
+    // "Avaliados" são TODOS os chamados individuais do recorte; só os que
+    // estavam SEM criticidade podem sair marcados como padrão. Exigir que
+    // todos os avaliados saíssem marcados contradizia a regra que esta mesma
+    // conferência prova duas telas acima — o que veio classificado da origem
+    // fica como veio. A exigência certa tem dois lados, e os dois estão aqui:
+    // quem faltava passou a ter, e quem já tinha não foi sobrescrito.
+    ok('os que estavam sem criticidade ficam com a padrão',
+      aplicou.marcados === pendentes.total && aplicou.todosMedium,
+      `${aplicou.marcados} marcado(s) para ${pendentes.total} sem criticidade`);
+    ok('e o que veio classificado da origem não é sobrescrito',
+      aplicou.comCriticidade === aplicou.antes + pendentes.total,
+      `${aplicou.antes} + ${pendentes.total} esperados, ${aplicou.comCriticidade} com criticidade`);
     ok('e nenhum chamado se perde na gravação',
       aplicou.individuais === aplicou.avaliados,
       `${aplicou.individuais} na base, ${aplicou.avaliados} avaliados`);

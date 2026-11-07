@@ -363,7 +363,7 @@ async function viewSla(secao = 'indicadores') {
  */
 function formSla(comp, existente) {
   const ed = !!existente;
-  let dono = ed ? existente.empresa : (empresaAtiva() || escopoEmpresas()[0] || E.empresas[0]?.id);
+  let dono = ed ? existente.empresa : (empresaAtiva() || escopoEmpresas()[0] || matrizesVisiveis()[0]?.id);
   if (!dono) throw new Error('Cadastre uma empresa antes de registrar tickets.');
   const v = existente || { filial: null, fila: null, topico: '', total: '', dentro: '' };
   abrirModal({
@@ -371,7 +371,7 @@ function formSla(comp, existente) {
     corpo: `
       ${ed ? '' : `
       <div class="campo"><label for="k-empresa">Empresa</label><select id="k-empresa" name="empresa">
-        ${E.empresas.map((e)=>`<option value="${esc(e.id)}"${e.id===dono?' selected':''}>${esc(e.nome)}</option>`).join('')}
+        ${matrizesVisiveis().map((e)=>`<option value="${esc(e.id)}"${e.id===dono?' selected':''}>${esc(e.nome)}</option>`).join('')}
       </select></div>`}
       <div class="grade g3">
         <div class="campo"><label for="k-fil">Filial</label><select id="k-fil" name="filial"></select></div>

@@ -475,7 +475,7 @@ function mostrarRelatorioDeLote(relatorio, substantivo) {
 }
 
 function formProjeto(existente) {
-  const dono = (existente && existente.empresa) || (E.empresasSel.size ? [...E.empresasSel][0] : (E.empresas[0] || {}).id);
+  const dono = (existente && existente.empresa) || (E.empresasSel.size ? [...E.empresasSel][0] : (matrizesVisiveis()[0] || {}).id);
   const doGrupo = ehChaveDeGrupo(dono);
   const fils = doGrupo ? [] : filiaisDa(dono), ed = !!existente;
   const v = existente || { nome:'', descricao:'', filial:null, inicio:mesHoje(), fimPlanejado:'', fimReal:null, status:'planejado' };
@@ -545,7 +545,7 @@ function formProjeto(existente) {
         });
         seletorMulti(alvoEmp, {
           id:'q-emp', rotulo:'Empresa', minimo: 1,
-          itens: E.empresas.map((e) => ({ valor: e.id, rotulo: e.nome })),
+          itens: matrizesVisiveis().map((e) => ({ valor: e.id, rotulo: e.nome })),
           selecionados: escolha.empresas,
           aoMudar: (novo) => {
             escolha.empresas = novo;

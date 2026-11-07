@@ -109,11 +109,18 @@ const centavos = (t) => { const m = /-?[\d.]+,\d{2}/.exec(String(t||''));
     await pag.$eval('#l-novo', (b) => b.disabled), false);
   await pag.click('#l-novo');
   await pag.waitForTimeout(700);
-  confere('o formulário é que pergunta a empresa',
-    await pag.evaluate(() => {
-      const s = document.querySelector('#c-empresa');
-      return s ? s.options.length : 0;
-    }), 5);
+  // O seletor do formulário oferece as matrizes DO CLIENTE ABERTO, nem uma a
+  // mais. O 5 escrito aqui virou verde por coincidência enquanto a base tinha
+  // um cliente só; com três, ele acusou o vazamento de verdade — o formulário
+  // listava as 7 matrizes da base inteira.
+  const doForm = await pag.evaluate(() => {
+    const s = document.querySelector('#c-empresa');
+    return { opcoes: s ? s.options.length : 0, doCliente: matrizesVisiveis().length,
+      naBase: E.empresas.length };
+  });
+  confere('o formulário é que pergunta a empresa', doForm.opcoes, doForm.doCliente);
+  confere('e nenhuma matriz de outro cliente entra na lista',
+    doForm.opcoes <= doForm.naBase && doForm.doCliente < doForm.naBase, true);
   await pag.keyboard.press('Escape');
   await pag.waitForTimeout(400);
   // Cadastro e carga são de UMA unidade, e ela se escolhe na própria tela —

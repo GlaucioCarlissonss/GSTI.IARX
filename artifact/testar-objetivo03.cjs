@@ -20,6 +20,26 @@ const { irPara } = require('./ajuda-testes.cjs');
   await pag.goto('file://' + __dirname + '/teste-local.html');
   await pag.waitForSelector('#modulos button', { timeout: 20000 });
   await pag.evaluate(() => Loja.gravarCatalogo('metas', []));
+  // O ESTADO VAZIO É CRIADO, e não suposto. A conferência exigia que a base
+  // não tivesse despesa reconhecida nenhuma — verdade no retrato de `dados/`
+  // de meses atrás, e falsa desde que o cliente reconheceu 1.658. A regra que
+  // importa aqui é de TELA: sem nada reconhecido, o indicador diz isso em vez
+  // de mostrar um zero, que se leria como "nada gasto". Então a conferência
+  // desfaz o reconhecimento, prova a regra, e segue.
+  //
+  // Nada disso toca `dados/`: as escritas do `window.claude` de teste ficam em
+  // memória e morrem com a página.
+  const desfez = await pag.evaluate(async () => {
+    const alvos = Loja.todosDoEscopo().filter((l) => reconhecidoDe(l));
+    const meses = new Set(alvos.map((l) => `${l.empresa}|${l.competencia}`));
+    for (const chave of meses) {
+      const [empresa, comp] = chave.split('|');
+      await Loja.gravarMes(empresa, comp, Loja.itens(empresa, comp)
+        .map((it) => (reconhecidoDe(it) ? { ...it, reconhecido: false } : it)));
+    }
+    return alvos.length;
+  });
+  if (desfez) console.log(`  [preparo] ${desfez} lançamento(s) desreconhecido(s) em memória`);
   await pag.waitForTimeout(300);
   await irPara(pag, 'Indicadores Gerais', 2000);
 
@@ -48,7 +68,7 @@ const { irPara } = require('./ajuda-testes.cjs');
     vazio && /despesas reconhecidas dentro de uma meta de teto de gasto mensal/.test(vazio.descricao));
   // A base real não tem nada reconhecido: o indicador tem de dizer isso em vez
   // de mostrar um zero, que se leria como "nada gasto".
-  ok('a base não tem despesa reconhecida', vazio && vazio.reconhecidas === 0, vazio && String(vazio.reconhecidas));
+  ok('o recorte parte sem despesa reconhecida', vazio && vazio.reconhecidas === 0, vazio && String(vazio.reconhecidas));
   ok('e o vazio explica que só reconhecida entra',
     vazio && vazio.numero === '—' && /reconhecida/.test(vazio.apoio), vazio && vazio.apoio);
 

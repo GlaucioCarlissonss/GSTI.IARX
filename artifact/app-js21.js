@@ -54,13 +54,19 @@ const SPIN_UNIDADES_BASE = [
  * "Não iniciado" onde o sistema diz "Pendente", e traz um "Bloqueado" que o
  * sistema não tem. Traduzir na importação apagaria a diferença justamente na
  * tela que existe para refletir a planilha.
+ *
+ * Cada situação traz DUAS cores, e não uma. `cor` preenche — fatia da rosca,
+ * coluna, pastilha, borda da etiqueta — e nessa régua basta 3:1 contra a
+ * superfície. `corTexto` escreve, e aí a régua é 4,5:1. O verde e o laranja da
+ * série reprovavam na segunda enquanto passavam na primeira, e o painel usava
+ * a mesma cor nos dois lugares, no mesmo cartão.
  */
 const SPIN_SITUACOES = {
-  'Concluído': { cor: 'var(--bom)', classe: 'bom', ordem: 0 },
-  'Em andamento': { cor: 'var(--s2)', classe: 'alerta', ordem: 1 },
-  'Não iniciado': { cor: 'var(--alerta)', classe: 'alerta', ordem: 2 },
-  'Bloqueado': { cor: 'var(--tinta3)', classe: '', ordem: 3 },
-  'Cancelado': { cor: 'var(--s1)', classe: '', ordem: 4 },
+  'Concluído': { cor: 'var(--bom)', corTexto: 'var(--bomtxt)', classe: 'bom', ordem: 0 },
+  'Em andamento': { cor: 'var(--s2)', corTexto: 'var(--s2t)', classe: 'alerta', ordem: 1 },
+  'Não iniciado': { cor: 'var(--alerta)', corTexto: 'var(--alerta)', classe: 'alerta', ordem: 2 },
+  'Bloqueado': { cor: 'var(--tinta3)', corTexto: 'var(--tinta3)', classe: '', ordem: 3 },
+  'Cancelado': { cor: 'var(--s1)', corTexto: 'var(--s1t)', classe: '', ordem: 4 },
 };
 const SPIN_SITUACOES_LISTA = Object.keys(SPIN_SITUACOES);
 
@@ -581,7 +587,7 @@ function diagnosticoSpincareHtml(d) {
       <div class="kpis">
         ${cartao('Atividades válidas', inteiro(d.validas), 'excluem canceladas e sem criticidade')}
         ${cartao('Concluídas', inteiro(d.concluidas), pctTxt(pct(d.concluidas, d.validas)), 'var(--bomtxt)')}
-        ${cartao('Em andamento', inteiro(d.emAndamento), pctTxt(pct(d.emAndamento, d.validas)), 'var(--s2)')}
+        ${cartao('Em andamento', inteiro(d.emAndamento), pctTxt(pct(d.emAndamento, d.validas)), 'var(--s2t)')}
         ${cartao('Não iniciadas', inteiro(d.naoIniciadas), pctTxt(pct(d.naoIniciadas, d.validas)), 'var(--alerta)')}
         ${cartao('Bloqueadas', inteiro(d.bloqueadas), pctTxt(pct(d.bloqueadas, d.validas)))}
       </div>
@@ -793,6 +799,7 @@ function calcularSpincare(recorte) {
     const base = st === 'Cancelado' ? todas : validas;
     const itens = base.filter((a) => a.statusConsolidado === st);
     return { status: st, nome: SPIN_ROTULO_PAINEL[st], cor: SPIN_SITUACOES[st].cor,
+      corTexto: SPIN_SITUACOES[st].corTexto,
       valor: itens.length, itens, foraDoCalculo: st === 'Cancelado',
       pct: st === 'Cancelado' ? 0 : pct(itens.length, validas.length) };
   });
@@ -835,16 +842,18 @@ function calcularSpincare(recorte) {
     // continuaria dizendo "preparar a 1ª virada" depois de ela acontecer.
     passos: [
       { texto: 'Avançar nas atividades em andamento', n: emAndamento.length, itens: emAndamento,
-        cor: SPIN_SITUACOES['Em andamento'].cor },
+        cor: SPIN_SITUACOES['Em andamento'].cor,
+        corTexto: SPIN_SITUACOES['Em andamento'].corTexto },
       { texto: 'Iniciar as atividades planejadas', n: naoIniciadas.length, itens: naoIniciadas,
-        cor: SPIN_SITUACOES['Não iniciado'].cor },
+        cor: SPIN_SITUACOES['Não iniciado'].cor,
+        corTexto: SPIN_SITUACOES['Não iniciado'].corTexto },
       { texto: 'Garantir executante para as atividades sem responsável', n: semExecutante.length,
-        itens: semExecutante, cor: 'var(--alerta)' },
+        itens: semExecutante, cor: 'var(--alerta)', corTexto: 'var(--alerta)' },
       { texto: 'Recuperar as atividades com prazo vencido', n: vencidas.length, itens: vencidas,
-        cor: 'var(--crit)' },
+        cor: 'var(--crit)', corTexto: 'var(--crit)' },
       { texto: `Preparar a 1ª virada (${SPIN_ONDAS[0].chaves
         .map((k) => SPIN_UNIDADE_POR_CHAVE[k].rotulo).join(', ')})`, n: daPrimeira.length,
-        itens: daPrimeira, cor: 'var(--s1)' },
+        itens: daPrimeira, cor: 'var(--s1)', corTexto: 'var(--s1t)' },
     ].filter((p) => p.n > 0),
   };
 }
@@ -907,17 +916,22 @@ function barrasPorUnidadeHtml(p) {
   const fundo = (o) => (o.n === 1 ? 'color-mix(in srgb, var(--bom) 12%, transparent)'
     : o.n === 2 ? 'color-mix(in srgb, var(--s2) 12%, transparent)'
     : 'color-mix(in srgb, var(--tinta3) 10%, transparent)');
+  // Duas réguas, de novo: o pilar e o fundo PREENCHEM (3:1), o rótulo da onda
+  // e o percentual ESCREVEM (4,5:1). O verde da série dava 3,13:1 e o laranja
+  // 2,98:1 no texto — e eram justamente os dois números que a faixa existe
+  // para mostrar.
   const corDaOnda = (o) => (o.n === 1 ? 'var(--bom)' : o.n === 2 ? 'var(--s2)' : 'var(--tinta3)');
+  const corTextoDaOnda = (o) => (o.n === 1 ? 'var(--bomtxt)' : o.n === 2 ? 'var(--s2t)' : 'var(--tinta3)');
   return p.porOnda.map((o) => `
     <div class="faixa-onda" style="background:${fundo(o)}">
-      <b style="color:${corDaOnda(o)}">${inteiro(o.n)}ª ONDA — ${esc(nomeDaOnda(o).toUpperCase())} ·
+      <b style="color:${corTextoDaOnda(o)}">${inteiro(o.n)}ª ONDA — ${esc(nomeDaOnda(o).toUpperCase())} ·
         virada em ${esc(mesExib(o.mes))}</b>
       <div class="barras-unidade">
         ${o.unidades.map((u) => `<button type="button" class="barra-unidade"
             data-unidade="${esc(u.k)}"
             aria-label="${esc(`${u.rotulo}: ${pctTxt(u.pctPonderado)} de avanço ponderado, `
               + `${pctTxt(u.pctConclusao)} concluído, ${inteiro(u.concluidas)} de ${inteiro(u.total)} atividades`)}">
-          <var style="color:${corDaOnda(o)}">${pctTxt(u.pctPonderado)}</var>
+          <var style="color:${corTextoDaOnda(o)}">${pctTxt(u.pctPonderado)}</var>
           <span class="pilar" style="background:${corDaOnda(o)};height:${
             Math.max(6, Math.round(u.pctPonderado * 0.62))}px"></span>
           <small>${esc(u.rotulo)}</small>
@@ -1001,7 +1015,7 @@ function painelSpincareHtml(p, extras = []) {
               aria-label="${esc(`${x.texto}: ${x.n} atividade(s). Abrir a lista.`)}">
             <span class="pastilha" style="background:${x.cor}"></span>
             <span>${esc(x.texto)}</span>
-            <var style="color:${x.cor}">${inteiro(x.n)}</var>
+            <var style="color:${x.corTexto || x.cor}">${inteiro(x.n)}</var>
           </li>`).join('')}</ul>`, true)}
 
       ${extras.map(quadroExtra).join('')}
@@ -1435,7 +1449,7 @@ function atividadesFiltradas() {
 
 /** Uma etiqueta de situação, na cor dela. */
 const selaSituacao = (s) => (!s ? '<span class="vazio2">—</span>'
-  : `<span class="tag" style="color:${(SPIN_SITUACOES[s] || {}).cor || 'var(--tinta2)'};border-color:${
+  : `<span class="tag" style="color:${(SPIN_SITUACOES[s] || {}).corTexto || 'var(--tinta2)'};border-color:${
     (SPIN_SITUACOES[s] || {}).cor || 'var(--linha2)'}">${esc(s)}</span>`);
 
 /** As ondas que a base usa — só elas ganham colunas na grade. */

@@ -83,8 +83,37 @@ async function irPara(pag, rotulo, espera = 450) {
     return { modulo: moduloDaAba(aba.id).rotulo, aba: aba.rotulo, sozinha: moduloDaAba(aba.id).abas.length < 2 };
   }, rotulo);
   if (!mod) throw new Error(`Aba "${rotulo}" não existe na navegação.`);
+
+  // O DESVIO, quando já se está onde se quer ir.
+  //
+  // O botão do módulo só repinta se o módulo MUDOU, e um módulo de aba única
+  // não tem botão de aba para clicar. Pedir a aba em que a página já está era
+  // então um nada: nenhuma tela era redesenhada. Isso passa despercebido
+  // enquanto nada mudou — e engana feio quando algo mudou. O roteiro de
+  // redução zerava o plano cadastrado e lia, na tela de antes da escrita, as
+  // duas despesas do cliente; ele acusava o produto de ignorar o cadastro.
+  //
+  // O desvio usa só a navegação de verdade: passa por outro módulo e volta.
+  const jaEstaAqui = await pag.evaluate((r) => {
+    const chave = String(r).toLowerCase();
+    const aba = ABAS.find((a) => a.rotulo.toLowerCase() === chave || a.id.toLowerCase() === chave);
+    return !!aba && E.aba === aba.id;
+  }, rotulo);
+  if (jaEstaAqui && mod.sozinha) {
+    const outro = await pag.evaluate((atual) => {
+      const nomes = MODULOS_NAV.map((m) => m.rotulo).filter((n) => n !== atual);
+      return nomes[0] || null;
+    }, mod.modulo);
+    if (outro) {
+      await pag.click(`#modulos button:text-is("${outro}")`);
+      await pag.waitForTimeout(120);
+    }
+  }
+
   await pag.click(`#modulos button:text-is("${mod.modulo}")`);
   await pag.waitForTimeout(120);
+  // O botão da aba é clicado mesmo quando a aba já é a ativa: ele SEMPRE
+  // repinta, e repintar é o que o roteiro veio pedir.
   if (!mod.sozinha) await pag.click(`#abas button:text-is("${mod.aba}")`);
   await pag.waitForTimeout(espera);
   await abrirBlocos(pag);

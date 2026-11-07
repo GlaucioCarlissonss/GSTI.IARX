@@ -66,14 +66,31 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   ok('e o termômetro do SLA também', estrutura.termometro);
 
   console.log('\n--- o termômetro marca a meta, e a cor não anda sozinha ---');
+  // A META SAI DO CADASTRO, e não de um número escrito aqui. O roteiro cobrava
+  // "meta 80%" — o valor que o cliente tinha cadastrado quando ele foi
+  // escrito. O gestor mudou para 70%, e o roteiro passou a acusar o produto
+  // de errar justamente por mostrar o que estava cadastrado. O que tem de ser
+  // provado é que o traço, o rótulo e o texto do leitor de tela dizem TODOS a
+  // mesma meta — qual é ela, quem decide é o cadastro.
   const term = await pag.evaluate(() => {
     const svg = document.querySelector('#i-termometro svg');
     const textos = [...svg.querySelectorAll('text')].map((t) => t.textContent);
-    return { rotulo: svg.getAttribute('aria-label'), textos, traco: svg.querySelectorAll('line').length };
+    const rotulo = svg.getAttribute('aria-label');
+    const doRotulo = /meta de (\d+)%/.exec(rotulo || '');
+    return { rotulo, textos, traco: svg.querySelectorAll('line').length,
+      metaDoRotulo: doRotulo ? Number(doRotulo[1]) : null,
+      metasNoDesenho: textos.map((t) => /meta (\d+)%/.exec(t)).filter(Boolean).map((m) => Number(m[1])) };
   });
-  ok('a meta vem rotulada sobre o traço', term.textos.some((t) => /meta 80%/.test(t)), term.textos.join(' · '));
+  ok('a meta vem rotulada sobre o traço',
+    term.metasNoDesenho.length === 1, term.textos.join(' · '));
   ok('o traço da meta existe', term.traco >= 1);
-  ok('e o leitor de tela recebe o número', /\d+% contra a meta de 80%/.test(term.rotulo || ''), term.rotulo);
+  ok('e o leitor de tela recebe o número',
+    term.metaDoRotulo !== null && /^\d+% contra a meta de \d+%$/.test(
+      (term.rotulo || '').replace(/^[^:]+:\s*/, '')),
+    term.rotulo);
+  ok('e desenho e leitor de tela dizem a MESMA meta',
+    term.metasNoDesenho[0] === term.metaDoRotulo,
+    `desenho ${term.metasNoDesenho[0]}% · leitor ${term.metaDoRotulo}%`);
 
   console.log('\n--- o bloco financeiro abre no período padrão ---');
   // O padrão é a janela de leitura da diretoria: da primeira competência da
@@ -134,16 +151,31 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   ok('recarregar devolve o bloco ao período padrão', aposRecarregar === '2026-01', `"${aposRecarregar}"`);
 
   console.log('\n--- o switch de reconhecimento recalcula o bloco inteiro ---');
+  // O DESENHO da série, e não a contagem de pontos. Contar bolinhas só
+  // detectava a mudança quando a série esvaziava — e ela esvaziava porque a
+  // base não tinha nada reconhecido. Hoje o cliente reconheceu 1.658
+  // lançamentos: os meses continuam os mesmos, 82 pontos antes e 82 depois, e
+  // o que muda é a ALTURA de cada um. O roteiro lia "82 → 82" e acusava o
+  // gráfico de não recalcular, quando ele tinha recalculado inteiro.
   const comTudo = await pag.evaluate(() => ({
     nota: document.querySelector('#pagina > .bloco > header .nota').textContent.trim(),
     serie: [...document.querySelectorAll('#i-reducao svg circle')].length,
+    desenho: [...document.querySelectorAll('#i-reducao svg circle')]
+      .map((c) => `${c.getAttribute('cx')},${c.getAttribute('cy')}`).join(' '),
     kpi: document.querySelector('[data-kpi="custo-recorrente"] .n').textContent.trim(),
+    // Quantos lançamentos fixos a janela tem SEM reconhecimento. Se forem
+    // zero, trocar o switch não tem o que mudar, e exigir mudança seria
+    // exigir do produto uma diferença que os dados não têm.
+    semReconhecer: Loja.todosDoEscopo()
+      .filter((l) => l.natureza === 'fixa' && !reconhecidoDe(l)).length,
   }));
   await pag.selectOption('#i-rec', 'rec');
   await pag.waitForTimeout(1200);
   const soReconhecidas = await pag.evaluate(() => ({
     nota: document.querySelector('#pagina > .bloco > header .nota').textContent.trim(),
     serie: [...document.querySelectorAll('#i-reducao svg circle')].length,
+    desenho: [...document.querySelectorAll('#i-reducao svg circle')]
+      .map((c) => `${c.getAttribute('cx')},${c.getAttribute('cy')}`).join(' '),
     kpi: document.querySelector('[data-kpi="custo-recorrente"] .n').textContent.trim(),
     aviso: document.querySelector('#pagina').textContent.includes('Exibindo apenas despesas reconhecidas'),
     vazio: !!document.querySelector('#i-reducao .vazio'),
@@ -151,11 +183,17 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
   ok('o cabeçalho do bloco diz o que está sendo exibido',
     /apenas despesas reconhecidas/.test(soReconhecidas.nota), soReconhecidas.nota);
   ok('o gráfico avisa no rodapé', soReconhecidas.aviso);
-  // A base de teste não tem nada reconhecido: a série tem de esvaziar, e é essa
-  // a prova de que o gráfico recalculou junto com o indicador.
-  ok('a série recalcula junto com o indicador',
-    soReconhecidas.serie !== comTudo.serie || soReconhecidas.vazio,
-    `${comTudo.serie} pontos → ${soReconhecidas.vazio ? 'vazio' : soReconhecidas.serie + ' pontos'}`);
+  if (!comTudo.semReconhecer) {
+    console.log('  [pulado] tudo na janela já está reconhecido — não há diferença a exibir');
+  } else {
+    ok('a série recalcula junto com o indicador',
+      soReconhecidas.vazio || soReconhecidas.desenho !== comTudo.desenho,
+      soReconhecidas.vazio ? 'vazio'
+        : `${comTudo.serie} ponto(s) → ${soReconhecidas.serie} ponto(s), desenho ${
+          soReconhecidas.desenho === comTudo.desenho ? 'IGUAL' : 'diferente'}`);
+    ok('e o indicador do topo muda junto', soReconhecidas.kpi !== comTudo.kpi,
+      `${comTudo.kpi} → ${soReconhecidas.kpi}`);
+  }
   await pag.selectOption('#i-rec', 'tudo');
   await pag.waitForTimeout(900);
 
@@ -270,7 +308,12 @@ const { irPara, usarEmpresas } = require('./ajuda-testes.cjs');
     const cores = faixas.map((f) => [...f.children].map((i) => i.style.background));
     return {
       faixas: faixas.length,
-      legendas: document.querySelectorAll('.legenda-matrizes').length,
+      // A legenda dos DOIS TONS (próprio × compartilhado) divide a classe
+      // `.legenda-matrizes` com a legenda das matrizes, e por isso entrava
+      // nesta conta: seis legendas para cinco faixas, e o roteiro acusava uma
+      // faixa de estar sem legenda quando a sobra era a chave de leitura do
+      // consumo, que não pertence a faixa nenhuma.
+      legendas: document.querySelectorAll('.legenda-matrizes:not(.legenda-consumo)').length,
       // Uma faixa com um segmento só não teria o que distinguir: ela não aparece.
       minimoDeSegmentos: Math.min(...cores.map((c) => c.length), Infinity),
       // Nenhuma cor pode se repetir dentro da mesma faixa — duas matrizes na

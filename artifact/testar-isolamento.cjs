@@ -37,9 +37,16 @@ const { usarEmpresas, usarBase, usarCompetencias, irPara } = require('./ajuda-te
   await ir('Conferência');
   const bt = await pag.$('#c-carregar');
   if (bt) { await bt.click(); await pag.waitForTimeout(4000); }
-  const carregadas = await pag.evaluate(() => E.mesesCarregados.size);
-  console.log(`\n  empresas na memória: ${carregadas}`);
-  confere('todas carregadas', carregadas, 5);
+  // Quantas são é da BASE, e não um número escrito aqui. O que esta linha
+  // prova é que "carregar tudo" carrega TUDO — se sobrar uma empresa de fora,
+  // a comparação seguinte não teria mexido no estado mais arriscado, que é
+  // justamente o que ela existe para medir. Um 5 fixo começou a reprovar
+  // quando a base passou a ter sete empresas, e o que ele acusava era o
+  // próprio número escrito aqui.
+  const { carregadas, naBase } = await pag.evaluate(() =>
+    ({ carregadas: E.mesesCarregados.size, naBase: E.empresas.length }));
+  console.log(`\n  empresas na memória: ${carregadas} de ${naBase} na base`);
+  confere('todas carregadas', carregadas, naBase);
 
   console.log('\n  totais com todas carregadas');
   for (const id of Object.keys(sozinhas)) {

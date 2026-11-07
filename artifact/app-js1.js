@@ -399,6 +399,25 @@ const NOME_DO_GRUPO = 'Todas as empresas';
 const nomeEmpresa = (id) => (ehChaveDeGrupo(id) ? NOME_DO_GRUPO
   : (E.empresas.find((e) => e.id === id) || {}).nome || id);
 
+/**
+ * As matrizes do cliente aberto, como objetos — o que todo SELETOR oferece.
+ *
+ * `E.empresas` é o catálogo inteiro, de todos os clientes. Três formulários o
+ * ofereciam cru — novo lançamento, registro de SLA e novo projeto —, e com
+ * mais de um cliente na base a lista mostrava as matrizes dos outros: o
+ * seletor do topo dizia "2 selecionados de 5" enquanto o formulário listava
+ * 7. Escolher uma delas gravaria o registro de um cliente dentro de outro, que
+ * é o pior caso que a regra "nada atravessa a empresa" existe para impedir.
+ *
+ * A administração de clientes continua usando `E.empresas`: é justamente a
+ * tela que precisa ver todas.
+ */
+function matrizesVisiveis() {
+  return E.clienteSel
+    ? E.empresas.filter((e) => clienteDaEmpresa(e) === E.clienteSel)
+    : E.empresas;
+}
+
 /** As matrizes do cliente aberto — o escopo de leitura de toda tela. */
 function matrizesDoClienteAtivo() {
   const doCliente = E.clienteSel
@@ -1063,11 +1082,25 @@ function corDoTipo(nome) {
  * superfície para uma fatia de rosca, 4,5:1 para uma palavra. A paleta de
  * tipos foi desenhada para a primeira régua, e o sistema a usa nas duas — o
  * mesmo verde que pinta a fatia escreve o valor do cartão ao lado dela. Esta
- * função troca `var(--tN)` pela rampa de texto `var(--tNt)`, que tem a mesma
- * matiz e a mesma ordem; qualquer outra cor passa intacta, porque só a paleta
- * de tipos tem segundo tom.
+ * função troca a cor de PREENCHIMENTO pela de TEXTO da mesma matiz, para toda
+ * cor que tem segundo tom; qualquer outra passa intacta.
+ *
+ * O mapa é explícito de propósito. A regra anterior era textual — trocar o
+ * último parêntese de `var(--tN)` por `t)` — e por isso valia só para a paleta
+ * de tipos. As séries ganharam segundo tom depois dela, e continuavam
+ * escrevendo no tom de preenchimento: o verde do cartão "Já regularizado"
+ * dava 3,13:1 e o laranja do painel 2,98:1, ambos abaixo dos 4,5:1.
  */
-const corDeTexto = (cor) => (/^var\(--t[1-8]\)$/.test(String(cor)) ? String(cor).replace(')', 't)') : cor);
+const COR_TEXTO_DE = {
+  't1': 't1t', 't2': 't2t', 't3': 't3t', 't4': 't4t',
+  't5': 't5t', 't6': 't6t', 't7': 't7t', 't8': 't8t',
+  's1': 's1t', 's2': 's2t', 's3': 's3t', 'm4': 'm4t', 'bom': 'bomtxt',
+};
+const corDeTexto = (cor) => {
+  const casa = /^var\(--([a-z0-9]+)\)$/.exec(String(cor));
+  const alvo = casa && COR_TEXTO_DE[casa[1]];
+  return alvo ? `var(--${alvo})` : cor;
+};
 
 /**
  * A mesma cor da matriz, em tom mais ESCURO: a despesa que ela paga e o grupo
