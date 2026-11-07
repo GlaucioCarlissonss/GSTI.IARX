@@ -139,6 +139,42 @@ const SENHA = process.env.SENHA || 'varredura2026';
     matrizes.length === 2 && matrizes.every((m) => /ALIAN/i.test(m)) && !matrizes.some((m) => /Limas/i.test(m)),
     matrizes.join(' | '));
   await pag.keyboard.press('Escape');
+  await pag.waitForTimeout(300);
+
+  // ------------------------- e o FORMULÁRIO oferece as mesmas, nem uma a mais
+  //
+  // O filtro e o formulário são listas diferentes, e é o formulário que GRAVA:
+  // uma matriz alheia oferecida ali não recorta nada — ela cria o registro de
+  // um cliente dentro de outro. No artifact, que não tem servidor, os dois
+  // divergiam de verdade: o filtro mostrava 5 matrizes e o formulário listava
+  // as 7 da base inteira. Aqui a lista vem da sessão, e é o servidor que a
+  // recorta — esta conferência é o que prova que continua assim.
+  await pag.click('button:has-text("Novo lançamento")');
+  await pag.waitForTimeout(900);
+  const doFormulario = await pag.$$eval(
+    '.modal select, .fundo select, form select',
+    (selects) => {
+      const alvo = selects.find((s) => {
+        const campo = s.closest('.campo');
+        return campo && /Empresa \(matriz\)/.test(campo.textContent || '');
+      });
+      return alvo ? [...alvo.options].map((o) => o.textContent.trim()) : null;
+    },
+  ).catch(() => null);
+  if (doFormulario === null) {
+    // Cliente de matriz única não tem o campo: não há o que escolher, e é
+    // justamente por isso que ele não aparece.
+    console.log('  [pulado] o cliente ativo tem matriz única — o formulário não pergunta');
+  } else {
+    ok('o formulário de lançamento oferece as mesmas matrizes do filtro',
+      doFormulario.length === matrizes.length
+        && doFormulario.every((n) => matrizes.includes(n)),
+      `formulário: ${doFormulario.join(' | ')} · filtro: ${matrizes.join(' | ')}`);
+    ok('e nenhuma matriz de outro cliente entra nele',
+      !doFormulario.some((n) => /Limas|SoulCoop/i.test(n)), doFormulario.join(' | '));
+  }
+  await pag.keyboard.press('Escape');
+  await pag.waitForTimeout(500);
 
   // Recortar aqui não pode recortar outra tela: o estado é por tela.
   await pag.click('.seletor-multi button[aria-label="Empresa (matriz)"]');
