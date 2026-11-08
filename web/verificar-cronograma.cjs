@@ -17,6 +17,21 @@ const { chromium } = require('playwright');
 
 const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
 
+/**
+ * O go-live JÁ CHEGOU?
+ *
+ * A data vem da própria tabela, em DD/MM/AAAA, e é comparada com hoje. Esta
+ * conferência roda contra o relógio de verdade, e precisa disso: a leitura da
+ * Visão Macro muda quando um go-live passa, e é justamente essa travessia que
+ * ela existe para proteger. O que ela não pode é ter o calendário escrito nas
+ * asserções — e tinha.
+ */
+const HOJE = new Date().toISOString().slice(0, 10);
+function venceu(celulaDoGoLive) {
+  const m = /(\d{2})\/(\d{2})\/(\d{4})/.exec(String(celulaDoGoLive || ''));
+  return !!m && `${m[3]}-${m[2]}-${m[1]}` <= HOJE;
+}
+
 (async () => {
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN });
   const pag = await nav.newPage({ viewport: { width: 1500, height: 1100 } });
@@ -117,11 +132,23 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
     console.log('\nONDA QUE NÃO VENCEU — sem resultado, e nunca zero');
     ok('a 1ª, que venceu e virou, mostra 100%', /100,0%/.test(ondas[0][4]), ondas[0][4]);
     ok('a 1ª está CUMPRIDO', /CUMPRIDO/.test(ondas[0][5]) && !/NÃO/.test(ondas[0][5]), ondas[0][5]);
+    // QUEM JÁ VENCEU sai da própria tabela: a coluna do go-live traz o dia, e
+    // é contra HOJE que ele se mede. A conferência cobrava que as ondas 2, 3
+    // e 4 não tivessem vencido — verdade até 02/11/2026, falsa desde 03/11,
+    // quando a 2ª venceu sem virar. A partir daí ela acusava a tela de errar
+    // por dizer a verdade.
     for (const i of [1, 2, 3]) {
-      ok(`a ${i + 1}ª ainda não vence: diz isso, e não 0,0%`,
-        /ainda não vence/.test(ondas[i][4]) && !/0,0%/.test(ondas[i][4]), ondas[i][4]);
-      ok(`e a ${i + 1}ª fica PENDENTE, não "não cumprido"`,
-        /PENDENTE/.test(ondas[i][5]), ondas[i][5]);
+      if (venceu(ondas[i][1])) {
+        ok(`a ${i + 1}ª já venceu: traz o número, e não "ainda não vence"`,
+          /%/.test(ondas[i][4]) && !/ainda não vence/.test(ondas[i][4]), ondas[i][4]);
+        ok(`e a ${i + 1}ª vencida sem virar fica NÃO CUMPRIDO`,
+          /NÃO CUMPRIDO/.test(ondas[i][5]), ondas[i][5]);
+      } else {
+        ok(`a ${i + 1}ª ainda não vence: diz isso, e não 0,0%`,
+          /ainda não vence/.test(ondas[i][4]) && !/0,0%/.test(ondas[i][4]), ondas[i][4]);
+        ok(`e a ${i + 1}ª fica PENDENTE, não "não cumprido"`,
+          /PENDENTE/.test(ondas[i][5]), ondas[i][5]);
+      }
     }
     ok('as entregas aparecem como "virou de planejado"',
       ondas.every((o) => /\d+ de \d+/.test(o[3])), ondas.map((o) => o[3]).join(' · '));
@@ -170,9 +197,21 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
       .map((tr) => [...tr.children].map((td) => td.textContent.trim()))
       .filter((l) => /\/PB/.test(l[0]));
   });
-  ok('a unidade de onda não vencida AGUARDA, e não reprova',
-    pendentes.length === 3 && pendentes.every((l) => /aguarda/.test(l[3]) && /PENDENTE/.test(l[5])),
-    pendentes.map((l) => `${l[0]}=${l[3]}`).join(' · '));
+  // A 2ª onda é a da Paraíba, e o que a unidade dela diz depende de o go-live
+  // ter chegado: antes dele a unidade AGUARDA — reprovar quem ainda tem prazo
+  // seria inventar um atraso; depois dele, não virar é não ter virado.
+  const paraibaVenceu = ondas.length === 4 && venceu(ondas[1][1]);
+  ok('as três unidades da 2ª onda aparecem', pendentes.length === 3,
+    `${pendentes.length} linha(s)`);
+  if (paraibaVenceu) {
+    ok('a unidade de onda vencida que não virou diz isso, sem rodeio',
+      pendentes.every((l) => /não virou/.test(l[3]) && /NÃO CUMPRIDO/.test(l[5])),
+      pendentes.map((l) => `${l[0]}=${l[3]}`).join(' · '));
+  } else {
+    ok('a unidade de onda não vencida AGUARDA, e não reprova',
+      pendentes.every((l) => /aguarda/.test(l[3]) && /PENDENTE/.test(l[5])),
+      pendentes.map((l) => `${l[0]}=${l[3]}`).join(' · '));
+  }
 
   // ---------------------------------------------------------------- a nota
   const nota = await pag.evaluate(() => {

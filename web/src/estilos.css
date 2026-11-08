@@ -64,7 +64,21 @@
   --bom:      #0ca30c;
   --atencao:  #fab219;
   --grave:    #ec835a;
-  --critico:  #d03b3b;
+  /* O VERMELHO escreve tanto quanto preenche: ele pinta a bolinha do mês e
+     escreve "meta não atingida" e a variação em pontos percentuais. No tom
+     anterior (#d03b3b) ele dava 4,48:1 sobre a superfície recuada e 4,09:1
+     sobre a mais escura do tema claro — abaixo dos 4,5:1, e justamente nas
+     duas frases que o cartão existe para dizer. Passou despercebido enquanto
+     nenhum cartão entrava no estado vermelho; entrou quando a 2ª onda venceu
+     sem virar.
+     O tom é o que o artifact já usava: as duas superfícies escrevem o mesmo
+     vermelho, e o escuro (#e2685c) já era o mesmo nas duas. */
+  --critico:  #c0392f;
+  /* O vermelho do tema escuro clareou de #e2685c para #e87a6e: sobre a
+     superfície elevada ele dava 4,25:1, abaixo da régua de texto, e é nela
+     que a etiqueta de 11,5px do cronograma é escrita. Sobre as outras três
+     superfícies ele já passava, e foi por isso que ninguém viu antes. */
+
   --positivo-texto: #006300;
   /* O AMARELO DE ATENÇÃO COMO TEXTO.
      `--atencao` (#fab219) é cor de PREENCHIMENTO: como texto ela dá 1,83:1
@@ -166,7 +180,7 @@
        de conferência chegou a um estado em que alguma meta falha.
        É o MESMO tom que a versão hospedada usa no escuro: 4,77:1 na pior
        superfície, e as duas pontas passam a falar a mesma cor. */
-    --critico: #e2685c;
+    --critico: #e87a6e;
     --sombra: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
     --sombra-alta: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 28px rgba(0, 0, 0, 0.45);
     --seta-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238c8b85' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
@@ -203,7 +217,7 @@
   --positivo-texto: #0ca30c;
   /* Ver as notas no bloco de @media acima. */
   --atencao-texto: #fab219;
-  --critico: #e2685c;
+  --critico: #e87a6e;
   --sombra: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
   --sombra-alta: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 28px rgba(0, 0, 0, 0.45);
   --seta-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238c8b85' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");

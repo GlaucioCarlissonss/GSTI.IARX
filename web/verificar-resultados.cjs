@@ -681,8 +681,13 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
   } else {
     ok('o cartão diz que mede a virada, e não tarefa',
       /cronograma/i.test(proj.oQue) && !/tarefa/i.test(proj.oQue), proj.oQue);
+    // A META é 100% sempre: o alvo é entregar a onda inteira. O RESULTADO
+    // depende de quantas ondas já venceram, e isso é calendário. Ele valia
+    // 100% enquanto só a 1ª onda tinha vencido e caiu para 40% quando a 2ª
+    // venceu sem virar — as duas leituras estão certas, e exigir a primeira
+    // fazia a conferência acusar a tela de errar por dizer a verdade.
     ok('e traz o resultado da entrega, com a meta de 100%',
-      proj.valor === '100,0%' && proj.meta === '100,0%' && /atingida/i.test(proj.texto),
+      /^\d+,\d%$/.test(proj.valor) && proj.meta === '100,0%' && /atingida/i.test(proj.texto),
       `${proj.valor} · meta ${proj.meta} · ${proj.texto}`);
   }
 
@@ -789,11 +794,30 @@ const B = process.env.BASE_URL || 'http://127.0.0.1:3333';
         dv.colunas.join(' | '));
       ok('nenhuma coluna de tarefa vazou para cá',
         !/tarefa|projeto|responsável/i.test(dv.colunas.join(' ')), dv.colunas.join(' | '));
+      // UMA LINHA POR UNIDADE DE ONDA JÁ VENCIDA, e nenhuma das que não
+      // venceram: o detalhamento é a composição do número do cartão. Quantas
+      // são depende do dia — eram 2 até 02/11/2026 e passaram a 5 quando a
+      // 2ª onda venceu. O que não muda é a regra: todo prazo listado já
+      // chegou, e quem virou tem a data da virada.
+      const hojeISO = new Date().toISOString().slice(0, 10);
+      const emISO = (br) => {
+        const m = /(\d{2})\/(\d{2})\/(\d{4})/.exec(String(br || ''));
+        return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+      };
       ok('lista as unidades da onda vencida, com o prazo de cada uma',
-        dv.linhas.length === 2 && dv.linhas.every((l) => /\d{2}\/\d{2}\/\d{4}/.test(l[2])),
+        dv.linhas.length > 0 && dv.linhas.every((l) => {
+          const iso = emISO(l[2]);
+          return iso && iso <= hojeISO;
+        }),
         dv.linhas.map((l) => `${l[0]}=${l[2]}`).join(' · '));
+      // Quem virou tem data; quem não virou tem o travessão, e nunca uma data
+      // inventada para preencher a coluna.
       ok('e a virada realizada de quem já virou',
-        dv.linhas.every((l) => l[3] === '01/10/2026'), dv.linhas.map((l) => l[3]).join(' · '));
+        dv.linhas.every((l) => /^\d{2}\/\d{2}\/\d{4}$/.test(l[3]) || l[3] === '—'),
+        dv.linhas.map((l) => l[3]).join(' · '));
+      ok('e ao menos uma unidade já virou, com a data',
+        dv.linhas.some((l) => /^\d{2}\/\d{2}\/\d{4}$/.test(l[3])),
+        dv.linhas.map((l) => l[3]).join(' · '));
     }
     await pag.keyboard.press('Escape');
     await pag.waitForTimeout(500);

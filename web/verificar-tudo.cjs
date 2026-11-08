@@ -144,6 +144,27 @@ async function rodarUma(suite, porta) {
     process.exit(1);
   }
 
+  // O SERVIDOR SERVE `web/dist`, e não o código-fonte. Sem construir antes, a
+  // varredura mede o pacote da última construção: dá verde em correção que
+  // não está lá e vermelho em defeito já corrigido. Foi o que aconteceu com
+  // um vermelho de contraste — o token já estava arrumado na folha de estilo
+  // e a medição continuava lendo 4,28:1 do pacote velho.
+  //
+  // Construir aqui, uma vez, antes da primeira suíte: dentro do laço seria
+  // 21 construções da mesma coisa.
+  if (!process.env.SEM_CONSTRUIR) {
+    process.stdout.write('construindo a web (web/dist)… ');
+    try {
+      execFileSync('npm', ['run', 'build'], { cwd: __dirname, stdio: 'pipe', encoding: 'utf8' });
+      console.log('pronto.\n');
+    } catch (e) {
+      const texto = `${e.stdout || ''}${e.stderr || ''}`.trim() || String(e.message || e);
+      console.error('\nA CONSTRUÇÃO FALHOU — a varredura mediria o pacote velho.\n');
+      console.error(texto.split('\n').slice(-25).join('\n'));
+      process.exit(1);
+    }
+  }
+
   const pastaLogs = fs.mkdtempSync(path.join(os.tmpdir(), 'varredura-logs-'));
   console.log(`${suites.length} conferência(s); registro completo em ${pastaLogs}\n`);
 
