@@ -56,9 +56,14 @@ function venceu(celulaDoGoLive) {
   // passaria por "está certo" — é a asserção vazia que esta abertura evita.
   const abrirTudo = async () => {
     for (let i = 0; i < 14; i += 1) {
-      const fechado = await pag.$('.cartao.dobrado .cartao-dobra');
-      if (!fechado) break;
-      await fechado.click();
+      // `locator(...).first().click()` em vez de guardar o elemento e clicar
+      // depois: entre a busca e o clique o React repinta o cartão, o elemento
+      // guardado se solta do DOM e o clique estoura com "Element is not
+      // attached to the DOM" — a conferência MORRE no meio, que é pior do que
+      // falhar. O locator reencontra o alvo na hora do clique.
+      const dobra = pag.locator('.cartao.dobrado .cartao-dobra').first();
+      if (!(await dobra.count())) break;
+      await dobra.click();
       await pag.waitForTimeout(150);
     }
   };

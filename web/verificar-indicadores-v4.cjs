@@ -49,13 +49,19 @@ const SENHA = process.env.SENHA || 'varredura2026';
   // O cartão abre RECOLHIDO e lembra o que foi aberto — é a convenção global.
   // Quem verifica precisa fazer o que o usuário faz: abrir.
   const abrirCartoes = async () => {
-    for (let volta = 0; volta < 3; volta += 1) {
-      const dobras = await pag.$$('.cartao.dobrado .cartao-dobra');
-      if (!dobras.length) break;
-      for (const d of dobras) {
-        await d.click();
-        await pag.waitForTimeout(180);
-      }
+    // Locator em vez de elemento guardado — ver a nota das demais
+    // conferências: o elemento se solta do DOM no repinte e o clique mata a
+    // conferência em vez de falhá-la.
+    //
+    // O teto é por cartão, e não por volta: esta tela tem módulo, grupo e
+    // indicador, e abrir um revela os de dentro. Três voltas abriam três
+    // cartões e deixavam a árvore de unidades fechada — e o que não está
+    // aberto não existe no DOM.
+    for (let i = 0; i < 40; i += 1) {
+      const dobra = pag.locator('.cartao.dobrado .cartao-dobra').first();
+      if (!(await dobra.count())) break;
+      await dobra.click();
+      await pag.waitForTimeout(180);
     }
   };
 

@@ -1574,6 +1574,18 @@ a quem morria antes da primeira asserção — foi assim que a conferência de
 perfis passou meses sem rodar. O runner decide "morreu" pelo rodapé que o Node
 imprime ao estourar sem captura, e não por procurar a palavra "Error".
 
+**O servidor serve `web/dist`, e não o código-fonte.** Sem construir antes, a
+varredura mede o pacote da última construção: dá verde em correção que não está
+lá e vermelho em defeito já corrigido. O runner constrói uma vez antes da
+primeira suíte e aborta se a construção falhar — medir o pacote velho é pior do
+que não medir. `SEM_CONSTRUIR=1` pula a construção, para quem acabou de
+construir à mão.
+
+**Nunca guarde o elemento para clicar depois.** `await pag.$(...)` devolve um
+elemento que o repinte do React solta do DOM; o clique estoura com "Element is
+not attached" e a conferência MORRE no meio, que é pior do que falhar. Use
+`pag.locator(...).first().click()`, que reencontra o alvo na hora do clique.
+
 ### Como se confere o artifact
 
 As suítes do artifact leem `teste-local.html`, montado a partir dos fontes por
@@ -1598,6 +1610,32 @@ nomes de pessoas e nunca entra no git:
 | `semear-volume.cjs` | ordem de grandeza da base real, para medir desempenho |
 
 Todos recusam sobrescrever uma base que não criaram.
+
+### O que uma conferência pode exigir, e o que não pode
+
+Metade das falhas desta série não era defeito do produto: era conferência
+medindo a base de ontem. Três armadilhas, e as três se parecem com um defeito
+até alguém olhar.
+
+**Número absoluto da base.** "Dois lançamentos gravados", "cinco empresas",
+"1.658 reconhecidas". O cliente classifica, reconhece e cadastra; o número muda
+e a conferência passa a acusar o produto do que ele leu certo. O roteiro mede a
+**diferença** que ele mesmo causa: guarda a linha de base, faz o que veio
+fazer, e exige o delta.
+
+**Estado vazio suposto.** "A base não tem despesa compartilhada nenhuma." Era
+verdade no retrato de `dados/` de meses atrás. A regra em jogo é de TELA — sem
+nada classificado, o indicador diz que falta classificar em vez de mostrar zero
+—, então o roteiro **cria** o vazio (em memória, que não toca `dados/`), prova a
+regra, e segue.
+
+**Calendário escrito na asserção.** "A 2ª onda ainda não vence", "Projetos vale
+100%". Em 03/11/2026 o go-live chegou, a tela mudou de leitura corretamente e
+três conferências acusaram o produto de errar por dizer a verdade. O vencimento
+sai da data que a própria tela mostra, comparada com hoje; o que se exige é a
+regra, não o número: a onda que não venceu nunca aparece como 0%, a que venceu
+traz número, e o cartão de Projetos não se escusa pelo mês aberto porque a
+virada é um fato datado.
 
 **Uma semente colide com uma suíte quando usa as marcas dela.** Várias
 conferências criam registros pela tela e os reconhecem depois por um campo —

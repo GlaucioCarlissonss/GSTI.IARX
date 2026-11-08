@@ -50,9 +50,14 @@ const SENHA = process.env.SENHA || 'varredura2026';
   // abrir. Sem isto, a varredura leria uma tela vazia e chamaria de defeito o
   // comportamento combinado.
   const abrirCartoes = async () => {
-    const dobras = await pag.$$('.cartao.dobrado .cartao-dobra');
-    for (const d of dobras) {
-      await d.click();
+    // Locator em vez de elemento guardado: entre a busca e o clique o React
+    // repinta o cartão, o elemento se solta do DOM e o clique estoura com
+    // "Element is not attached to the DOM" — a conferência morre no meio, que
+    // é pior do que falhar. O locator reencontra o alvo na hora do clique.
+    for (let i = 0; i < 20; i += 1) {
+      const dobra = pag.locator('.cartao.dobrado .cartao-dobra').first();
+      if (!(await dobra.count())) break;
+      await dobra.click();
       await pag.waitForTimeout(250);
     }
   };
