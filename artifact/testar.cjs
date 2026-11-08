@@ -1,0 +1,69 @@
+const { chromium } = require('playwright');
+const { usarEmpresas, usarBase, usarCompetencias, irPara, todasAsAbas } = require('./ajuda-testes.cjs');
+(async () => {
+  const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
+  const pag = await nav.newPage();
+  const erros = [];
+  pag.on('pageerror', (e) => erros.push('pageerror: ' + e.message));
+  // erro de rede do próprio navegador (fontes bloqueadas no ambiente) não é
+  // falha da página
+  pag.on('console', (m) => { if (m.type() === 'error' && !/ERR_|net::/.test(m.text())) erros.push('console: ' + m.text()); });
+  await pag.goto('file://' + __dirname + '/teste-local.html');
+  await pag.waitForSelector('#abas button', { timeout: 10000 });
+
+  const modulos = await pag.$$eval('#modulos button', (bs) => bs.map((b) => b.textContent.trim()));
+  console.log('módulos:', modulos.join(' | '));
+  for (const t of await todasAsAbas(pag)) console.log(`  ${t.modulo} → ${t.aba}`);
+
+  const clicar = (rot) => irPara(pag, rot, 400);
+
+  // 1. Conferência
+  await clicar('Conferência');
+  const kpis = await pag.$$eval('.kpi', (ks) => ks.map((k) => k.querySelector('.r').textContent + ' = ' + k.querySelector('.n').textContent));
+  console.log('\n-- Conferência (ALIANÇA) --'); kpis.forEach((k) => console.log('  ' + k));
+  const comp = await pag.$$eval('.bloco table tbody tr', (rs) => rs.slice(0, 5).map((r) => [...r.cells].map((c) => c.textContent.trim().replace(/\s+/g,' ').slice(0,40)).join(' | ')));
+  console.log('  composição:'); comp.forEach((c) => console.log('    ' + c));
+
+  // carrega todas as empresas e lê o total do grupo
+  const bt = await pag.$('#c-carregar');
+  if (bt) { await bt.click(); await pag.waitForTimeout(3000); }
+  const grupo = await pag.evaluate(() => {
+    const tr = [...document.querySelectorAll('tr.tot')].find((t) => t.cells[0].textContent.includes('Grupo'));
+    return tr ? [...tr.cells].map((c) => c.textContent.trim()).join(' | ') : 'não encontrado';
+  });
+  console.log('  GRUPO: ' + grupo);
+
+  // 2. Painel com cada recorte de base
+  await clicar('Painel');
+  const RECORTES = [
+    ['Completa', []],
+    ['Realizado (sem projeção)', ['planilha', 'folha_ti', 'manual']],
+    ['Só planilhas enviadas', ['planilha']],
+    ['Só projeções', ['projecao_spincare']],
+  ];
+  for (const [rot, origens] of RECORTES) {
+    await usarBase(pag, origens);
+    const t = await pag.$eval('.kpi .n', (n) => n.textContent);
+    const comp = await pag.$eval('#p-comp', (b) => b.textContent.trim()).catch(() => '?');
+    console.log(`\n  base "${rot}" · ${comp} · total do mês = ${t}`);
+  }
+  await usarBase(pag, []); await pag.waitForTimeout(300);
+
+  // 3. Lançamentos: coluna Origem
+  await clicar('Lançamentos');
+  const cab = await pag.$$eval('.bloco table thead th', (ts) => ts.map((t) => t.textContent.trim()));
+  console.log('\n-- Lançamentos --\n  colunas:', cab.join(' | '));
+  const orig = await pag.$$eval('.bloco table tbody tr', (rs) => rs.slice(0,4).map((r) => r.cells[0].textContent + ' → ' + r.cells[4].textContent.trim()));
+  orig.forEach((o) => console.log('  ' + o));
+
+  // 4. as demais abas montam sem erro
+  for (const a of ['Projetos', 'SLA', 'Cadastros', 'Auditoria']) {
+    await clicar(a);
+    const h = await pag.$eval('#pagina', (p) => p.textContent.slice(0, 60).replace(/\s+/g, ' '));
+    console.log(`\n  ${a}: ${h}…`);
+  }
+
+  console.log('\n=== erros de console: ' + (erros.length ? '\n' + erros.join('\n') : 'nenhum') + ' ===');
+  await nav.close();
+  process.exit(erros.length ? 1 : 0);
+})();
